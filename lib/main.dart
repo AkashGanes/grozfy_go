@@ -99,6 +99,17 @@ class DeliveryPartnerApp extends ConsumerWidget {
                 builder: (_) => const OrderStatusScreen(),
               );
             case AppRoutes.dashboard:
+              // Route guard: Force location selection if not selected
+              if (!controller.bootstrapped) {
+                return MaterialPageRoute<void>(
+                  builder: (_) => const SplashScreen(),
+                );
+              }
+              if (controller.isLoggedIn && !controller.hasSelectedLocation) {
+                return MaterialPageRoute<void>(
+                  builder: (_) => const CurrentLocationPickerScreen(),
+                );
+              }
               return MaterialPageRoute<void>(
                 builder: (_) => const DashboardScreen(),
               );
