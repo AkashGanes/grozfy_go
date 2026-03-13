@@ -30,10 +30,19 @@ class _OrderLocationDetailScreenState
   String? _error;
   bool _updating = false;
 
+  final MapController _mapController = MapController();
+  bool _started = false;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -71,26 +80,21 @@ class _OrderLocationDetailScreenState
     }
   }
 
-  Future<void> _launchNavigation(ExternalDeliveryDetail detail) async {
-    Uri uri;
-    if (detail.latitude != null && detail.longitude != null) {
-      uri = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=${detail.latitude},${detail.longitude}&travelmode=driving',
-      );
-    } else if (detail.deliveryAddress != null) {
-      final encoded = Uri.encodeComponent(detail.deliveryAddress!);
-      uri = Uri.parse(
-        'https://www.google.com/maps/search/?api=1&query=$encoded',
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No destination available')),
-      );
-      return;
-    }
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+  void _startTracking(ExternalDeliveryDetail detail) {
+    setState(() => _started = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (detail.latitude != null && detail.longitude != null) {
+        _mapController.fitCamera(
+          CameraFit.coordinates(
+            coordinates: [
+              const LatLng(8.1833, 77.4119), // partner location
+              LatLng(detail.latitude!, detail.longitude!),
+            ],
+            padding: const EdgeInsets.fromLTRB(48, 80, 48, 220),
+          ),
+        );
+      }
+    });
   }
 
   @override
@@ -107,7 +111,7 @@ class _OrderLocationDetailScreenState
   Widget _buildLoading() {
     return Stack(
       children: [
-        _MapLayer(latitude: null, longitude: null),
+        _MapLayer(mapController: _mapController, started: false),
         const _BackButton(),
         DraggableScrollableSheet(
           initialChildSize: 0.28,
@@ -130,7 +134,7 @@ class _OrderLocationDetailScreenState
   Widget _buildError() {
     return Stack(
       children: [
-        _MapLayer(latitude: null, longitude: null),
+        _MapLayer(mapController: _mapController, started: false),
         const _BackButton(),
         DraggableScrollableSheet(
           initialChildSize: 0.35,
@@ -171,7 +175,12 @@ class _OrderLocationDetailScreenState
     return Stack(
       children: [
         // Full screen map
-        _MapLayer(latitude: detail.latitude, longitude: detail.longitude),
+        _MapLayer(
+          mapController: _mapController,
+          started: _started,
+          latitude: detail.latitude,
+          longitude: detail.longitude,
+        ),
 
         // Back button
         const _BackButton(),
@@ -469,7 +478,8 @@ class _OrderLocationDetailScreenState
                     const SizedBox(height: 12),
                     _ActionButtons(
                       status: detail.status,
-                      onNavigate: () => _launchNavigation(detail),
+                      started: _started,
+                      onStart: () => _startTracking(detail),
                       onAccept: () => _updateStatus('Accepted'),
                       onStartDelivery: () =>
                           _updateStatus('Out for Delivery'),
@@ -491,31 +501,70 @@ class _OrderLocationDetailScreenState
 // ---------------------------------------------------------------------------
 
 class _MapLayer extends StatelessWidget {
-  const _MapLayer({this.latitude, this.longitude});
+  const _MapLayer({
+    required this.mapController,
+    required this.started,
+    this.latitude,
+    this.longitude,
+  });
+
+  final MapController mapController;
+  final bool started;
   final double? latitude;
   final double? longitude;
 
+  static const _partnerLocation = LatLng(8.1833, 77.4119);
+
   @override
   Widget build(BuildContext context) {
-    const defaultCenter = LatLng(8.1833, 77.4119);
-    final hasPin = latitude != null && longitude != null;
-    final center = hasPin ? LatLng(latitude!, longitude!) : defaultCenter;
+    final hasDestination = latitude != null && longitude != null;
+    final destination =
+        hasDestination ? LatLng(latitude!, longitude!) : null;
+    final initialCenter = hasDestination ? destination! : _partnerLocation;
 
     return FlutterMap(
+      mapController: mapController,
       options: MapOptions(
-        initialCenter: center,
-        initialZoom: hasPin ? 15.0 : 13.0,
+        initialCenter: initialCenter,
+        initialZoom: hasDestination ? 15.0 : 13.0,
       ),
       children: [
         TileLayer(
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.example.delivery_partner_app',
         ),
-        if (hasPin)
-          MarkerLayer(
-            markers: [
+        MarkerLayer(
+          markers: [
+            // Delivery partner marker (shown when started)
+            if (started)
               Marker(
-                point: center,
+                point: _partnerLocation,
+                width: 52,
+                height: 52,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.oceanBlue,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.oceanBlue.withValues(alpha: 0.4),
+                        blurRadius: 8,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.delivery_dining_rounded,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                ),
+              ),
+            // Destination marker
+            if (hasDestination)
+              Marker(
+                point: destination!,
                 width: 48,
                 height: 48,
                 child: const Icon(
@@ -524,8 +573,8 @@ class _MapLayer extends StatelessWidget {
                   size: 42,
                 ),
               ),
-            ],
-          ),
+          ],
+        ),
       ],
     );
   }
@@ -738,14 +787,16 @@ class _CallButton extends StatelessWidget {
 class _ActionButtons extends StatelessWidget {
   const _ActionButtons({
     required this.status,
-    required this.onNavigate,
+    required this.started,
+    required this.onStart,
     required this.onAccept,
     required this.onStartDelivery,
     required this.onDelivered,
   });
 
   final String status;
-  final VoidCallback onNavigate;
+  final bool started;
+  final VoidCallback onStart;
   final VoidCallback onAccept;
   final VoidCallback onStartDelivery;
   final VoidCallback onDelivered;
@@ -761,12 +812,16 @@ class _ActionButtons extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Navigate always shown (except completed)
+        // Start button — shows partner + destination on the map (no external app)
         _Btn(
-          label: 'Navigate',
-          icon: Icons.navigation_rounded,
-          color: const Color(0xFF1565C0),
-          onTap: onNavigate,
+          label: started ? 'Tracking Active' : 'Start',
+          icon: started
+              ? Icons.my_location_rounded
+              : Icons.play_arrow_rounded,
+          color: started
+              ? const Color(0xFF4CAF50)
+              : const Color(0xFFE8384F),
+          onTap: onStart,
         ),
         const SizedBox(height: 10),
         if (s == 'pending' || s == '')
