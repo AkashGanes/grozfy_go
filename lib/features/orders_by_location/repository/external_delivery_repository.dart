@@ -28,14 +28,53 @@ class ExternalDeliveryRepository {
     'status',
   ];
 
-  Future<List<ExternalDelivery>> fetchPage({int limitStart = 0}) async {
+  Future<List<String>> fetchStoreNames() async {
     final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
       queryParameters: {
-        'fields': jsonEncode(_fields),
-        'limit_start': '$limitStart',
-        'limit_page_length': '$pageSize',
-        'order_by': 'store_name asc, modified desc',
+        'fields': jsonEncode(['store_name']),
+        'limit_page_length': '500',
+        'order_by': 'store_name asc',
       },
+    );
+
+    debugPrint('[API] fetchStoreNames → GET $uri');
+
+    final resp = await http.get(uri, headers: {
+      'Accept': 'application/json',
+      'Authorization': 'token $apiKey:$apiSecret',
+    });
+
+    debugPrint('[API] fetchStoreNames ← ${resp.statusCode}');
+
+    if (resp.statusCode != 200) return [];
+
+    final data = (jsonDecode(resp.body)['data']) as List;
+    final names = data
+        .map((r) => (r as Map<String, dynamic>)['store_name']?.toString() ?? '')
+        .where((s) => s.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return names;
+  }
+
+  Future<List<ExternalDelivery>> fetchPage({
+    int limitStart = 0,
+    String? storeName,
+  }) async {
+    final params = <String, String>{
+      'fields': jsonEncode(_fields),
+      'limit_start': '$limitStart',
+      'limit_page_length': '$pageSize',
+      'order_by': 'modified desc',
+    };
+    if (storeName != null) {
+      params['filters'] = jsonEncode([
+        ['External Delivery', 'store_name', '=', storeName],
+      ]);
+    }
+    final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
+      queryParameters: params,
     );
 
     debugPrint('[API] fetchPage → GET $uri');

@@ -1,20 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
+import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../repository/external_delivery_repository.dart';
 import 'order_location_detail_screen.dart';
 
-class OrdersByLocationScreen extends StatefulWidget {
+class OrdersByLocationScreen extends ConsumerStatefulWidget {
   const OrdersByLocationScreen({super.key});
 
   @override
-  State<OrdersByLocationScreen> createState() => _OrdersByLocationScreenState();
+  ConsumerState<OrdersByLocationScreen> createState() =>
+      _OrdersByLocationScreenState();
 }
 
-class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
+class _OrdersByLocationScreenState
+    extends ConsumerState<OrdersByLocationScreen> {
   late final ExternalDeliveryRepository _repository;
   late final PagingController<int, LocationListItem> _pagingController;
   String? _lastStoreName;
@@ -25,6 +29,14 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
     _repository = ExternalDeliveryRepository();
     _pagingController = PagingController(firstPageKey: 0)
       ..addPageRequestListener(_fetchPage);
+
+    // Show store picker on first open if no store selected
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final app = ref.read(appControllerProvider);
+      if (app.selectedStoreName == null) {
+        _showStorePicker(initial: true);
+      }
+    });
   }
 
   @override
@@ -35,7 +47,11 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
 
   Future<void> _fetchPage(int pageKey) async {
     try {
-      final orders = await _repository.fetchPage(limitStart: pageKey);
+      final storeName = ref.read(appControllerProvider).selectedStoreName;
+      final orders = await _repository.fetchPage(
+        limitStart: pageKey,
+        storeName: storeName,
+      );
       final items = <LocationListItem>[];
       for (final order in orders) {
         if (order.storeName != _lastStoreName) {
@@ -60,13 +76,166 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
     _pagingController.refresh();
   }
 
+  Future<void> _showStorePicker({bool initial = false}) async {
+    List<String> stores = [];
+    bool loading = true;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: !initial,
+      enableDrag: !initial,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            if (loading) {
+              _repository.fetchStoreNames().then((names) {
+                setModal(() {
+                  stores = names;
+                  loading = false;
+                });
+              });
+            }
+
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                MediaQuery.of(ctx).padding.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Handle
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.black12,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const Text(
+                    'Select Your Location',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.nightBlue,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Orders will be filtered by your selected store.',
+                    style: TextStyle(fontSize: 13, color: Colors.black45),
+                  ),
+                  const SizedBox(height: 16),
+                  if (loading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: AppTheme.oceanBlue,
+                        ),
+                      ),
+                    )
+                  else if (stores.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'No stores found',
+                          style: TextStyle(color: Colors.black45),
+                        ),
+                      ),
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(ctx).size.height * 0.4,
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: stores.length,
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final store = stores[i];
+                          final selected = ref
+                                  .read(appControllerProvider)
+                                  .selectedStoreName ==
+                              store;
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              Icons.store_rounded,
+                              color: selected
+                                  ? AppTheme.oceanBlue
+                                  : Colors.black38,
+                            ),
+                            title: Text(
+                              store,
+                              style: TextStyle(
+                                fontWeight: selected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: selected
+                                    ? AppTheme.oceanBlue
+                                    : AppTheme.nightBlue,
+                              ),
+                            ),
+                            trailing: selected
+                                ? const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: AppTheme.oceanBlue,
+                                  )
+                                : null,
+                            onTap: () async {
+                              await ref
+                                  .read(appControllerProvider)
+                                  .setSelectedStore(store);
+                              if (ctx.mounted) Navigator.of(ctx).pop();
+                              _refresh();
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selectedStore =
+        ref.watch(appControllerProvider).selectedStoreName;
+
     return AppShell(
       title: 'Orders by Location',
-      subtitle: 'All deliveries grouped by store',
+      subtitle: selectedStore ?? 'Select a location',
       scrollable: false,
       padding: EdgeInsets.zero,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
+          tooltip: 'Change location',
+          onPressed: () => _showStorePicker(),
+        ),
+      ],
       child: RefreshIndicator(
         color: AppTheme.oceanBlue,
         onRefresh: _refresh,
