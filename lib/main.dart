@@ -15,6 +15,7 @@ import 'features/language/language_selection_screen.dart';
 import 'features/location/current_location_picker_screen.dart';
 import 'features/location/location_tracking_screen.dart';
 import 'features/orders/navigation_screen.dart';
+import 'features/orders_by_location/ui/orders_by_location_screen.dart';
 import 'features/orders/order_details_screen.dart';
 import 'features/orders/order_request_screen.dart';
 import 'features/orders/order_status_screen.dart';
@@ -101,6 +102,10 @@ class DeliveryPartnerApp extends ConsumerWidget {
             case AppRoutes.dashboard:
               return MaterialPageRoute<void>(
                 builder: (_) => const DashboardScreen(),
+              );
+            case AppRoutes.ordersByLocation:
+              return MaterialPageRoute<void>(
+                builder: (_) => const OrdersByLocationScreen(),
               );
             default:
               return MaterialPageRoute<void>(
