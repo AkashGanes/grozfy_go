@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/constants/api_constants.dart';
@@ -38,6 +39,7 @@ class ExternalDeliveryRepository {
       },
     );
 
+    _logApi('external_delivery_list request', uri.toString());
     final resp = await http.get(uri, headers: {
       'Accept': 'application/json',
       'Authorization': 'token $apiKey:$apiSecret',
@@ -60,6 +62,19 @@ class ExternalDeliveryRepository {
   }
 
   Future<String> createAndSubmitTripForOrder(ExternalDelivery order) async {
+    final createPayload = {
+      'driver': ApiConstants.defaultExternalDeliveryDriver,
+      'status': 'Draft',
+      'trip_date': DateTime.now().toIso8601String().split('T').first,
+      'stops': [
+        {'external_delivery': order.name},
+      ],
+    };
+    _logApi(
+      'external_delivery_trip_create request',
+      'POST ${ApiConstants.externalDeliveryTripList} body=$createPayload',
+    );
+
     final createResp = await http.post(
       Uri.parse(ApiConstants.externalDeliveryTripList),
       headers: {
@@ -67,14 +82,7 @@ class ExternalDeliveryRepository {
         'Content-Type': 'application/json',
         'Authorization': 'token $apiKey:$apiSecret',
       },
-      body: jsonEncode({
-        'driver': ApiConstants.defaultExternalDeliveryDriver,
-        'status': 'Draft',
-        'trip_date': DateTime.now().toIso8601String().split('T').first,
-        'stops': [
-          {'external_delivery': order.name},
-        ],
-      }),
+      body: jsonEncode(createPayload),
     );
 
     if (!_okCodes.contains(createResp.statusCode)) {
@@ -87,6 +95,10 @@ class ExternalDeliveryRepository {
       throw Exception('Trip create API returned unexpected response');
     }
 
+    _logApi(
+      'external_delivery_trip_submit request',
+      'POST ${ApiConstants.frappeSubmitMethod} docname=${createdDoc['name']}',
+    );
     final submitResp = await http.post(
       Uri.parse(ApiConstants.frappeSubmitMethod),
       headers: {
@@ -151,5 +163,9 @@ class ExternalDeliveryRepository {
     }
 
     return base;
+  }
+
+  void _logApi(String tag, String value) {
+    debugPrint('[API] $tag => $value');
   }
 }
