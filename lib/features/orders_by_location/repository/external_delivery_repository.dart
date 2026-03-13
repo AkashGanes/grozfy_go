@@ -26,6 +26,8 @@ class ExternalDeliveryRepository {
     'status',
   ];
 
+  static const Set<int> _okCodes = {200, 201};
+
   Future<List<ExternalDelivery>> fetchPage({int limitStart = 0}) async {
     final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
       queryParameters: {
@@ -48,12 +50,106 @@ class ExternalDeliveryRepository {
       throw Exception('403: Access denied. Check API permissions.');
     }
     if (resp.statusCode != 200) {
-      throw Exception('Server error ${resp.statusCode}');
+      throw Exception(_extractErrorMessage(resp));
     }
 
     final data = (jsonDecode(resp.body)['data']) as List;
     return data
         .map((row) => ExternalDelivery.fromJson(row as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<String> createAndSubmitTripForOrder(ExternalDelivery order) async {
+    final createResp = await http.post(
+      Uri.parse(ApiConstants.externalDeliveryTripList),
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+      body: jsonEncode({
+        'driver': ApiConstants.defaultExternalDeliveryDriver,
+        'status': 'Draft',
+        'trip_date': DateTime.now().toIso8601String().split('T').first,
+        'stops': [
+          {'external_delivery': order.name},
+        ],
+      }),
+    );
+
+    if (!_okCodes.contains(createResp.statusCode)) {
+      throw Exception(_extractErrorMessage(createResp));
+    }
+
+    final createData = jsonDecode(createResp.body) as Map<String, dynamic>;
+    final createdDoc = createData['data'];
+    if (createdDoc is! Map<String, dynamic>) {
+      throw Exception('Trip create API returned unexpected response');
+    }
+
+    final submitResp = await http.post(
+      Uri.parse(ApiConstants.frappeSubmitMethod),
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+      body: jsonEncode({'doc': createdDoc}),
+    );
+
+    if (!_okCodes.contains(submitResp.statusCode)) {
+      throw Exception(_extractErrorMessage(submitResp));
+    }
+
+    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
+    final submittedDoc = submitData['message'] ?? submitData['data'];
+    if (submittedDoc is! Map<String, dynamic>) {
+      throw Exception('Trip submit API returned unexpected response');
+    }
+
+    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+  }
+
+  String _extractErrorMessage(http.Response resp) {
+    String base = 'Server error ${resp.statusCode}';
+    Map<String, dynamic>? map;
+    try {
+      final decoded = jsonDecode(resp.body);
+      if (decoded is Map<String, dynamic>) {
+        map = decoded;
+      }
+    } catch (_) {
+      return base;
+    }
+
+    final serverMessages = map?['_server_messages'];
+    if (serverMessages is String && serverMessages.isNotEmpty) {
+      try {
+        final outer = jsonDecode(serverMessages);
+        if (outer is List && outer.isNotEmpty && outer.first is String) {
+          final inner = jsonDecode(outer.first as String);
+          if (inner is Map<String, dynamic>) {
+            final msg = (inner['message'] ?? '').toString().trim();
+            if (msg.isNotEmpty) return msg;
+          }
+        }
+      } catch (_) {}
+    }
+
+    final message = map?['message'];
+    if (message is String && message.trim().isNotEmpty) {
+      return message.trim();
+    }
+    if (message is Map<String, dynamic>) {
+      final nested = (message['message'] ?? '').toString().trim();
+      if (nested.isNotEmpty) return nested;
+    }
+
+    final exception = (map?['exception'] ?? '').toString().trim();
+    if (exception.isNotEmpty) {
+      return exception;
+    }
+
+    return base;
   }
 }

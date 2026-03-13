@@ -23,6 +23,11 @@ class ApiConstants {
 
   static const String externalDeliveryList =
       '$erpBaseUrl/api/resource/External Delivery';
+  static const String externalDeliveryTripList =
+      '$erpBaseUrl/api/resource/External Delivery Trip';
+  static const String frappeSubmitMethod =
+      '$erpBaseUrl/api/method/frappe.client.submit';
+  static const String defaultExternalDeliveryDriver = 'HR-DRI-2026-00001';
 
   // ---------------------------------------------------------------------------
   // API credentials

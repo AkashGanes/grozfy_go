@@ -17,6 +17,7 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
   ExternalDeliveryRepository? _repository;
   PagingController<int, LocationListItem>? _pagingController;
   String? _lastStoreName;
+  final Set<String> _submittingOrderIds = <String>{};
 
   @override
   void didChangeDependencies() {
@@ -60,6 +61,34 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
     _pagingController!.refresh();
   }
 
+  bool _isEligibleForTrip(ExternalDelivery order) => order.status == 'Pending';
+
+  Future<void> _handleOrderTap(ExternalDelivery order) async {
+    if (_submittingOrderIds.contains(order.name)) return;
+    if (!_isEligibleForTrip(order)) {
+      showInfoSnack(
+        context,
+        'Only pending orders can be added to a new trip.',
+      );
+      return;
+    }
+
+    setState(() => _submittingOrderIds.add(order.name));
+    try {
+      final tripName = await _repository!.createAndSubmitTripForOrder(order);
+      if (!mounted) return;
+      showInfoSnack(context, 'Trip $tripName created and submitted');
+      await _refresh();
+    } catch (e) {
+      if (!mounted) return;
+      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _submittingOrderIds.remove(order.name));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _pagingController;
@@ -83,7 +112,11 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
                 return _StoreHeaderTile(storeName: item.storeName);
               }
               if (item is OrderRow) {
-                return _OrderCard(order: item.order);
+                return _OrderCard(
+                  order: item.order,
+                  busy: _submittingOrderIds.contains(item.order.name),
+                  onTap: () => _handleOrderTap(item.order),
+                );
               }
               return const SizedBox.shrink();
             },
@@ -140,8 +173,14 @@ class _StoreHeaderTile extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _OrderCard extends StatelessWidget {
-  const _OrderCard({required this.order});
+  const _OrderCard({
+    required this.order,
+    required this.busy,
+    required this.onTap,
+  });
   final ExternalDelivery order;
+  final bool busy;
+  final VoidCallback onTap;
 
   String _formatDate(String raw) {
     if (raw.length < 10) return raw;
@@ -155,87 +194,108 @@ class _OrderCard extends StatelessWidget {
     final statusColor = order.status.statusColor;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: FrostCard(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            // Status dot
-            Container(
-              width: 10,
-              height: 10,
-              margin: const EdgeInsets.only(right: 14, top: 2),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: statusColor,
-              ),
-            ),
-            // Order info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    order.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                      color: AppTheme.nightBlue,
-                    ),
+      child: Opacity(
+        opacity: busy ? 0.7 : 1,
+        child: GestureDetector(
+          onTap: busy ? null : onTap,
+          child: FrostCard(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                // Status dot
+                Container(
+                  width: 10,
+                  height: 10,
+                  margin: const EdgeInsets.only(right: 14, top: 2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: statusColor,
                   ),
-                  const SizedBox(height: 4),
-                  Row(
+                ),
+                // Order info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.person_outline,
-                        size: 13,
-                        color: Colors.black45,
-                      ),
-                      const SizedBox(width: 4),
                       Text(
-                        order.customerName,
+                        order.name,
                         style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black54,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: AppTheme.nightBlue,
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      const Icon(
-                        Icons.schedule,
-                        size: 13,
-                        color: Colors.black45,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatDate(order.modified),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black45,
-                        ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.person_outline,
+                            size: 13,
+                            color: Colors.black45,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            order.customerName,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Icon(
+                            Icons.schedule,
+                            size: 13,
+                            color: Colors.black45,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _formatDate(order.modified),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black45,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            // Status badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: statusColor.withValues(alpha: 0.35)),
-              ),
-              child: Text(
-                order.status,
-                style: TextStyle(
-                  color: statusColor,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
                 ),
-              ),
+                const SizedBox(width: 10),
+                // Status badge
+                if (busy)
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.oceanBlue,
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.10),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: statusColor.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Text(
+                      order.status,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
