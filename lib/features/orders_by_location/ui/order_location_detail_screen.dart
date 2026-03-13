@@ -4,7 +4,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
@@ -29,6 +28,7 @@ class _OrderLocationDetailScreenState
   ExternalDeliveryDetail? _detail;
   bool _loading = true;
   String? _error;
+  bool _updating = false;
 
   @override
   void initState() {
@@ -55,27 +55,41 @@ class _OrderLocationDetailScreenState
     }
   }
 
+  Future<void> _updateStatus(String newStatus) async {
+    setState(() => _updating = true);
+    try {
+      await widget.repository.updateStatus(widget.order.name, newStatus);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
+  }
+
   Future<void> _launchNavigation(ExternalDeliveryDetail detail) async {
     Uri uri;
     if (detail.latitude != null && detail.longitude != null) {
-      // coords → Google Maps navigation
       uri = Uri.parse(
         'https://www.google.com/maps/dir/?api=1&destination=${detail.latitude},${detail.longitude}&travelmode=driving',
       );
     } else if (detail.deliveryAddress != null) {
-      // address → Google Maps search
       final encoded = Uri.encodeComponent(detail.deliveryAddress!);
       uri = Uri.parse(
         'https://www.google.com/maps/search/?api=1&query=$encoded',
       );
     } else {
-      if (mounted) showInfoSnack(context, 'No destination available');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No destination available')),
+      );
       return;
     }
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) showInfoSnack(context, 'Could not open Maps');
     }
   }
 
@@ -85,8 +99,8 @@ class _OrderLocationDetailScreenState
       body: _loading
           ? _buildLoading()
           : _error != null
-          ? _buildError()
-          : _buildContent(),
+              ? _buildError()
+              : _buildContent(),
     );
   }
 
@@ -94,9 +108,7 @@ class _OrderLocationDetailScreenState
     return Stack(
       children: [
         _MapLayer(latitude: null, longitude: null),
-        // Back button
         const _BackButton(),
-        // Loading panel
         DraggableScrollableSheet(
           initialChildSize: 0.28,
           minChildSize: 0.28,
@@ -129,16 +141,14 @@ class _OrderLocationDetailScreenState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
-                  Icons.error_outline_rounded,
-                  color: Colors.redAccent,
-                  size: 36,
-                ),
+                const Icon(Icons.error_outline_rounded,
+                    color: Colors.redAccent, size: 36),
                 const SizedBox(height: 8),
                 Text(
                   _error ?? 'Something went wrong',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.black54, fontSize: 13),
+                  style:
+                      const TextStyle(color: Colors.black54, fontSize: 13),
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
@@ -156,21 +166,23 @@ class _OrderLocationDetailScreenState
 
   Widget _buildContent() {
     final detail = _detail!;
+    final statusColor = detail.status.statusColor;
+
     return Stack(
       children: [
         // Full screen map
-        _MapLayer(
-          latitude: detail.latitude,
-          longitude: detail.longitude,
-        ),
-        // Back button overlay
+        _MapLayer(latitude: detail.latitude, longitude: detail.longitude),
+
+        // Back button
         const _BackButton(),
+
         // Order ID badge (top right)
         Positioned(
           top: MediaQuery.of(context).padding.top + 12,
           right: 16,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
@@ -192,18 +204,20 @@ class _OrderLocationDetailScreenState
             ),
           ),
         ),
+
         // Draggable bottom sheet
         DraggableScrollableSheet(
-          initialChildSize: 0.38,
+          initialChildSize: 0.45,
           minChildSize: 0.22,
-          maxChildSize: 0.75,
+          maxChildSize: 0.92,
           snap: true,
-          snapSizes: const [0.22, 0.38, 0.75],
+          snapSizes: const [0.22, 0.45, 0.92],
           builder: (context, scrollController) {
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(24)),
                 boxShadow: [
                   BoxShadow(
                     color: Color(0x22000000),
@@ -233,15 +247,72 @@ class _OrderLocationDetailScreenState
                       ),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  // Customer row
+
+                  // ── Order ID + Store + Status ──────────────────
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              detail.name,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.nightBlue,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                const Icon(Icons.store_rounded,
+                                    size: 13, color: Colors.black38),
+                                const SizedBox(width: 4),
+                                Text(
+                                  detail.storeName,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.black54),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                              color: statusColor.withValues(alpha: 0.35)),
+                        ),
+                        child: Text(
+                          detail.status,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  const Divider(height: 1),
+                  const SizedBox(height: 14),
+
+                  // ── Customer ───────────────────────────────────
                   Row(
                     children: [
                       Container(
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                          color:
+                              AppTheme.oceanBlue.withValues(alpha: 0.10),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -259,7 +330,7 @@ class _OrderLocationDetailScreenState
                               detail.customerName,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
-                                fontSize: 17,
+                                fontSize: 16,
                                 color: AppTheme.nightBlue,
                               ),
                             ),
@@ -268,9 +339,7 @@ class _OrderLocationDetailScreenState
                               Text(
                                 detail.contactMobile!,
                                 style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.black45,
-                                ),
+                                    fontSize: 13, color: Colors.black45),
                               ),
                             ],
                           ],
@@ -280,10 +349,9 @@ class _OrderLocationDetailScreenState
                         _CallButton(mobile: detail.contactMobile!),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  const Divider(height: 1),
-                  const SizedBox(height: 16),
-                  // Delivery address
+                  const SizedBox(height: 14),
+
+                  // ── Delivery address ───────────────────────────
                   _AddressRow(
                     icon: Icons.location_on_rounded,
                     iconColor: Colors.redAccent,
@@ -291,7 +359,7 @@ class _OrderLocationDetailScreenState
                     address: detail.deliveryAddress ?? 'Address not available',
                   ),
                   if (detail.pickupAddress != null) ...[
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
                     _AddressRow(
                       icon: Icons.store_rounded,
                       iconColor: AppTheme.oceanBlue,
@@ -299,28 +367,115 @@ class _OrderLocationDetailScreenState
                       address: detail.pickupAddress!,
                     ),
                   ],
-                  const SizedBox(height: 24),
-                  // Start button
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFE8384F),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                  const SizedBox(height: 14),
+                  const Divider(height: 1),
+                  const SizedBox(height: 14),
+
+                  // ── Items ──────────────────────────────────────
+                  if (detail.items.isNotEmpty) ...[
+                    const _SheetSectionLabel(
+                        icon: Icons.shopping_bag_rounded, label: 'Items'),
+                    const SizedBox(height: 10),
+                    ...detail.items.map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              margin:
+                                  const EdgeInsets.only(right: 10, top: 1),
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppTheme.oceanBlue,
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                item.itemName,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: AppTheme.nightBlue,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              'x${item.qty % 1 == 0 ? item.qty.toInt() : item.qty}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.nightBlue,
+                              ),
+                            ),
+                            if (item.amount != null) ...[
+                              const SizedBox(width: 14),
+                              Text(
+                                '₹${item.amount!.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                    fontSize: 13, color: Colors.black45),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                      elevation: 0,
                     ),
-                    onPressed: () => _launchNavigation(detail),
-                    icon: const Icon(Icons.navigation_rounded, size: 20),
-                    label: const Text(
-                      'Start',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                    const SizedBox(height: 6),
+                    const Divider(height: 1),
+                    const SizedBox(height: 14),
+                  ],
+
+                  // ── Payment + Total ────────────────────────────
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.payments_rounded,
+                              size: 16, color: Colors.black38),
+                          const SizedBox(width: 6),
+                          Text(
+                            detail.paymentMode ?? 'Cash on Delivery',
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.black54),
+                          ),
+                        ],
                       ),
-                    ),
+                      if (detail.grandTotal != null)
+                        Text(
+                          '₹${detail.grandTotal!.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.nightBlue,
+                          ),
+                        ),
+                    ],
                   ),
+                  const SizedBox(height: 20),
+
+                  // ── Action buttons ─────────────────────────────
+                  if (_updating)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: CircularProgressIndicator(
+                            color: AppTheme.oceanBlue),
+                      ),
+                    )
+                  else ...[
+                    const _SheetSectionLabel(
+                        icon: Icons.touch_app_rounded, label: 'Actions'),
+                    const SizedBox(height: 12),
+                    _ActionButtons(
+                      status: detail.status,
+                      onNavigate: () => _launchNavigation(detail),
+                      onAccept: () => _updateStatus('Accepted'),
+                      onStartDelivery: () =>
+                          _updateStatus('Out for Delivery'),
+                      onDelivered: () => _updateStatus('Delivered'),
+                    ),
+                  ],
                 ],
               ),
             );
@@ -342,7 +497,7 @@ class _MapLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const defaultCenter = LatLng(8.1833, 77.4119); // Nagercoil, Tamil Nadu
+    const defaultCenter = LatLng(8.1833, 77.4119);
     final hasPin = latitude != null && longitude != null;
     final center = hasPin ? LatLng(latitude!, longitude!) : defaultCenter;
 
@@ -416,11 +571,12 @@ class _BackButton extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Shared sheet shell (loading / error states)
+// Sheet shell (loading / error states)
 // ---------------------------------------------------------------------------
 
 class _SheetShell extends StatelessWidget {
-  const _SheetShell({required this.scrollController, required this.child});
+  const _SheetShell(
+      {required this.scrollController, required this.child});
   final ScrollController scrollController;
   final Widget child;
 
@@ -431,7 +587,10 @@ class _SheetShell extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
-          BoxShadow(color: Color(0x22000000), blurRadius: 20, offset: Offset(0, -4)),
+          BoxShadow(
+              color: Color(0x22000000),
+              blurRadius: 20,
+              offset: Offset(0, -4)),
         ],
       ),
       child: ListView(
@@ -458,7 +617,36 @@ class _SheetShell extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Address row widget
+// Sheet section label
+// ---------------------------------------------------------------------------
+
+class _SheetSectionLabel extends StatelessWidget {
+  const _SheetSectionLabel({required this.icon, required this.label});
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: AppTheme.oceanBlue),
+        const SizedBox(width: 5),
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.oceanBlue,
+            letterSpacing: 0.6,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Address row
 // ---------------------------------------------------------------------------
 
 class _AddressRow extends StatelessWidget {
@@ -479,8 +667,8 @@ class _AddressRow extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: iconColor, size: 22),
-        const SizedBox(width: 12),
+        Icon(icon, color: iconColor, size: 20),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -488,7 +676,7 @@ class _AddressRow extends StatelessWidget {
               Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: Colors.black45,
                 ),
@@ -497,7 +685,7 @@ class _AddressRow extends StatelessWidget {
               Text(
                 address,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   color: AppTheme.nightBlue,
                   height: 1.4,
                 ),
@@ -533,13 +721,111 @@ class _CallButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFFE8F5E9),
           shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFF4CAF50).withValues(alpha: 0.3)),
+          border: Border.all(
+              color: const Color(0xFF4CAF50).withValues(alpha: 0.3)),
         ),
-        child: const Icon(
-          Icons.phone_rounded,
-          color: Color(0xFF4CAF50),
-          size: 18,
+        child: const Icon(Icons.phone_rounded,
+            color: Color(0xFF4CAF50), size: 18),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Action buttons
+// ---------------------------------------------------------------------------
+
+class _ActionButtons extends StatelessWidget {
+  const _ActionButtons({
+    required this.status,
+    required this.onNavigate,
+    required this.onAccept,
+    required this.onStartDelivery,
+    required this.onDelivered,
+  });
+
+  final String status;
+  final VoidCallback onNavigate;
+  final VoidCallback onAccept;
+  final VoidCallback onStartDelivery;
+  final VoidCallback onDelivered;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = status.toLowerCase();
+
+    if (s == 'delivered' || s == 'cancelled') {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Navigate always shown (except completed)
+        _Btn(
+          label: 'Navigate',
+          icon: Icons.navigation_rounded,
+          color: const Color(0xFF1565C0),
+          onTap: onNavigate,
         ),
+        const SizedBox(height: 10),
+        if (s == 'pending' || s == '')
+          _Btn(
+            label: 'Accept Order',
+            icon: Icons.check_circle_rounded,
+            color: AppTheme.oceanBlue,
+            onTap: onAccept,
+          ),
+        if (s == 'accepted')
+          _Btn(
+            label: 'Start Delivery',
+            icon: Icons.local_shipping_rounded,
+            color: const Color(0xFF4CAF50),
+            onTap: onStartDelivery,
+          ),
+        if (s == 'out for delivery')
+          _Btn(
+            label: 'Delivered',
+            icon: Icons.done_all_rounded,
+            color: const Color(0xFF4CAF50),
+            onTap: onDelivered,
+          ),
+      ],
+    );
+  }
+}
+
+class _Btn extends StatelessWidget {
+  const _Btn({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton.icon(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        elevation: 0,
+      ),
+      onPressed: onTap,
+      icon: Icon(icon, size: 20),
+      label: Text(
+        label,
+        style:
+            const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
       ),
     );
   }

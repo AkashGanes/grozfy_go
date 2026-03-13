@@ -1,5 +1,34 @@
 import 'dart:convert';
 
+class DeliveryItem {
+  const DeliveryItem({
+    required this.itemName,
+    required this.qty,
+    this.rate,
+    this.amount,
+  });
+
+  final String itemName;
+  final double qty;
+  final double? rate;
+  final double? amount;
+
+  factory DeliveryItem.fromJson(Map<String, dynamic> m) {
+    double? toD(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toDouble();
+      return double.tryParse(v.toString());
+    }
+
+    return DeliveryItem(
+      itemName: (m['item_name'] ?? m['item_code'] ?? '').toString(),
+      qty: toD(m['qty']) ?? 1,
+      rate: toD(m['rate']),
+      amount: toD(m['amount']),
+    );
+  }
+}
+
 class ExternalDeliveryDetail {
   const ExternalDeliveryDetail({
     required this.name,
@@ -12,6 +41,9 @@ class ExternalDeliveryDetail {
     this.pickupAddress,
     this.latitude,
     this.longitude,
+    this.paymentMode,
+    this.grandTotal,
+    this.items = const [],
     this.creation,
     this.modified,
   });
@@ -26,6 +58,9 @@ class ExternalDeliveryDetail {
   final String? pickupAddress;
   final double? latitude;
   final double? longitude;
+  final String? paymentMode;
+  final double? grandTotal;
+  final List<DeliveryItem> items;
   final String? creation;
   final String? modified;
 
@@ -36,7 +71,7 @@ class ExternalDeliveryDetail {
       return double.tryParse(v.toString());
     }
 
-    // Try plain lat/lng fields first, then parse Frappe GeoJSON field
+    // Coordinates
     double? lat = toDouble(m['latitude'] ?? m['delivery_latitude']);
     double? lng = toDouble(m['longitude'] ?? m['delivery_longitude']);
 
@@ -46,6 +81,17 @@ class ExternalDeliveryDetail {
       );
       lat ??= coords?[0];
       lng ??= coords?[1];
+    }
+
+    // Items child table
+    final rawItems = m['items'];
+    final items = <DeliveryItem>[];
+    if (rawItems is List) {
+      for (final row in rawItems) {
+        if (row is Map<String, dynamic>) {
+          items.add(DeliveryItem.fromJson(row));
+        }
+      }
     }
 
     return ExternalDeliveryDetail(
@@ -63,33 +109,34 @@ class ExternalDeliveryDetail {
           ?? _nullIfBlank(m['store_address']?.toString()),
       latitude: lat,
       longitude: lng,
+      paymentMode: _nullIfBlank(
+        m['payment_mode']?.toString() ??
+        m['mode_of_payment']?.toString() ??
+        m['payment_method']?.toString(),
+      ),
+      grandTotal: toDouble(m['grand_total'] ?? m['total'] ?? m['amount']),
+      items: items,
       creation: _nullIfBlank(m['creation']?.toString()),
       modified: _nullIfBlank(m['modified']?.toString()),
     );
   }
 
-  /// Parses Frappe's GeoJSON format:
-  /// {"type":"FeatureCollection","features":[{"type":"Feature","geometry":
-  ///   {"type":"Point","coordinates":[lng, lat]},...}]}
-  /// Returns [lat, lng] or null.
   static List<double>? _parseGeoJson(dynamic raw) {
     if (raw == null) return null;
     try {
-      final Map<String, dynamic> geo =
-          raw is String ? jsonDecode(raw) as Map<String, dynamic> : raw as Map<String, dynamic>;
+      final Map<String, dynamic> geo = raw is String
+          ? jsonDecode(raw) as Map<String, dynamic>
+          : raw as Map<String, dynamic>;
 
-      // FeatureCollection
       if (geo['type'] == 'FeatureCollection') {
         final features = geo['features'] as List?;
         if (features == null || features.isEmpty) return null;
         final first = features.first as Map<String, dynamic>;
         return _pointFromGeometry(first['geometry'] as Map<String, dynamic>?);
       }
-      // Feature
       if (geo['type'] == 'Feature') {
         return _pointFromGeometry(geo['geometry'] as Map<String, dynamic>?);
       }
-      // Point directly
       if (geo['type'] == 'Point') {
         return _pointFromGeometry(geo);
       }
@@ -103,7 +150,7 @@ class ExternalDeliveryDetail {
     if (coords == null || coords.length < 2) return null;
     final lng = (coords[0] as num).toDouble();
     final lat = (coords[1] as num).toDouble();
-    return [lat, lng]; // return as [lat, lng]
+    return [lat, lng];
   }
 
   static String? _nullIfBlank(String? v) {

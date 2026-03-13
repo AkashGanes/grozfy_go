@@ -123,15 +123,45 @@ class ExternalDeliveryRepository {
 
     final data = (jsonDecode(resp.body)['data']) as Map<String, dynamic>;
 
-    // delivery_address is a Link to Address doctype — resolve the actual text
+    // Print all field keys so we can see what the API returns
+    debugPrint('[API] fetchDetail fields: ${data.keys.toList()}');
+
+    // delivery_address is a Link to Address doctype — try to resolve it
     final addressName = data['delivery_address']?.toString();
     if (addressName != null && addressName.isNotEmpty) {
+      debugPrint('[API] delivery_address raw value: $addressName');
       final resolved = await _fetchAddressText(addressName);
-      // Replace with resolved text, or null so UI shows "Address not available"
-      data['delivery_address'] = resolved;
+      if (resolved != null) {
+        data['delivery_address'] = resolved;
+      }
+      // If resolution fails, keep the original value as fallback
     }
 
     return ExternalDeliveryDetail.fromJson(data);
+  }
+
+  Future<void> updateStatus(String name, String status) async {
+    final uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
+    );
+
+    debugPrint('[API] updateStatus → PUT $uri  status=$status');
+
+    final resp = await http.put(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+      body: jsonEncode({'status': status}),
+    );
+
+    debugPrint('[API] updateStatus ← ${resp.statusCode}');
+
+    if (resp.statusCode != 200) {
+      throw Exception('Failed to update status (${resp.statusCode})');
+    }
   }
 
   Future<String?> _fetchAddressText(String addressName) async {
