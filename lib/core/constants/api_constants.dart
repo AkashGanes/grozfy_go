@@ -22,7 +22,7 @@ class ApiConstants {
   // ---------------------------------------------------------------------------
 
   static const String externalDeliveryList =
-      '$erpBaseUrl/api/resource/External Delivery';
+      '$erpBaseUrl/api/resource/External%20Delivery';
 
   // ---------------------------------------------------------------------------
   // API credentials

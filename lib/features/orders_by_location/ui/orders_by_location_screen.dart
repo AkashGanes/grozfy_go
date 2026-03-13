@@ -15,14 +15,13 @@ class OrdersByLocationScreen extends StatefulWidget {
 }
 
 class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
-  ExternalDeliveryRepository? _repository;
-  PagingController<int, LocationListItem>? _pagingController;
+  late final ExternalDeliveryRepository _repository;
+  late final PagingController<int, LocationListItem> _pagingController;
   String? _lastStoreName;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_pagingController != null) return;
+  void initState() {
+    super.initState();
     _repository = ExternalDeliveryRepository();
     _pagingController = PagingController(firstPageKey: 0)
       ..addPageRequestListener(_fetchPage);
@@ -30,13 +29,13 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
 
   @override
   void dispose() {
-    _pagingController?.dispose();
+    _pagingController.dispose();
     super.dispose();
   }
 
   Future<void> _fetchPage(int pageKey) async {
     try {
-      final orders = await _repository!.fetchPage(limitStart: pageKey);
+      final orders = await _repository.fetchPage(limitStart: pageKey);
       final items = <LocationListItem>[];
       for (final order in orders) {
         if (order.storeName != _lastStoreName) {
@@ -47,25 +46,22 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
       }
       final isLast = orders.length < ExternalDeliveryRepository.pageSize;
       if (isLast) {
-        _pagingController!.appendLastPage(items);
+        _pagingController.appendLastPage(items);
       } else {
-        _pagingController!.appendPage(items, pageKey + orders.length);
+        _pagingController.appendPage(items, pageKey + orders.length);
       }
     } catch (e) {
-      _pagingController!.error = e;
+      _pagingController.error = e;
     }
   }
 
   Future<void> _refresh() async {
     _lastStoreName = null;
-    _pagingController!.refresh();
+    _pagingController.refresh();
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = _pagingController;
-    if (controller == null) return const SizedBox.shrink();
-
     return AppShell(
       title: 'Orders by Location',
       subtitle: 'All deliveries grouped by store',
@@ -77,7 +73,7 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
         child: PagedListView<int, LocationListItem>(
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-          pagingController: controller,
+          pagingController: _pagingController,
           builderDelegate: PagedChildBuilderDelegate<LocationListItem>(
             itemBuilder: (context, item, index) {
               if (item is StoreHeader) {
@@ -90,7 +86,7 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
                     MaterialPageRoute<void>(
                       builder: (_) => OrderLocationDetailScreen(
                         order: item.order,
-                        repository: _repository!,
+                        repository: _repository,
                       ),
                     ),
                   ),
@@ -115,12 +111,12 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
             ),
             noItemsFoundIndicatorBuilder: (_) => const _EmptyState(),
             firstPageErrorIndicatorBuilder: (_) => _ErrorState(
-              error: controller.error,
-              onRetry: controller.refresh,
+              error: _pagingController.error,
+              onRetry: _pagingController.refresh,
             ),
             newPageErrorIndicatorBuilder: (_) => _ErrorState(
-              error: controller.error,
-              onRetry: controller.retryLastFailedRequest,
+              error: _pagingController.error,
+              onRetry: _pagingController.retryLastFailedRequest,
             ),
           ),
         ),
