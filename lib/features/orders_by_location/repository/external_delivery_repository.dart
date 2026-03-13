@@ -26,6 +26,16 @@ class ExternalDeliveryRepository {
     'customer_name',
     'status',
   ];
+  static const List<String> _tripFields = [
+    'name',
+    'driver',
+    'status',
+    'docstatus',
+    'trip_date',
+    'total_stops',
+    'completes_stops',
+    'modified',
+  ];
 
   static const Set<int> _okCodes = {200, 201};
 
@@ -120,6 +130,46 @@ class ExternalDeliveryRepository {
     }
 
     return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+  }
+
+  Future<List<ExternalDeliveryTripSummary>> fetchTripPage({
+    int limitStart = 0,
+  }) async {
+    final uri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+      queryParameters: {
+        'fields': jsonEncode(_tripFields),
+        'limit_start': '$limitStart',
+        'limit_page_length': '$pageSize',
+        'order_by': 'driver asc, modified desc',
+      },
+    );
+    _logApi('external_delivery_trip_list request', uri.toString());
+
+    final resp = await http.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+    );
+
+    if (resp.statusCode == 401) {
+      throw Exception('401: Invalid API credentials.');
+    }
+    if (resp.statusCode == 403) {
+      throw Exception('403: Access denied. Check API permissions.');
+    }
+    if (resp.statusCode != 200) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+
+    final data = (jsonDecode(resp.body)['data']) as List;
+    return data
+        .map(
+          (row) =>
+              ExternalDeliveryTripSummary.fromJson(row as Map<String, dynamic>),
+        )
+        .toList();
   }
 
   Future<ExternalDeliveryTrip> fetchTripDetails(String tripName) async {

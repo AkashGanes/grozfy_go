@@ -128,6 +128,53 @@ class ExternalDeliveryTripStop {
   }
 }
 
+class ExternalDeliveryTripSummary {
+  const ExternalDeliveryTripSummary({
+    required this.name,
+    required this.driver,
+    required this.status,
+    required this.docstatus,
+    required this.tripDate,
+    required this.totalStops,
+    required this.completedStops,
+    required this.modified,
+  });
+
+  final String name;
+  final String driver;
+  final String status;
+  final int docstatus;
+  final String tripDate;
+  final int totalStops;
+  final int completedStops;
+  final String modified;
+
+  factory ExternalDeliveryTripSummary.fromJson(Map<String, dynamic> m) {
+    return ExternalDeliveryTripSummary(
+      name: (m['name'] ?? '').toString(),
+      driver: (m['driver'] ?? '').toString(),
+      status: (m['status'] ?? '').toString(),
+      docstatus: (m['docstatus'] as num?)?.toInt() ?? 0,
+      tripDate: (m['trip_date'] ?? '').toString(),
+      totalStops: (m['total_stops'] as num?)?.toInt() ?? 0,
+      completedStops: (m['completes_stops'] as num?)?.toInt() ?? 0,
+      modified: (m['modified'] ?? '').toString(),
+    );
+  }
+}
+
+sealed class TripListItem {}
+
+class DriverHeader extends TripListItem {
+  DriverHeader(this.driver);
+  final String driver;
+}
+
+class TripRow extends TripListItem {
+  TripRow(this.trip);
+  final ExternalDeliveryTripSummary trip;
+}
+
 sealed class LocationListItem {}
 
 class StoreHeader extends LocationListItem {
