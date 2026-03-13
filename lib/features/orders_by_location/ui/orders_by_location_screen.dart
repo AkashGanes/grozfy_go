@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../repository/external_delivery_repository.dart';
+import 'order_location_detail_screen.dart';
 
 class OrdersByLocationScreen extends StatefulWidget {
   const OrdersByLocationScreen({super.key});
@@ -83,7 +84,17 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
                 return _StoreHeaderTile(storeName: item.storeName);
               }
               if (item is OrderRow) {
-                return _OrderCard(order: item.order);
+                return _OrderCard(
+                  order: item.order,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => OrderLocationDetailScreen(
+                        order: item.order,
+                        repository: _repository!,
+                      ),
+                    ),
+                  ),
+                );
               }
               return const SizedBox.shrink();
             },
@@ -140,8 +151,9 @@ class _StoreHeaderTile extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _OrderCard extends StatelessWidget {
-  const _OrderCard({required this.order});
+  const _OrderCard({required this.order, required this.onTap});
   final ExternalDelivery order;
+  final VoidCallback onTap;
 
   String _formatDate(String raw) {
     if (raw.length < 10) return raw;
@@ -155,7 +167,9 @@ class _OrderCard extends StatelessWidget {
     final statusColor = order.status.statusColor;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: FrostCard(
+      child: GestureDetector(
+        onTap: onTap,
+        child: FrostCard(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [
@@ -236,6 +250,7 @@ class _OrderCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

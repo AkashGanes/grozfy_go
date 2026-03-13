@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/constants/api_constants.dart';
 import '../model/external_delivery.dart';
+import '../model/external_delivery_detail.dart';
 
 class ExternalDeliveryRepository {
   ExternalDeliveryRepository({
@@ -55,5 +56,30 @@ class ExternalDeliveryRepository {
     return data
         .map((row) => ExternalDelivery.fromJson(row as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<ExternalDeliveryDetail> fetchDetail(String name) async {
+    final uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
+    );
+
+    final resp = await http.get(uri, headers: {
+      'Accept': 'application/json',
+      'Authorization': 'token $apiKey:$apiSecret',
+    });
+
+    if (resp.statusCode == 401) {
+      throw Exception('401: Invalid API credentials.');
+    }
+    if (resp.statusCode == 403) {
+      throw Exception('403: Access denied. Check API permissions.');
+    }
+    if (resp.statusCode != 200) {
+      throw Exception('Server error ${resp.statusCode}');
+    }
+
+    final data =
+        (jsonDecode(resp.body)['data']) as Map<String, dynamic>;
+    return ExternalDeliveryDetail.fromJson(data);
   }
 }
