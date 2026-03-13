@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
+import '../../../core/navigation/app_routes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
@@ -77,7 +78,11 @@ class _OrdersByLocationScreenState extends State<OrdersByLocationScreen> {
     try {
       final tripName = await _repository!.createAndSubmitTripForOrder(order);
       if (!mounted) return;
-      showInfoSnack(context, 'Trip $tripName created and submitted');
+      await Navigator.of(context).pushNamed(
+        AppRoutes.externalDeliveryTripDetails,
+        arguments: tripName,
+      );
+      if (!mounted) return;
       await _refresh();
     } catch (e) {
       if (!mounted) return;

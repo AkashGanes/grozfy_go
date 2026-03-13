@@ -122,6 +122,31 @@ class ExternalDeliveryRepository {
     return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
   }
 
+  Future<ExternalDeliveryTrip> fetchTripDetails(String tripName) async {
+    final url =
+        '${ApiConstants.externalDeliveryTripList}/${Uri.encodeComponent(tripName)}';
+    _logApi('external_delivery_trip_details request', 'GET $url');
+
+    final resp = await http.get(
+      Uri.parse(url),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+    );
+
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+
+    final payload = jsonDecode(resp.body) as Map<String, dynamic>;
+    final data = payload['data'];
+    if (data is! Map<String, dynamic>) {
+      throw Exception('Trip details API returned unexpected response');
+    }
+    return ExternalDeliveryTrip.fromJson(data);
+  }
+
   String _extractErrorMessage(http.Response resp) {
     String base = 'Server error ${resp.statusCode}';
     Map<String, dynamic>? map;

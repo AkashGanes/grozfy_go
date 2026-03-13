@@ -39,6 +39,95 @@ class ExternalDelivery {
   }
 }
 
+class ExternalDeliveryTrip {
+  const ExternalDeliveryTrip({
+    required this.name,
+    required this.driver,
+    required this.status,
+    required this.tripDate,
+    required this.docstatus,
+    required this.totalStops,
+    required this.completedStops,
+    required this.totalDistanceKm,
+    required this.startedAt,
+    required this.completedAt,
+    required this.stops,
+  });
+
+  final String name;
+  final String driver;
+  final String status;
+  final String tripDate;
+  final int docstatus;
+  final int totalStops;
+  final int completedStops;
+  final double totalDistanceKm;
+  final String startedAt;
+  final String completedAt;
+  final List<ExternalDeliveryTripStop> stops;
+
+  factory ExternalDeliveryTrip.fromJson(Map<String, dynamic> m) {
+    final rawStops = m['stops'];
+    return ExternalDeliveryTrip(
+      name: (m['name'] ?? '').toString(),
+      driver: (m['driver'] ?? '').toString(),
+      status: (m['status'] ?? '').toString(),
+      tripDate: (m['trip_date'] ?? '').toString(),
+      docstatus: (m['docstatus'] as num?)?.toInt() ?? 0,
+      totalStops: (m['total_stops'] as num?)?.toInt() ?? 0,
+      completedStops: (m['completes_stops'] as num?)?.toInt() ?? 0,
+      totalDistanceKm: (m['total_distancekm'] as num?)?.toDouble() ?? 0,
+      startedAt: (m['started_at'] ?? '').toString(),
+      completedAt: (m['completed_at'] ?? '').toString(),
+      stops: rawStops is List
+          ? rawStops
+                .whereType<Map>()
+                .map(
+                  (e) => ExternalDeliveryTripStop.fromJson(
+                    e.cast<String, dynamic>(),
+                  ),
+                )
+                .toList()
+          : const [],
+    );
+  }
+}
+
+class ExternalDeliveryTripStop {
+  const ExternalDeliveryTripStop({
+    required this.stop,
+    required this.externalDelivery,
+    required this.customer,
+    required this.address,
+    required this.mobile,
+    required this.status,
+    required this.deliveredAt,
+    required this.notes,
+  });
+
+  final int stop;
+  final String externalDelivery;
+  final String customer;
+  final String address;
+  final String mobile;
+  final String status;
+  final String deliveredAt;
+  final String notes;
+
+  factory ExternalDeliveryTripStop.fromJson(Map<String, dynamic> m) {
+    return ExternalDeliveryTripStop(
+      stop: (m['stop'] as num?)?.toInt() ?? 0,
+      externalDelivery: (m['external_delivery'] ?? '').toString(),
+      customer: (m['customer'] ?? '').toString(),
+      address: (m['address'] ?? '').toString(),
+      mobile: (m['mobile'] ?? '').toString(),
+      status: (m['status'] ?? '').toString(),
+      deliveredAt: (m['delivered_at'] ?? '').toString(),
+      notes: (m['notes'] ?? '').toString(),
+    );
+  }
+}
+
 sealed class LocationListItem {}
 
 class StoreHeader extends LocationListItem {

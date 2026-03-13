@@ -15,4 +15,5 @@ class AppRoutes {
   static const orderStatus = '/order-status';
   static const dashboard = '/dashboard';
   static const ordersByLocation = '/orders-by-location';
+  static const externalDeliveryTripDetails = '/external-delivery-trip-details';
 }
