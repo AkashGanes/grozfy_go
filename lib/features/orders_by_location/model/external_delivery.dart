@@ -52,6 +52,7 @@ class ExternalDeliveryTrip {
     required this.startedAt,
     required this.completedAt,
     required this.stops,
+    required this.rawFields,
   });
 
   final String name;
@@ -65,9 +66,11 @@ class ExternalDeliveryTrip {
   final String startedAt;
   final String completedAt;
   final List<ExternalDeliveryTripStop> stops;
+  final Map<String, dynamic> rawFields;
 
   factory ExternalDeliveryTrip.fromJson(Map<String, dynamic> m) {
     final rawStops = m['stops'];
+    final raw = Map<String, dynamic>.from(m);
     return ExternalDeliveryTrip(
       name: (m['name'] ?? '').toString(),
       driver: (m['driver'] ?? '').toString(),
@@ -89,6 +92,7 @@ class ExternalDeliveryTrip {
                 )
                 .toList()
           : const [],
+      rawFields: raw,
     );
   }
 }
@@ -103,6 +107,7 @@ class ExternalDeliveryTripStop {
     required this.status,
     required this.deliveredAt,
     required this.notes,
+    required this.rawFields,
   });
 
   final int stop;
@@ -113,8 +118,10 @@ class ExternalDeliveryTripStop {
   final String status;
   final String deliveredAt;
   final String notes;
+  final Map<String, dynamic> rawFields;
 
   factory ExternalDeliveryTripStop.fromJson(Map<String, dynamic> m) {
+    final raw = Map<String, dynamic>.from(m);
     return ExternalDeliveryTripStop(
       stop: (m['stop'] as num?)?.toInt() ?? 0,
       externalDelivery: (m['external_delivery'] ?? '').toString(),
@@ -124,6 +131,7 @@ class ExternalDeliveryTripStop {
       status: (m['status'] ?? '').toString(),
       deliveredAt: (m['delivered_at'] ?? '').toString(),
       notes: (m['notes'] ?? '').toString(),
+      rawFields: raw,
     );
   }
 }

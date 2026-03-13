@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
@@ -26,6 +28,72 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   String _valueOrDash(String value) => value.trim().isEmpty ? '-' : value;
+
+  String _displayValue(dynamic value) {
+    if (value == null) return '-';
+    if (value is String) return _valueOrDash(value);
+    if (value is num || value is bool) return '$value';
+    if (value is List || value is Map) {
+      return const JsonEncoder.withIndent('  ').convert(value);
+    }
+    return '$value';
+  }
+
+  String _labelFromKey(String key) {
+    return key
+        .split('_')
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
+
+  List<MapEntry<String, dynamic>> _orderedTripFields(ExternalDeliveryTrip trip) {
+    const priority = <String>[
+      'name',
+      'driver',
+      'status',
+      'docstatus',
+      'trip_date',
+      'total_stops',
+      'completes_stops',
+      'total_distancekm',
+      'started_at',
+      'completed_at',
+    ];
+    final remaining = Map<String, dynamic>.from(trip.rawFields)..remove('stops');
+    final fields = <MapEntry<String, dynamic>>[];
+
+    for (final key in priority) {
+      if (remaining.containsKey(key)) {
+        fields.add(MapEntry(key, remaining.remove(key)));
+      }
+    }
+    fields.addAll(remaining.entries);
+    return fields;
+  }
+
+  List<MapEntry<String, dynamic>> _orderedStopFields(ExternalDeliveryTripStop stop) {
+    const priority = <String>[
+      'stop',
+      'external_delivery',
+      'customer',
+      'address',
+      'mobile',
+      'status',
+      'delivered_at',
+      'notes',
+    ];
+    final remaining = Map<String, dynamic>.from(stop.rawFields);
+    final fields = <MapEntry<String, dynamic>>[];
+
+    for (final key in priority) {
+      if (remaining.containsKey(key)) {
+        fields.add(MapEntry(key, remaining.remove(key)));
+      }
+    }
+    fields.addAll(remaining.entries);
+    return fields;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,20 +150,7 @@ class _ExternalDeliveryTripDetailsScreenState
             children: [
               const SectionLabel('Trip Summary'),
               FrostCard(
-                child: Column(
-                  children: [
-                    _kv('Trip ID', trip.name),
-                    _kv('Driver', trip.driver),
-                    _kv('Status', trip.status),
-                    _kv('Docstatus', '${trip.docstatus}'),
-                    _kv('Trip Date', _valueOrDash(trip.tripDate)),
-                    _kv('Total Stops', '${trip.totalStops}'),
-                    _kv('Completed Stops', '${trip.completedStops}'),
-                    _kv('Total Distance (km)', '${trip.totalDistanceKm}'),
-                    _kv('Started At', _valueOrDash(trip.startedAt)),
-                    _kv('Completed At', _valueOrDash(trip.completedAt)),
-                  ],
-                ),
+                child: _fieldList(_orderedTripFields(trip)),
               ),
               const SizedBox(height: 14),
               const SectionLabel('Stops'),
@@ -122,13 +177,7 @@ class _ExternalDeliveryTripDetailsScreenState
                             ),
                           ),
                           const SizedBox(height: 8),
-                          _kv('External Delivery', stop.externalDelivery),
-                          _kv('Customer', _valueOrDash(stop.customer)),
-                          _kv('Address', _valueOrDash(stop.address)),
-                          _kv('Mobile', _valueOrDash(stop.mobile)),
-                          _kv('Status', _valueOrDash(stop.status)),
-                          _kv('Delivered At', _valueOrDash(stop.deliveredAt)),
-                          _kv('Notes', _valueOrDash(stop.notes)),
+                          _fieldList(_orderedStopFields(stop)),
                         ],
                       ),
                     ),
@@ -141,6 +190,14 @@ class _ExternalDeliveryTripDetailsScreenState
     );
   }
 
+  Widget _fieldList(List<MapEntry<String, dynamic>> entries) {
+    return Column(
+      children: entries
+          .map((entry) => _kv(_labelFromKey(entry.key), _displayValue(entry.value)))
+          .toList(),
+    );
+  }
+
   Widget _kv(String key, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -148,7 +205,7 @@ class _ExternalDeliveryTripDetailsScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 130,
+            width: 140,
             child: Text(
               key,
               style: const TextStyle(
@@ -157,10 +214,11 @@ class _ExternalDeliveryTripDetailsScreenState
               ),
             ),
           ),
+          const SizedBox(width: 8),
           Expanded(
-            child: Text(
+            child: SelectableText(
               value,
-              style: const TextStyle(color: AppTheme.nightBlue),
+              style: const TextStyle(color: AppTheme.nightBlue, height: 1.25),
             ),
           ),
         ],
