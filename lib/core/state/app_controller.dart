@@ -28,6 +28,7 @@ class AppController extends ChangeNotifier {
   static const String _prefCurrentLat = 'current_lat';
   static const String _prefCurrentLng = 'current_lng';
   static const String _prefCurrentLocationLabel = 'current_location_label';
+  static const String _prefProfileCompleted = 'profile_completed';
 
   final Random _random = Random();
   final Map<String, VerificationStatus> _kycStatus = {
@@ -57,6 +58,7 @@ class AppController extends ChangeNotifier {
   bool _bootstrapped = false;
   bool _isLoggedIn = false;
   bool _rememberMe = false;
+  bool _profileCompleted = false;
   String? _sessionToken;
   String? _configVersion;
 
@@ -96,6 +98,7 @@ class AppController extends ChangeNotifier {
   bool get bootstrapped => _bootstrapped;
   bool get isLoggedIn => _isLoggedIn;
   bool get rememberMe => _rememberMe;
+  bool get profileCompleted => _profileCompleted;
   String get languageCode => _languageCode;
   String? get configVersion => _configVersion;
   PartnerProfile? get profile => _profile;
@@ -139,6 +142,7 @@ class AppController extends ChangeNotifier {
     _languageCode = prefs.getString(_prefLanguageCode) ?? '';
     _sessionToken = prefs.getString(_prefAccessToken);
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
+    _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
     _currentLongitude = prefs.getDouble(_prefCurrentLng);
     _currentLocationLabel = _nullIfBlank(
@@ -175,6 +179,27 @@ class AppController extends ChangeNotifier {
       return prefs.setBool(_prefRememberMe, value);
     });
     notifyListeners();
+  }
+
+  Future<void> completeProfile() async {
+    _profileCompleted = true;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefProfileCompleted, true);
+    notifyListeners();
+  }
+
+  Future<void> updateProfile({String? fullName, String? email}) async {
+    if (_profile != null) {
+      _profile = _profile!.copyWith(fullName: fullName, email: email);
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await Future.wait(<Future<bool>>[
+        prefs.setString(_prefFullName, _profile!.fullName),
+        if (_profile!.email != null)
+          prefs.setString(_prefEmail, _profile!.email!),
+        prefs.setString(_prefMobile, _profile!.mobile),
+      ]);
+      notifyListeners();
+    }
   }
 
   Future<void> setSelectedLocation({
@@ -433,6 +458,7 @@ class AppController extends ChangeNotifier {
     _incomingOrder = null;
     _activeOrder = null;
     _profile = null;
+    _profileCompleted = false;
     _currentLatitude = null;
     _currentLongitude = null;
     _currentLocationLabel = null;
@@ -448,6 +474,7 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefCurrentLat),
       prefs.remove(_prefCurrentLng),
       prefs.remove(_prefCurrentLocationLabel),
+      prefs.remove(_prefProfileCompleted),
       prefs.setBool(_prefRememberMe, false),
     ]);
     _rememberMe = false;

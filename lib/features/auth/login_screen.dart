@@ -70,7 +70,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     Navigator.of(
       context,
-    ).pushNamedAndRemoveUntil(AppRoutes.currentLocation, (route) => false);
+    ).pushNamedAndRemoveUntil(AppRoutes.register, (route) => false);
   }
 
   @override
