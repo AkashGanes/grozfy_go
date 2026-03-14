@@ -75,7 +75,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     Navigator.of(
       context,
-    ).pushNamedAndRemoveUntil(AppRoutes.currentLocation, (route) => false);
+    ).pushNamedAndRemoveUntil(AppRoutes.kycDocuments, (route) => false);
   }
 
   @override
