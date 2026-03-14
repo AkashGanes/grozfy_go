@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../constants/api_constants.dart';
 import '../models/app_models.dart';
 
 class AppController extends ChangeNotifier {
@@ -29,6 +28,7 @@ class AppController extends ChangeNotifier {
   static const String _prefCurrentLat = 'current_lat';
   static const String _prefCurrentLng = 'current_lng';
   static const String _prefCurrentLocationLabel = 'current_location_label';
+  static const String _prefSelectedStore = 'selected_store_name';
 
   final Random _random = Random();
   final Map<String, VerificationStatus> _kycStatus = {
@@ -76,6 +76,7 @@ class AppController extends ChangeNotifier {
   double? _currentLatitude;
   double? _currentLongitude;
   String? _currentLocationLabel;
+  String? _selectedStoreName;
 
   DeliveryOrder? _incomingOrder;
   DeliveryOrder? _activeOrder;
@@ -114,6 +115,7 @@ class AppController extends ChangeNotifier {
   double? get currentLatitude => _currentLatitude;
   double? get currentLongitude => _currentLongitude;
   String? get currentLocationLabel => _currentLocationLabel;
+  String? get selectedStoreName => _selectedStoreName;
   bool get hasSelectedLocation =>
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
@@ -146,6 +148,7 @@ class AppController extends ChangeNotifier {
     _currentLocationLabel = _nullIfBlank(
       prefs.getString(_prefCurrentLocationLabel),
     );
+    _selectedStoreName = _nullIfBlank(prefs.getString(_prefSelectedStore));
     _isLoggedIn = _sessionToken != null;
     if (_isLoggedIn) {
       final String fullName =
@@ -213,6 +216,17 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefCurrentLng),
       prefs.remove(_prefCurrentLocationLabel),
     ]);
+    notifyListeners();
+  }
+
+  Future<void> setSelectedStore(String? storeName) async {
+    _selectedStoreName = storeName?.trim().isEmpty == true ? null : storeName?.trim();
+    final prefs = await SharedPreferences.getInstance();
+    if (_selectedStoreName != null) {
+      await prefs.setString(_prefSelectedStore, _selectedStoreName!);
+    } else {
+      await prefs.remove(_prefSelectedStore);
+    }
     notifyListeners();
   }
 

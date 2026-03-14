@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../../core/constants/api_constants.dart';
 import '../model/external_delivery.dart';
+import '../model/external_delivery_detail.dart';
 
 class ExternalDeliveryRepository {
   ExternalDeliveryRepository({
@@ -39,21 +40,69 @@ class ExternalDeliveryRepository {
 
   static const Set<int> _okCodes = {200, 201};
 
-  Future<List<ExternalDelivery>> fetchPage({int limitStart = 0}) async {
+  Future<List<String>> fetchStoreNames() async {
     final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
       queryParameters: {
-        'fields': jsonEncode(_fields),
-        'limit_start': '$limitStart',
-        'limit_page_length': '$pageSize',
-        'order_by': 'store_name asc, modified desc',
+        'fields': jsonEncode(['store_name']),
+        'limit_page_length': '500',
+        'order_by': 'store_name asc',
       },
     );
 
+    _logApi('fetch_store_names request', uri.toString());
+    final resp = await http.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+    );
+
+    _logApi('fetch_store_names response', '${resp.statusCode}');
+    if (resp.statusCode != 200) return [];
+
+    final data = (jsonDecode(resp.body)['data']) as List;
+    final names =
+        data
+            .map(
+              (r) =>
+                  (r as Map<String, dynamic>)['store_name']?.toString() ?? '',
+            )
+            .where((s) => s.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    return names;
+  }
+
+  Future<List<ExternalDelivery>> fetchPage({
+    int limitStart = 0,
+    String? storeName,
+  }) async {
+    final params = <String, String>{
+      'fields': jsonEncode(_fields),
+      'limit_start': '$limitStart',
+      'limit_page_length': '$pageSize',
+      'order_by': 'store_name asc, modified desc',
+    };
+    if (storeName != null && storeName.isNotEmpty) {
+      params['filters'] = jsonEncode([
+        ['External Delivery', 'store_name', '=', storeName],
+      ]);
+    }
+
+    final uri = Uri.parse(
+      ApiConstants.externalDeliveryList,
+    ).replace(queryParameters: params);
+
     _logApi('external_delivery_list request', uri.toString());
-    final resp = await http.get(uri, headers: {
-      'Accept': 'application/json',
-      'Authorization': 'token $apiKey:$apiSecret',
-    });
+    final resp = await http.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+    );
 
     if (resp.statusCode == 401) {
       throw Exception('401: Invalid API credentials.');
@@ -69,6 +118,63 @@ class ExternalDeliveryRepository {
     return data
         .map((row) => ExternalDelivery.fromJson(row as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<ExternalDeliveryDetail> fetchDetail(String name) async {
+    final uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
+    );
+    _logApi('external_delivery_detail request', uri.toString());
+
+    final resp = await http.get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+    );
+
+    if (resp.statusCode == 401) {
+      throw Exception('401: Invalid API credentials.');
+    }
+    if (resp.statusCode == 403) {
+      throw Exception('403: Access denied. Check API permissions.');
+    }
+    if (resp.statusCode != 200) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+
+    final data = (jsonDecode(resp.body)['data']) as Map<String, dynamic>;
+    final addressName = data['delivery_address']?.toString();
+    if (addressName != null && addressName.isNotEmpty) {
+      final resolved = await _fetchAddressText(addressName);
+      if (resolved != null) {
+        data['delivery_address'] = resolved;
+      }
+    }
+
+    return ExternalDeliveryDetail.fromJson(data);
+  }
+
+  Future<void> updateStatus(String name, String status) async {
+    final uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
+    );
+    _logApi('external_delivery_status_update request', '$uri status=$status');
+
+    final resp = await http.put(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+      body: jsonEncode({'status': status}),
+    );
+
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
   }
 
   Future<String> createAndSubmitTripForOrder(ExternalDelivery order) async {
@@ -195,6 +301,47 @@ class ExternalDeliveryRepository {
       throw Exception('Trip details API returned unexpected response');
     }
     return ExternalDeliveryTrip.fromJson(data);
+  }
+
+  Future<String?> _fetchAddressText(String addressName) async {
+    final uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/Address/${Uri.encodeComponent(addressName)}',
+    );
+    _logApi('fetch_address request', uri.toString());
+
+    try {
+      final resp = await http.get(
+        uri,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'token $apiKey:$apiSecret',
+        },
+      );
+
+      if (resp.statusCode != 200) return null;
+
+      final data = (jsonDecode(resp.body)['data']) as Map<String, dynamic>;
+      final parts = <String>[
+        if (_value(data['address_line1']) != null)
+          _value(data['address_line1'])!,
+        if (_value(data['address_line2']) != null)
+          _value(data['address_line2'])!,
+        if (_value(data['city']) != null) _value(data['city'])!,
+        if (_value(data['state']) != null) _value(data['state'])!,
+        if (_value(data['pincode']) != null) _value(data['pincode'])!,
+        if (_value(data['country']) != null) _value(data['country'])!,
+      ];
+
+      return parts.isNotEmpty ? parts.join(', ') : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _value(dynamic input) {
+    if (input == null) return null;
+    final text = input.toString().trim();
+    return text.isEmpty ? null : text;
   }
 
   String _extractErrorMessage(http.Response resp) {
