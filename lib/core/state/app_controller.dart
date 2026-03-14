@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../constants/api_constants.dart';
 import '../models/app_models.dart';
 
 class AppController extends ChangeNotifier {
@@ -95,6 +96,7 @@ class AppController extends ChangeNotifier {
 
   bool get bootstrapped => _bootstrapped;
   bool get isLoggedIn => _isLoggedIn;
+  String? get sessionToken => _sessionToken;
   bool get rememberMe => _rememberMe;
   String get languageCode => _languageCode;
   String? get configVersion => _configVersion;
