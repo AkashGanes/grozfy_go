@@ -68,9 +68,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    Navigator.of(
-      context,
-    ).pushNamedAndRemoveUntil(AppRoutes.currentLocation, (route) => false);
+    if (!app.isKycComplete) {
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(AppRoutes.kycDocuments, (route) => false);
+    } else if (!app.hasSelectedLocation) {
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(AppRoutes.currentLocation, (route) => false);
+    } else {
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
+    }
   }
 
   @override
