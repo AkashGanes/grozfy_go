@@ -185,35 +185,6 @@ class _OrderLocationDetailScreenState
         // Back button
         const _BackButton(),
 
-        // Order ID badge (top right)
-        Positioned(
-          top: MediaQuery.of(context).padding.top + 12,
-          right: 16,
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Text(
-              detail.name,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-                color: AppTheme.nightBlue,
-              ),
-            ),
-          ),
-        ),
-
         // Draggable bottom sheet
         DraggableScrollableSheet(
           initialChildSize: 0.45,
@@ -433,35 +404,6 @@ class _OrderLocationDetailScreenState
                     const Divider(height: 1),
                     const SizedBox(height: 14),
                   ],
-
-                  // ── Payment + Total ────────────────────────────
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.payments_rounded,
-                              size: 16, color: Colors.black38),
-                          const SizedBox(width: 6),
-                          Text(
-                            detail.paymentMode ?? 'Cash on Delivery',
-                            style: const TextStyle(
-                                fontSize: 13, color: Colors.black54),
-                          ),
-                        ],
-                      ),
-                      if (detail.grandTotal != null)
-                        Text(
-                          '₹${detail.grandTotal!.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: AppTheme.nightBlue,
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
 
                   // ── Action buttons ─────────────────────────────
                   if (_updating)
