@@ -21,6 +21,14 @@ class ExternalDeliveryTripDetailsScreen extends StatefulWidget {
 class _ExternalDeliveryTripDetailsScreenState
     extends State<ExternalDeliveryTripDetailsScreen> {
   late Future<ExternalDeliveryTrip> _future;
+  static const List<String> _stopStatusOptions = <String>[
+    'Pending',
+    'Out for Delivery',
+    'Delivered',
+    'Failed',
+    'Cancelled',
+  ];
+  final Set<String> _updatingStops = <String>{};
 
   @override
   void initState() {
@@ -419,7 +427,7 @@ class _ExternalDeliveryTripDetailsScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _stopTitle('Stop ${entry.value.stop}'),
+                      _stopTitleWithAction(entry.value),
                       const SizedBox(height: 8),
                       _fieldList(_orderedStopFields(entry.value)),
                     ],
@@ -442,6 +450,106 @@ class _ExternalDeliveryTripDetailsScreenState
         ],
       ),
     );
+  }
+
+  Widget _stopTitleWithAction(ExternalDeliveryTripStop stop) {
+    final stopKey = _stopKey(stop);
+    final isUpdating = _updatingStops.contains(stopKey);
+    return Row(
+      children: [
+        _stopTitle('Stop ${stop.stop}'),
+        const Spacer(),
+        if (isUpdating)
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppTheme.oceanBlue,
+            ),
+          )
+        else
+          PopupMenuButton<String>(
+            onSelected: (status) => _updateStopStatus(stop, status),
+            itemBuilder: (context) {
+              final options = <String>{
+                ..._stopStatusOptions,
+                if (stop.status.trim().isNotEmpty) stop.status.trim(),
+              }.toList();
+              return options
+                  .map((status) => PopupMenuItem<String>(
+                        value: status,
+                        child: Text(status),
+                      ))
+                  .toList();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(
+                    Icons.edit_rounded,
+                    size: 14,
+                    color: AppTheme.oceanBlue,
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    'Update Status',
+                    style: TextStyle(
+                      color: AppTheme.oceanBlue,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _stopKey(ExternalDeliveryTripStop stop) {
+    final rowName = (stop.rawFields['name'] ?? '').toString().trim();
+    if (rowName.isNotEmpty) return rowName;
+    return '${stop.externalDelivery}-${stop.stop}';
+  }
+
+  Future<void> _updateStopStatus(
+    ExternalDeliveryTripStop stop,
+    String newStatus,
+  ) async {
+    final current = stop.status.trim().toLowerCase();
+    if (current == newStatus.trim().toLowerCase()) return;
+
+    final stopKey = _stopKey(stop);
+    setState(() => _updatingStops.add(stopKey));
+    try {
+      await ExternalDeliveryRepository().updateTripStopStatus(
+        stop: stop,
+        newStatus: newStatus,
+      );
+      if (!mounted) return;
+      showInfoSnack(context, 'Stop status updated to $newStatus');
+      setState(() {
+        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _updatingStops.remove(stopKey));
+      }
+    }
   }
 
   Widget _fieldList(List<MapEntry<String, dynamic>> entries) {

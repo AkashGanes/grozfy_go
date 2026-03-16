@@ -197,6 +197,77 @@ class ExternalDeliveryRepository {
     return ExternalDeliveryTrip.fromJson(data);
   }
 
+  Future<void> updateTripStopStatus({
+    required ExternalDeliveryTripStop stop,
+    required String newStatus,
+  }) async {
+    final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+    final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
+    if (stopName.isEmpty || stopDocType.isEmpty) {
+      throw Exception('Stop row metadata not found for status update.');
+    }
+
+    final setValueUrl = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    _logApi(
+      'external_delivery_trip_stop_status_update request',
+      'POST $setValueUrl doctype=$stopDocType name=$stopName status=$newStatus',
+    );
+
+    final statusResp = await http.post(
+      setValueUrl,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+      body: jsonEncode({
+        'doctype': stopDocType,
+        'name': stopName,
+        'fieldname': 'status',
+        'value': newStatus,
+      }),
+    );
+
+    if (!_okCodes.contains(statusResp.statusCode)) {
+      throw Exception(_extractErrorMessage(statusResp));
+    }
+
+    if (newStatus.toLowerCase() == 'delivered' &&
+        stop.deliveredAt.trim().isEmpty) {
+      // Best-effort only: status update is already successful.
+      // Some setups restrict direct writes to delivered_at.
+      try {
+        final deliveredAtResp = await http.post(
+          setValueUrl,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'token $apiKey:$apiSecret',
+          },
+          body: jsonEncode({
+            'doctype': stopDocType,
+            'name': stopName,
+            'fieldname': 'delivered_at',
+            'value': DateTime.now().toIso8601String(),
+          }),
+        );
+        if (!_okCodes.contains(deliveredAtResp.statusCode)) {
+          _logApi(
+            'external_delivery_trip_stop_delivered_at_warn',
+            _extractErrorMessage(deliveredAtResp),
+          );
+        }
+      } catch (e) {
+        _logApi(
+          'external_delivery_trip_stop_delivered_at_warn',
+          e.toString(),
+        );
+      }
+    }
+  }
+
   String _extractErrorMessage(http.Response resp) {
     String base = 'Server error ${resp.statusCode}';
     Map<String, dynamic>? map;
