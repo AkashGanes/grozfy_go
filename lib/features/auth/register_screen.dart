@@ -67,6 +67,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
+    await app.completeProfile();
+
+    if (!mounted) {
+      return;
+    }
+
     Navigator.of(
       context,
     ).pushNamedAndRemoveUntil(AppRoutes.kycDocuments, (route) => false);
