@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
@@ -14,9 +15,22 @@ class KycDocumentsScreen extends StatefulWidget {
 
 class _KycDocumentsScreenState extends State<KycDocumentsScreen> {
   bool _uploading = false;
+  final ImagePicker _picker = ImagePicker();
 
   Future<void> _uploadDoc(String key) async {
     final app = AppScope.of(context);
+
+    final XFile? file;
+    if (key == 'selfie') {
+      file = await _picker.pickImage(source: ImageSource.camera);
+    } else {
+      file = await _picker.pickImage(source: ImageSource.gallery);
+    }
+
+    if (file == null) {
+      return;
+    }
+
     setState(() => _uploading = true);
     await app.uploadKycDocument(key);
     if (!mounted) {

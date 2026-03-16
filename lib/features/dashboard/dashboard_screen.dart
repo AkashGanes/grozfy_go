@@ -13,6 +13,14 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
 
+    if (!app.isKycComplete) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(AppRoutes.kycDocuments, (route) => false);
+      });
+    }
+
     return AppShell(
       title: app.t('dashboard'),
       subtitle: app.profile?.fullName ?? 'Delivery Partner',

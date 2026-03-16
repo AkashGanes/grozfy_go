@@ -128,6 +128,13 @@ class AppController extends ChangeNotifier {
     (status) => status == VerificationStatus.approved,
   );
 
+  bool get isKycComplete =>
+      _kycStatus['idProof'] != VerificationStatus.notSubmitted &&
+      _kycStatus['drivingLicense'] != VerificationStatus.notSubmitted &&
+      _kycStatus['selfie'] != VerificationStatus.notSubmitted &&
+      _vehicle != null &&
+      _bank != null;
+
   bool get canGoOnline =>
       allKycApproved &&
       _vehicle?.status == VerificationStatus.approved &&
