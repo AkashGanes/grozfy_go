@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -35,6 +36,16 @@ class AppController extends ChangeNotifier {
   static const String _prefCurrentLocationLabel = 'current_location_label';
   static const String _prefSelectedStore = 'selected_store_name';
   static const String _prefProfileCompleted = 'profile_completed';
+  static const int _profileImageMaxBytes = 5 * 1024 * 1024;
+  static const int _profileImageMinDimension = 200;
+  static const int _profileImageMaxDimension = 4096;
+  static const double _profileImageMinAspectRatio = 0.5;
+  static const double _profileImageMaxAspectRatio = 2.0;
+  static const Set<String> _profileImageAllowedExtensions = <String>{
+    '.jpg',
+    '.jpeg',
+    '.png',
+  };
 
   final Random _random = Random();
   final Map<String, VerificationStatus> _kycStatus = {
@@ -265,6 +276,12 @@ class AppController extends ChangeNotifier {
     if (sourcePath.isEmpty || !File(sourcePath).existsSync()) {
       return 'Selected image is unavailable. Pick another image.';
     }
+    final String? imageValidationError = await _validateProfileImage(
+      sourcePath,
+    );
+    if (imageValidationError != null) {
+      return imageValidationError;
+    }
 
     _profileImageSyncing = true;
     _profileImageSyncError = null;
@@ -356,6 +373,63 @@ class AppController extends ChangeNotifier {
       return '';
     }
     return path.substring(lastDot);
+  }
+
+  Future<String?> _validateProfileImage(String sourcePath) async {
+    final String ext = _fileExtension(sourcePath).toLowerCase();
+    if (!_profileImageAllowedExtensions.contains(ext)) {
+      return 'Only JPG or PNG images are allowed.';
+    }
+
+    final File file = File(sourcePath);
+    final int bytes = await file.length();
+    if (bytes <= 0) {
+      return 'Selected image is empty. Pick another image.';
+    }
+    if (bytes > _profileImageMaxBytes) {
+      return 'Image size must be 5 MB or less.';
+    }
+
+    final Size? size = await _readImageSize(file);
+    if (size == null) {
+      return 'Unable to read image dimensions. Pick another image.';
+    }
+
+    if (size.width < _profileImageMinDimension ||
+        size.height < _profileImageMinDimension) {
+      return 'Image dimensions must be at least 200 x 200 px.';
+    }
+    if (size.width > _profileImageMaxDimension ||
+        size.height > _profileImageMaxDimension) {
+      return 'Image dimensions must be below 4096 x 4096 px.';
+    }
+
+    final double ratio = size.width / size.height;
+    if (ratio < _profileImageMinAspectRatio ||
+        ratio > _profileImageMaxAspectRatio) {
+      return 'Image aspect ratio must be between 1:2 and 2:1.';
+    }
+
+    return null;
+  }
+
+  Future<Size?> _readImageSize(File file) async {
+    try {
+      final ui.Codec codec = await ui.instantiateImageCodec(
+        await file.readAsBytes(),
+      );
+      final ui.FrameInfo frame = await codec.getNextFrame();
+      final ui.Image image = frame.image;
+      final Size size = Size(
+        image.width.toDouble(),
+        image.height.toDouble(),
+      );
+      image.dispose();
+      codec.dispose();
+      return size;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> setSelectedLocation({
@@ -660,7 +734,6 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefCurrentLng),
       prefs.remove(_prefCurrentLocationLabel),
       prefs.remove(_prefProfileCompleted),
-      prefs.remove(_prefProfileImagePath),
       prefs.setBool(_prefRememberMe, false),
     ]);
     _rememberMe = false;

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/constants/api_constants.dart';
 import '../../core/state/providers.dart';
 import '../../core/widgets/app_shell.dart';
 
@@ -26,6 +28,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _expandBasicDetails = true;
   bool _expandLicenseDetails = false;
   bool _expandDrivingCategory = false;
+  bool _expandAdditionalDetails = false;
+  bool _expandAttachments = false;
 
   @override
   void initState() {
@@ -68,7 +72,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
     } else {
       detailsStateKey = 'data';
-      detailsSection = _buildDriverDetails(driver);
+      detailsSection = _buildDriverDetails(driver, app);
     }
 
     return AppShell(
@@ -179,7 +183,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _buildDriverDetails(Map<String, dynamic> driver) {
+  Widget _buildDriverDetails(Map<String, dynamic> driver, dynamic app) {
+    final Map<String, String> additionalFields = _additionalDriverFields(driver);
+    final List<_DriverAttachment> attachments = _extractDriverAttachments(driver);
+    final Map<String, String> primaryImageHeaders = _primaryAttachmentHeaders(app);
+    final Map<String, String> fallbackImageHeaders = <String, String>{
+      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+      'Accept': 'image/*',
+    };
+
     return FrostCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -244,8 +256,161 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             },
             child: _licenseCategorySection(driver['driving_license_category']),
           ).animate(delay: 180.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+          const SizedBox(height: 10),
+          _detailSection(
+            title: 'Additional Driver Details',
+            subtitle: 'Extra fields from your Driver doctype',
+            leadingIcon: Icons.description_outlined,
+            expanded: _expandAdditionalDetails,
+            onToggle: () {
+              setState(() => _expandAdditionalDetails = !_expandAdditionalDetails);
+            },
+            child: _additionalDetailsSection(additionalFields),
+          ).animate(delay: 220.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+          const SizedBox(height: 10),
+          _detailSection(
+            title: 'Driver Attachments',
+            subtitle: 'Read-only images from your URL data',
+            leadingIcon: Icons.attachment_rounded,
+            expanded: _expandAttachments,
+            onToggle: () {
+              setState(() => _expandAttachments = !_expandAttachments);
+            },
+            child: _attachmentSection(
+              attachments,
+              primaryHeaders: primaryImageHeaders,
+              fallbackHeaders: fallbackImageHeaders,
+            ),
+          ).animate(delay: 260.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
         ],
       ),
+    );
+  }
+
+  Widget _additionalDetailsSection(Map<String, String> fields) {
+    if (fields.isEmpty) {
+      return const Text('No additional details');
+    }
+    return Column(
+      children: fields.entries
+          .map((entry) => _kv(_labelFromKey(entry.key), entry.value))
+          .toList(),
+    );
+  }
+
+  Widget _attachmentSection(
+    List<_DriverAttachment> attachments, {
+    required Map<String, String> primaryHeaders,
+    required Map<String, String> fallbackHeaders,
+  }) {
+    if (attachments.isEmpty) {
+      return const Text('No attachments found');
+    }
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: attachments.map((item) {
+        return InkWell(
+          onTap: () => _showAttachmentPreview(item),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 124,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(12),
+                  ),
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: _attachmentImage(
+                      url: item.url,
+                      fit: BoxFit.cover,
+                      primaryHeaders: primaryHeaders,
+                      fallbackHeaders: fallbackHeaders,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(
+                    _labelFromKey(item.fieldKey),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  void _showAttachmentPreview(_DriverAttachment item) {
+    final app = ref.read(appControllerProvider);
+    final Map<String, String> primaryHeaders = _primaryAttachmentHeaders(app);
+    final Map<String, String> fallbackHeaders = <String, String>{
+      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+      'Accept': 'image/*',
+    };
+
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _labelFromKey(item.fieldKey),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: InteractiveViewer(
+                  minScale: 1,
+                  maxScale: 4,
+                  child: _attachmentImage(
+                    url: item.url,
+                    fit: BoxFit.contain,
+                    primaryHeaders: primaryHeaders,
+                    fallbackHeaders: fallbackHeaders,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -619,6 +784,213 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return 'Category';
   }
 
+  Map<String, String> _additionalDriverFields(Map<String, dynamic> driver) {
+    final Set<String> excludedKeys = <String>{
+      'name',
+      'full_name',
+      'employee',
+      'cell_number',
+      'status',
+      'address',
+      'custom_aadhar',
+      'custom_aadhaar',
+      'custom_aadhar_number',
+      'custom_aadhaar_number',
+      'aadhar',
+      'aadhaar',
+      'aadhar_number',
+      'aadhaar_number',
+      'license_number',
+      'issuing_date',
+      'expiry_date',
+      'driving_license_category',
+      'doctype',
+      'owner',
+      'creation',
+      'modified',
+      'modified_by',
+      'docstatus',
+      'idx',
+      '_user_tags',
+      '_comments',
+      '_assign',
+      '_liked_by',
+    };
+
+    final Map<String, String> result = <String, String>{};
+    for (final entry in driver.entries) {
+      final String key = entry.key;
+      if (excludedKeys.contains(key)) {
+        continue;
+      }
+
+      final dynamic value = entry.value;
+      if (value == null || value is List || value is Map) {
+        continue;
+      }
+      final String text = value.toString().trim();
+      if (text.isEmpty || _looksLikeAttachmentValue(text)) {
+        continue;
+      }
+      result[key] = text;
+    }
+    return result;
+  }
+
+  List<_DriverAttachment> _extractDriverAttachments(Map<String, dynamic> driver) {
+    final List<_DriverAttachment> attachments = <_DriverAttachment>[];
+    final Set<String> seen = <String>{};
+
+    for (final entry in driver.entries) {
+      final List<String> urls = _extractAttachmentUrls(entry.value);
+      for (int i = 0; i < urls.length; i++) {
+        final String raw = urls[i];
+        final String url = _normalizeAttachmentUrl(raw);
+        if (seen.add(url)) {
+          final String fieldKey = urls.length == 1
+              ? entry.key
+              : '${entry.key}_${i + 1}';
+          attachments.add(_DriverAttachment(fieldKey: fieldKey, url: url));
+        }
+      }
+    }
+    return attachments;
+  }
+
+  List<String> _extractAttachmentUrls(dynamic value) {
+    if (value == null) {
+      return const <String>[];
+    }
+    if (value is String) {
+      final String raw = value.trim();
+      if ((raw.startsWith('{') && raw.endsWith('}')) ||
+          (raw.startsWith('[') && raw.endsWith(']'))) {
+        try {
+          final dynamic decoded = jsonDecode(raw);
+          return _extractAttachmentUrls(decoded);
+        } catch (_) {
+          // fall through and treat it as plain text
+        }
+      }
+      return _looksLikeAttachmentValue(raw) ? <String>[raw] : const <String>[];
+    }
+    if (value is List) {
+      final List<String> urls = <String>[];
+      for (final dynamic item in value) {
+        urls.addAll(_extractAttachmentUrls(item));
+      }
+      return urls;
+    }
+    if (value is Map) {
+      final List<String> urls = <String>[];
+      for (final String candidateKey in const <String>[
+        'file_url',
+        'url',
+        'path',
+        'file',
+      ]) {
+        urls.addAll(_extractAttachmentUrls(value[candidateKey]));
+      }
+      return urls;
+    }
+    return const <String>[];
+  }
+
+  Widget _attachmentImage({
+    required String url,
+    required BoxFit fit,
+    required Map<String, String> primaryHeaders,
+    required Map<String, String> fallbackHeaders,
+  }) {
+    return Image.network(
+      url,
+      fit: fit,
+      headers: primaryHeaders,
+      errorBuilder: (context, error, stackTrace) {
+        return Image.network(
+          url,
+          fit: fit,
+          headers: fallbackHeaders,
+          errorBuilder: (context, error, stackTrace) {
+            return const ColoredBox(
+              color: Color(0xFFF4F6F9),
+              child: Center(
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.black45,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Map<String, String> _primaryAttachmentHeaders(dynamic app) {
+    final String? token = app.sessionToken?.toString().trim();
+    if (token != null && token.isNotEmpty) {
+      return <String, String>{
+        'Authorization': 'Bearer $token',
+        'Accept': 'image/*',
+      };
+    }
+    return <String, String>{
+      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+      'Accept': 'image/*',
+    };
+  }
+
+  bool _looksLikeAttachmentValue(String value) {
+    final String lowered = value.toLowerCase();
+    if (lowered.isEmpty) {
+      return false;
+    }
+    return lowered.endsWith('.jpg') ||
+        lowered.endsWith('.jpeg') ||
+        lowered.endsWith('.png') ||
+        lowered.endsWith('.webp') ||
+        lowered.endsWith('.gif') ||
+        lowered.contains('/files/') ||
+        lowered.startsWith('/files/') ||
+        lowered.startsWith('http://') ||
+        lowered.startsWith('https://');
+  }
+
+  String _normalizeAttachmentUrl(String value) {
+    final String sanitized = value.trim().replaceAll(' ', '%20');
+    if (sanitized.startsWith('http://') || sanitized.startsWith('https://')) {
+      return sanitized;
+    }
+    final String base = ApiConstants.erpBaseUrl.endsWith('/')
+        ? ApiConstants.erpBaseUrl.substring(0, ApiConstants.erpBaseUrl.length - 1)
+        : ApiConstants.erpBaseUrl;
+    return sanitized.startsWith('/')
+        ? '$base$sanitized'
+        : '$base/$sanitized';
+  }
+
+  String _labelFromKey(String key) {
+    final String spaced = key
+        .replaceAllMapped(
+          RegExp(r'([a-z])([A-Z])'),
+          (Match match) => '${match.group(1)} ${match.group(2)}',
+        )
+        .replaceAll('_', ' ')
+        .trim();
+    if (spaced.isEmpty) {
+      return 'Field';
+    }
+    return spaced
+        .split(RegExp(r'\s+'))
+        .map(
+          (part) => part.isEmpty
+              ? part
+              : '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
+        )
+        .join(' ');
+  }
+
   String? _field(Map<String, dynamic>? map, String key) {
     if (map == null) {
       return null;
@@ -663,4 +1035,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       ),
     );
   }
+}
+
+class _DriverAttachment {
+  const _DriverAttachment({required this.fieldKey, required this.url});
+
+  final String fieldKey;
+  final String url;
 }
