@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/api_constants.dart';
 import '../../core/state/providers.dart';
@@ -312,7 +313,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       runSpacing: 10,
       children: attachments.map((item) {
         return InkWell(
-          onTap: () => _showAttachmentPreview(item),
+          onTap: () => _openAttachment(item),
           borderRadius: BorderRadius.circular(12),
           child: Container(
             width: 124,
@@ -330,18 +331,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ),
                   child: AspectRatio(
                     aspectRatio: 1,
-                    child: _attachmentImage(
-                      url: item.url,
-                      fit: BoxFit.cover,
-                      primaryHeaders: primaryHeaders,
-                      fallbackHeaders: fallbackHeaders,
-                    ),
+                    child: item.isImage
+                        ? _attachmentImage(
+                            url: item.url,
+                            fit: BoxFit.cover,
+                            primaryHeaders: primaryHeaders,
+                            fallbackHeaders: fallbackHeaders,
+                          )
+                        : Container(
+                            color: const Color(0xFFF4F6F9),
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.insert_drive_file_outlined,
+                              color: Colors.black54,
+                              size: 30,
+                            ),
+                          ),
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(8),
                   child: Text(
-                    _labelFromKey(item.fieldKey),
+                    item.displayName,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -393,6 +404,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _openAttachment(_DriverAttachment item) async {
+    if (item.isImage) {
+      _showAttachmentPreview(item);
+      return;
+    }
+
+    final Uri? uri = Uri.tryParse(item.url);
+    if (uri == null) {
+      if (mounted) {
+        showInfoSnack(context, 'Invalid attachment URL');
+      }
+      return;
+    }
+    final bool launched = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+    if (!launched && mounted) {
+      showInfoSnack(context, 'Unable to open attachment');
+    }
   }
 
   void _initBasicInfoFromState(dynamic app) {
@@ -810,7 +843,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         continue;
       }
       final String text = value.toString().trim();
-      if (text.isEmpty || _looksLikeAttachmentValue(text)) {
+      if (text.isEmpty || _looksLikeAttachmentValue(text, fieldKey: key)) {
         continue;
       }
       result[key] = text;
@@ -823,24 +856,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final Set<String> seen = <String>{};
 
     for (final entry in driver.entries) {
-      final List<String> urls = _extractAttachmentUrls(entry.value);
-      for (int i = 0; i < urls.length; i++) {
-        final String raw = urls[i];
-        final String url = _normalizeAttachmentUrl(raw);
-        if (seen.add(url)) {
-          final String fieldKey = urls.length == 1
-              ? entry.key
-              : '${entry.key}_${i + 1}';
-          attachments.add(_DriverAttachment(fieldKey: fieldKey, url: url));
-        }
-      }
+      _collectAttachments(
+        value: entry.value,
+        fieldKey: entry.key,
+        seen: seen,
+        out: attachments,
+      );
     }
     return attachments;
   }
 
-  List<String> _extractAttachmentUrls(dynamic value) {
+  void _collectAttachments({
+    required dynamic value,
+    required String fieldKey,
+    required Set<String> seen,
+    required List<_DriverAttachment> out,
+  }) {
     if (value == null) {
-      return const <String>[];
+      return;
     }
     if (value is String) {
       final String raw = value.trim();
@@ -848,33 +881,54 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           (raw.startsWith('[') && raw.endsWith(']'))) {
         try {
           final dynamic decoded = jsonDecode(raw);
-          return _extractAttachmentUrls(decoded);
+          _collectAttachments(
+            value: decoded,
+            fieldKey: fieldKey,
+            seen: seen,
+            out: out,
+          );
+          return;
         } catch (_) {
           // fall through and treat it as plain text
         }
       }
-      return _looksLikeAttachmentValue(raw) ? <String>[raw] : const <String>[];
+      if (_looksLikeAttachmentValue(raw, fieldKey: fieldKey)) {
+        final String url = _normalizeAttachmentUrl(raw);
+        if (seen.add(url)) {
+          out.add(
+            _DriverAttachment(
+              fieldKey: fieldKey,
+              url: url,
+              isImage: _isImageAttachment(url),
+            ),
+          );
+        }
+      }
+      return;
     }
     if (value is List) {
-      final List<String> urls = <String>[];
-      for (final dynamic item in value) {
-        urls.addAll(_extractAttachmentUrls(item));
+      for (int i = 0; i < value.length; i++) {
+        _collectAttachments(
+          value: value[i],
+          fieldKey: '${fieldKey}_${i + 1}',
+          seen: seen,
+          out: out,
+        );
       }
-      return urls;
+      return;
     }
     if (value is Map) {
-      final List<String> urls = <String>[];
-      for (final String candidateKey in const <String>[
-        'file_url',
-        'url',
-        'path',
-        'file',
-      ]) {
-        urls.addAll(_extractAttachmentUrls(value[candidateKey]));
+      for (final MapEntry<dynamic, dynamic> entry in value.entries) {
+        final String nestedKey = entry.key.toString().trim();
+        _collectAttachments(
+          value: entry.value,
+          fieldKey: nestedKey.isEmpty ? fieldKey : nestedKey,
+          seen: seen,
+          out: out,
+        );
       }
-      return urls;
+      return;
     }
-    return const <String>[];
   }
 
   Widget _attachmentImage({
@@ -922,20 +976,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     };
   }
 
-  bool _looksLikeAttachmentValue(String value) {
+  bool _looksLikeAttachmentValue(String value, {required String fieldKey}) {
     final String lowered = value.toLowerCase();
     if (lowered.isEmpty) {
       return false;
     }
-    return lowered.endsWith('.jpg') ||
-        lowered.endsWith('.jpeg') ||
-        lowered.endsWith('.png') ||
-        lowered.endsWith('.webp') ||
-        lowered.endsWith('.gif') ||
+    final bool hasFilePath =
         lowered.contains('/files/') ||
         lowered.startsWith('/files/') ||
         lowered.startsWith('http://') ||
         lowered.startsWith('https://');
+    final bool hasAttachmentExtension = RegExp(
+      r'\.(jpg|jpeg|png|webp|gif|bmp|pdf|doc|docx|xls|xlsx|csv|txt)(\?|$)',
+      caseSensitive: false,
+    ).hasMatch(lowered);
+    final String key = fieldKey.toLowerCase();
+    final bool keyHintsAttachment =
+        key.contains('attach') ||
+        key.contains('attachment') ||
+        key.contains('file') ||
+        key.contains('image') ||
+        key.contains('photo') ||
+        key.contains('document');
+    final bool keyHintWithPathLikeValue =
+        keyHintsAttachment && (lowered.contains('/') || lowered.contains('.'));
+    return hasFilePath || hasAttachmentExtension || keyHintWithPathLikeValue;
   }
 
   String _normalizeAttachmentUrl(String value) {
@@ -949,6 +1014,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return sanitized.startsWith('/')
         ? '$base$sanitized'
         : '$base/$sanitized';
+  }
+
+  bool _isImageAttachment(String url) {
+    final String lowered = url.toLowerCase();
+    return lowered.contains('.jpg') ||
+        lowered.contains('.jpeg') ||
+        lowered.contains('.png') ||
+        lowered.contains('.webp') ||
+        lowered.contains('.gif') ||
+        lowered.contains('.bmp');
   }
 
   String _labelFromKey(String key) {
@@ -1019,8 +1094,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 }
 
 class _DriverAttachment {
-  const _DriverAttachment({required this.fieldKey, required this.url});
+  const _DriverAttachment({
+    required this.fieldKey,
+    required this.url,
+    required this.isImage,
+  });
 
   final String fieldKey;
   final String url;
+  final bool isImage;
+
+  String get displayName {
+    final String label = fieldKey
+        .replaceAll('_', ' ')
+        .split(RegExp(r'\s+'))
+        .where((part) => part.trim().isNotEmpty)
+        .map(
+          (part) =>
+              '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}',
+        )
+        .join(' ');
+    if (label.isNotEmpty) {
+      return label;
+    }
+    final Uri? parsed = Uri.tryParse(url);
+    if (parsed != null && parsed.pathSegments.isNotEmpty) {
+      return parsed.pathSegments.last;
+    }
+    return 'Attachment';
+  }
 }
