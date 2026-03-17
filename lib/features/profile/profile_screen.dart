@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/api_constants.dart';
@@ -212,20 +216,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 _kv('Cell Number', _field(driver, 'cell_number') ?? '-'),
                 _kv('Status', _field(driver, 'status') ?? '-'),
                 _kv('Address', _field(driver, 'address') ?? '-'),
-                _kv(
-                  'Aadhar',
-                  _firstAvailableField(driver, const <String>[
-                        'custom_aadhar',
-                        'custom_aadhaar',
-                        'custom_aadhar_number',
-                        'custom_aadhaar_number',
-                        'aadhar',
-                        'aadhaar',
-                        'aadhar_number',
-                        'aadhaar_number',
-                      ]) ??
-                      '-',
-                ),
               ],
             ),
           ).animate(delay: 40.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
@@ -270,7 +260,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ).animate(delay: 220.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
           const SizedBox(height: 10),
           _detailSection(
-            title: 'Driver Attachments',
+            title: 'KYC Documents',
             subtitle: 'Read-only images from your URL data',
             leadingIcon: Icons.attachment_rounded,
             expanded: _expandAttachments,
@@ -313,7 +303,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       runSpacing: 10,
       children: attachments.map((item) {
         return InkWell(
-          onTap: () => _openAttachment(item),
+          onTap: () => _showAttachmentActions(item),
           borderRadius: BorderRadius.circular(12),
           child: Container(
             width: 124,
@@ -412,6 +402,88 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
+    await _openDocumentAttachment(item);
+  }
+
+  Future<void> _showAttachmentActions(_DriverAttachment item) async {
+    final String? action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (item.isImage)
+                ListTile(
+                  leading: const Icon(Icons.visibility_outlined),
+                  title: const Text('Preview'),
+                  onTap: () => Navigator.of(context).pop('preview'),
+                )
+              else
+                ListTile(
+                  leading: const Icon(Icons.open_in_new_rounded),
+                  title: const Text('Open'),
+                  onTap: () => Navigator.of(context).pop('open'),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) {
+      return;
+    }
+
+    if (action == 'preview') {
+      _showAttachmentPreview(item);
+      return;
+    }
+    if (action == 'open') {
+      await _openAttachment(item);
+      return;
+    }
+  }
+
+  Future<void> _openDocumentAttachment(_DriverAttachment item) async {
+    final app = ref.read(appControllerProvider);
+    final Map<String, String> primaryHeaders = _primaryAttachmentHeaders(app);
+    final Map<String, String> fallbackHeaders = <String, String>{
+      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+      'Accept': '*/*',
+    };
+
+    try {
+      final Uint8List bytes = await _fetchAttachmentBytes(
+        item.url,
+        primaryHeaders: primaryHeaders,
+        fallbackHeaders: fallbackHeaders,
+      );
+      final Directory dir = await _attachmentDownloadDir();
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      final String name = _downloadFileName(item.url);
+      final String path =
+          '${dir.path}/${DateTime.now().millisecondsSinceEpoch}_$name';
+      final File file = File(path);
+      await file.writeAsBytes(bytes, flush: true);
+
+      final bool launched = await launchUrl(
+        Uri.file(file.path),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!mounted) {
+        return;
+      }
+      if (launched) {
+        showInfoSnack(context, 'Opened document');
+        return;
+      }
+    } catch (_) {
+      // Fallback below
+    }
+
     final Uri? uri = Uri.tryParse(item.url);
     if (uri == null) {
       if (mounted) {
@@ -419,13 +491,70 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
       return;
     }
-    final bool launched = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    final bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
-      showInfoSnack(context, 'Unable to open attachment');
+      showInfoSnack(context, 'Unable to open document');
     }
+  }
+
+  Future<Directory> _attachmentDownloadDir() async {
+    final Directory? downloads = await getDownloadsDirectory();
+    if (downloads != null) {
+      return Directory('${downloads.path}/attachments');
+    }
+    final Directory docs = await getApplicationDocumentsDirectory();
+    return Directory('${docs.path}/attachments');
+  }
+
+  Future<Uint8List> _fetchAttachmentBytes(
+    String url, {
+    required Map<String, String> primaryHeaders,
+    required Map<String, String> fallbackHeaders,
+  }) async {
+    final Uri uri = Uri.parse(url);
+    final http.Response first = await http
+        .get(uri, headers: primaryHeaders)
+        .timeout(const Duration(seconds: 20));
+    if (_isDownloadableResponse(first)) {
+      return first.bodyBytes;
+    }
+    final http.Response second = await http
+        .get(uri, headers: fallbackHeaders)
+        .timeout(const Duration(seconds: 20));
+    if (_isDownloadableResponse(second)) {
+      return second.bodyBytes;
+    }
+    throw Exception('Download failed (HTTP ${second.statusCode})');
+  }
+
+  bool _isDownloadableResponse(http.Response response) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return false;
+    }
+    if (response.bodyBytes.isEmpty) {
+      return false;
+    }
+    final String contentType =
+        response.headers['content-type']?.toLowerCase() ?? '';
+    final String bodyText = String.fromCharCodes(
+      response.bodyBytes.take(300),
+    ).toLowerCase();
+    if (contentType.contains('text/html') &&
+        (bodyText.contains('<html') || bodyText.contains('login'))) {
+      return false;
+    }
+    return true;
+  }
+
+  String _downloadFileName(String url) {
+    final Uri? parsed = Uri.tryParse(url);
+    if (parsed == null || parsed.pathSegments.isEmpty) {
+      return 'attachment.bin';
+    }
+    final String raw = parsed.pathSegments.last.trim();
+    final String decoded = raw.isEmpty ? 'attachment.bin' : Uri.decodeComponent(raw);
+    final String sanitized = decoded.replaceAll(RegExp(r'[^\w.\- ]'), '_');
+    return sanitized.isEmpty ? 'attachment.bin' : sanitized;
   }
 
   void _initBasicInfoFromState(dynamic app) {
@@ -839,10 +968,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
 
       final dynamic value = entry.value;
-      if (value == null || value is List || value is Map) {
+      if (value == null) {
         continue;
       }
-      final String text = value.toString().trim();
+      final String text = _displayDriverValue(value).trim();
       if (text.isEmpty || _looksLikeAttachmentValue(text, fieldKey: key)) {
         continue;
       }
@@ -1048,6 +1177,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         .join(' ');
   }
 
+  String _displayDriverValue(dynamic value) {
+    if (value == null) {
+      return '';
+    }
+    if (value is String) {
+      return value.trim();
+    }
+    if (value is num || value is bool) {
+      return '$value';
+    }
+    if (value is List || value is Map) {
+      try {
+        return const JsonEncoder.withIndent('  ').convert(value);
+      } catch (_) {
+        return value.toString();
+      }
+    }
+    return value.toString();
+  }
+
   String? _field(Map<String, dynamic>? map, String key) {
     if (map == null) {
       return null;
@@ -1058,16 +1207,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
     final String text = value.toString().trim();
     return text.isEmpty ? null : text;
-  }
-
-  String? _firstAvailableField(Map<String, dynamic>? map, List<String> keys) {
-    for (final String key in keys) {
-      final String? value = _field(map, key);
-      if (value != null) {
-        return value;
-      }
-    }
-    return null;
   }
 
   Widget _kv(String key, String value) {
