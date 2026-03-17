@@ -30,9 +30,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref
-          .read(appControllerProvider)
-          .fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+      ref.read(appControllerProvider).fetchLoggedInEmployeeDriverProfile();
     });
   }
 

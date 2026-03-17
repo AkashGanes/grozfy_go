@@ -12,6 +12,7 @@ import '../constants/api_constants.dart';
 import '../models/app_models.dart';
 
 class AppController extends ChangeNotifier {
+  static const Duration _networkTimeout = Duration(seconds: 15);
   static const String _storeId = 'GROZFY';
   static final Uri _sendOtpUri = Uri.parse(
     'https://grozfy.com/api/method/frappe.core.api.billing_auth_v4.send_whatsapp_otp',
@@ -436,14 +437,17 @@ class AppController extends ChangeNotifier {
           'store_id': _storeId,
         }.toString(),
       );
-      final http.Response response = await http.post(
-        _sendOtpUri,
-        headers: const <String, String>{'Accept': 'application/json'},
-        body: <String, String>{
-          'mobile_no': mobile.trim(),
-          'store_id': _storeId,
-        },
-      );
+      _logApi('http', 'POST $_sendOtpUri');
+      final http.Response response = await http
+          .post(
+            _sendOtpUri,
+            headers: const <String, String>{'Accept': 'application/json'},
+            body: <String, String>{
+              'mobile_no': mobile.trim(),
+              'store_id': _storeId,
+            },
+          )
+          .timeout(_networkTimeout);
       _logApi(
         'send_whatsapp_otp response',
         'status=${response.statusCode} body=${response.body}',
@@ -472,6 +476,9 @@ class AppController extends ChangeNotifier {
       return 'OTP sent successfully to $mobile';
     } catch (e) {
       _logApi('send_whatsapp_otp error', e.toString());
+      if (e is TimeoutException) {
+        return 'Request timed out. Please try again.';
+      }
       return 'Unable to connect. Check internet and try again.';
     }
   }
@@ -515,15 +522,18 @@ class AppController extends ChangeNotifier {
           'store_id': _storeId,
         }.toString(),
       );
-      final http.Response response = await http.post(
-        _verifyOtpUri,
-        headers: const <String, String>{'Accept': 'application/json'},
-        body: <String, String>{
-          'mobile_no': mobile.trim(),
-          'otp': otp.trim(),
-          'store_id': _storeId,
-        },
-      );
+      _logApi('http', 'POST $_verifyOtpUri');
+      final http.Response response = await http
+          .post(
+            _verifyOtpUri,
+            headers: const <String, String>{'Accept': 'application/json'},
+            body: <String, String>{
+              'mobile_no': mobile.trim(),
+              'otp': otp.trim(),
+              'store_id': _storeId,
+            },
+          )
+          .timeout(_networkTimeout);
       _logApi(
         'verify_whatsapp_otp response',
         'status=${response.statusCode} body=${response.body}',
@@ -577,6 +587,9 @@ class AppController extends ChangeNotifier {
       return null;
     } catch (e) {
       _logApi('verify_whatsapp_otp error', e.toString());
+      if (e is TimeoutException) {
+        return 'Request timed out. Please try again.';
+      }
       return 'Unable to connect. Check internet and try again.';
     }
   }
@@ -1121,7 +1134,11 @@ class AppController extends ChangeNotifier {
   }
 
   void _logApi(String tag, String value) {
-    debugPrint('[API] $tag => $value');
+    final String line = '[API] $tag => $value';
+    // Keep debugPrint for Flutter tooling and print for plain logcat visibility.
+    debugPrint(line);
+    // ignore: avoid_print
+    print(line);
   }
 
   void _updateLiveCoordinates() {
@@ -1299,7 +1316,10 @@ class AppController extends ChangeNotifier {
     final List<Map<String, String>> authHeaders = _authorizationHeaders();
     String? lastError;
     for (final Map<String, String> headers in authHeaders) {
-      final http.Response response = await http.get(uri, headers: headers);
+      _logApi('http', 'GET $uri');
+      final http.Response response = await http
+          .get(uri, headers: headers)
+          .timeout(_networkTimeout);
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;
@@ -1315,8 +1335,7 @@ class AppController extends ChangeNotifier {
         throw Exception(message);
       }
     }
-
-    throw Exception(lastError ?? 'Authentication failed for profile request');
+    throw Exception(lastError ?? 'Authentication failed for GET $uri');
   }
 
   Future<Map<String, dynamic>> _authorizedPutJson(
@@ -1329,11 +1348,10 @@ class AppController extends ChangeNotifier {
 
     String? lastError;
     for (final Map<String, String> headers in authHeaders) {
-      final http.Response response = await http.put(
-        uri,
-        headers: headers,
-        body: jsonEncode(body),
-      );
+      _logApi('http', 'PUT $uri');
+      final http.Response response = await http
+          .put(uri, headers: headers, body: jsonEncode(body))
+          .timeout(_networkTimeout);
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;
@@ -1347,8 +1365,7 @@ class AppController extends ChangeNotifier {
         throw Exception(message);
       }
     }
-
-    throw Exception(lastError ?? 'Authentication failed for update request');
+    throw Exception(lastError ?? 'Authentication failed for PUT $uri');
   }
 
   Future<Map<String, dynamic>> _authorizedUploadFile({
@@ -1360,12 +1377,13 @@ class AppController extends ChangeNotifier {
 
     String? lastError;
     for (final Map<String, String> headers in authHeaders) {
+      _logApi('http', 'POST $uri');
       final request = http.MultipartRequest('POST', uri)
         ..headers.addAll(headers)
         ..fields.addAll(fields)
         ..files.add(await http.MultipartFile.fromPath('file', filePath));
 
-      final streamed = await request.send();
+      final streamed = await request.send().timeout(_networkTimeout);
       final response = await http.Response.fromStream(streamed);
       final payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -1380,8 +1398,7 @@ class AppController extends ChangeNotifier {
         throw Exception(message);
       }
     }
-
-    throw Exception(lastError ?? 'Authentication failed for upload request');
+    throw Exception(lastError ?? 'Authentication failed for POST $uri');
   }
 
   String? _extractUploadedFileUrl(Map<String, dynamic> payload) {

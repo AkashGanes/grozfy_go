@@ -39,6 +39,7 @@ class ExternalDeliveryRepository {
   ];
 
   static const Set<int> _okCodes = {200, 201};
+  static const Duration _networkTimeout = Duration(seconds: 15);
 
   Future<List<String>> fetchStoreNames() async {
     final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
@@ -50,7 +51,7 @@ class ExternalDeliveryRepository {
     );
 
     _logApi('fetch_store_names request', uri.toString());
-    final resp = await http.get(
+    final resp = await _get(
       uri,
       headers: {
         'Accept': 'application/json',
@@ -96,7 +97,7 @@ class ExternalDeliveryRepository {
     ).replace(queryParameters: params);
 
     _logApi('external_delivery_list request', uri.toString());
-    final resp = await http.get(
+    final resp = await _get(
       uri,
       headers: {
         'Accept': 'application/json',
@@ -126,7 +127,7 @@ class ExternalDeliveryRepository {
     );
     _logApi('external_delivery_detail request', uri.toString());
 
-    final resp = await http.get(
+    final resp = await _get(
       uri,
       headers: {
         'Accept': 'application/json',
@@ -162,7 +163,7 @@ class ExternalDeliveryRepository {
     );
     _logApi('external_delivery_status_update request', '$uri status=$status');
 
-    final resp = await http.put(
+    final resp = await _put(
       uri,
       headers: {
         'Accept': 'application/json',
@@ -191,7 +192,7 @@ class ExternalDeliveryRepository {
       'POST ${ApiConstants.externalDeliveryTripList} body=$createPayload',
     );
 
-    final createResp = await http.post(
+    final createResp = await _post(
       Uri.parse(ApiConstants.externalDeliveryTripList),
       headers: {
         'Accept': 'application/json',
@@ -215,7 +216,7 @@ class ExternalDeliveryRepository {
       'external_delivery_trip_submit request',
       'POST ${ApiConstants.frappeSubmitMethod} docname=${createdDoc['name']}',
     );
-    final submitResp = await http.post(
+    final submitResp = await _post(
       Uri.parse(ApiConstants.frappeSubmitMethod),
       headers: {
         'Accept': 'application/json',
@@ -251,7 +252,7 @@ class ExternalDeliveryRepository {
     );
     _logApi('external_delivery_trip_list request', uri.toString());
 
-    final resp = await http.get(
+    final resp = await _get(
       uri,
       headers: {
         'Accept': 'application/json',
@@ -283,7 +284,7 @@ class ExternalDeliveryRepository {
         '${ApiConstants.externalDeliveryTripList}/${Uri.encodeComponent(tripName)}';
     _logApi('external_delivery_trip_details request', 'GET $url');
 
-    final resp = await http.get(
+    final resp = await _get(
       Uri.parse(url),
       headers: {
         'Accept': 'application/json',
@@ -310,7 +311,7 @@ class ExternalDeliveryRepository {
     _logApi('fetch_address request', uri.toString());
 
     try {
-      final resp = await http.get(
+      final resp = await _get(
         uri,
         headers: {
           'Accept': 'application/json',
@@ -388,6 +389,34 @@ class ExternalDeliveryRepository {
   }
 
   void _logApi(String tag, String value) {
-    debugPrint('[API] $tag => $value');
+    final String line = '[API] $tag => $value';
+    debugPrint(line);
+    // ignore: avoid_print
+    print(line);
+  }
+
+  Future<http.Response> _get(Uri uri, {required Map<String, String> headers}) {
+    _logApi('http', 'GET $uri');
+    return http.get(uri, headers: headers).timeout(_networkTimeout);
+  }
+
+  Future<http.Response> _post(
+    Uri uri, {
+    required Map<String, String> headers,
+    Object? body,
+  }) {
+    _logApi('http', 'POST $uri');
+    return http
+        .post(uri, headers: headers, body: body)
+        .timeout(_networkTimeout);
+  }
+
+  Future<http.Response> _put(
+    Uri uri, {
+    required Map<String, String> headers,
+    Object? body,
+  }) {
+    _logApi('http', 'PUT $uri');
+    return http.put(uri, headers: headers, body: body).timeout(_networkTimeout);
   }
 }
