@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../constants/api_constants.dart';
 import '../models/app_models.dart';
 
 class AppController extends ChangeNotifier {
@@ -61,11 +62,15 @@ class AppController extends ChangeNotifier {
   bool _rememberMe = false;
   bool _profileCompleted = false;
   String? _sessionToken;
+  String _tokenType = 'Bearer';
   String? _configVersion;
 
   DateTime? _lastOtpRequestAt;
 
   PartnerProfile? _profile;
+  LoggedPartnerProfileDetails? _loggedProfileDetails;
+  bool _profileDetailsLoading = false;
+  String? _profileDetailsError;
   VehicleDetails? _vehicle;
   BankDetails? _bank;
   bool _rcUploaded = false;
@@ -105,6 +110,10 @@ class AppController extends ChangeNotifier {
   String get languageCode => _languageCode;
   String? get configVersion => _configVersion;
   PartnerProfile? get profile => _profile;
+  LoggedPartnerProfileDetails? get loggedProfileDetails =>
+      _loggedProfileDetails;
+  bool get profileDetailsLoading => _profileDetailsLoading;
+  String? get profileDetailsError => _profileDetailsError;
   Map<String, VerificationStatus> get kycStatus => _kycStatus;
   Map<String, double> get kycProgress => _kycProgress;
   VehicleDetails? get vehicle => _vehicle;
@@ -152,6 +161,7 @@ class AppController extends ChangeNotifier {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     _languageCode = prefs.getString(_prefLanguageCode) ?? '';
     _sessionToken = prefs.getString(_prefAccessToken);
+    _tokenType = _nullIfBlank(prefs.getString(_prefTokenType)) ?? 'Bearer';
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
@@ -478,11 +488,15 @@ class AppController extends ChangeNotifier {
   Future<void> logout() async {
     _isLoggedIn = false;
     _sessionToken = null;
+    _tokenType = 'Bearer';
     _isOnline = false;
     _isTracking = false;
     _incomingOrder = null;
     _activeOrder = null;
     _profile = null;
+    _loggedProfileDetails = null;
+    _profileDetailsError = null;
+    _profileDetailsLoading = false;
     _profileCompleted = false;
     _currentLatitude = null;
     _currentLongitude = null;
@@ -789,6 +803,8 @@ class AppController extends ChangeNotifier {
       message['expires_in']?.toString() ?? '',
     );
 
+    _tokenType = tokenType ?? _tokenType;
+
     await Future.wait(<Future<bool>>[
       prefs.setString(_prefAccessToken, _sessionToken!),
       prefs.setBool(_prefRememberMe, _rememberMe),
@@ -980,5 +996,219 @@ class AppController extends ChangeNotifier {
     final double lat = baseLat + (_random.nextDouble() - 0.5) / 100;
     final double lng = baseLng + (_random.nextDouble() - 0.5) / 100;
     _liveCoordinates = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
+  }
+
+  Future<void> fetchLoggedInEmployeeDriverProfile({
+    bool forceRefresh = false,
+  }) async {
+    if (_profileDetailsLoading) {
+      return;
+    }
+    if (!forceRefresh && _loggedProfileDetails?.hasData == true) {
+      return;
+    }
+    if (_sessionToken == null || _sessionToken!.isEmpty) {
+      _profileDetailsError = 'Please login again to load profile';
+      notifyListeners();
+      return;
+    }
+
+    _profileDetailsLoading = true;
+    _profileDetailsError = null;
+    notifyListeners();
+
+    try {
+      final String? loggedUser = await _fetchLoggedUser();
+      String? driverName;
+      Map<String, dynamic>? driverDoc;
+
+      // Login identity is best mapped through mobile returned in OTP login flow.
+      driverName = await _findDriverByMobile();
+
+      // Secondary mapping only if login user is available and not generic admin.
+      if (driverName == null &&
+          loggedUser != null &&
+          loggedUser.toLowerCase() != 'administrator') {
+        final String? employeeName = await _findResourceName(
+          doctype: 'Employee',
+          filters: <List<String>>[
+            <String>['Employee', 'user_id', '=', loggedUser],
+          ],
+          fields: <String>['name'],
+        );
+        if (employeeName != null) {
+          driverName = await _findResourceName(
+            doctype: 'Driver',
+            filters: <List<String>>[
+              <String>['Driver', 'employee', '=', employeeName],
+            ],
+            fields: <String>['name'],
+          );
+        }
+      }
+      driverName ??= await _findDefaultDriverName();
+
+      if (driverName != null) {
+        driverDoc = await _fetchResourceDoc('Driver', driverName);
+      }
+
+      _loggedProfileDetails = LoggedPartnerProfileDetails(
+        loggedUser: loggedUser,
+        employee: null,
+        driver: driverDoc,
+      );
+
+      if (!(_loggedProfileDetails?.hasData ?? false)) {
+        _profileDetailsError = 'No driver profile linked to this login account';
+      }
+    } catch (e) {
+      _profileDetailsError = e.toString().replaceFirst('Exception: ', '');
+    } finally {
+      _profileDetailsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> _fetchLoggedUser() async {
+    final Uri uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.auth.get_logged_user',
+    );
+    final Map<String, dynamic> payload = await _authorizedGet(uri);
+    return _nullIfBlank(payload['message']?.toString());
+  }
+
+  Future<String?> _findDriverByMobile() async {
+    final String? mobile = _normalizedMobileForSearch(_profile?.mobile);
+    if (mobile == null) {
+      return null;
+    }
+
+    final List<String> candidates = <String>[mobile, '91$mobile', '+91$mobile'];
+
+    for (final String candidate in candidates) {
+      final String? found = await _findResourceName(
+        doctype: 'Driver',
+        filters: <List<String>>[
+          <String>['Driver', 'cell_number', '=', candidate],
+        ],
+        fields: <String>['name'],
+      );
+      if (found != null) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  Future<String?> _findDefaultDriverName() async {
+    final String configured = ApiConstants.defaultExternalDeliveryDriver.trim();
+    if (configured.isNotEmpty) {
+      final Map<String, dynamic>? configuredDoc = await _fetchResourceDoc(
+        'Driver',
+        configured,
+      );
+      if (configuredDoc != null) {
+        return configured;
+      }
+    }
+
+    return _findResourceName(
+      doctype: 'Driver',
+      filters: const <List<String>>[],
+      fields: const <String>['name'],
+    );
+  }
+
+  Future<String?> _findResourceName({
+    required String doctype,
+    required List<List<String>> filters,
+    List<String> fields = const <String>['name'],
+  }) async {
+    final Map<String, String> queryParameters = <String, String>{
+      'fields': jsonEncode(fields),
+      'limit_page_length': '1',
+    };
+    if (filters.isNotEmpty) {
+      queryParameters['filters'] = jsonEncode(filters);
+    }
+    final Uri uri =
+        Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/${Uri.encodeComponent(doctype)}',
+        ).replace(queryParameters: queryParameters);
+
+    final Map<String, dynamic> payload = await _authorizedGet(uri);
+    final dynamic rows = payload['data'];
+    if (rows is List && rows.isNotEmpty) {
+      final dynamic first = rows.first;
+      if (first is Map<String, dynamic>) {
+        return _nullIfBlank(first['name']?.toString());
+      }
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _fetchResourceDoc(
+    String doctype,
+    String name,
+  ) async {
+    final Uri uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/${Uri.encodeComponent(doctype)}/${Uri.encodeComponent(name)}',
+    );
+    final Map<String, dynamic> payload = await _authorizedGet(uri);
+    final dynamic data = payload['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>> _authorizedGet(Uri uri) async {
+    final List<Map<String, String>> authHeaders = <Map<String, String>>[];
+    if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
+      authHeaders.add(<String, String>{
+        'Accept': 'application/json',
+        'Authorization': '${_tokenType.trim()} ${_sessionToken!.trim()}',
+      });
+    }
+    authHeaders.add(<String, String>{
+      'Accept': 'application/json',
+      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+    });
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      final http.Response response = await http.get(uri, headers: headers);
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Profile request failed (${response.statusCode})';
+      lastError = message;
+
+      // Try the next auth strategy only for authorization failures.
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+
+    throw Exception(lastError ?? 'Authentication failed for profile request');
+  }
+
+  String? _normalizedMobileForSearch(String? raw) {
+    final String? value = _nullIfBlank(raw);
+    if (value == null) {
+      return null;
+    }
+    final String digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length == 12 && digits.startsWith('91')) {
+      return digits.substring(2);
+    }
+    if (digits.length == 10) {
+      return digits;
+    }
+    return null;
   }
 }
