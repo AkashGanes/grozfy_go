@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -50,6 +51,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final Map<String, dynamic>? driver = app.loggedProfileDetails?.driver;
     final String displayName =
         app.profile?.fullName ?? _field(driver, 'full_name') ?? 'Driver';
+    final bool hasDriver = driver != null && driver.isNotEmpty;
+
+    final Widget detailsSection;
+    final String detailsStateKey;
+    if (app.profileDetailsLoading) {
+      detailsStateKey = 'loading';
+      detailsSection = _buildLoadingState();
+    } else if (app.profileDetailsError != null) {
+      detailsStateKey = 'error';
+      detailsSection = _buildErrorState(app.profileDetailsError!, app);
+    } else if (!hasDriver) {
+      detailsStateKey = 'empty';
+      detailsSection = const FrostCard(
+        child: Text('No driver details found for this login account.'),
+      );
+    } else {
+      detailsStateKey = 'data';
+      detailsSection = _buildDriverDetails(driver);
+    }
 
     return AppShell(
       title: 'My Profile',
@@ -57,124 +77,173 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _profileHeader(
-            name: displayName,
-            imagePath: app.profileImagePath,
-            busy: _savingBasicInfo || app.profileImageSyncing,
+          _animatedEntry(
+            child: _profileHeader(
+              name: displayName,
+              imagePath: app.profileImagePath,
+              busy: _savingBasicInfo || app.profileImageSyncing,
+            ),
+            delayMs: 0,
           ),
           const SizedBox(height: 12),
-          _basicInformationSection(app),
+          _animatedEntry(
+            child: _basicInformationSection(app),
+            delayMs: 120,
+          ),
           const SizedBox(height: 12),
-          if (app.profileDetailsLoading)
-            const FrostCard(
-              child: Center(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 30),
-                  child: CircularProgressIndicator(),
-                ),
-              ),
-            )
-          else if (app.profileDetailsError != null)
-            FrostCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    app.profileDetailsError!,
-                    style: const TextStyle(color: Colors.black87),
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      app.fetchLoggedInEmployeeDriverProfile(
-                        forceRefresh: true,
-                      );
-                    },
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: const Text('Retry'),
-                  ),
-                ],
-              ),
-            )
-          else if (driver == null || driver.isEmpty)
-            const FrostCard(
-              child: Text('No driver details found for this login account.'),
-            )
-          else
-            FrostCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _detailSection(
-                    title: 'Basic Details',
-                    subtitle: 'Identity and contact snapshot',
-                    leadingIcon: Icons.badge_outlined,
-                    expanded: _expandBasicDetails,
-                    onToggle: () {
-                      setState(
-                        () => _expandBasicDetails = !_expandBasicDetails,
-                      );
-                    },
-                    child: Column(
-                      children: [
-                        _kv('Full Name', _field(driver, 'full_name') ?? '-'),
-                        _kv('Employee', _field(driver, 'employee') ?? '-'),
-                        _kv(
-                          'Cell Number',
-                          _field(driver, 'cell_number') ?? '-',
-                        ),
-                        _kv('Status', _field(driver, 'status') ?? '-'),
-                        _kv('Address', _field(driver, 'address') ?? '-'),
-                        _kv('Aadhar', _field(driver, 'custom_aadhar') ?? '-'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _detailSection(
-                    title: 'License Details',
-                    subtitle: 'Driving license and document info',
-                    leadingIcon: Icons.assignment_ind_outlined,
-                    expanded: _expandLicenseDetails,
-                    onToggle: () {
-                      setState(
-                        () => _expandLicenseDetails = !_expandLicenseDetails,
-                      );
-                    },
-                    child: Column(
-                      children: [
-                        _kv(
-                          'License Number',
-                          _field(driver, 'license_number') ?? '-',
-                        ),
-                        _kv(
-                          'Issue Date',
-                          _field(driver, 'issuing_date') ?? '-',
-                        ),
-                        _kv(
-                          'Expiry Date',
-                          _field(driver, 'expiry_date') ?? '-',
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _detailSection(
-                    title: 'Driving License Category',
-                    subtitle: 'Allowed vehicle classes',
-                    leadingIcon: Icons.category_outlined,
-                    expanded: _expandDrivingCategory,
-                    onToggle: () {
-                      setState(
-                        () => _expandDrivingCategory = !_expandDrivingCategory,
-                      );
-                    },
-                    child: _licenseCategorySection(
-                      driver['driving_license_category'],
-                    ),
-                  ),
-                ],
+          _animatedEntry(
+            delayMs: 220,
+            child: AnimatedSwitcher(
+              duration: 320.ms,
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final Animation<Offset> offset = Tween<Offset>(
+                  begin: const Offset(0.0, 0.08),
+                  end: Offset.zero,
+                ).animate(animation);
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(position: offset, child: child),
+                );
+              },
+              child: KeyedSubtree(
+                key: ValueKey<String>(detailsStateKey),
+                child: detailsSection,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _animatedEntry({
+    required Widget child,
+    required int delayMs,
+  }) {
+    return child
+        .animate(delay: Duration(milliseconds: delayMs))
+        .fadeIn(duration: 420.ms, curve: Curves.easeOutCubic)
+        .slideY(begin: 0.06, end: 0, duration: 420.ms, curve: Curves.easeOutCubic);
+  }
+
+  Widget _buildLoadingState() {
+    return FrostCard(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator()
+                  .animate(onPlay: (controller) => controller.repeat())
+                  .fadeIn(duration: 280.ms)
+                  .scale(
+                    begin: const Offset(0.92, 0.92),
+                    end: const Offset(1.0, 1.0),
+                    duration: 500.ms,
+                    curve: Curves.easeOut,
+                  ),
+              const SizedBox(height: 10),
+              const Text(
+                'Loading driver details...',
+                style: TextStyle(color: Colors.black54),
+              )
+                  .animate(delay: 80.ms)
+                  .fadeIn(duration: 320.ms)
+                  .slideY(begin: 0.2, end: 0, duration: 320.ms),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String error, dynamic app) {
+    return FrostCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(error, style: const TextStyle(color: Colors.black87)),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () {
+              app.fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+            },
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDriverDetails(Map<String, dynamic> driver) {
+    return FrostCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _detailSection(
+            title: 'Basic Details',
+            subtitle: 'Identity and contact snapshot',
+            leadingIcon: Icons.badge_outlined,
+            expanded: _expandBasicDetails,
+            onToggle: () {
+              setState(() => _expandBasicDetails = !_expandBasicDetails);
+            },
+            child: Column(
+              children: [
+                _kv('Full Name', _field(driver, 'full_name') ?? '-'),
+                _kv('Employee', _field(driver, 'employee') ?? '-'),
+                _kv('Cell Number', _field(driver, 'cell_number') ?? '-'),
+                _kv('Status', _field(driver, 'status') ?? '-'),
+                _kv('Address', _field(driver, 'address') ?? '-'),
+                _kv(
+                  'Aadhar',
+                  _firstAvailableField(driver, const <String>[
+                        'custom_aadhar',
+                        'custom_aadhaar',
+                        'custom_aadhar_number',
+                        'custom_aadhaar_number',
+                        'aadhar',
+                        'aadhaar',
+                        'aadhar_number',
+                        'aadhaar_number',
+                      ]) ??
+                      '-',
+                ),
+              ],
+            ),
+          ).animate(delay: 40.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+          const SizedBox(height: 10),
+          _detailSection(
+            title: 'License Details',
+            subtitle: 'Driving license and document info',
+            leadingIcon: Icons.assignment_ind_outlined,
+            expanded: _expandLicenseDetails,
+            onToggle: () {
+              setState(() => _expandLicenseDetails = !_expandLicenseDetails);
+            },
+            child: Column(
+              children: [
+                _kv('License Number', _field(driver, 'license_number') ?? '-'),
+                _kv('Issue Date', _field(driver, 'issuing_date') ?? '-'),
+                _kv('Expiry Date', _field(driver, 'expiry_date') ?? '-'),
+              ],
+            ),
+          ).animate(delay: 120.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+          const SizedBox(height: 10),
+          _detailSection(
+            title: 'Driving License Category',
+            subtitle: 'Allowed vehicle classes',
+            leadingIcon: Icons.category_outlined,
+            expanded: _expandDrivingCategory,
+            onToggle: () {
+              setState(() => _expandDrivingCategory = !_expandDrivingCategory);
+            },
+            child: _licenseCategorySection(driver['driving_license_category']),
+          ).animate(delay: 180.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
         ],
       ),
     );
@@ -452,23 +521,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 child: IconButton(
                   visualDensity: VisualDensity.compact,
                   onPressed: onToggle,
-                  icon: Icon(
-                    expanded
-                        ? Icons.chevron_left_rounded
-                        : Icons.chevron_right_rounded,
+                  icon: AnimatedRotation(
+                    turns: expanded ? 0.5 : 0.0,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeInOutCubic,
+                    child: const Icon(Icons.chevron_right_rounded),
                   ),
                   tooltip: expanded ? 'Collapse' : 'Expand',
                 ),
               ),
             ],
           ),
-          AnimatedCrossFade(
-            duration: const Duration(milliseconds: 180),
-            crossFadeState: expanded
-                ? CrossFadeState.showFirst
-                : CrossFadeState.showSecond,
-            firstChild: Column(children: [const SizedBox(height: 12), child]),
-            secondChild: const SizedBox.shrink(),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeInOutCubic,
+            child: ClipRect(
+              child: AnimatedAlign(
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeInOutCubic,
+                alignment: Alignment.topCenter,
+                heightFactor: expanded ? 1 : 0,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 160),
+                  opacity: expanded ? 1 : 0,
+                  child: expanded
+                      ? Column(
+                          children: [
+                            const SizedBox(height: 12),
+                            child,
+                          ],
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -543,6 +629,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
     final String text = value.toString().trim();
     return text.isEmpty ? null : text;
+  }
+
+  String? _firstAvailableField(Map<String, dynamic>? map, List<String> keys) {
+    for (final String key in keys) {
+      final String? value = _field(map, key);
+      if (value != null) {
+        return value;
+      }
+    }
+    return null;
   }
 
   Widget _kv(String key, String value) {
