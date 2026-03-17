@@ -14,9 +14,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final TextEditingController _nameCtrl = TextEditingController();
   final TextEditingController _mobileCtrl = TextEditingController();
   final TextEditingController _emailCtrl = TextEditingController();
@@ -24,11 +22,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   bool _savingBasicInfo = false;
   bool _basicInfoInitialized = false;
+  bool _expandBasicDetails = true;
+  bool _expandLicenseDetails = false;
+  bool _expandDrivingCategory = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref
           .read(appControllerProvider)
@@ -38,7 +38,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
 
   @override
   void dispose() {
-    _tabController.dispose();
     _nameCtrl.dispose();
     _mobileCtrl.dispose();
     _emailCtrl.dispose();
@@ -104,18 +103,73 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TabBar(
-                    controller: _tabController,
-                    isScrollable: true,
-                    onTap: (_) => setState(() {}),
-                    tabs: const [
-                      Tab(text: 'Basic Details'),
-                      Tab(text: 'License Details'),
-                      Tab(text: 'Driving License Category'),
-                    ],
+                  _detailSection(
+                    title: 'Basic Details',
+                    subtitle: 'Identity and contact snapshot',
+                    leadingIcon: Icons.badge_outlined,
+                    expanded: _expandBasicDetails,
+                    onToggle: () {
+                      setState(
+                        () => _expandBasicDetails = !_expandBasicDetails,
+                      );
+                    },
+                    child: Column(
+                      children: [
+                        _kv('Full Name', _field(driver, 'full_name') ?? '-'),
+                        _kv('Employee', _field(driver, 'employee') ?? '-'),
+                        _kv(
+                          'Cell Number',
+                          _field(driver, 'cell_number') ?? '-',
+                        ),
+                        _kv('Status', _field(driver, 'status') ?? '-'),
+                        _kv('Address', _field(driver, 'address') ?? '-'),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 14),
-                  _tabContent(driver),
+                  const SizedBox(height: 10),
+                  _detailSection(
+                    title: 'License Details',
+                    subtitle: 'Driving license and document info',
+                    leadingIcon: Icons.assignment_ind_outlined,
+                    expanded: _expandLicenseDetails,
+                    onToggle: () {
+                      setState(
+                        () => _expandLicenseDetails = !_expandLicenseDetails,
+                      );
+                    },
+                    child: Column(
+                      children: [
+                        _kv(
+                          'License Number',
+                          _field(driver, 'license_number') ?? '-',
+                        ),
+                        _kv(
+                          'Issue Date',
+                          _field(driver, 'issuing_date') ?? '-',
+                        ),
+                        _kv(
+                          'Expiry Date',
+                          _field(driver, 'expiry_date') ?? '-',
+                        ),
+                        _kv('Aadhar', _field(driver, 'custom_aadhar') ?? '-'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _detailSection(
+                    title: 'Driving License Category',
+                    subtitle: 'Allowed vehicle classes',
+                    leadingIcon: Icons.category_outlined,
+                    expanded: _expandDrivingCategory,
+                    onToggle: () {
+                      setState(
+                        () => _expandDrivingCategory = !_expandDrivingCategory,
+                      );
+                    },
+                    child: _licenseCategorySection(
+                      driver['driving_license_category'],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -289,32 +343,104 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     showInfoSnack(context, 'Basic information updated');
   }
 
-  Widget _tabContent(Map<String, dynamic> driver) {
-    switch (_tabController.index) {
-      case 0:
-        return Column(
-          children: [
-            _kv('Full Name', _field(driver, 'full_name') ?? '-'),
-            _kv('Employee', _field(driver, 'employee') ?? '-'),
-            _kv('Cell Number', _field(driver, 'cell_number') ?? '-'),
-            _kv('Status', _field(driver, 'status') ?? '-'),
-            _kv('Address', _field(driver, 'address') ?? '-'),
-          ],
-        );
-      case 1:
-        return Column(
-          children: [
-            _kv('License Number', _field(driver, 'license_number') ?? '-'),
-            _kv('Issue Date', _field(driver, 'issuing_date') ?? '-'),
-            _kv('Expiry Date', _field(driver, 'expiry_date') ?? '-'),
-            _kv('Aadhar', _field(driver, 'custom_aadhar') ?? '-'),
-          ],
-        );
-      case 2:
-        return _licenseCategorySection(driver['driving_license_category']);
-      default:
-        return const SizedBox.shrink();
-    }
+  Widget _detailSection({
+    required String title,
+    required String subtitle,
+    required IconData leadingIcon,
+    required bool expanded,
+    required VoidCallback onToggle,
+    required Widget child,
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: expanded ? Colors.white : Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: expanded
+              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.25)
+              : Colors.black.withValues(alpha: 0.08),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(leadingIcon, size: 18),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onToggle,
+                  icon: Icon(
+                    expanded
+                        ? Icons.chevron_left_rounded
+                        : Icons.chevron_right_rounded,
+                  ),
+                  tooltip: expanded ? 'Collapse' : 'Expand',
+                ),
+              ),
+            ],
+          ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 180),
+            crossFadeState: expanded
+                ? CrossFadeState.showFirst
+                : CrossFadeState.showSecond,
+            firstChild: Column(children: [const SizedBox(height: 12), child]),
+            secondChild: const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _licenseCategorySection(dynamic raw) {
