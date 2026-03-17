@@ -1033,6 +1033,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           (Match match) => '${match.group(1)} ${match.group(2)}',
         )
         .replaceAll('_', ' ')
+        .replaceAll(RegExp(r'\bcustom\b', caseSensitive: false), ' ')
         .trim();
     if (spaced.isEmpty) {
       return 'Field';
@@ -1107,6 +1108,7 @@ class _DriverAttachment {
   String get displayName {
     final String label = fieldKey
         .replaceAll('_', ' ')
+        .replaceAll(RegExp(r'\bcustom\b', caseSensitive: false), ' ')
         .split(RegExp(r'\s+'))
         .where((part) => part.trim().isNotEmpty)
         .map(
