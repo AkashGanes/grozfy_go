@@ -1,7 +1,8 @@
-import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/state/providers.dart';
 import '../../core/widgets/app_shell.dart';
@@ -13,26 +14,56 @@ class ProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+  final TextEditingController _nameCtrl = TextEditingController();
+  final TextEditingController _mobileCtrl = TextEditingController();
+  final TextEditingController _emailCtrl = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
+
+  bool _savingBasicInfo = false;
+  bool _basicInfoInitialized = false;
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(appControllerProvider).fetchLoggedInEmployeeDriverProfile();
+      ref
+          .read(appControllerProvider)
+          .fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
     });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _nameCtrl.dispose();
+    _mobileCtrl.dispose();
+    _emailCtrl.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final app = ref.watch(appControllerProvider);
-    final details = app.loggedProfileDetails;
+    _initBasicInfoFromState(app);
+
+    final Map<String, dynamic>? driver = app.loggedProfileDetails?.driver;
+    final String displayName =
+        app.profile?.fullName ?? _field(driver, 'full_name') ?? 'Driver';
 
     return AppShell(
       title: 'My Profile',
-      subtitle: app.profile?.fullName ?? app.profile?.mobile,
+      subtitle: 'Driver account',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _profileHeader(name: displayName, imagePath: app.profileImagePath),
+          const SizedBox(height: 12),
+          _basicInformationSection(app),
+          const SizedBox(height: 12),
           if (app.profileDetailsLoading)
             const FrostCard(
               child: Center(
@@ -64,211 +95,318 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ],
               ),
             )
-          else if (details == null || !details.hasData)
+          else if (driver == null || driver.isEmpty)
             const FrostCard(
-              child: Text('No profile data found for this login account.'),
+              child: Text('No driver details found for this login account.'),
             )
-          else ...[
+          else
             FrostCard(
-              child: _buildSection(
-                title: 'Login Driver Details',
-                data: details.driver,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    onTap: (_) => setState(() {}),
+                    tabs: const [
+                      Tab(text: 'Basic Details'),
+                      Tab(text: 'License Details'),
+                      Tab(text: 'Driving License Category'),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  _tabContent(driver),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () {
-                app.fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
-              },
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Refresh Profile'),
-            ),
-          ],
         ],
       ),
     );
   }
 
-  Widget _buildSection({
-    required String title,
-    required Map<String, dynamic>? data,
-  }) {
-    if (data == null || data.isEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 10),
-          const Text('No linked record found.'),
-        ],
-      );
+  void _initBasicInfoFromState(dynamic app) {
+    if (_basicInfoInitialized) {
+      return;
     }
+    _nameCtrl.text = app.profile?.fullName ?? '';
+    _mobileCtrl.text = app.profile?.mobile ?? '';
+    _emailCtrl.text = app.profile?.email ?? '';
+    _basicInfoInitialized = true;
+  }
 
-    final entries =
-        data.entries.where((entry) => !_isBlank(entry.value)).toList()
-          ..sort((a, b) => a.key.compareTo(b.key));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 10),
-        if (entries.isEmpty)
-          const Text('No non-empty fields.')
-        else
-          ...entries.map((entry) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 140,
-                    child: Text(
-                      _prettyKey(entry.key),
-                      style: const TextStyle(
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w600,
-                      ),
+  Widget _profileHeader({required String name, required String? imagePath}) {
+    return FrostCard(
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAF5FF),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 4),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  radius: 44,
+                  backgroundColor: Colors.white,
+                  backgroundImage: imagePath != null
+                      ? FileImage(File(imagePath))
+                      : null,
+                  child: imagePath == null
+                      ? const Icon(Icons.person_rounded, size: 42)
+                      : null,
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1AB36A),
+                      borderRadius: BorderRadius.circular(13),
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: const Icon(
+                      Icons.check,
+                      size: 14,
+                      color: Colors.white,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(child: _valueWidget(entry.key, entry.value)),
-                ],
-              ),
-            );
-          }),
-      ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+            ),
+            const SizedBox(height: 2),
+            const Text(
+              'Verified Account',
+              style: TextStyle(color: Colors.black54),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _valueWidget(String key, dynamic value) {
-    if (key == 'driving_license_category' && value is List) {
-      final List<String> categories = value
-          .map(_extractDrivingCategory)
-          .whereType<String>()
-          .where((item) => item.trim().isNotEmpty)
-          .toList();
-      if (categories.isEmpty) {
-        return const Text('No category data');
-      }
-      return Wrap(
-        spacing: 8,
-        runSpacing: 6,
-        children: categories
-            .map(
-              (item) => Chip(
-                label: Text(item),
-                visualDensity: VisualDensity.compact,
-              ),
-            )
-            .toList(),
-      );
-    }
-
-    if (value is Map<String, dynamic> || value is List) {
-      final String pretty = const JsonEncoder.withIndent('  ').convert(value);
-      return ExpansionTile(
-        tilePadding: EdgeInsets.zero,
-        dense: true,
-        title: const Text('View details'),
+  Widget _basicInformationSection(dynamic app) {
+    return FrostCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.03),
-              borderRadius: BorderRadius.circular(10),
+          const Text(
+            'Basic Information',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Edit name, phone number, email and profile picture',
+            style: TextStyle(color: Colors.black54),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _savingBasicInfo ? null : _pickImage,
+            icon: const Icon(Icons.image_outlined),
+            label: const Text('Update Profile Picture'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _nameCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Name',
+              prefixIcon: Icon(Icons.person_outline_rounded),
             ),
-            child: SelectableText(
-              pretty,
-              style: const TextStyle(fontSize: 12, height: 1.3),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _mobileCtrl,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'Phone Number',
+              prefixIcon: Icon(Icons.phone_outlined),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _emailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Email',
+              prefixIcon: Icon(Icons.email_outlined),
+            ),
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton.icon(
+            onPressed: _savingBasicInfo ? null : _saveBasicInfo,
+            icon: const Icon(Icons.save_outlined),
+            label: Text(
+              _savingBasicInfo ? 'Saving...' : 'Save Basic Information',
             ),
           ),
         ],
-      );
-    }
-
-    return Text(value.toString());
+      ),
+    );
   }
 
-  String? _extractDrivingCategory(dynamic item) {
-    if (item == null) {
+  Future<void> _pickImage() async {
+    final XFile? file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 80,
+      maxWidth: 1024,
+    );
+    if (file == null) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    await ref.read(appControllerProvider).setProfileImagePath(file.path);
+  }
+
+  Future<void> _saveBasicInfo() async {
+    setState(() => _savingBasicInfo = true);
+
+    await ref
+        .read(appControllerProvider)
+        .updateProfile(
+          fullName: _nameCtrl.text.trim(),
+          mobile: _mobileCtrl.text.trim(),
+          email: _emailCtrl.text.trim(),
+        );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() => _savingBasicInfo = false);
+    showInfoSnack(context, 'Basic information updated');
+  }
+
+  Widget _tabContent(Map<String, dynamic> driver) {
+    switch (_tabController.index) {
+      case 0:
+        return Column(
+          children: [
+            _kv('Full Name', _field(driver, 'full_name') ?? '-'),
+            _kv('Employee', _field(driver, 'employee') ?? '-'),
+            _kv('Cell Number', _field(driver, 'cell_number') ?? '-'),
+            _kv('Status', _field(driver, 'status') ?? '-'),
+            _kv('Address', _field(driver, 'address') ?? '-'),
+          ],
+        );
+      case 1:
+        return Column(
+          children: [
+            _kv('License Number', _field(driver, 'license_number') ?? '-'),
+            _kv('Issue Date', _field(driver, 'issuing_date') ?? '-'),
+            _kv('Expiry Date', _field(driver, 'expiry_date') ?? '-'),
+            _kv('Aadhar', _field(driver, 'custom_aadhar') ?? '-'),
+          ],
+        );
+      case 2:
+        return _licenseCategorySection(driver['driving_license_category']);
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _licenseCategorySection(dynamic raw) {
+    final List<Map<String, dynamic>> categories = _toCategoryList(raw);
+    if (categories.isEmpty) {
+      return const Text('No category data');
+    }
+
+    return Column(
+      children: categories.map((item) {
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _categoryTitle(item),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 6),
+                _kv('Issue Date', _field(item, 'issuing_date') ?? '-'),
+                _kv('Expiry Date', _field(item, 'expiry_date') ?? '-'),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  List<Map<String, dynamic>> _toCategoryList(dynamic raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    return raw.whereType<Map<String, dynamic>>().toList();
+  }
+
+  String _categoryTitle(Map<String, dynamic> item) {
+    final String cls = _field(item, 'class') ?? '';
+    final String description = _field(item, 'description') ?? '';
+    if (cls.isNotEmpty && description.isNotEmpty) {
+      return '$cls - $description';
+    }
+    if (cls.isNotEmpty) {
+      return cls;
+    }
+    if (description.isNotEmpty) {
+      return description;
+    }
+    return 'Category';
+  }
+
+  String? _field(Map<String, dynamic>? map, String key) {
+    if (map == null) {
       return null;
     }
-    if (item is String) {
-      return item;
-    }
-    if (item is Map<String, dynamic>) {
-      final String cls = (item['class']?.toString() ?? '').trim();
-      final String description = (item['description']?.toString() ?? '').trim();
-      final String issuingDate = (item['issuing_date']?.toString() ?? '').trim();
-      final String expiryDate = (item['expiry_date']?.toString() ?? '').trim();
-
-      if (cls.isNotEmpty || description.isNotEmpty) {
-        final StringBuffer label = StringBuffer();
-        if (cls.isNotEmpty) {
-          label.write(cls);
-        }
-        if (description.isNotEmpty) {
-          if (label.isNotEmpty) {
-            label.write(' - ');
-          }
-          label.write(description);
-        }
-        if (issuingDate.isNotEmpty || expiryDate.isNotEmpty) {
-          label.write(' (');
-          if (issuingDate.isNotEmpty) {
-            label.write('Issue: $issuingDate');
-          }
-          if (issuingDate.isNotEmpty && expiryDate.isNotEmpty) {
-            label.write(', ');
-          }
-          if (expiryDate.isNotEmpty) {
-            label.write('Expiry: $expiryDate');
-          }
-          label.write(')');
-        }
-        return label.toString();
-      }
-
-      const List<String> fallbackKeys = <String>[
-        'driving_license_category',
-        'license_category',
-        'category',
-        'vehicle_class',
-      ];
-      for (final String key in fallbackKeys) {
-        final String value = (item[key]?.toString() ?? '').trim();
-        if (value.isNotEmpty) {
-          return value;
-        }
-      }
-    }
-    return null;
-  }
-
-  bool _isBlank(dynamic value) {
+    final dynamic value = map[key];
     if (value == null) {
-      return true;
+      return null;
     }
-    if (value is String) {
-      return value.trim().isEmpty;
-    }
-    if (value is Iterable) {
-      return value.isEmpty;
-    }
-    if (value is Map) {
-      return value.isEmpty;
-    }
-    return false;
+    final String text = value.toString().trim();
+    return text.isEmpty ? null : text;
   }
 
-  String _prettyKey(String input) {
-    final String normalized = input.replaceAll('_', ' ').trim();
-    if (normalized.isEmpty) {
-      return input;
-    }
-    return normalized[0].toUpperCase() + normalized.substring(1);
+  Widget _kv(String key, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(
+              key,
+              style: const TextStyle(
+                color: Colors.black54,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(value)),
+        ],
+      ),
+    );
   }
 }

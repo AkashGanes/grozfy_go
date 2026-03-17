@@ -25,6 +25,7 @@ class AppController extends ChangeNotifier {
   static const String _prefMobile = 'partner_mobile';
   static const String _prefEmail = 'partner_email';
   static const String _prefFullName = 'partner_full_name';
+  static const String _prefProfileImagePath = 'partner_profile_image_path';
   static const String _prefRememberMe = 'remember_me';
   static const String _prefCurrentLat = 'current_lat';
   static const String _prefCurrentLng = 'current_lng';
@@ -84,6 +85,7 @@ class AppController extends ChangeNotifier {
   double? _currentLongitude;
   String? _currentLocationLabel;
   String? _selectedStoreName;
+  String? _profileImagePath;
 
   DeliveryOrder? _incomingOrder;
   DeliveryOrder? _activeOrder;
@@ -128,6 +130,7 @@ class AppController extends ChangeNotifier {
   double? get currentLongitude => _currentLongitude;
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
+  String? get profileImagePath => _profileImagePath;
   bool get hasSelectedLocation =>
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
@@ -170,6 +173,7 @@ class AppController extends ChangeNotifier {
       prefs.getString(_prefCurrentLocationLabel),
     );
     _selectedStoreName = _nullIfBlank(prefs.getString(_prefSelectedStore));
+    _profileImagePath = _nullIfBlank(prefs.getString(_prefProfileImagePath));
     _isLoggedIn = _sessionToken != null;
     if (_isLoggedIn) {
       final String fullName =
@@ -210,9 +214,17 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateProfile({String? fullName, String? email}) async {
+  Future<void> updateProfile({
+    String? fullName,
+    String? email,
+    String? mobile,
+  }) async {
     if (_profile != null) {
-      _profile = _profile!.copyWith(fullName: fullName, email: email);
+      _profile = _profile!.copyWith(
+        fullName: fullName,
+        email: email,
+        mobile: mobile,
+      );
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await Future.wait(<Future<bool>>[
         prefs.setString(_prefFullName, _profile!.fullName),
@@ -222,6 +234,17 @@ class AppController extends ChangeNotifier {
       ]);
       notifyListeners();
     }
+  }
+
+  Future<void> setProfileImagePath(String? path) async {
+    _profileImagePath = _nullIfBlank(path);
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (_profileImagePath != null) {
+      await prefs.setString(_prefProfileImagePath, _profileImagePath!);
+    } else {
+      await prefs.remove(_prefProfileImagePath);
+    }
+    notifyListeners();
   }
 
   Future<void> setSelectedLocation({
@@ -252,6 +275,7 @@ class AppController extends ChangeNotifier {
     _currentLatitude = null;
     _currentLongitude = null;
     _currentLocationLabel = null;
+    _profileImagePath = null;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await Future.wait(<Future<bool>>[
       prefs.remove(_prefCurrentLat),
@@ -514,6 +538,7 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefCurrentLng),
       prefs.remove(_prefCurrentLocationLabel),
       prefs.remove(_prefProfileCompleted),
+      prefs.remove(_prefProfileImagePath),
       prefs.setBool(_prefRememberMe, false),
     ]);
     _rememberMe = false;
@@ -1131,10 +1156,9 @@ class AppController extends ChangeNotifier {
     if (filters.isNotEmpty) {
       queryParameters['filters'] = jsonEncode(filters);
     }
-    final Uri uri =
-        Uri.parse(
-          '${ApiConstants.erpBaseUrl}/api/resource/${Uri.encodeComponent(doctype)}',
-        ).replace(queryParameters: queryParameters);
+    final Uri uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/${Uri.encodeComponent(doctype)}',
+    ).replace(queryParameters: queryParameters);
 
     final Map<String, dynamic> payload = await _authorizedGet(uri);
     final dynamic rows = payload['data'];
