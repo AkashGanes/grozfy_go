@@ -602,7 +602,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: busy ? null : _pickImage,
+                      onTap: busy ? null : _showProfileImageActions,
                       borderRadius: BorderRadius.circular(14),
                       child: Container(
                         width: 28,
@@ -720,6 +720,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (!mounted) {
       return;
     }
+    final bool shouldUpload = await _confirmProfileImageUpload(file.path);
+    if (!mounted || !shouldUpload) {
+      return;
+    }
+
+    showInfoSnack(context, 'Uploading profile image...');
     final String? error = await ref
         .read(appControllerProvider)
         .updateProfileImageAndSync(pickedPath: file.path);
@@ -731,6 +737,84 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     } else {
       showInfoSnack(context, 'Profile image updated');
     }
+  }
+
+  Future<void> _showProfileImageActions() async {
+    final String? action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Update Profile Image'),
+                onTap: () => Navigator.of(context).pop('update'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_outline_rounded),
+                title: const Text('Remove Profile Image'),
+                onTap: () => Navigator.of(context).pop('remove'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (!mounted || action == null) {
+      return;
+    }
+
+    if (action == 'update') {
+      await _pickImage();
+      return;
+    }
+
+    await ref.read(appControllerProvider).setProfileImagePath(null);
+    if (!mounted) {
+      return;
+    }
+    showInfoSnack(context, 'Profile image removed');
+  }
+
+  Future<bool> _confirmProfileImageUpload(String imagePath) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Upload Profile Image'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  File(imagePath),
+                  width: 170,
+                  height: 170,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Do you want to upload this image?'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Upload'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed == true;
   }
 
   Future<void> _saveBasicInfo() async {
