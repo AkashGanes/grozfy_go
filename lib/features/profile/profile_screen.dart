@@ -59,7 +59,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _profileHeader(name: displayName, imagePath: app.profileImagePath),
+          _profileHeader(
+            name: displayName,
+            imagePath: app.profileImagePath,
+            busy: _savingBasicInfo || app.profileImageSyncing,
+          ),
           const SizedBox(height: 12),
           _basicInformationSection(app),
           const SizedBox(height: 12),
@@ -188,7 +192,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _basicInfoInitialized = true;
   }
 
-  Widget _profileHeader({required String name, required String? imagePath}) {
+  Widget _profileHeader({
+    required String name,
+    required String? imagePath,
+    required bool busy,
+  }) {
     return FrostCard(
       child: Container(
         width: double.infinity,
@@ -219,7 +227,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: _savingBasicInfo ? null : _pickImage,
+                      onTap: busy ? null : _pickImage,
                       borderRadius: BorderRadius.circular(14),
                       child: Container(
                         width: 28,
@@ -337,7 +345,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (!mounted) {
       return;
     }
-    await ref.read(appControllerProvider).setProfileImagePath(file.path);
+    final String? error = await ref
+        .read(appControllerProvider)
+        .updateProfileImageAndSync(pickedPath: file.path);
+    if (!mounted) {
+      return;
+    }
+    if (error != null) {
+      showInfoSnack(context, error);
+    } else {
+      showInfoSnack(context, 'Profile image updated');
+    }
   }
 
   Future<void> _saveBasicInfo() async {

@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
@@ -72,6 +74,8 @@ class AppController extends ChangeNotifier {
   LoggedPartnerProfileDetails? _loggedProfileDetails;
   bool _profileDetailsLoading = false;
   String? _profileDetailsError;
+  bool _profileImageSyncing = false;
+  String? _profileImageSyncError;
   VehicleDetails? _vehicle;
   BankDetails? _bank;
   bool _rcUploaded = false;
@@ -116,6 +120,8 @@ class AppController extends ChangeNotifier {
       _loggedProfileDetails;
   bool get profileDetailsLoading => _profileDetailsLoading;
   String? get profileDetailsError => _profileDetailsError;
+  bool get profileImageSyncing => _profileImageSyncing;
+  String? get profileImageSyncError => _profileImageSyncError;
   Map<String, VerificationStatus> get kycStatus => _kycStatus;
   Map<String, double> get kycProgress => _kycProgress;
   VehicleDetails? get vehicle => _vehicle;
@@ -247,6 +253,110 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<String?> updateProfileImageAndSync({
+    required String pickedPath,
+  }) async {
+    if (_profileImageSyncing) {
+      return 'Profile image update is already in progress';
+    }
+
+    final String sourcePath = pickedPath.trim();
+    if (sourcePath.isEmpty || !File(sourcePath).existsSync()) {
+      return 'Selected image is unavailable. Pick another image.';
+    }
+
+    _profileImageSyncing = true;
+    _profileImageSyncError = null;
+    notifyListeners();
+
+    try {
+      final String localPath = await _copyProfileImageToAppStorage(sourcePath);
+      await setProfileImagePath(localPath);
+
+      if (_loggedProfileDetails?.driver == null) {
+        await fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+      }
+      final String? employeeName = _nullIfBlank(
+        _loggedProfileDetails?.driver?['employee']?.toString(),
+      );
+      if (employeeName == null) {
+        _profileImageSyncError =
+            'Image saved on this device. Employee link missing for web sync.';
+        return _profileImageSyncError;
+      }
+
+      final Uri uploadUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/upload_file',
+      );
+      final Map<String, dynamic> uploadPayload = await _authorizedUploadFile(
+        uri: uploadUri,
+        filePath: localPath,
+        fields: <String, String>{
+          'is_private': '0',
+          'doctype': 'Employee',
+          'docname': employeeName,
+          'fieldname': 'image',
+        },
+      );
+
+      final String? fileUrl = _extractUploadedFileUrl(uploadPayload);
+      if (fileUrl == null) {
+        throw Exception(
+          'Image uploaded but file URL missing in server response',
+        );
+      }
+
+      final Uri employeeUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
+      );
+      await _authorizedPutJson(employeeUri, <String, dynamic>{
+        'image': fileUrl,
+      });
+      _profileImageSyncError = null;
+      return null;
+    } catch (e) {
+      _profileImageSyncError = e.toString().replaceFirst('Exception: ', '');
+      return _profileImageSyncError;
+    } finally {
+      _profileImageSyncing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String> _copyProfileImageToAppStorage(String sourcePath) async {
+    final Directory docs = await getApplicationDocumentsDirectory();
+    final Directory profileDir = Directory('${docs.path}/profile_images');
+    if (!profileDir.existsSync()) {
+      profileDir.createSync(recursive: true);
+    }
+
+    final String ext = _fileExtension(sourcePath);
+    final String targetPath =
+        '${profileDir.path}/profile_${DateTime.now().millisecondsSinceEpoch}$ext';
+    final File copied = await File(sourcePath).copy(targetPath);
+
+    final String? previous = _profileImagePath;
+    if (previous != null &&
+        previous != copied.path &&
+        previous.startsWith(profileDir.path)) {
+      final oldFile = File(previous);
+      if (oldFile.existsSync()) {
+        oldFile.deleteSync();
+      }
+    }
+
+    return copied.path;
+  }
+
+  String _fileExtension(String path) {
+    final int lastSlash = path.lastIndexOf('/');
+    final int lastDot = path.lastIndexOf('.');
+    if (lastDot <= lastSlash) {
+      return '';
+    }
+    return path.substring(lastDot);
+  }
+
   Future<void> setSelectedLocation({
     required double latitude,
     required double longitude,
@@ -275,7 +385,6 @@ class AppController extends ChangeNotifier {
     _currentLatitude = null;
     _currentLongitude = null;
     _currentLocationLabel = null;
-    _profileImagePath = null;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await Future.wait(<Future<bool>>[
       prefs.remove(_prefCurrentLat),
@@ -1187,18 +1296,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>> _authorizedGet(Uri uri) async {
-    final List<Map<String, String>> authHeaders = <Map<String, String>>[];
-    if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
-      authHeaders.add(<String, String>{
-        'Accept': 'application/json',
-        'Authorization': '${_tokenType.trim()} ${_sessionToken!.trim()}',
-      });
-    }
-    authHeaders.add(<String, String>{
-      'Accept': 'application/json',
-      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
-    });
-
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
     String? lastError;
     for (final Map<String, String> headers in authHeaders) {
       final http.Response response = await http.get(uri, headers: headers);
@@ -1219,6 +1317,111 @@ class AppController extends ChangeNotifier {
     }
 
     throw Exception(lastError ?? 'Authentication failed for profile request');
+  }
+
+  Future<Map<String, dynamic>> _authorizedPutJson(
+    Uri uri,
+    Map<String, dynamic> body,
+  ) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders(
+      contentType: 'application/json',
+    );
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      final http.Response response = await http.put(
+        uri,
+        headers: headers,
+        body: jsonEncode(body),
+      );
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Profile update failed (${response.statusCode})';
+      lastError = message;
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+
+    throw Exception(lastError ?? 'Authentication failed for update request');
+  }
+
+  Future<Map<String, dynamic>> _authorizedUploadFile({
+    required Uri uri,
+    required String filePath,
+    required Map<String, String> fields,
+  }) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll(headers)
+        ..fields.addAll(fields)
+        ..files.add(await http.MultipartFile.fromPath('file', filePath));
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+      final payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Image upload failed (${response.statusCode})';
+      lastError = message;
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+
+    throw Exception(lastError ?? 'Authentication failed for upload request');
+  }
+
+  String? _extractUploadedFileUrl(Map<String, dynamic> payload) {
+    final dynamic message = payload['message'];
+    if (message is Map<String, dynamic>) {
+      return _nullIfBlank(
+        message['file_url']?.toString() ?? message['file_name']?.toString(),
+      );
+    }
+
+    final dynamic data = payload['data'];
+    if (data is Map<String, dynamic>) {
+      return _nullIfBlank(
+        data['file_url']?.toString() ?? data['file_name']?.toString(),
+      );
+    }
+    return null;
+  }
+
+  List<Map<String, String>> _authorizationHeaders({String? contentType}) {
+    final List<Map<String, String>> authHeaders = <Map<String, String>>[];
+    if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
+      final Map<String, String> bearerHeaders = <String, String>{
+        'Accept': 'application/json',
+        'Authorization': '${_tokenType.trim()} ${_sessionToken!.trim()}',
+      };
+      if (contentType != null) {
+        bearerHeaders['Content-Type'] = contentType;
+      }
+      authHeaders.add(bearerHeaders);
+    }
+    final Map<String, String> tokenHeaders = <String, String>{
+      'Accept': 'application/json',
+      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+    };
+    if (contentType != null) {
+      tokenHeaders['Content-Type'] = contentType;
+    }
+    authHeaders.add(tokenHeaders);
+    return authHeaders;
   }
 
   String? _normalizedMobileForSearch(String? raw) {
