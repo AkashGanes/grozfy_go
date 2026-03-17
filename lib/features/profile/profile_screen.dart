@@ -366,51 +366,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       'Accept': 'image/*',
     };
 
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          insetPadding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _labelFromKey(item.fieldKey),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (context) {
+          return Scaffold(
+            backgroundColor: Colors.black,
+            appBar: AppBar(
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+              title: Text(_labelFromKey(item.fieldKey)),
+            ),
+            body: Center(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 4,
+                child: _attachmentImage(
+                  url: item.url,
+                  fit: BoxFit.contain,
+                  primaryHeaders: primaryHeaders,
+                  fallbackHeaders: fallbackHeaders,
                 ),
               ),
-              Flexible(
-                child: InteractiveViewer(
-                  minScale: 1,
-                  maxScale: 4,
-                  child: _attachmentImage(
-                    url: item.url,
-                    fit: BoxFit.contain,
-                    primaryHeaders: primaryHeaders,
-                    fallbackHeaders: fallbackHeaders,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
+            ),
+          );
+        },
+      ),
     );
   }
 
