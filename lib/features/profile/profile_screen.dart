@@ -123,6 +123,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                         _kv('Status', _field(driver, 'status') ?? '-'),
                         _kv('Address', _field(driver, 'address') ?? '-'),
+                        _kv('Aadhar', _field(driver, 'custom_aadhar') ?? '-'),
                       ],
                     ),
                   ),
@@ -151,7 +152,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           'Expiry Date',
                           _field(driver, 'expiry_date') ?? '-',
                         ),
-                        _kv('Aadhar', _field(driver, 'custom_aadhar') ?? '-'),
                       ],
                     ),
                   ),
@@ -216,18 +216,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 Positioned(
                   right: -2,
                   bottom: -2,
-                  child: Container(
-                    width: 26,
-                    height: 26,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1AB36A),
-                      borderRadius: BorderRadius.circular(13),
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: const Icon(
-                      Icons.check,
-                      size: 14,
-                      color: Colors.white,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _savingBasicInfo ? null : _pickImage,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(
+                          Icons.edit_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -240,9 +247,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
             ),
             const SizedBox(height: 2),
-            const Text(
-              'Verified Account',
-              style: TextStyle(color: Colors.black54),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1AB36A),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.check, size: 12, color: Colors.white),
+                ),
+                const SizedBox(width: 6),
+                const Text(
+                  'Verified Account',
+                  style: TextStyle(color: Colors.black54),
+                ),
+              ],
             ),
           ],
         ),
@@ -263,12 +285,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const Text(
             'Edit name, phone number, email and profile picture',
             style: TextStyle(color: Colors.black54),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _savingBasicInfo ? null : _pickImage,
-            icon: const Icon(Icons.image_outlined),
-            label: const Text('Update Profile Picture'),
           ),
           const SizedBox(height: 12),
           TextField(
