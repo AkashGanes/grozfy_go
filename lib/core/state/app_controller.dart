@@ -106,7 +106,9 @@ class AppController extends ChangeNotifier {
   String? _profileImageSyncError;
   VehicleDetails? _vehicle;
   BankDetails? _bank;
-  bool _rcUploaded = false;
+  List<String> _uomOptions = <String>[];
+  List<String> _vehicleFuelOptions = <String>[];
+  Set<String> _vehicleRequiredFields = <String>{};
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
@@ -155,7 +157,11 @@ class AppController extends ChangeNotifier {
   Map<String, double> get kycProgress => _kycProgress;
   VehicleDetails? get vehicle => _vehicle;
   BankDetails? get bank => _bank;
-  bool get rcUploaded => _rcUploaded;
+  List<String> get uomOptions => List<String>.unmodifiable(_uomOptions);
+  List<String> get vehicleFuelOptions =>
+      List<String>.unmodifiable(_vehicleFuelOptions);
+  Set<String> get vehicleRequiredFields =>
+      Set<String>.unmodifiable(_vehicleRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
   bool get isTracking => _isTracking;
@@ -438,10 +444,7 @@ class AppController extends ChangeNotifier {
       );
       final ui.FrameInfo frame = await codec.getNextFrame();
       final ui.Image image = frame.image;
-      final Size size = Size(
-        image.width.toDouble(),
-        image.height.toDouble(),
-      );
+      final Size size = Size(image.width.toDouble(), image.height.toDouble());
       image.dispose();
       codec.dispose();
       return size;
@@ -802,6 +805,11 @@ class AppController extends ChangeNotifier {
     _currentLongitude = null;
     _currentLocationLabel = null;
     _driverName = null;
+    _vehicle = null;
+    _bank = null;
+    _uomOptions = <String>[];
+    _vehicleFuelOptions = <String>[];
+    _vehicleRequiredFields = <String>{};
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await Future.wait(<Future<bool>>[
       prefs.remove(_prefAccessToken),
@@ -941,12 +949,12 @@ class AppController extends ChangeNotifier {
 
       if (status == 'success') {
         // Save driver_name and mark KYC completed
-        final String? newDriverName =
-            _nullIfBlank(responseData['driver_name']?.toString());
+        final String? newDriverName = _nullIfBlank(
+          responseData['driver_name']?.toString(),
+        );
         if (newDriverName != null) {
           _driverName = newDriverName;
-          final SharedPreferences prefs =
-              await SharedPreferences.getInstance();
+          final SharedPreferences prefs = await SharedPreferences.getInstance();
           await prefs.setString(_prefDriverName, newDriverName);
         }
         _kycCompleted = true;
@@ -994,9 +1002,26 @@ class AppController extends ChangeNotifier {
     _vehicle = _vehicle == null
         ? null
         : VehicleDetails(
-            type: _vehicle!.type,
-            vehicleNumber: _vehicle!.vehicleNumber,
-            rcUploaded: _vehicle!.rcUploaded,
+            name: _vehicle!.name,
+            licensePlate: _vehicle!.licensePlate,
+            make: _vehicle!.make,
+            model: _vehicle!.model,
+            lastOdometer: _vehicle!.lastOdometer,
+            fuelType: _vehicle!.fuelType,
+            uom: _vehicle!.uom,
+            acquisitionDate: _vehicle!.acquisitionDate,
+            location: _vehicle!.location,
+            chassisNo: _vehicle!.chassisNo,
+            vehicleValue: _vehicle!.vehicleValue,
+            employee: _vehicle!.employee,
+            insuranceCompany: _vehicle!.insuranceCompany,
+            policyNo: _vehicle!.policyNo,
+            startDate: _vehicle!.startDate,
+            endDate: _vehicle!.endDate,
+            carbonCheckDate: _vehicle!.carbonCheckDate,
+            color: _vehicle!.color,
+            wheels: _vehicle!.wheels,
+            doors: _vehicle!.doors,
             status: VerificationStatus.approved,
           );
     _notices.insert(
@@ -1010,37 +1035,290 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? submitVehicleDetails({
-    required VehicleType type,
-    required String vehicleNumber,
-  }) {
-    final String sanitized = vehicleNumber.trim().toUpperCase();
-    final RegExp regExp = RegExp(
-      r'^[A-Z]{2}[\s-]?[0-9]{1,2}[\s-]?[A-Z]{1,2}[\s-]?[0-9]{4}$',
-    );
-
-    if (!regExp.hasMatch(sanitized)) {
-      return 'Vehicle number format is invalid';
+  Future<List<String>> fetchUomOptions() async {
+    try {
+      final Uri uri = Uri.parse('${ApiConstants.erpBaseUrl}/api/resource/UOM')
+          .replace(
+            queryParameters: <String, String>{
+              'fields': jsonEncode(<String>['name']),
+              'limit_page_length': '200',
+            },
+          );
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+      final dynamic data = payload['data'];
+      final List<String> values = <String>[];
+      if (data is List) {
+        for (final dynamic row in data) {
+          if (row is Map<String, dynamic>) {
+            final String? name = _nullIfBlank(row['name']?.toString());
+            if (name != null) {
+              values.add(name);
+            }
+          }
+        }
+      }
+      _uomOptions = values;
+      notifyListeners();
+      return values;
+    } catch (_) {
+      return _uomOptions;
     }
-
-    if (!_rcUploaded) {
-      return 'Upload RC document first';
-    }
-
-    _vehicle = VehicleDetails(
-      type: type,
-      vehicleNumber: sanitized,
-      rcUploaded: true,
-      status: VerificationStatus.pending,
-    );
-    notifyListeners();
-    return null;
   }
 
-  Future<void> uploadRcDocument() async {
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    _rcUploaded = true;
-    notifyListeners();
+  Future<void> fetchVehicleFormConfig() async {
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/DocType/Vehicle',
+      );
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+      final dynamic data = payload['data'];
+      if (data is! Map<String, dynamic>) {
+        return;
+      }
+      final dynamic fields = data['fields'];
+      if (fields is! List) {
+        return;
+      }
+
+      final Set<String> requiredFields = <String>{};
+      List<String> fuelOptions = <String>[];
+      for (final dynamic row in fields) {
+        if (row is! Map<String, dynamic>) {
+          continue;
+        }
+        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
+        if (fieldname == null) {
+          continue;
+        }
+        final int reqd = int.tryParse(row['reqd']?.toString() ?? '0') ?? 0;
+        final int readOnly =
+            int.tryParse(row['read_only']?.toString() ?? '0') ?? 0;
+        if (reqd == 1 && readOnly == 0) {
+          requiredFields.add(fieldname);
+        }
+
+        if (fieldname == 'fuel_type') {
+          final String? rawOptions = _nullIfBlank(row['options']?.toString());
+          if (rawOptions != null) {
+            fuelOptions = rawOptions
+                .split('\n')
+                .map((value) => value.trim())
+                .where((value) => value.isNotEmpty)
+                .toList();
+          }
+        }
+      }
+      _vehicleRequiredFields = requiredFields;
+      _vehicleFuelOptions = fuelOptions;
+      notifyListeners();
+    } catch (_) {
+      // Keep existing cached config
+    }
+  }
+
+  Future<Map<String, dynamic>?> fetchVehicleByLicensePlate(
+    String licensePlate,
+  ) async {
+    final String plate = licensePlate.trim().toUpperCase();
+    if (plate.isEmpty) {
+      return null;
+    }
+
+    final String? name = await _findResourceName(
+      doctype: 'Vehicle',
+      filters: <List<String>>[
+        <String>['Vehicle', 'license_plate', '=', plate],
+      ],
+      fields: <String>['name'],
+    );
+    if (name == null) {
+      return null;
+    }
+    return _fetchResourceDoc('Vehicle', name);
+  }
+
+  Future<String?> submitVehicleDetails({
+    required String licensePlate,
+    required String make,
+    required String model,
+    required String lastOdometer,
+    required String fuelType,
+    required String uom,
+    String? acquisitionDate,
+    String? location,
+    String? chassisNo,
+    String? vehicleValue,
+    String? employee,
+    String? insuranceCompany,
+    String? policyNo,
+    String? startDate,
+    String? endDate,
+    String? carbonCheckDate,
+    String? color,
+    String? wheels,
+    String? doors,
+  }) async {
+    if (_vehicleRequiredFields.isEmpty || _vehicleFuelOptions.isEmpty) {
+      await fetchVehicleFormConfig();
+    }
+
+    bool isRequired(String fieldname) {
+      return _vehicleRequiredFields.contains(fieldname);
+    }
+
+    final String plate = licensePlate.trim().toUpperCase();
+    if (isRequired('license_plate') && plate.isEmpty) {
+      return 'License plate is required';
+    }
+    if (isRequired('make') && make.trim().isEmpty) {
+      return 'Make is required';
+    }
+    if (isRequired('model') && model.trim().isEmpty) {
+      return 'Model is required';
+    }
+    final int? odometer = int.tryParse(lastOdometer.trim());
+    if (isRequired('last_odometer') && (odometer == null || odometer < 0)) {
+      return 'Odometer value must be a valid non-negative number';
+    }
+    final String fuel = fuelType.trim();
+    if (isRequired('fuel_type') && fuel.isEmpty) {
+      return 'Fuel type is required';
+    }
+    if (_vehicleFuelOptions.isNotEmpty && !_vehicleFuelOptions.contains(fuel)) {
+      return 'Select a valid fuel type';
+    }
+    final String uomValue = uom.trim();
+    if (isRequired('uom') && uomValue.isEmpty) {
+      return 'Fuel UOM is required';
+    }
+
+    final int? wheelsInt = _nullableInt(wheels);
+    if (wheels?.trim().isNotEmpty == true && wheelsInt == null) {
+      return 'Wheels must be a valid number';
+    }
+    final int? doorsInt = _nullableInt(doors);
+    if (doors?.trim().isNotEmpty == true && doorsInt == null) {
+      return 'Doors must be a valid number';
+    }
+    final double? vehicleValueDouble = _nullableDouble(vehicleValue);
+    if (vehicleValue?.trim().isNotEmpty == true && vehicleValueDouble == null) {
+      return 'Vehicle value must be a valid number';
+    }
+
+    final String? defaultEmployee = _nullIfBlank(
+      _loggedProfileDetails?.driver?['employee']?.toString(),
+    );
+    final String? employeeValue = _nullIfBlank(employee) ?? defaultEmployee;
+
+    final String? acquisitionDateValue = _nullIfBlank(acquisitionDate);
+    final String? locationValue = _nullIfBlank(location);
+    final String? chassisNoValue = _nullIfBlank(chassisNo);
+    final String? insuranceCompanyValue = _nullIfBlank(insuranceCompany);
+    final String? policyNoValue = _nullIfBlank(policyNo);
+    final String? startDateValue = _nullIfBlank(startDate);
+    final String? endDateValue = _nullIfBlank(endDate);
+    final String? carbonCheckDateValue = _nullIfBlank(carbonCheckDate);
+    final String? colorValue = _nullIfBlank(color);
+
+    final Map<String, dynamic> body = <String, dynamic>{
+      'license_plate': plate,
+      'make': make.trim(),
+      'model': model.trim(),
+      'last_odometer': odometer,
+      'fuel_type': fuel,
+      'uom': uomValue,
+    };
+    if (acquisitionDateValue != null) {
+      body['acquisition_date'] = acquisitionDateValue;
+    }
+    if (locationValue != null) {
+      body['location'] = locationValue;
+    }
+    if (chassisNoValue != null) {
+      body['chassis_no'] = chassisNoValue;
+    }
+    if (vehicleValueDouble != null) {
+      body['vehicle_value'] = vehicleValueDouble;
+    }
+    if (employeeValue != null) {
+      body['employee'] = employeeValue;
+    }
+    if (insuranceCompanyValue != null) {
+      body['insurance_company'] = insuranceCompanyValue;
+    }
+    if (policyNoValue != null) {
+      body['policy_no'] = policyNoValue;
+    }
+    if (startDateValue != null) {
+      body['start_date'] = startDateValue;
+    }
+    if (endDateValue != null) {
+      body['end_date'] = endDateValue;
+    }
+    if (carbonCheckDateValue != null) {
+      body['carbon_check_date'] = carbonCheckDateValue;
+    }
+    if (colorValue != null) {
+      body['color'] = colorValue;
+    }
+    if (wheelsInt != null) {
+      body['wheels'] = wheelsInt;
+    }
+    if (doorsInt != null) {
+      body['doors'] = doorsInt;
+    }
+
+    try {
+      final Uri baseUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Vehicle',
+      );
+      final Map<String, dynamic>? existing = await fetchVehicleByLicensePlate(
+        plate,
+      );
+      final String? vehicleName = _nullIfBlank(existing?['name']?.toString());
+      Map<String, dynamic> responsePayload;
+
+      if (vehicleName != null) {
+        final Uri updateUri = Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/Vehicle/${Uri.encodeComponent(vehicleName)}',
+        );
+        responsePayload = await _authorizedPutJson(updateUri, body);
+      } else {
+        responsePayload = await _authorizedPostJson(baseUri, body);
+      }
+
+      final dynamic rawData = responsePayload['data'];
+      final Map<String, dynamic> data = rawData is Map<String, dynamic>
+          ? rawData
+          : body;
+      _vehicle = VehicleDetails(
+        name: _nullIfBlank(data['name']?.toString()) ?? vehicleName,
+        licensePlate: plate,
+        make: make.trim(),
+        model: model.trim(),
+        lastOdometer: odometer ?? 0,
+        fuelType: fuel,
+        uom: uomValue,
+        acquisitionDate: _nullIfBlank(acquisitionDate),
+        location: _nullIfBlank(location),
+        chassisNo: _nullIfBlank(chassisNo),
+        vehicleValue: vehicleValueDouble,
+        employee: employeeValue,
+        insuranceCompany: _nullIfBlank(insuranceCompany),
+        policyNo: _nullIfBlank(policyNo),
+        startDate: _nullIfBlank(startDate),
+        endDate: _nullIfBlank(endDate),
+        carbonCheckDate: _nullIfBlank(carbonCheckDate),
+        color: _nullIfBlank(color),
+        wheels: wheelsInt,
+        doors: doorsInt,
+        status: VerificationStatus.approved,
+      );
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
   String? submitBankDetails({
@@ -1684,6 +1962,36 @@ class AppController extends ChangeNotifier {
     throw Exception(lastError ?? 'Authentication failed for PUT $uri');
   }
 
+  Future<Map<String, dynamic>> _authorizedPostJson(
+    Uri uri,
+    Map<String, dynamic> body,
+  ) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders(
+      contentType: 'application/json',
+    );
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      _logApi('http', 'POST $uri');
+      final http.Response response = await http
+          .post(uri, headers: headers, body: jsonEncode(body))
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Request failed (${response.statusCode})';
+      lastError = message;
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed for POST $uri');
+  }
+
   Future<Map<String, dynamic>> _authorizedUploadFile({
     required Uri uri,
     required String filePath,
@@ -1770,5 +2078,21 @@ class AppController extends ChangeNotifier {
       return digits;
     }
     return null;
+  }
+
+  int? _nullableInt(String? value) {
+    final String? normalized = _nullIfBlank(value);
+    if (normalized == null) {
+      return null;
+    }
+    return int.tryParse(normalized);
+  }
+
+  double? _nullableDouble(String? value) {
+    final String? normalized = _nullIfBlank(value);
+    if (normalized == null) {
+      return null;
+    }
+    return double.tryParse(normalized);
   }
 }
