@@ -1160,10 +1160,16 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> hydrateVehicleFromBackend({bool forceRefresh = false}) async {
+    _logApi(
+      'vehicle.hydrate',
+      'start forceRefresh=$forceRefresh hasVehicle=${_vehicle != null}',
+    );
     if (!forceRefresh && _vehicle != null) {
+      _logApi('vehicle.hydrate', 'skip: existing vehicle in memory');
       return;
     }
     if (_sessionToken == null || _sessionToken!.isEmpty) {
+      _logApi('vehicle.hydrate', 'skip: no session token');
       return;
     }
     try {
@@ -1175,17 +1181,27 @@ class AppController extends ChangeNotifier {
 
       Map<String, dynamic>? data;
       if (vehicleName != null) {
+        _logApi('vehicle.hydrate', 'fetch by vehicle_name=$vehicleName');
         data = await fetchVehicleByName(vehicleName);
+      }
+      if (data == null && licensePlate != null) {
+        _logApi('vehicle.hydrate', 'fetch by license_plate=$licensePlate');
       }
       data ??= await fetchVehicleByLicensePlate(licensePlate ?? '');
       if (data == null) {
+        _logApi('vehicle.hydrate', 'no vehicle found');
         return;
       }
 
       _submittedVehicleRaw = data;
       _vehicle = _vehicleFromApiData(data);
+      _logApi(
+        'vehicle.hydrate',
+        'loaded vehicle name=${_vehicle?.name} plate=${_vehicle?.licensePlate}',
+      );
       notifyListeners();
-    } catch (_) {
+    } catch (e) {
+      _logApi('vehicle.hydrate', 'error: $e');
       // Ignore hydration failures; screen stays editable.
     }
   }
@@ -1203,6 +1219,7 @@ class AppController extends ChangeNotifier {
         'start': '0',
         'txt': query.trim(),
       };
+      _logApi('vehicle.search_link', 'payload=$body');
       final Map<String, dynamic> payload = await _authorizedPostForm(
         uri: uri,
         body: body,
@@ -1235,8 +1252,10 @@ class AppController extends ChangeNotifier {
           }
         }
       }
+      _logApi('vehicle.search_link', 'result_count=${values.length}');
       return values;
-    } catch (_) {
+    } catch (e) {
+      _logApi('vehicle.search_link', 'error: $e');
       return <String>[];
     }
   }
@@ -1263,6 +1282,7 @@ class AppController extends ChangeNotifier {
       if (filters != null && filters.isNotEmpty) {
         body['filters'] = jsonEncode(filters);
       }
+      _logApi('generic.search_link', 'payload=$body');
       final Map<String, dynamic> payload = await _authorizedPostForm(
         uri: uri,
         body: body,
@@ -1294,8 +1314,13 @@ class AppController extends ChangeNotifier {
           }
         }
       }
+      _logApi(
+        'generic.search_link',
+        'doctype=$doctype result_count=${values.length}',
+      );
       return values;
-    } catch (_) {
+    } catch (e) {
+      _logApi('generic.search_link', 'error: $e');
       return <String>[];
     }
   }
@@ -1337,10 +1362,16 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> hydrateBankFromBackend({bool forceRefresh = false}) async {
+    _logApi(
+      'bank.hydrate',
+      'start forceRefresh=$forceRefresh hasBank=${_bank != null}',
+    );
     if (!forceRefresh && _bank != null) {
+      _logApi('bank.hydrate', 'skip: existing bank in memory');
       return;
     }
     if (_sessionToken == null || _sessionToken!.isEmpty) {
+      _logApi('bank.hydrate', 'skip: no session token');
       return;
     }
     try {
@@ -1352,9 +1383,11 @@ class AppController extends ChangeNotifier {
 
       Map<String, dynamic>? data;
       if (bankDocName != null) {
+        _logApi('bank.hydrate', 'fetch by bank_doc_name=$bankDocName');
         data = await _fetchResourceDoc('Bank Account', bankDocName);
       }
       if (data == null && accountName != null) {
+        _logApi('bank.hydrate', 'find by account_name=$accountName');
         final String? name = await _findResourceName(
           doctype: 'Bank Account',
           filters: <List<String>>[
@@ -1367,13 +1400,19 @@ class AppController extends ChangeNotifier {
         }
       }
       if (data == null) {
+        _logApi('bank.hydrate', 'no bank account found');
         return;
       }
 
       _submittedBankRaw = data;
       _bank = _bankFromApiData(data);
+      _logApi(
+        'bank.hydrate',
+        'loaded bank account=${_submittedBankRaw?['name']} holder=${_bank?.accountHolder}',
+      );
       notifyListeners();
-    } catch (_) {
+    } catch (e) {
+      _logApi('bank.hydrate', 'error: $e');
       // Ignore hydration failures; screen stays editable.
     }
   }
@@ -1512,6 +1551,7 @@ class AppController extends ChangeNotifier {
     if (doorsInt != null) {
       body['doors'] = doorsInt;
     }
+    _logApi('vehicle.submit', 'payload=$body');
 
     try {
       final Uri baseUri = Uri.parse(
@@ -1550,12 +1590,17 @@ class AppController extends ChangeNotifier {
         licensePlate: plate,
       );
       notifyListeners();
+      _logApi(
+        'vehicle.submit',
+        'success wasUpdate=$wasUpdate vehicleName=$finalName',
+      );
       return VehicleSubmitResult(
         vehicleName: finalName,
         vehicleData: finalData,
         wasUpdate: wasUpdate,
       );
     } catch (e) {
+      _logApi('vehicle.submit', 'error: $e');
       return VehicleSubmitResult(
         error: e.toString().replaceFirst('Exception: ', ''),
       );
@@ -1671,6 +1716,7 @@ class AppController extends ChangeNotifier {
     if (normalizedLastIntegrationDate != null) {
       body['last_integration_date'] = normalizedLastIntegrationDate;
     }
+    _logApi('bank.submit', 'payload=$body');
 
     try {
       Map<String, dynamic>? responsePayload;
@@ -1722,8 +1768,13 @@ class AppController extends ChangeNotifier {
         accountName: normalizedAccountName,
       );
       notifyListeners();
+      _logApi(
+        'bank.submit',
+        'success bankName=$bankName accountName=$normalizedAccountName',
+      );
       return null;
     } catch (e) {
+      _logApi('bank.submit', 'error: $e');
       return e.toString().replaceFirst('Exception: ', '');
     }
   }
@@ -2111,6 +2162,13 @@ class AppController extends ChangeNotifier {
     print(line);
   }
 
+  String _truncateForLog(String raw, {int max = 1200}) {
+    if (raw.length <= max) {
+      return raw;
+    }
+    return '${raw.substring(0, max)}...<truncated>';
+  }
+
   void _updateLiveCoordinates() {
     final double baseLat = 28.6139;
     final double baseLng = 77.2090;
@@ -2290,6 +2348,10 @@ class AppController extends ChangeNotifier {
       final http.Response response = await http
           .get(uri, headers: headers)
           .timeout(_networkTimeout);
+      _logApi(
+        'http',
+        'GET $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
+      );
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;
@@ -2317,11 +2379,16 @@ class AppController extends ChangeNotifier {
     );
 
     String? lastError;
+    final String encodedBody = jsonEncode(body);
     for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'PUT $uri');
+      _logApi('http', 'PUT $uri body=${_truncateForLog(encodedBody)}');
       final http.Response response = await http
-          .put(uri, headers: headers, body: jsonEncode(body))
+          .put(uri, headers: headers, body: encodedBody)
           .timeout(_networkTimeout);
+      _logApi(
+        'http',
+        'PUT $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
+      );
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;
@@ -2347,11 +2414,16 @@ class AppController extends ChangeNotifier {
     );
 
     String? lastError;
+    final String encodedBody = jsonEncode(body);
     for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'POST $uri');
+      _logApi('http', 'POST $uri body=${_truncateForLog(encodedBody)}');
       final http.Response response = await http
-          .post(uri, headers: headers, body: jsonEncode(body))
+          .post(uri, headers: headers, body: encodedBody)
           .timeout(_networkTimeout);
+      _logApi(
+        'http',
+        'POST $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
+      );
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;
@@ -2375,10 +2447,14 @@ class AppController extends ChangeNotifier {
     final List<Map<String, String>> authHeaders = _authorizationHeaders();
     String? lastError;
     for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'POST $uri');
+      _logApi('http', 'POST $uri form=$body');
       final http.Response response = await http
           .post(uri, headers: headers, body: body)
           .timeout(_networkTimeout);
+      _logApi(
+        'http',
+        'POST $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
+      );
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;

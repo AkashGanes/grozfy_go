@@ -67,6 +67,9 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
 
   Future<void> _bootstrapForm() async {
     final app = AppScope.of(context);
+    final dynamic args = ModalRoute.of(context)?.settings.arguments;
+    final bool forceEdit =
+        args is Map<String, dynamic> && args['force_edit'] == true;
     if (app.loggedProfileDetails?.driver == null) {
       await app.fetchLoggedInEmployeeDriverProfile();
     }
@@ -85,9 +88,11 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     }
 
     final Map<String, dynamic>? submittedVehicleData = app.submittedVehicleRaw;
-    if (submittedVehicleData != null && submittedVehicleData.isNotEmpty) {
+    if (!forceEdit &&
+        submittedVehicleData != null &&
+        submittedVehicleData.isNotEmpty) {
       _initialized = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.microtask(() {
         if (!mounted) {
           return;
         }

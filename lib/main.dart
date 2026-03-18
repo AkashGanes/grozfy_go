@@ -9,6 +9,7 @@ import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/kyc/bank_setup_screen.dart';
+import 'features/kyc/bank_submitted_details_screen.dart';
 import 'features/kyc/kyc_documents_screen.dart';
 import 'features/kyc/vehicle_details_screen.dart';
 import 'features/kyc/vehicle_submitted_details_screen.dart';
@@ -68,7 +69,25 @@ class DeliveryPartnerApp extends ConsumerWidget {
                 builder: (_) => const KycDocumentsScreen(),
               );
             case AppRoutes.vehicleDetails:
+              final dynamic vehicleArgs = settings.arguments;
+              final bool forceEdit =
+                  vehicleArgs is Map<String, dynamic> &&
+                  vehicleArgs['force_edit'] == true;
+              final Map<String, dynamic>? submittedVehicle =
+                  controller.submittedVehicleRaw;
+              if (!forceEdit &&
+                  submittedVehicle != null &&
+                  submittedVehicle.isNotEmpty) {
+                return MaterialPageRoute<void>(
+                  settings: const RouteSettings(
+                    name: AppRoutes.vehicleSubmittedDetails,
+                  ),
+                  builder: (_) =>
+                      VehicleSubmittedDetailsScreen(vehicleData: submittedVehicle),
+                );
+              }
               return MaterialPageRoute<void>(
+                settings: settings,
                 builder: (_) => const VehicleDetailsScreen(),
               );
             case AppRoutes.vehicleSubmittedDetails:
@@ -81,8 +100,36 @@ class DeliveryPartnerApp extends ConsumerWidget {
                     VehicleSubmittedDetailsScreen(vehicleData: data),
               );
             case AppRoutes.bankSetup:
+              final dynamic bankArgs = settings.arguments;
+              final bool forceEdit =
+                  bankArgs is Map<String, dynamic> &&
+                  bankArgs['force_edit'] == true;
+              final Map<String, dynamic>? submittedBank =
+                  controller.submittedBankRaw;
+              if (!forceEdit &&
+                  submittedBank != null &&
+                  submittedBank.isNotEmpty) {
+                return MaterialPageRoute<void>(
+                  settings: const RouteSettings(
+                    name: AppRoutes.bankSubmittedDetails,
+                  ),
+                  builder: (_) =>
+                      BankSubmittedDetailsScreen(bankData: submittedBank),
+                );
+              }
               return MaterialPageRoute<void>(
+                settings: settings,
                 builder: (_) => const BankSetupScreen(),
+              );
+            case AppRoutes.bankSubmittedDetails:
+              final dynamic bankArgs = settings.arguments;
+              final Map<String, dynamic> bankData =
+                  bankArgs is Map<String, dynamic>
+                  ? bankArgs
+                  : (controller.submittedBankRaw ?? <String, dynamic>{});
+              return MaterialPageRoute<void>(
+                settings: settings,
+                builder: (_) => BankSubmittedDetailsScreen(bankData: bankData),
               );
             case AppRoutes.permission:
               return MaterialPageRoute<void>(

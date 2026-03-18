@@ -196,10 +196,13 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final dynamic args = ModalRoute.of(context)?.settings.arguments;
+    final bool forceEdit =
+        args is Map<String, dynamic> && args['force_edit'] == true;
     final app = AppScope.of(context);
     final Map<String, dynamic>? bankData = app.submittedBankRaw;
     final bool showSubmittedDetails =
-        !_editMode && bankData != null && bankData.isNotEmpty;
+        !_editMode && !forceEdit && bankData != null && bankData.isNotEmpty;
     if (showSubmittedDetails) {
       final Map<String, String> displayData = _buildDisplayData(bankData);
       final String title =

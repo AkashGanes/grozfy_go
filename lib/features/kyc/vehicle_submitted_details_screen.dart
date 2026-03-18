@@ -125,7 +125,12 @@ class VehicleSubmittedDetailsScreen extends StatelessWidget {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).maybePop(),
+                        onPressed: () {
+                          Navigator.of(context).pushReplacementNamed(
+                            AppRoutes.vehicleDetails,
+                            arguments: <String, dynamic>{'force_edit': true},
+                          );
+                        },
                         child: const Text('Back to Edit'),
                       ),
                     ),
