@@ -1204,21 +1204,26 @@ class AppController extends ChangeNotifier {
     String referenceDoctype = 'Bank Account',
     String query = '',
     int pageLength = 10,
+    Map<String, dynamic>? filters,
   }) async {
     try {
       final Uri uri = Uri.parse(
         '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.search.search_link',
       );
+      final Map<String, String> body = <String, String>{
+        'doctype': doctype,
+        'ignore_user_permissions': '0',
+        'reference_doctype': referenceDoctype,
+        'page_length': '$pageLength',
+        'start': '0',
+        'txt': query.trim(),
+      };
+      if (filters != null && filters.isNotEmpty) {
+        body['filters'] = jsonEncode(filters);
+      }
       final Map<String, dynamic> payload = await _authorizedPostForm(
         uri: uri,
-        body: <String, String>{
-          'doctype': doctype,
-          'ignore_user_permissions': '0',
-          'reference_doctype': referenceDoctype,
-          'page_length': '$pageLength',
-          'start': '0',
-          'txt': query.trim(),
-        },
+        body: body,
       );
       final dynamic responseRows =
           payload['message'] ?? payload['results'] ?? payload['data'];
@@ -1250,6 +1255,42 @@ class AppController extends ChangeNotifier {
       return values;
     } catch (_) {
       return <String>[];
+    }
+  }
+
+  Future<Map<String, String>> fetchBankAccountLinkDoctypes() async {
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/DocType/Bank%20Account',
+      );
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+      final dynamic data = payload['data'];
+      if (data is! Map<String, dynamic>) {
+        return <String, String>{};
+      }
+      final dynamic fields = data['fields'];
+      if (fields is! List) {
+        return <String, String>{};
+      }
+
+      final Map<String, String> doctypesByField = <String, String>{};
+      for (final dynamic row in fields) {
+        if (row is! Map<String, dynamic>) {
+          continue;
+        }
+        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
+        final String? fieldtype = _nullIfBlank(row['fieldtype']?.toString());
+        final String? options = _nullIfBlank(row['options']?.toString());
+        if (fieldname == null || fieldtype == null || options == null) {
+          continue;
+        }
+        if (fieldtype == 'Link' || fieldtype == 'Dynamic Link') {
+          doctypesByField[fieldname] = options;
+        }
+      }
+      return doctypesByField;
+    } catch (_) {
+      return <String, String>{};
     }
   }
 
@@ -1458,6 +1499,54 @@ class AppController extends ChangeNotifier {
     if (normalizedBank.isEmpty) {
       return 'Bank is required';
     }
+    if (disabled && isDefault) {
+      return 'Disabled account cannot be marked as default';
+    }
+
+    final String? normalizedAccount = _nullIfBlank(account);
+    final String? normalizedAccountType = _nullIfBlank(accountType);
+    final String? normalizedAccountSubtype = _nullIfBlank(accountSubtype);
+    final String? normalizedCompany = _nullIfBlank(company);
+    final String? normalizedPartyType = _nullIfBlank(partyType);
+    final String? normalizedParty = _nullIfBlank(party);
+    final String? normalizedBranchCode = _nullIfBlank(branchCode);
+    final String? normalizedBankAccountNo = _nullIfBlank(bankAccountNo);
+    final String? normalizedLastIntegrationDate = _nullIfBlank(
+      lastIntegrationDate,
+    );
+
+    if (isCompanyAccount && normalizedCompany == null) {
+      return 'Company is required when company account is enabled';
+    }
+    if ((normalizedPartyType == null) != (normalizedParty == null)) {
+      return 'Select both Party Type and Party';
+    }
+    if (normalizedLastIntegrationDate != null &&
+        DateTime.tryParse(normalizedLastIntegrationDate) == null) {
+      return 'Last integration date must be in YYYY-MM-DD format';
+    }
+    if (normalizedBranchCode == null) {
+      return 'Branch code is required';
+    }
+    if (!RegExp(
+      r'^[A-Z0-9-]{2,20}$',
+    ).hasMatch(normalizedBranchCode.toUpperCase())) {
+      return 'Branch code should be 2-20 characters (A-Z, 0-9, -)';
+    }
+    if (normalizedBankAccountNo != null &&
+        !RegExp(
+          r'^[A-Z0-9-]{6,34}$',
+        ).hasMatch(normalizedBankAccountNo.toUpperCase())) {
+      return 'Bank account no should be 6-34 characters (A-Z, 0-9, -)';
+    }
+
+    String? normalizedIban = _nullIfBlank(iban);
+    if (normalizedIban != null) {
+      normalizedIban = normalizedIban.replaceAll(' ', '').toUpperCase();
+      if (!RegExp(r'^[A-Z0-9]{8,34}$').hasMatch(normalizedIban)) {
+        return 'IBAN format is invalid';
+      }
+    }
 
     final Map<String, dynamic> body = <String, dynamic>{
       'account_name': normalizedAccountName,
@@ -1466,35 +1555,33 @@ class AppController extends ChangeNotifier {
       'is_default': isDefault ? 1 : 0,
       'is_company_account': isCompanyAccount ? 1 : 0,
     };
-    if (_nullIfBlank(account) != null) {
-      body['account'] = account!.trim();
+    if (normalizedAccount != null) {
+      body['account'] = normalizedAccount;
     }
-    if (_nullIfBlank(accountType) != null) {
-      body['account_type'] = accountType!.trim();
+    if (normalizedAccountType != null) {
+      body['account_type'] = normalizedAccountType;
     }
-    if (_nullIfBlank(accountSubtype) != null) {
-      body['account_subtype'] = accountSubtype!.trim();
+    if (normalizedAccountSubtype != null) {
+      body['account_subtype'] = normalizedAccountSubtype;
     }
-    if (_nullIfBlank(company) != null) {
-      body['company'] = company!.trim();
+    if (normalizedCompany != null) {
+      body['company'] = normalizedCompany;
     }
-    if (_nullIfBlank(partyType) != null) {
-      body['party_type'] = partyType!.trim();
+    if (normalizedPartyType != null) {
+      body['party_type'] = normalizedPartyType;
     }
-    if (_nullIfBlank(party) != null) {
-      body['party'] = party!.trim();
+    if (normalizedParty != null) {
+      body['party'] = normalizedParty;
     }
-    if (_nullIfBlank(iban) != null) {
-      body['iban'] = iban!.trim();
+    if (normalizedIban != null) {
+      body['iban'] = normalizedIban;
     }
-    if (_nullIfBlank(branchCode) != null) {
-      body['branch_code'] = branchCode!.trim();
+    body['branch_code'] = normalizedBranchCode.toUpperCase();
+    if (normalizedBankAccountNo != null) {
+      body['bank_account_no'] = normalizedBankAccountNo.toUpperCase();
     }
-    if (_nullIfBlank(bankAccountNo) != null) {
-      body['bank_account_no'] = bankAccountNo!.trim();
-    }
-    if (_nullIfBlank(lastIntegrationDate) != null) {
-      body['last_integration_date'] = lastIntegrationDate!.trim();
+    if (normalizedLastIntegrationDate != null) {
+      body['last_integration_date'] = normalizedLastIntegrationDate;
     }
 
     try {
@@ -1518,10 +1605,10 @@ class AppController extends ChangeNotifier {
       }
 
       _bank = BankDetails(
-        accountNumber: _nullIfBlank(bankAccountNo) ?? normalizedAccountName,
-        ifsc: _nullIfBlank(branchCode) ?? '',
+        accountNumber: normalizedBankAccountNo ?? normalizedAccountName,
+        ifsc: normalizedBranchCode.toUpperCase(),
         accountHolder: normalizedAccountName,
-        upiId: _nullIfBlank(iban),
+        upiId: normalizedIban,
         verified: true,
       );
       notifyListeners();

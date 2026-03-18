@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
@@ -18,14 +21,8 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   final TextEditingController _bankAccountNoCtrl = TextEditingController();
   final TextEditingController _lastIntegrationDateCtrl =
       TextEditingController();
-
-  List<String> _bankOptions = <String>[];
-  List<String> _companyAccountOptions = <String>[];
-  List<String> _accountTypeOptions = <String>[];
-  List<String> _accountSubtypeOptions = <String>[];
-  List<String> _companyOptions = <String>[];
-  List<String> _partyTypeOptions = <String>[];
-  List<String> _partyOptions = <String>[];
+  final TextEditingController _partyCtrl = TextEditingController();
+  Map<String, String> _linkDoctypeByField = <String, String>{};
 
   String? _selectedBank;
   String? _selectedCompanyAccount;
@@ -40,6 +37,13 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   bool _isCompanyAccount = false;
   bool _busy = false;
   bool _ready = false;
+
+  bool get _canSubmit =>
+      _ready &&
+      !_busy &&
+      _accountNameCtrl.text.trim().isNotEmpty &&
+      _branchCodeCtrl.text.trim().isNotEmpty &&
+      (_selectedBank?.trim().isNotEmpty == true);
 
   @override
   void initState() {
@@ -56,66 +60,63 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     _branchCodeCtrl.dispose();
     _bankAccountNoCtrl.dispose();
     _lastIntegrationDateCtrl.dispose();
+    _partyCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _loadOptions() async {
     final app = AppScope.of(context);
-
-    final List<String> banks = await app.fetchLinkOptions(doctype: 'Bank');
-    final List<String> accounts = await app.fetchLinkOptions(
-      doctype: 'Account',
-    );
-    final List<String> accountTypes = await app.fetchLinkOptions(
-      doctype: 'Bank Account Type',
-    );
-    final List<String> accountSubtypes = await app.fetchLinkOptions(
-      doctype: 'Bank Account Subtype',
-    );
-    final List<String> companies = await app.fetchLinkOptions(
-      doctype: 'Company',
-    );
-    final List<String> partyTypes = await app.fetchLinkOptions(
-      doctype: 'DocType',
-    );
-
+    final Map<String, String> linkDoctypeByField = await app
+        .fetchBankAccountLinkDoctypes();
     if (!mounted) {
       return;
     }
 
     setState(() {
-      _bankOptions = banks;
-      _companyAccountOptions = accounts;
-      _accountTypeOptions = accountTypes;
-      _accountSubtypeOptions = accountSubtypes;
-      _companyOptions = companies;
-      _partyTypeOptions = partyTypes;
-      _selectedBank = banks.isNotEmpty ? banks.first : null;
+      _linkDoctypeByField = linkDoctypeByField;
       _ready = true;
     });
   }
 
-  Future<void> _loadPartyOptions(String? partyType) async {
-    if (partyType == null || partyType.trim().isEmpty) {
-      setState(() {
-        _partyOptions = <String>[];
-        _selectedParty = null;
-      });
-      return;
+  String? _doctypeForField(String fieldname) {
+    final String? configured = _linkDoctypeByField[fieldname];
+    if (fieldname == 'account') {
+      return 'Account';
     }
+    if (configured == null || configured.trim().isEmpty) {
+      return null;
+    }
+    return configured.trim();
+  }
 
+  Future<String?> _openLinkPicker({
+    required String title,
+    required String doctype,
+    String? initialQuery,
+    Map<String, dynamic>? filters,
+    int pageLength = 10,
+  }) async {
     final app = AppScope.of(context);
-    final List<String> values = await app.fetchLinkOptions(
-      doctype: partyType,
-      referenceDoctype: 'Bank Account',
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext sheetContext) => _LinkSearchBottomSheet(
+        title: title,
+        initialQuery: initialQuery,
+        onSearch: (String query) {
+          return app.fetchLinkOptions(
+            doctype: doctype,
+            query: query,
+            pageLength: pageLength,
+            filters: filters,
+          );
+        },
+      ),
     );
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _partyOptions = values;
-      _selectedParty = values.isNotEmpty ? values.first : null;
-    });
   }
 
   Future<void> _pickDate() async {
@@ -183,85 +184,101 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
           children: [
             TextField(
               controller: _accountNameCtrl,
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Account Name *',
                 prefixIcon: Icon(Icons.person_outline_rounded),
               ),
             ),
             const SizedBox(height: 12),
-            _dropdown(
+            _linkField(
               label: 'Bank *',
               icon: Icons.account_balance_outlined,
               value: _selectedBank,
-              options: _bankOptions,
-              onChanged: (value) {
+              doctype: _doctypeForField('bank'),
+              onChanged: (String value) {
                 setState(() => _selectedBank = value);
               },
             ),
             const SizedBox(height: 12),
-            _dropdown(
+            _linkField(
               label: 'Company Account',
               icon: Icons.business_center_outlined,
               value: _selectedCompanyAccount,
-              options: _companyAccountOptions,
-              onChanged: (value) {
+              doctype: _doctypeForField('account'),
+              filters: const <String, dynamic>{
+                'account_type': 'Bank',
+                'company': 'LyncSpace',
+                'is_group': 0,
+              },
+              pageLength: 10,
+              onChanged: (String value) {
                 setState(() => _selectedCompanyAccount = value);
               },
             ),
             const SizedBox(height: 12),
-            _dropdown(
+            _linkField(
               label: 'Account Type',
               icon: Icons.category_outlined,
               value: _selectedAccountType,
-              options: _accountTypeOptions,
-              onChanged: (value) {
+              doctype: _doctypeForField('account_type'),
+              onChanged: (String value) {
                 setState(() => _selectedAccountType = value);
               },
             ),
             const SizedBox(height: 12),
-            _dropdown(
+            _linkField(
               label: 'Account Subtype',
               icon: Icons.tune_outlined,
               value: _selectedAccountSubtype,
-              options: _accountSubtypeOptions,
-              onChanged: (value) {
+              doctype: _doctypeForField('account_subtype'),
+              onChanged: (String value) {
                 setState(() => _selectedAccountSubtype = value);
               },
             ),
             const SizedBox(height: 12),
-            _dropdown(
+            _linkField(
               label: 'Company',
               icon: Icons.corporate_fare_outlined,
               value: _selectedCompany,
-              options: _companyOptions,
-              onChanged: (value) {
+              doctype: _doctypeForField('company'),
+              onChanged: (String value) {
                 setState(() => _selectedCompany = value);
               },
             ),
             const SizedBox(height: 12),
-            _dropdown(
+            _linkField(
               label: 'Party Type',
               icon: Icons.apartment_outlined,
               value: _selectedPartyType,
-              options: _partyTypeOptions,
-              onChanged: (value) {
-                setState(() => _selectedPartyType = value);
-                _loadPartyOptions(value);
-              },
-            ),
-            const SizedBox(height: 12),
-            _dropdown(
-              label: 'Party',
-              icon: Icons.people_outline,
-              value: _selectedParty,
-              options: _partyOptions,
-              onChanged: (value) {
-                setState(() => _selectedParty = value);
+              doctype: _doctypeForField('party_type'),
+              onChanged: (String value) {
+                setState(() {
+                  _selectedPartyType = value;
+                  _selectedParty = null;
+                  _partyCtrl.clear();
+                });
               },
             ),
             const SizedBox(height: 12),
             TextField(
+              controller: _partyCtrl,
+              onChanged: (String value) {
+                setState(() => _selectedParty = value.trim().isEmpty ? null : value);
+              },
+              decoration: const InputDecoration(
+                labelText: 'Party',
+                prefixIcon: Icon(Icons.people_outline),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
               controller: _ibanCtrl,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 ]')),
+                LengthLimitingTextInputFormatter(34),
+              ],
               decoration: const InputDecoration(
                 labelText: 'IBAN',
                 prefixIcon: Icon(Icons.credit_card_outlined),
@@ -270,14 +287,25 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
             const SizedBox(height: 12),
             TextField(
               controller: _branchCodeCtrl,
+              onChanged: (_) => setState(() {}),
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
+                LengthLimitingTextInputFormatter(20),
+              ],
               decoration: const InputDecoration(
-                labelText: 'Branch Code',
+                labelText: 'Branch Code *',
                 prefixIcon: Icon(Icons.qr_code_rounded),
               ),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _bankAccountNoCtrl,
+              textCapitalization: TextCapitalization.characters,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
+                LengthLimitingTextInputFormatter(34),
+              ],
               decoration: const InputDecoration(
                 labelText: 'Bank Account No',
                 prefixIcon: Icon(Icons.account_balance_wallet_outlined),
@@ -314,7 +342,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: (_busy || !_ready) ? null : _submit,
+              onPressed: _canSubmit ? _submit : null,
               child: const Text('Save Bank Details'),
             ),
           ],
@@ -323,22 +351,166 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     );
   }
 
-  Widget _dropdown({
+  Widget _linkField({
     required String label,
     required IconData icon,
     required String? value,
-    required List<String> options,
-    required ValueChanged<String?> onChanged,
+    required String? doctype,
+    required ValueChanged<String> onChanged,
+    bool enabled = true,
+    Map<String, dynamic>? filters,
+    int pageLength = 10,
   }) {
-    return DropdownButtonFormField<String>(
-      initialValue: options.contains(value) ? value : null,
-      items: options
-          .map(
-            (item) => DropdownMenuItem<String>(value: item, child: Text(item)),
-          )
-          .toList(),
-      onChanged: options.isEmpty ? null : onChanged,
-      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
+    final bool canOpen = enabled && doctype != null && doctype.trim().isNotEmpty;
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: !canOpen
+          ? null
+          : () async {
+              final String? selected = await _openLinkPicker(
+                title: label,
+                doctype: doctype.trim(),
+                initialQuery: value,
+                filters: filters,
+                pageLength: pageLength,
+              );
+              if (selected == null || !mounted) {
+                return;
+              }
+              onChanged(selected);
+            },
+      child: InputDecorator(
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon),
+          suffixIcon: const Icon(Icons.arrow_drop_down_rounded),
+        ),
+        child: Text(
+          value?.trim().isNotEmpty == true
+              ? value!
+              : canOpen
+              ? 'Tap to search and select'
+              : 'Field unavailable',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: value?.trim().isNotEmpty == true
+                ? null
+                : Theme.of(context).hintColor,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LinkSearchBottomSheet extends StatefulWidget {
+  const _LinkSearchBottomSheet({
+    required this.title,
+    required this.onSearch,
+    this.initialQuery,
+  });
+
+  final String title;
+  final String? initialQuery;
+  final Future<List<String>> Function(String query) onSearch;
+
+  @override
+  State<_LinkSearchBottomSheet> createState() => _LinkSearchBottomSheetState();
+}
+
+class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
+  late final TextEditingController _queryCtrl;
+  Timer? _debounce;
+  List<String> _results = <String>[];
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _queryCtrl = TextEditingController(text: widget.initialQuery ?? '');
+    _load(_queryCtrl.text.trim(), showLoading: false);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _queryCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load(String query, {bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() => _loading = true);
+    }
+    final List<String> values = await widget.onSearch(query);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _results = values;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 8,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+        ),
+        child: FractionallySizedBox(
+          heightFactor: 0.82,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _queryCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Search',
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (String value) {
+                  _debounce?.cancel();
+                  _debounce = Timer(const Duration(milliseconds: 300), () {
+                    _load(value.trim());
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _results.isEmpty
+                    ? const Center(child: Text('No results found'))
+                    : ListView.builder(
+                        itemCount: _results.length,
+                        itemBuilder: (BuildContext context, int index) {
+                          final String item = _results[index];
+                          return ListTile(
+                            dense: true,
+                            title: Text(
+                              item,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onTap: () => Navigator.of(context).pop(item),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
