@@ -10,8 +10,6 @@ enum OrderProgressStatus {
   delivered,
 }
 
-enum AuthMode { otp, password }
-
 class PartnerProfile {
   const PartnerProfile({
     required this.fullName,

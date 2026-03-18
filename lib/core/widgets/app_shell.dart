@@ -11,6 +11,7 @@ class AppShell extends StatelessWidget {
     this.actions,
     this.scrollable = true,
     this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 20),
+    this.loading = false,
   });
 
   final String title;
@@ -19,6 +20,7 @@ class AppShell extends StatelessWidget {
   final List<Widget>? actions;
   final bool scrollable;
   final EdgeInsets padding;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +84,30 @@ class AppShell extends StatelessWidget {
                 ],
               ),
             ),
+            if (loading)
+              Positioned.fill(
+                child: AbsorbPointer(
+                  child: ColoredBox(
+                    color: Colors.black26,
+                    child: Center(
+                      child: FrostCard(
+                        padding: const EdgeInsets.all(28),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const CircularProgressIndicator(),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Please wait...',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

@@ -9,12 +9,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_models.dart';
 
 class AppController extends ChangeNotifier {
-  static const String _storeId = 'GROZFY';
+  static const String _storeId = 'STORE-25-0259';
   static final Uri _sendOtpUri = Uri.parse(
-    'https://grozfy.com/api/method/frappe.core.api.billing_auth_v4.send_whatsapp_otp',
+    'http://209.182.232.35:8004/api/method/frappe.core.api.billing_auth_v4.send_whatsapp_otp',
   );
   static final Uri _verifyOtpUri = Uri.parse(
-    'https://grozfy.com/api/method/frappe.core.api.billing_auth_v4.verify_whatsapp_otp',
+    'http://209.182.232.35:8004/api/method/frappe.core.api.billing_auth_v4.verify_whatsapp_otp',
+  );
+  static final Uri _registerPartnerUri = Uri.parse(
+    'http://209.182.232.35:8004/api/method/frappe.core.api.billing_auth_v4.register_delivery_partner',
+  );
+  static final Uri _submitDriverKycUri = Uri.parse(
+    'http://209.182.232.35:8004/api/method/frappe.core.api.billing_auth_v4.submit_driver_kyc',
+  );
+  static final Uri _uploadFileUri = Uri.parse(
+    'http://209.182.232.35:8004/api/method/frappe.core.api.billing_auth_v4.upload_kyc_file',
   );
   static const String _prefLanguageCode = 'language_code';
   static const String _prefAccessToken = 'access_token';
@@ -30,6 +39,8 @@ class AppController extends ChangeNotifier {
   static const String _prefCurrentLocationLabel = 'current_location_label';
   static const String _prefSelectedStore = 'selected_store_name';
   static const String _prefProfileCompleted = 'profile_completed';
+  static const String _prefDriverName = 'driver_name';
+  static const String _prefKycCompleted = 'kyc_completed';
 
   final Random _random = Random();
   final Map<String, VerificationStatus> _kycStatus = {
@@ -60,10 +71,15 @@ class AppController extends ChangeNotifier {
   bool _isLoggedIn = false;
   bool _rememberMe = false;
   bool _profileCompleted = false;
+  bool _kycCompleted = false;
   String? _sessionToken;
   String? _configVersion;
+  String? _driverName;
 
   DateTime? _lastOtpRequestAt;
+
+  String? _registrationToken;
+  String? _pendingRegistrationMobile;
 
   PartnerProfile? _profile;
   VehicleDetails? _vehicle;
@@ -102,6 +118,7 @@ class AppController extends ChangeNotifier {
   String? get sessionToken => _sessionToken;
   bool get rememberMe => _rememberMe;
   bool get profileCompleted => _profileCompleted;
+  bool get kycCompleted => _kycCompleted;
   String get languageCode => _languageCode;
   String? get configVersion => _configVersion;
   PartnerProfile? get profile => _profile;
@@ -127,16 +144,15 @@ class AppController extends ChangeNotifier {
   PerformanceMetrics get performance => _performance;
   List<AppNotice> get notices => List<AppNotice>.unmodifiable(_notices);
 
+  String? get driverName => _driverName;
+  String? get registrationToken => _registrationToken;
+  String? get pendingRegistrationMobile => _pendingRegistrationMobile;
+
   bool get allKycApproved => _kycStatus.values.every(
     (status) => status == VerificationStatus.approved,
   );
 
-  bool get isKycComplete =>
-      _kycStatus['idProof'] != VerificationStatus.notSubmitted &&
-      _kycStatus['drivingLicense'] != VerificationStatus.notSubmitted &&
-      _kycStatus['selfie'] != VerificationStatus.notSubmitted &&
-      _vehicle != null &&
-      _bank != null;
+  bool get isKycComplete => _kycCompleted;
 
   bool get canGoOnline =>
       allKycApproved &&
@@ -154,12 +170,14 @@ class AppController extends ChangeNotifier {
     _sessionToken = prefs.getString(_prefAccessToken);
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
+    _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
     _currentLongitude = prefs.getDouble(_prefCurrentLng);
     _currentLocationLabel = _nullIfBlank(
       prefs.getString(_prefCurrentLocationLabel),
     );
     _selectedStoreName = _nullIfBlank(prefs.getString(_prefSelectedStore));
+    _driverName = _nullIfBlank(prefs.getString(_prefDriverName));
     _isLoggedIn = _sessionToken != null;
     if (_isLoggedIn) {
       final String fullName =
@@ -336,21 +354,6 @@ class AppController extends ChangeNotifier {
   bool verifyOtp(String mobile, String otp) =>
       otp.isNotEmpty && mobile.isNotEmpty;
 
-  Future<String?> loginWithPassword({
-    required String mobile,
-    required String password,
-  }) async {
-    final String? mobileValidation = validateMobile(mobile);
-    if (mobileValidation != null) {
-      return mobileValidation;
-    }
-    if (password.trim().length < 6) {
-      return 'Password must be at least 6 characters';
-    }
-
-    return 'Password login is not configured for this API. Use OTP login.';
-  }
-
   Future<String?> loginWithOtp({
     required String mobile,
     required String otp,
@@ -392,22 +395,34 @@ class AppController extends ChangeNotifier {
             'OTP verification failed (${response.statusCode})';
       }
 
-      final String? possibleError = _extractServerError(payload);
-      if (possibleError != null) {
-        return possibleError;
-      }
-
       final Map<String, dynamic> responseData = _extractMethodData(payload);
       final String status = (responseData['status']?.toString() ?? '')
           .toLowerCase();
-      if (status.isNotEmpty && status != 'success') {
-        return _nullIfBlank(responseData['message']?.toString()) ??
-            'OTP verification failed';
+
+      // Account not found — store registration token and signal the UI
+      if (status == 'not_found') {
+        _registrationToken = responseData['registration_token']?.toString();
+        _pendingRegistrationMobile = mobile.trim();
+        notifyListeners();
+        return 'ACCOUNT_NOT_FOUND';
       }
 
       final String token = responseData['access_token']?.toString() ?? '';
-      if (token.isEmpty) {
-        return 'Access token missing in verify response';
+
+      // If status is success and we have a token, skip _extractServerError
+      // which may pick up harmless _server_messages from Frappe.
+      if (status != 'success' || token.isEmpty) {
+        final String? possibleError = _extractServerError(payload);
+        if (possibleError != null) {
+          return possibleError;
+        }
+        if (status.isNotEmpty && status != 'success') {
+          return _nullIfBlank(responseData['message']?.toString()) ??
+              'OTP verification failed';
+        }
+        if (token.isEmpty) {
+          return 'Access token missing in verify response';
+        }
       }
 
       final String responseMobile =
@@ -420,6 +435,8 @@ class AppController extends ChangeNotifier {
 
       _sessionToken = token;
       _isLoggedIn = true;
+      // Successful OTP login means user exists — profile is always completed.
+      _profileCompleted = true;
       _currentLatitude = null;
       _currentLongitude = null;
       _currentLocationLabel = null;
@@ -438,41 +455,103 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<String?> registerPartner({
+  Future<String?> registerNewPartner({
     required String fullName,
-    required String mobile,
-    required String password,
-    required String otp,
     String? email,
-    String? referralCode,
   }) async {
     if (fullName.trim().isEmpty) {
       return 'Full name is required';
     }
-
-    final String? mobileValidation = validateMobile(mobile);
-    if (mobileValidation != null) {
-      return mobileValidation;
+    if (_pendingRegistrationMobile == null || _registrationToken == null) {
+      return 'Registration session expired. Please verify OTP again.';
     }
 
-    if (password.trim().length < 6) {
-      return 'Password must be at least 6 characters';
-    }
+    try {
+      final Map<String, String> body = <String, String>{
+        'mobile_no': _pendingRegistrationMobile!,
+        'registration_token': _registrationToken!,
+        'full_name': fullName.trim(),
+        'store_id': _storeId,
+      };
+      if (email != null && email.trim().isNotEmpty) {
+        body['email'] = email.trim();
+      }
 
-    final String? verifyError = await loginWithOtp(mobile: mobile, otp: otp);
-    if (verifyError != null) {
-      return verifyError;
-    }
+      _logApi('register_delivery_partner request', body.toString());
+      final http.Response response = await http.post(
+        _registerPartnerUri,
+        headers: const <String, String>{'Accept': 'application/json'},
+        body: body,
+      );
+      _logApi(
+        'register_delivery_partner response',
+        'status=${response.statusCode} body=${response.body}',
+      );
 
-    _profile = _profile?.copyWith(
-      fullName: fullName.trim(),
-      email: email?.trim().isEmpty == true ? null : email?.trim(),
-      referralCode: referralCode?.trim().isEmpty == true
-          ? null
-          : referralCode?.trim(),
-    );
-    notifyListeners();
-    return null;
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return _extractServerError(payload) ??
+            'Registration failed (${response.statusCode})';
+      }
+
+      // Check response data status FIRST — _server_messages may contain
+      // harmless informational messages (e.g. "Username already exists")
+      // that _extractServerError would incorrectly treat as errors.
+      final Map<String, dynamic> responseData = _extractMethodData(payload);
+      final String status = (responseData['status']?.toString() ?? '')
+          .toLowerCase();
+
+      final String token = responseData['access_token']?.toString() ?? '';
+
+      // If status is success and we have a token, proceed regardless of
+      // any _server_messages noise from Frappe.
+      if (status != 'success' || token.isEmpty) {
+        final String? possibleError = _extractServerError(payload);
+        if (possibleError != null) {
+          return possibleError;
+        }
+        if (status.isNotEmpty && status != 'success') {
+          return _nullIfBlank(responseData['message']?.toString()) ??
+              'Registration failed';
+        }
+        if (token.isEmpty) {
+          return 'Access token missing in registration response';
+        }
+      }
+      if (token.isEmpty) {
+        return 'Access token missing in registration response';
+      }
+
+      final String responseMobile =
+          _normalizeMobileForDisplay(responseData['mobile_no']?.toString()) ??
+          _pendingRegistrationMobile!;
+      final String respFullName =
+          _nullIfBlank(responseData['full_name']?.toString()) ??
+          fullName.trim();
+      final String? respEmail = _nullIfBlank(responseData['email']?.toString());
+
+      _sessionToken = token;
+      _isLoggedIn = true;
+      _currentLatitude = null;
+      _currentLongitude = null;
+      _currentLocationLabel = null;
+      _profile = PartnerProfile(
+        fullName: respFullName,
+        mobile: responseMobile,
+        email: respEmail,
+      );
+
+      // Clear registration state
+      _registrationToken = null;
+      _pendingRegistrationMobile = null;
+
+      await _persistSession(responseData);
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _logApi('register_delivery_partner error', e.toString());
+      return 'Unable to connect. Check internet and try again.';
+    }
   }
 
   Future<void> logout() async {
@@ -484,9 +563,11 @@ class AppController extends ChangeNotifier {
     _activeOrder = null;
     _profile = null;
     _profileCompleted = false;
+    _kycCompleted = false;
     _currentLatitude = null;
     _currentLongitude = null;
     _currentLocationLabel = null;
+    _driverName = null;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await Future.wait(<Future<bool>>[
       prefs.remove(_prefAccessToken),
@@ -500,10 +581,156 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefCurrentLng),
       prefs.remove(_prefCurrentLocationLabel),
       prefs.remove(_prefProfileCompleted),
+      prefs.remove(_prefKycCompleted),
+      prefs.remove(_prefDriverName),
       prefs.setBool(_prefRememberMe, false),
     ]);
     _rememberMe = false;
     notifyListeners();
+  }
+
+  /// Upload a file to the Driver record via custom upload_kyc_file API.
+  /// Returns the Frappe file_url on success, error string prefixed with
+  /// 'ERROR:' on failure, or null only on unexpected exceptions.
+  Future<String?> uploadFile({
+    required String filePath,
+    required String fileName,
+    String? doctype,
+    String? docname,
+    String? fieldname,
+  }) async {
+    if (_sessionToken == null) {
+      _logApi('upload_kyc_file', 'SKIP: no session token');
+      return null;
+    }
+    try {
+      _logApi(
+        'upload_kyc_file request',
+        'driver_name=$docname fieldname=$fieldname file=$fileName',
+      );
+      final http.MultipartRequest request = http.MultipartRequest(
+        'POST',
+        _uploadFileUri,
+      );
+      request.headers['Authorization'] = 'Bearer $_sessionToken';
+      request.files.add(
+        await http.MultipartFile.fromPath('file', filePath, filename: fileName),
+      );
+      if (docname != null && docname.isNotEmpty) {
+        request.fields['driver_name'] = docname;
+      }
+      if (fieldname != null && fieldname.isNotEmpty) {
+        request.fields['fieldname'] = fieldname;
+      }
+
+      final http.StreamedResponse streamed = await request.send();
+      final String body = await streamed.stream.bytesToString();
+      _logApi(
+        'upload_kyc_file response',
+        'status=${streamed.statusCode} body=$body',
+      );
+
+      final Map<String, dynamic> payload = _decodeJsonMap(body);
+
+      if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+        final String? serverError = _extractServerError(payload);
+        _logApi(
+          'upload_kyc_file FAIL',
+          serverError ?? 'HTTP ${streamed.statusCode}',
+        );
+        return null;
+      }
+
+      final Map<String, dynamic> data = _extractMethodData(payload);
+      return _nullIfBlank(data['file_url']?.toString());
+    } catch (e) {
+      _logApi('upload_kyc_file error', e.toString());
+      return null;
+    }
+  }
+
+  /// Submit KYC to create or update the Driver record on ERPNext.
+  /// Aadhar fields are required (mandatory on Driver DocType).
+  /// driver_name is optional — backend looks up by session user's mobile.
+  Future<String?> submitDriverKyc({
+    required String aadharNo,
+    required String aadharAttachmentUrl,
+    String? licenseNumber,
+    String? licenseAttachmentUrl,
+    String? issuingDate,
+    String? expiryDate,
+    String? panNo,
+    String? panAttachmentUrl,
+  }) async {
+    if (_sessionToken == null) {
+      return 'Not authenticated';
+    }
+
+    try {
+      final Map<String, String> body = <String, String>{
+        'aadhar_no': aadharNo,
+        'aadhar_attachment': aadharAttachmentUrl,
+      };
+      // Pass driver_name if we have one (update), otherwise backend creates
+      if (_driverName != null && _driverName!.isNotEmpty) {
+        body['driver_name'] = _driverName!;
+      }
+      if (licenseNumber != null) body['license_number'] = licenseNumber;
+      if (licenseAttachmentUrl != null) {
+        body['license_attachment'] = licenseAttachmentUrl;
+      }
+      if (issuingDate != null) body['issuing_date'] = issuingDate;
+      if (expiryDate != null) body['expiry_date'] = expiryDate;
+      if (panNo != null) body['pan_no'] = panNo;
+      if (panAttachmentUrl != null) {
+        body['pan_attachment'] = panAttachmentUrl;
+      }
+
+      _logApi('submit_driver_kyc request', body.toString());
+      final http.Response response = await http.post(
+        _submitDriverKycUri,
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $_sessionToken',
+        },
+        body: body,
+      );
+      _logApi(
+        'submit_driver_kyc response',
+        'status=${response.statusCode} body=${response.body}',
+      );
+
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      final Map<String, dynamic> responseData = _extractMethodData(payload);
+      final String status = (responseData['status']?.toString() ?? '')
+          .toLowerCase();
+
+      if (status == 'success') {
+        // Save driver_name and mark KYC completed
+        final String? newDriverName =
+            _nullIfBlank(responseData['driver_name']?.toString());
+        if (newDriverName != null) {
+          _driverName = newDriverName;
+          final SharedPreferences prefs =
+              await SharedPreferences.getInstance();
+          await prefs.setString(_prefDriverName, newDriverName);
+        }
+        _kycCompleted = true;
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_prefKycCompleted, true);
+        notifyListeners();
+        return null;
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return _extractServerError(payload) ??
+            'KYC submission failed (${response.statusCode})';
+      }
+      return _extractServerError(payload) ?? 'KYC submission failed';
+    } catch (e) {
+      _logApi('submit_driver_kyc error', e.toString());
+      return 'Unable to connect. Check internet and try again.';
+    }
   }
 
   Future<void> uploadKycDocument(String key) async {
@@ -785,9 +1012,23 @@ class AppController extends ChangeNotifier {
     final String? fullName = _nullIfBlank(message['full_name']?.toString());
     final String? mobile = _nullIfBlank(message['mobile_no']?.toString());
     final String? email = _nullIfBlank(message['email']?.toString());
+    final String? driverName = _nullIfBlank(message['driver_name']?.toString());
     final int? expiresIn = int.tryParse(
       message['expires_in']?.toString() ?? '',
     );
+
+    final bool backendProfileCompleted =
+        message['profile_completed']?.toString() == '1';
+    final bool backendKycCompleted =
+        message['kyc_completed']?.toString() == '1';
+
+    if (driverName != null) {
+      _driverName = driverName;
+    }
+    if (backendProfileCompleted) {
+      _profileCompleted = true;
+    }
+    _kycCompleted = backendKycCompleted;
 
     await Future.wait(<Future<bool>>[
       prefs.setString(_prefAccessToken, _sessionToken!),
@@ -802,6 +1043,9 @@ class AppController extends ChangeNotifier {
       if (fullName != null) prefs.setString(_prefFullName, fullName),
       if (mobile != null) prefs.setString(_prefMobile, mobile),
       if (email != null) prefs.setString(_prefEmail, email),
+      if (driverName != null) prefs.setString(_prefDriverName, driverName),
+      prefs.setBool(_prefProfileCompleted, _profileCompleted),
+      prefs.setBool(_prefKycCompleted, _kycCompleted),
     ]);
   }
 

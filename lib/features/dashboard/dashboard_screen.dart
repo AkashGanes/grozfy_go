@@ -13,14 +13,6 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
 
-    if (!app.isKycComplete) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        Navigator.of(
-          context,
-        ).pushNamedAndRemoveUntil(AppRoutes.kycDocuments, (route) => false);
-      });
-    }
-
     return AppShell(
       title: app.t('dashboard'),
       subtitle: app.profile?.fullName ?? 'Delivery Partner',
@@ -333,6 +325,18 @@ class DashboardScreen extends StatelessWidget {
                   'Documents',
                   Icons.file_copy_outlined,
                   route: AppRoutes.kycDocuments,
+                ),
+                _quickButton(
+                  context,
+                  'Vehicle',
+                  Icons.two_wheeler_rounded,
+                  route: AppRoutes.vehicleDetails,
+                ),
+                _quickButton(
+                  context,
+                  'Bank Details',
+                  Icons.account_balance_outlined,
+                  route: AppRoutes.bankSetup,
                 ),
                 _quickButton(
                   context,
