@@ -22,6 +22,7 @@ import 'features/orders/order_details_screen.dart';
 import 'features/orders/order_request_screen.dart';
 import 'features/orders/order_status_screen.dart';
 import 'features/permissions/location_permission_screen.dart';
+import 'features/profile/profile_screen.dart';
 import 'features/splash/splash_screen.dart';
 
 void main() {
@@ -116,6 +117,10 @@ class DeliveryPartnerApp extends ConsumerWidget {
               return MaterialPageRoute<void>(
                 builder: (_) => const DashboardScreen(),
               );
+            case AppRoutes.profile:
+              return MaterialPageRoute<void>(
+                builder: (_) => const ProfileScreen(),
+              );
             case AppRoutes.ordersByLocation:
               return MaterialPageRoute<void>(
                 builder: (_) => const OrdersByLocationScreen(),
@@ -127,9 +132,8 @@ class DeliveryPartnerApp extends ConsumerWidget {
             case AppRoutes.externalDeliveryTripDetails:
               final tripName = settings.arguments as String?;
               return MaterialPageRoute<void>(
-                builder: (_) => ExternalDeliveryTripDetailsScreen(
-                  tripName: tripName ?? '',
-                ),
+                builder: (_) =>
+                    ExternalDeliveryTripDetailsScreen(tripName: tripName ?? ''),
               );
             default:
               return MaterialPageRoute<void>(

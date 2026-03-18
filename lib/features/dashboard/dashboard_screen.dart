@@ -314,6 +314,7 @@ class DashboardScreen extends StatelessWidget {
                   context,
                   'My Profile',
                   Icons.person_outline_rounded,
+                  route: AppRoutes.profile,
                 ),
                 _quickButton(
                   context,

@@ -38,6 +38,20 @@ class PartnerProfile {
   }
 }
 
+class LoggedPartnerProfileDetails {
+  const LoggedPartnerProfileDetails({
+    this.loggedUser,
+    this.employee,
+    this.driver,
+  });
+
+  final String? loggedUser;
+  final Map<String, dynamic>? employee;
+  final Map<String, dynamic>? driver;
+
+  bool get hasData => employee != null || driver != null;
+}
+
 class VehicleDetails {
   const VehicleDetails({
     required this.type,

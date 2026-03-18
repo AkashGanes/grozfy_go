@@ -1,14 +1,19 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../constants/api_constants.dart';
 import '../models/app_models.dart';
 
 class AppController extends ChangeNotifier {
+  static const Duration _networkTimeout = Duration(seconds: 15);
   static const String _storeId = 'STORE-25-0259';
   static final Uri _sendOtpUri = Uri.parse(
     'http://209.182.232.35:8004/api/method/frappe.core.api.billing_auth_v4.send_whatsapp_otp',
@@ -33,6 +38,7 @@ class AppController extends ChangeNotifier {
   static const String _prefMobile = 'partner_mobile';
   static const String _prefEmail = 'partner_email';
   static const String _prefFullName = 'partner_full_name';
+  static const String _prefProfileImagePath = 'partner_profile_image_path';
   static const String _prefRememberMe = 'remember_me';
   static const String _prefCurrentLat = 'current_lat';
   static const String _prefCurrentLng = 'current_lng';
@@ -41,6 +47,16 @@ class AppController extends ChangeNotifier {
   static const String _prefProfileCompleted = 'profile_completed';
   static const String _prefDriverName = 'driver_name';
   static const String _prefKycCompleted = 'kyc_completed';
+  static const int _profileImageMaxBytes = 5 * 1024 * 1024;
+  static const int _profileImageMinDimension = 200;
+  static const int _profileImageMaxDimension = 4096;
+  static const double _profileImageMinAspectRatio = 0.5;
+  static const double _profileImageMaxAspectRatio = 2.0;
+  static const Set<String> _profileImageAllowedExtensions = <String>{
+    '.jpg',
+    '.jpeg',
+    '.png',
+  };
 
   final Random _random = Random();
   final Map<String, VerificationStatus> _kycStatus = {
@@ -73,6 +89,7 @@ class AppController extends ChangeNotifier {
   bool _profileCompleted = false;
   bool _kycCompleted = false;
   String? _sessionToken;
+  String _tokenType = 'Bearer';
   String? _configVersion;
   String? _driverName;
 
@@ -82,6 +99,11 @@ class AppController extends ChangeNotifier {
   String? _pendingRegistrationMobile;
 
   PartnerProfile? _profile;
+  LoggedPartnerProfileDetails? _loggedProfileDetails;
+  bool _profileDetailsLoading = false;
+  String? _profileDetailsError;
+  bool _profileImageSyncing = false;
+  String? _profileImageSyncError;
   VehicleDetails? _vehicle;
   BankDetails? _bank;
   bool _rcUploaded = false;
@@ -95,6 +117,7 @@ class AppController extends ChangeNotifier {
   double? _currentLongitude;
   String? _currentLocationLabel;
   String? _selectedStoreName;
+  String? _profileImagePath;
 
   DeliveryOrder? _incomingOrder;
   DeliveryOrder? _activeOrder;
@@ -122,6 +145,12 @@ class AppController extends ChangeNotifier {
   String get languageCode => _languageCode;
   String? get configVersion => _configVersion;
   PartnerProfile? get profile => _profile;
+  LoggedPartnerProfileDetails? get loggedProfileDetails =>
+      _loggedProfileDetails;
+  bool get profileDetailsLoading => _profileDetailsLoading;
+  String? get profileDetailsError => _profileDetailsError;
+  bool get profileImageSyncing => _profileImageSyncing;
+  String? get profileImageSyncError => _profileImageSyncError;
   Map<String, VerificationStatus> get kycStatus => _kycStatus;
   Map<String, double> get kycProgress => _kycProgress;
   VehicleDetails? get vehicle => _vehicle;
@@ -136,6 +165,7 @@ class AppController extends ChangeNotifier {
   double? get currentLongitude => _currentLongitude;
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
+  String? get profileImagePath => _profileImagePath;
   bool get hasSelectedLocation =>
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
@@ -168,6 +198,7 @@ class AppController extends ChangeNotifier {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     _languageCode = prefs.getString(_prefLanguageCode) ?? '';
     _sessionToken = prefs.getString(_prefAccessToken);
+    _tokenType = _nullIfBlank(prefs.getString(_prefTokenType)) ?? 'Bearer';
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
@@ -178,6 +209,7 @@ class AppController extends ChangeNotifier {
     );
     _selectedStoreName = _nullIfBlank(prefs.getString(_prefSelectedStore));
     _driverName = _nullIfBlank(prefs.getString(_prefDriverName));
+    _profileImagePath = _nullIfBlank(prefs.getString(_prefProfileImagePath));
     _isLoggedIn = _sessionToken != null;
     if (_isLoggedIn) {
       final String fullName =
@@ -218,9 +250,17 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateProfile({String? fullName, String? email}) async {
+  Future<void> updateProfile({
+    String? fullName,
+    String? email,
+    String? mobile,
+  }) async {
     if (_profile != null) {
-      _profile = _profile!.copyWith(fullName: fullName, email: email);
+      _profile = _profile!.copyWith(
+        fullName: fullName,
+        email: email,
+        mobile: mobile,
+      );
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await Future.wait(<Future<bool>>[
         prefs.setString(_prefFullName, _profile!.fullName),
@@ -229,6 +269,184 @@ class AppController extends ChangeNotifier {
         prefs.setString(_prefMobile, _profile!.mobile),
       ]);
       notifyListeners();
+    }
+  }
+
+  Future<void> setProfileImagePath(String? path) async {
+    _profileImagePath = _nullIfBlank(path);
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (_profileImagePath != null) {
+      await prefs.setString(_prefProfileImagePath, _profileImagePath!);
+    } else {
+      await prefs.remove(_prefProfileImagePath);
+    }
+    notifyListeners();
+  }
+
+  Future<String?> updateProfileImageAndSync({
+    required String pickedPath,
+  }) async {
+    if (_profileImageSyncing) {
+      return 'Profile image update is already in progress';
+    }
+
+    final String sourcePath = pickedPath.trim();
+    if (sourcePath.isEmpty || !File(sourcePath).existsSync()) {
+      return 'Selected image is unavailable. Pick another image.';
+    }
+    final String? imageValidationError = await _validateProfileImage(
+      sourcePath,
+    );
+    if (imageValidationError != null) {
+      return imageValidationError;
+    }
+
+    _profileImageSyncing = true;
+    _profileImageSyncError = null;
+    notifyListeners();
+
+    try {
+      final String localPath = await _copyProfileImageToAppStorage(sourcePath);
+      await setProfileImagePath(localPath);
+
+      if (_loggedProfileDetails?.driver == null) {
+        await fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+      }
+      final String? employeeName = _nullIfBlank(
+        _loggedProfileDetails?.driver?['employee']?.toString(),
+      );
+      if (employeeName == null) {
+        _profileImageSyncError =
+            'Image saved on this device. Employee link missing for web sync.';
+        return _profileImageSyncError;
+      }
+
+      final Uri uploadUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/upload_file',
+      );
+      final Map<String, dynamic> uploadPayload = await _authorizedUploadFile(
+        uri: uploadUri,
+        filePath: localPath,
+        fields: <String, String>{
+          'is_private': '0',
+          'doctype': 'Employee',
+          'docname': employeeName,
+          'fieldname': 'image',
+        },
+      );
+
+      final String? fileUrl = _extractUploadedFileUrl(uploadPayload);
+      if (fileUrl == null) {
+        throw Exception(
+          'Image uploaded but file URL missing in server response',
+        );
+      }
+
+      final Uri employeeUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
+      );
+      await _authorizedPutJson(employeeUri, <String, dynamic>{
+        'image': fileUrl,
+      });
+      _profileImageSyncError = null;
+      return null;
+    } catch (e) {
+      _profileImageSyncError = e.toString().replaceFirst('Exception: ', '');
+      return _profileImageSyncError;
+    } finally {
+      _profileImageSyncing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String> _copyProfileImageToAppStorage(String sourcePath) async {
+    final Directory docs = await getApplicationDocumentsDirectory();
+    final Directory profileDir = Directory('${docs.path}/profile_images');
+    if (!profileDir.existsSync()) {
+      profileDir.createSync(recursive: true);
+    }
+
+    final String ext = _fileExtension(sourcePath);
+    final String targetPath =
+        '${profileDir.path}/profile_${DateTime.now().millisecondsSinceEpoch}$ext';
+    final File copied = await File(sourcePath).copy(targetPath);
+
+    final String? previous = _profileImagePath;
+    if (previous != null &&
+        previous != copied.path &&
+        previous.startsWith(profileDir.path)) {
+      final oldFile = File(previous);
+      if (oldFile.existsSync()) {
+        oldFile.deleteSync();
+      }
+    }
+
+    return copied.path;
+  }
+
+  String _fileExtension(String path) {
+    final int lastSlash = path.lastIndexOf('/');
+    final int lastDot = path.lastIndexOf('.');
+    if (lastDot <= lastSlash) {
+      return '';
+    }
+    return path.substring(lastDot);
+  }
+
+  Future<String?> _validateProfileImage(String sourcePath) async {
+    final String ext = _fileExtension(sourcePath).toLowerCase();
+    if (!_profileImageAllowedExtensions.contains(ext)) {
+      return 'Only JPG or PNG images are allowed.';
+    }
+
+    final File file = File(sourcePath);
+    final int bytes = await file.length();
+    if (bytes <= 0) {
+      return 'Selected image is empty. Pick another image.';
+    }
+    if (bytes > _profileImageMaxBytes) {
+      return 'Image size must be 5 MB or less.';
+    }
+
+    final Size? size = await _readImageSize(file);
+    if (size == null) {
+      return 'Unable to read image dimensions. Pick another image.';
+    }
+
+    if (size.width < _profileImageMinDimension ||
+        size.height < _profileImageMinDimension) {
+      return 'Image dimensions must be at least 200 x 200 px.';
+    }
+    if (size.width > _profileImageMaxDimension ||
+        size.height > _profileImageMaxDimension) {
+      return 'Image dimensions must be below 4096 x 4096 px.';
+    }
+
+    final double ratio = size.width / size.height;
+    if (ratio < _profileImageMinAspectRatio ||
+        ratio > _profileImageMaxAspectRatio) {
+      return 'Image aspect ratio must be between 1:2 and 2:1.';
+    }
+
+    return null;
+  }
+
+  Future<Size?> _readImageSize(File file) async {
+    try {
+      final ui.Codec codec = await ui.instantiateImageCodec(
+        await file.readAsBytes(),
+      );
+      final ui.FrameInfo frame = await codec.getNextFrame();
+      final ui.Image image = frame.image;
+      final Size size = Size(
+        image.width.toDouble(),
+        image.height.toDouble(),
+      );
+      image.dispose();
+      codec.dispose();
+      return size;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -311,14 +529,17 @@ class AppController extends ChangeNotifier {
           'store_id': _storeId,
         }.toString(),
       );
-      final http.Response response = await http.post(
-        _sendOtpUri,
-        headers: const <String, String>{'Accept': 'application/json'},
-        body: <String, String>{
-          'mobile_no': mobile.trim(),
-          'store_id': _storeId,
-        },
-      );
+      _logApi('http', 'POST $_sendOtpUri');
+      final http.Response response = await http
+          .post(
+            _sendOtpUri,
+            headers: const <String, String>{'Accept': 'application/json'},
+            body: <String, String>{
+              'mobile_no': mobile.trim(),
+              'store_id': _storeId,
+            },
+          )
+          .timeout(_networkTimeout);
       _logApi(
         'send_whatsapp_otp response',
         'status=${response.statusCode} body=${response.body}',
@@ -347,6 +568,9 @@ class AppController extends ChangeNotifier {
       return 'OTP sent successfully to $mobile';
     } catch (e) {
       _logApi('send_whatsapp_otp error', e.toString());
+      if (e is TimeoutException) {
+        return 'Request timed out. Please try again.';
+      }
       return 'Unable to connect. Check internet and try again.';
     }
   }
@@ -375,15 +599,18 @@ class AppController extends ChangeNotifier {
           'store_id': _storeId,
         }.toString(),
       );
-      final http.Response response = await http.post(
-        _verifyOtpUri,
-        headers: const <String, String>{'Accept': 'application/json'},
-        body: <String, String>{
-          'mobile_no': mobile.trim(),
-          'otp': otp.trim(),
-          'store_id': _storeId,
-        },
-      );
+      _logApi('http', 'POST $_verifyOtpUri');
+      final http.Response response = await http
+          .post(
+            _verifyOtpUri,
+            headers: const <String, String>{'Accept': 'application/json'},
+            body: <String, String>{
+              'mobile_no': mobile.trim(),
+              'otp': otp.trim(),
+              'store_id': _storeId,
+            },
+          )
+          .timeout(_networkTimeout);
       _logApi(
         'verify_whatsapp_otp response',
         'status=${response.statusCode} body=${response.body}',
@@ -451,6 +678,9 @@ class AppController extends ChangeNotifier {
       return null;
     } catch (e) {
       _logApi('verify_whatsapp_otp error', e.toString());
+      if (e is TimeoutException) {
+        return 'Request timed out. Please try again.';
+      }
       return 'Unable to connect. Check internet and try again.';
     }
   }
@@ -557,11 +787,15 @@ class AppController extends ChangeNotifier {
   Future<void> logout() async {
     _isLoggedIn = false;
     _sessionToken = null;
+    _tokenType = 'Bearer';
     _isOnline = false;
     _isTracking = false;
     _incomingOrder = null;
     _activeOrder = null;
     _profile = null;
+    _loggedProfileDetails = null;
+    _profileDetailsError = null;
+    _profileDetailsLoading = false;
     _profileCompleted = false;
     _kycCompleted = false;
     _currentLatitude = null;
@@ -1029,6 +1263,7 @@ class AppController extends ChangeNotifier {
       _profileCompleted = true;
     }
     _kycCompleted = backendKycCompleted;
+    _tokenType = tokenType ?? _tokenType;
 
     await Future.wait(<Future<bool>>[
       prefs.setString(_prefAccessToken, _sessionToken!),
@@ -1215,7 +1450,11 @@ class AppController extends ChangeNotifier {
   }
 
   void _logApi(String tag, String value) {
-    debugPrint('[API] $tag => $value');
+    final String line = '[API] $tag => $value';
+    // Keep debugPrint for Flutter tooling and print for plain logcat visibility.
+    debugPrint(line);
+    // ignore: avoid_print
+    print(line);
   }
 
   void _updateLiveCoordinates() {
@@ -1224,5 +1463,312 @@ class AppController extends ChangeNotifier {
     final double lat = baseLat + (_random.nextDouble() - 0.5) / 100;
     final double lng = baseLng + (_random.nextDouble() - 0.5) / 100;
     _liveCoordinates = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
+  }
+
+  Future<void> fetchLoggedInEmployeeDriverProfile({
+    bool forceRefresh = false,
+  }) async {
+    if (_profileDetailsLoading) {
+      return;
+    }
+    if (!forceRefresh && _loggedProfileDetails?.hasData == true) {
+      return;
+    }
+    if (_sessionToken == null || _sessionToken!.isEmpty) {
+      _profileDetailsError = 'Please login again to load profile';
+      notifyListeners();
+      return;
+    }
+
+    _profileDetailsLoading = true;
+    _profileDetailsError = null;
+    notifyListeners();
+
+    try {
+      final String? loggedUser = await _fetchLoggedUser();
+      String? driverName;
+      Map<String, dynamic>? driverDoc;
+
+      // Login identity is best mapped through mobile returned in OTP login flow.
+      driverName = await _findDriverByMobile();
+
+      // Secondary mapping only if login user is available and not generic admin.
+      if (driverName == null &&
+          loggedUser != null &&
+          loggedUser.toLowerCase() != 'administrator') {
+        final String? employeeName = await _findResourceName(
+          doctype: 'Employee',
+          filters: <List<String>>[
+            <String>['Employee', 'user_id', '=', loggedUser],
+          ],
+          fields: <String>['name'],
+        );
+        if (employeeName != null) {
+          driverName = await _findResourceName(
+            doctype: 'Driver',
+            filters: <List<String>>[
+              <String>['Driver', 'employee', '=', employeeName],
+            ],
+            fields: <String>['name'],
+          );
+        }
+      }
+      driverName ??= await _findDefaultDriverName();
+
+      if (driverName != null) {
+        driverDoc = await _fetchResourceDoc('Driver', driverName);
+      }
+
+      _loggedProfileDetails = LoggedPartnerProfileDetails(
+        loggedUser: loggedUser,
+        employee: null,
+        driver: driverDoc,
+      );
+
+      if (!(_loggedProfileDetails?.hasData ?? false)) {
+        _profileDetailsError = 'No driver profile linked to this login account';
+      }
+    } catch (e) {
+      _profileDetailsError = e.toString().replaceFirst('Exception: ', '');
+    } finally {
+      _profileDetailsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> _fetchLoggedUser() async {
+    final Uri uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.auth.get_logged_user',
+    );
+    final Map<String, dynamic> payload = await _authorizedGet(uri);
+    return _nullIfBlank(payload['message']?.toString());
+  }
+
+  Future<String?> _findDriverByMobile() async {
+    final String? mobile = _normalizedMobileForSearch(_profile?.mobile);
+    if (mobile == null) {
+      return null;
+    }
+
+    final List<String> candidates = <String>[mobile, '91$mobile', '+91$mobile'];
+
+    for (final String candidate in candidates) {
+      final String? found = await _findResourceName(
+        doctype: 'Driver',
+        filters: <List<String>>[
+          <String>['Driver', 'cell_number', '=', candidate],
+        ],
+        fields: <String>['name'],
+      );
+      if (found != null) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  Future<String?> _findDefaultDriverName() async {
+    final String configured = ApiConstants.defaultExternalDeliveryDriver.trim();
+    if (configured.isNotEmpty) {
+      final Map<String, dynamic>? configuredDoc = await _fetchResourceDoc(
+        'Driver',
+        configured,
+      );
+      if (configuredDoc != null) {
+        return configured;
+      }
+    }
+
+    return _findResourceName(
+      doctype: 'Driver',
+      filters: const <List<String>>[],
+      fields: const <String>['name'],
+    );
+  }
+
+  Future<String?> _findResourceName({
+    required String doctype,
+    required List<List<String>> filters,
+    List<String> fields = const <String>['name'],
+  }) async {
+    final Map<String, String> queryParameters = <String, String>{
+      'fields': jsonEncode(fields),
+      'limit_page_length': '1',
+    };
+    if (filters.isNotEmpty) {
+      queryParameters['filters'] = jsonEncode(filters);
+    }
+    final Uri uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/${Uri.encodeComponent(doctype)}',
+    ).replace(queryParameters: queryParameters);
+
+    final Map<String, dynamic> payload = await _authorizedGet(uri);
+    final dynamic rows = payload['data'];
+    if (rows is List && rows.isNotEmpty) {
+      final dynamic first = rows.first;
+      if (first is Map<String, dynamic>) {
+        return _nullIfBlank(first['name']?.toString());
+      }
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _fetchResourceDoc(
+    String doctype,
+    String name,
+  ) async {
+    final Uri uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/${Uri.encodeComponent(doctype)}/${Uri.encodeComponent(name)}',
+    );
+    final Map<String, dynamic> payload = await _authorizedGet(uri);
+    final dynamic data = payload['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>> _authorizedGet(Uri uri) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      _logApi('http', 'GET $uri');
+      final http.Response response = await http
+          .get(uri, headers: headers)
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Profile request failed (${response.statusCode})';
+      lastError = message;
+
+      // Try the next auth strategy only for authorization failures.
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed for GET $uri');
+  }
+
+  Future<Map<String, dynamic>> _authorizedPutJson(
+    Uri uri,
+    Map<String, dynamic> body,
+  ) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders(
+      contentType: 'application/json',
+    );
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      _logApi('http', 'PUT $uri');
+      final http.Response response = await http
+          .put(uri, headers: headers, body: jsonEncode(body))
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Profile update failed (${response.statusCode})';
+      lastError = message;
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed for PUT $uri');
+  }
+
+  Future<Map<String, dynamic>> _authorizedUploadFile({
+    required Uri uri,
+    required String filePath,
+    required Map<String, String> fields,
+  }) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      _logApi('http', 'POST $uri');
+      final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll(headers)
+        ..fields.addAll(fields)
+        ..files.add(await http.MultipartFile.fromPath('file', filePath));
+
+      final streamed = await request.send().timeout(_networkTimeout);
+      final response = await http.Response.fromStream(streamed);
+      final payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Image upload failed (${response.statusCode})';
+      lastError = message;
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed for POST $uri');
+  }
+
+  String? _extractUploadedFileUrl(Map<String, dynamic> payload) {
+    final dynamic message = payload['message'];
+    if (message is Map<String, dynamic>) {
+      return _nullIfBlank(
+        message['file_url']?.toString() ?? message['file_name']?.toString(),
+      );
+    }
+
+    final dynamic data = payload['data'];
+    if (data is Map<String, dynamic>) {
+      return _nullIfBlank(
+        data['file_url']?.toString() ?? data['file_name']?.toString(),
+      );
+    }
+    return null;
+  }
+
+  List<Map<String, String>> _authorizationHeaders({String? contentType}) {
+    final List<Map<String, String>> authHeaders = <Map<String, String>>[];
+    if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
+      final Map<String, String> bearerHeaders = <String, String>{
+        'Accept': 'application/json',
+        'Authorization': '${_tokenType.trim()} ${_sessionToken!.trim()}',
+      };
+      if (contentType != null) {
+        bearerHeaders['Content-Type'] = contentType;
+      }
+      authHeaders.add(bearerHeaders);
+    }
+    final Map<String, String> tokenHeaders = <String, String>{
+      'Accept': 'application/json',
+      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+    };
+    if (contentType != null) {
+      tokenHeaders['Content-Type'] = contentType;
+    }
+    authHeaders.add(tokenHeaders);
+    return authHeaders;
+  }
+
+  String? _normalizedMobileForSearch(String? raw) {
+    final String? value = _nullIfBlank(raw);
+    if (value == null) {
+      return null;
+    }
+    final String digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length == 12 && digits.startsWith('91')) {
+      return digits.substring(2);
+    }
+    if (digits.length == 10) {
+      return digits;
+    }
+    return null;
   }
 }
