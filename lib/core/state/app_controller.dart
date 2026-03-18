@@ -1199,6 +1199,60 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<List<String>> fetchLinkOptions({
+    required String doctype,
+    String referenceDoctype = 'Bank Account',
+    String query = '',
+    int pageLength = 10,
+  }) async {
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.search.search_link',
+      );
+      final Map<String, dynamic> payload = await _authorizedPostForm(
+        uri: uri,
+        body: <String, String>{
+          'doctype': doctype,
+          'ignore_user_permissions': '0',
+          'reference_doctype': referenceDoctype,
+          'page_length': '$pageLength',
+          'start': '0',
+          'txt': query.trim(),
+        },
+      );
+      final dynamic responseRows =
+          payload['message'] ?? payload['results'] ?? payload['data'];
+      if (responseRows is! List) {
+        return <String>[];
+      }
+
+      final List<String> values = <String>[];
+      for (final dynamic item in responseRows) {
+        if (item is Map<String, dynamic>) {
+          final String? value =
+              _nullIfBlank(item['value']?.toString()) ??
+              _nullIfBlank(item['name']?.toString());
+          if (value != null && !values.contains(value)) {
+            values.add(value);
+          }
+        } else if (item is List && item.isNotEmpty) {
+          final String? value = _nullIfBlank(item.first?.toString());
+          if (value != null && !values.contains(value)) {
+            values.add(value);
+          }
+        } else if (item != null) {
+          final String? value = _nullIfBlank(item.toString());
+          if (value != null && !values.contains(value)) {
+            values.add(value);
+          }
+        }
+      }
+      return values;
+    } catch (_) {
+      return <String>[];
+    }
+  }
+
   Future<VehicleSubmitResult> submitVehicleDetails({
     required String licensePlate,
     required String make,
@@ -1379,35 +1433,102 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  String? submitBankDetails({
-    required String accountNumber,
-    required String ifsc,
-    required String accountHolder,
-    String? upiId,
-  }) {
-    final String normalizedAccount = accountNumber.trim();
-    if (!RegExp(r'^\d{9,18}$').hasMatch(normalizedAccount)) {
-      return 'Account number should be 9-18 digits';
+  Future<String?> submitBankDetails({
+    required String accountName,
+    required String bank,
+    String? account,
+    String? accountType,
+    String? accountSubtype,
+    bool disabled = false,
+    bool isDefault = false,
+    bool isCompanyAccount = false,
+    String? company,
+    String? partyType,
+    String? party,
+    String? iban,
+    String? branchCode,
+    String? bankAccountNo,
+    String? lastIntegrationDate,
+  }) async {
+    final String normalizedAccountName = accountName.trim();
+    if (normalizedAccountName.isEmpty) {
+      return 'Account name is required';
+    }
+    final String normalizedBank = bank.trim();
+    if (normalizedBank.isEmpty) {
+      return 'Bank is required';
     }
 
-    final String normalizedIfsc = ifsc.trim().toUpperCase();
-    if (!RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$').hasMatch(normalizedIfsc)) {
-      return 'IFSC format is invalid';
+    final Map<String, dynamic> body = <String, dynamic>{
+      'account_name': normalizedAccountName,
+      'bank': normalizedBank,
+      'disabled': disabled ? 1 : 0,
+      'is_default': isDefault ? 1 : 0,
+      'is_company_account': isCompanyAccount ? 1 : 0,
+    };
+    if (_nullIfBlank(account) != null) {
+      body['account'] = account!.trim();
+    }
+    if (_nullIfBlank(accountType) != null) {
+      body['account_type'] = accountType!.trim();
+    }
+    if (_nullIfBlank(accountSubtype) != null) {
+      body['account_subtype'] = accountSubtype!.trim();
+    }
+    if (_nullIfBlank(company) != null) {
+      body['company'] = company!.trim();
+    }
+    if (_nullIfBlank(partyType) != null) {
+      body['party_type'] = partyType!.trim();
+    }
+    if (_nullIfBlank(party) != null) {
+      body['party'] = party!.trim();
+    }
+    if (_nullIfBlank(iban) != null) {
+      body['iban'] = iban!.trim();
+    }
+    if (_nullIfBlank(branchCode) != null) {
+      body['branch_code'] = branchCode!.trim();
+    }
+    if (_nullIfBlank(bankAccountNo) != null) {
+      body['bank_account_no'] = bankAccountNo!.trim();
+    }
+    if (_nullIfBlank(lastIntegrationDate) != null) {
+      body['last_integration_date'] = lastIntegrationDate!.trim();
     }
 
-    if (accountHolder.trim().isEmpty) {
-      return 'Account holder name is required';
-    }
+    try {
+      final String? existingName = await _findResourceName(
+        doctype: 'Bank Account',
+        filters: <List<String>>[
+          <String>['Bank Account', 'account_name', '=', normalizedAccountName],
+        ],
+        fields: <String>['name'],
+      );
+      if (existingName != null) {
+        final Uri updateUri = Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account/${Uri.encodeComponent(existingName)}',
+        );
+        await _authorizedPutJson(updateUri, body);
+      } else {
+        final Uri createUri = Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account',
+        );
+        await _authorizedPostJson(createUri, body);
+      }
 
-    _bank = BankDetails(
-      accountNumber: normalizedAccount,
-      ifsc: normalizedIfsc,
-      accountHolder: accountHolder.trim(),
-      upiId: upiId?.trim().isEmpty == true ? null : upiId?.trim(),
-      verified: true,
-    );
-    notifyListeners();
-    return null;
+      _bank = BankDetails(
+        accountNumber: _nullIfBlank(bankAccountNo) ?? normalizedAccountName,
+        ifsc: _nullIfBlank(branchCode) ?? '',
+        accountHolder: normalizedAccountName,
+        upiId: _nullIfBlank(iban),
+        verified: true,
+      );
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
   void setPermissionState({
