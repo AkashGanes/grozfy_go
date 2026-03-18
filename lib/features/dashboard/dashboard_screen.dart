@@ -63,7 +63,7 @@ class DashboardScreen extends StatelessWidget {
                       : 'Offline, no new orders will be assigned',
                   style: const TextStyle(color: Colors.black54),
                 ),
-                if (!app.canGoOnline) ...[
+                if (!app.canGoOnline && !app.isKycComplete) ...[
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
