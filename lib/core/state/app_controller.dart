@@ -47,6 +47,10 @@ class AppController extends ChangeNotifier {
   static const String _prefProfileCompleted = 'profile_completed';
   static const String _prefDriverName = 'driver_name';
   static const String _prefKycCompleted = 'kyc_completed';
+  static const String _prefVehicleName = 'vehicle_name';
+  static const String _prefVehicleLicensePlate = 'vehicle_license_plate';
+  static const String _prefBankDocName = 'bank_doc_name';
+  static const String _prefBankAccountName = 'bank_account_name';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 200;
   static const int _profileImageMaxDimension = 4096;
@@ -107,6 +111,7 @@ class AppController extends ChangeNotifier {
   VehicleDetails? _vehicle;
   Map<String, dynamic>? _submittedVehicleRaw;
   BankDetails? _bank;
+  Map<String, dynamic>? _submittedBankRaw;
   List<String> _uomOptions = <String>[];
   List<String> _vehicleFuelOptions = <String>[];
   Set<String> _vehicleRequiredFields = <String>{};
@@ -159,6 +164,7 @@ class AppController extends ChangeNotifier {
   VehicleDetails? get vehicle => _vehicle;
   Map<String, dynamic>? get submittedVehicleRaw => _submittedVehicleRaw;
   BankDetails? get bank => _bank;
+  Map<String, dynamic>? get submittedBankRaw => _submittedBankRaw;
   List<String> get uomOptions => List<String>.unmodifiable(_uomOptions);
   List<String> get vehicleFuelOptions =>
       List<String>.unmodifiable(_vehicleFuelOptions);
@@ -810,6 +816,7 @@ class AppController extends ChangeNotifier {
     _vehicle = null;
     _submittedVehicleRaw = null;
     _bank = null;
+    _submittedBankRaw = null;
     _uomOptions = <String>[];
     _vehicleFuelOptions = <String>[];
     _vehicleRequiredFields = <String>{};
@@ -828,6 +835,10 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefProfileCompleted),
       prefs.remove(_prefKycCompleted),
       prefs.remove(_prefDriverName),
+      prefs.remove(_prefVehicleName),
+      prefs.remove(_prefVehicleLicensePlate),
+      prefs.remove(_prefBankDocName),
+      prefs.remove(_prefBankAccountName),
       prefs.setBool(_prefRememberMe, false),
     ]);
     _rememberMe = false;
@@ -1148,6 +1159,37 @@ class AppController extends ChangeNotifier {
     return _fetchResourceDoc('Vehicle', name);
   }
 
+  Future<void> hydrateVehicleFromBackend({bool forceRefresh = false}) async {
+    if (!forceRefresh && _vehicle != null) {
+      return;
+    }
+    if (_sessionToken == null || _sessionToken!.isEmpty) {
+      return;
+    }
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? vehicleName = _nullIfBlank(prefs.getString(_prefVehicleName));
+      final String? licensePlate = _nullIfBlank(
+        prefs.getString(_prefVehicleLicensePlate),
+      );
+
+      Map<String, dynamic>? data;
+      if (vehicleName != null) {
+        data = await fetchVehicleByName(vehicleName);
+      }
+      data ??= await fetchVehicleByLicensePlate(licensePlate ?? '');
+      if (data == null) {
+        return;
+      }
+
+      _submittedVehicleRaw = data;
+      _vehicle = _vehicleFromApiData(data);
+      notifyListeners();
+    } catch (_) {
+      // Ignore hydration failures; screen stays editable.
+    }
+  }
+
   Future<List<String>> fetchVehicleEmployeeOptions({String query = ''}) async {
     try {
       final Uri uri = Uri.parse(
@@ -1291,6 +1333,48 @@ class AppController extends ChangeNotifier {
       return doctypesByField;
     } catch (_) {
       return <String, String>{};
+    }
+  }
+
+  Future<void> hydrateBankFromBackend({bool forceRefresh = false}) async {
+    if (!forceRefresh && _bank != null) {
+      return;
+    }
+    if (_sessionToken == null || _sessionToken!.isEmpty) {
+      return;
+    }
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? bankDocName = _nullIfBlank(prefs.getString(_prefBankDocName));
+      final String? accountName = _nullIfBlank(
+        prefs.getString(_prefBankAccountName),
+      );
+
+      Map<String, dynamic>? data;
+      if (bankDocName != null) {
+        data = await _fetchResourceDoc('Bank Account', bankDocName);
+      }
+      if (data == null && accountName != null) {
+        final String? name = await _findResourceName(
+          doctype: 'Bank Account',
+          filters: <List<String>>[
+            <String>['Bank Account', 'account_name', '=', accountName],
+          ],
+          fields: <String>['name'],
+        );
+        if (name != null) {
+          data = await _fetchResourceDoc('Bank Account', name);
+        }
+      }
+      if (data == null) {
+        return;
+      }
+
+      _submittedBankRaw = data;
+      _bank = _bankFromApiData(data);
+      notifyListeners();
+    } catch (_) {
+      // Ignore hydration failures; screen stays editable.
     }
   }
 
@@ -1461,6 +1545,10 @@ class AppController extends ChangeNotifier {
       final Map<String, dynamic> finalData = fetched ?? data;
       _submittedVehicleRaw = finalData;
       _vehicle = _vehicleFromApiData(finalData);
+      await _persistVehicleIdentity(
+        vehicleName: _nullIfBlank(finalData['name']?.toString()) ?? finalName,
+        licensePlate: plate,
+      );
       notifyListeners();
       return VehicleSubmitResult(
         vehicleName: finalName,
@@ -1585,6 +1673,7 @@ class AppController extends ChangeNotifier {
     }
 
     try {
+      Map<String, dynamic>? responsePayload;
       final String? existingName = await _findResourceName(
         doctype: 'Bank Account',
         filters: <List<String>>[
@@ -1596,12 +1685,28 @@ class AppController extends ChangeNotifier {
         final Uri updateUri = Uri.parse(
           '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account/${Uri.encodeComponent(existingName)}',
         );
-        await _authorizedPutJson(updateUri, body);
+        responsePayload = await _authorizedPutJson(updateUri, body);
       } else {
         final Uri createUri = Uri.parse(
           '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account',
         );
-        await _authorizedPostJson(createUri, body);
+        responsePayload = await _authorizedPostJson(createUri, body);
+      }
+
+      final dynamic responseData = responsePayload['data'];
+      final Map<String, dynamic>? raw = responseData is Map<String, dynamic>
+          ? responseData
+          : null;
+      final String? bankName =
+          _nullIfBlank(raw?['name']?.toString()) ?? existingName;
+      if (bankName != null) {
+        final Map<String, dynamic>? fetched = await _fetchResourceDoc(
+          'Bank Account',
+          bankName,
+        );
+        _submittedBankRaw = fetched ?? raw;
+      } else {
+        _submittedBankRaw = raw;
       }
 
       _bank = BankDetails(
@@ -1610,6 +1715,11 @@ class AppController extends ChangeNotifier {
         accountHolder: normalizedAccountName,
         upiId: normalizedIban,
         verified: true,
+      );
+      await _persistBankIdentity(
+        bankDocName:
+            _nullIfBlank(_submittedBankRaw?['name']?.toString()) ?? bankName,
+        accountName: normalizedAccountName,
       );
       notifyListeners();
       return null;
@@ -2404,6 +2514,58 @@ class AppController extends ChangeNotifier {
       doors: doors,
       status: VerificationStatus.approved,
     );
+  }
+
+  BankDetails _bankFromApiData(Map<String, dynamic> data) {
+    return BankDetails(
+      accountNumber:
+          _nullIfBlank(data['bank_account_no']?.toString()) ??
+          _nullIfBlank(data['account_name']?.toString()) ??
+          '',
+      ifsc:
+          _nullIfBlank(data['branch_code']?.toString()) ??
+          _nullIfBlank(data['ifsc']?.toString()) ??
+          '',
+      accountHolder: _nullIfBlank(data['account_name']?.toString()) ?? '',
+      upiId: _nullIfBlank(data['iban']?.toString()),
+      verified: true,
+    );
+  }
+
+  Future<void> _persistVehicleIdentity({
+    String? vehicleName,
+    String? licensePlate,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<Future<bool>> writes = <Future<bool>>[];
+    if (_nullIfBlank(vehicleName) != null) {
+      writes.add(prefs.setString(_prefVehicleName, vehicleName!.trim()));
+    }
+    if (_nullIfBlank(licensePlate) != null) {
+      writes.add(
+        prefs.setString(_prefVehicleLicensePlate, licensePlate!.trim()),
+      );
+    }
+    if (writes.isNotEmpty) {
+      await Future.wait(writes);
+    }
+  }
+
+  Future<void> _persistBankIdentity({
+    String? bankDocName,
+    String? accountName,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<Future<bool>> writes = <Future<bool>>[];
+    if (_nullIfBlank(bankDocName) != null) {
+      writes.add(prefs.setString(_prefBankDocName, bankDocName!.trim()));
+    }
+    if (_nullIfBlank(accountName) != null) {
+      writes.add(prefs.setString(_prefBankAccountName, accountName!.trim()));
+    }
+    if (writes.isNotEmpty) {
+      await Future.wait(writes);
+    }
   }
 
   int? _nullableInt(String? value) {

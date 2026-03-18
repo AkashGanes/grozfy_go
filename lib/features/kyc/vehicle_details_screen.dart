@@ -70,6 +70,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     if (app.loggedProfileDetails?.driver == null) {
       await app.fetchLoggedInEmployeeDriverProfile();
     }
+    await app.hydrateVehicleFromBackend();
     await app.fetchVehicleFormConfig();
 
     final List<String> uomOptions = app.uomOptions.isEmpty
@@ -80,6 +81,21 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
         .fetchVehicleEmployeeOptions();
 
     if (!mounted || _initialized) {
+      return;
+    }
+
+    final Map<String, dynamic>? submittedVehicleData = app.submittedVehicleRaw;
+    if (submittedVehicleData != null && submittedVehicleData.isNotEmpty) {
+      _initialized = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        Navigator.of(context).pushReplacementNamed(
+          AppRoutes.vehicleSubmittedDetails,
+          arguments: submittedVehicleData,
+        );
+      });
       return;
     }
 

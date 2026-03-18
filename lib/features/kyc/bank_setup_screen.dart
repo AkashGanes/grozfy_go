@@ -37,6 +37,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   bool _isCompanyAccount = false;
   bool _busy = false;
   bool _ready = false;
+  bool _editMode = false;
 
   bool get _canSubmit =>
       _ready &&
@@ -68,12 +69,33 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     final app = AppScope.of(context);
     final Map<String, String> linkDoctypeByField = await app
         .fetchBankAccountLinkDoctypes();
+    await app.hydrateBankFromBackend();
     if (!mounted) {
       return;
     }
 
+    final Map<String, dynamic>? bankData = app.submittedBankRaw;
     setState(() {
       _linkDoctypeByField = linkDoctypeByField;
+      if (bankData != null) {
+        _accountNameCtrl.text = bankData['account_name']?.toString() ?? '';
+        _selectedBank = bankData['bank']?.toString();
+        _selectedCompanyAccount = bankData['account']?.toString();
+        _selectedAccountType = bankData['account_type']?.toString();
+        _selectedAccountSubtype = bankData['account_subtype']?.toString();
+        _selectedCompany = bankData['company']?.toString();
+        _selectedPartyType = bankData['party_type']?.toString();
+        _selectedParty = bankData['party']?.toString();
+        _partyCtrl.text = _selectedParty ?? '';
+        _ibanCtrl.text = bankData['iban']?.toString() ?? '';
+        _branchCodeCtrl.text = bankData['branch_code']?.toString() ?? '';
+        _bankAccountNoCtrl.text = bankData['bank_account_no']?.toString() ?? '';
+        _lastIntegrationDateCtrl.text =
+            bankData['last_integration_date']?.toString() ?? '';
+        _disabled = bankData['disabled']?.toString() == '1';
+        _isDefault = bankData['is_default']?.toString() == '1';
+        _isCompanyAccount = bankData['is_company_account']?.toString() == '1';
+      }
       _ready = true;
     });
   }
@@ -174,6 +196,61 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final Map<String, dynamic>? bankData = app.submittedBankRaw;
+    final bool showSubmittedDetails =
+        !_editMode && bankData != null && bankData.isNotEmpty;
+    if (showSubmittedDetails) {
+      final Map<String, String> displayData = _buildDisplayData(bankData);
+      final String title =
+          bankData['account_name']?.toString().trim().isNotEmpty == true
+          ? bankData['account_name']!.toString().trim()
+          : 'Bank Account Details';
+      return AppShell(
+        title: title,
+        subtitle: 'Submitted bank account details',
+        child: FrostCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final entry in displayData.entries) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 150,
+                      child: Text(
+                        entry.key,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        entry.value,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() => _editMode = true);
+                },
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Edit Bank Details'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return AppShell(
       title: 'Bank Account Setup',
       subtitle: 'Bank Account DocType fields from ERP',
@@ -401,6 +478,38 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
         ),
       ),
     );
+  }
+
+  Map<String, String> _buildDisplayData(Map<String, dynamic> raw) {
+    final Map<String, String> data = <String, String>{};
+
+    void put(String label, String key) {
+      final String value = (raw[key]?.toString() ?? '').trim();
+      if (value.isNotEmpty) {
+        data[label] = value;
+      }
+    }
+
+    put('Account Name', 'account_name');
+    put('Bank', 'bank');
+    put('Company Account', 'account');
+    put('Account Type', 'account_type');
+    put('Account Subtype', 'account_subtype');
+    put('Company', 'company');
+    put('Party Type', 'party_type');
+    put('Party', 'party');
+    put('IBAN', 'iban');
+    put('Branch Code', 'branch_code');
+    put('Bank Account No', 'bank_account_no');
+    put('Last Integration Date', 'last_integration_date');
+
+    data['Disabled'] = raw['disabled']?.toString() == '1' ? 'Yes' : 'No';
+    data['Is Default'] = raw['is_default']?.toString() == '1' ? 'Yes' : 'No';
+    data['Is Company Account'] = raw['is_company_account']?.toString() == '1'
+        ? 'Yes'
+        : 'No';
+
+    return data;
   }
 }
 
