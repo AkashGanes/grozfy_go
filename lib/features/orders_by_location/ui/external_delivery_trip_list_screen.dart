@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../../core/navigation/app_routes.dart';
@@ -19,7 +20,9 @@ class _ExternalDeliveryTripListScreenState
     extends State<ExternalDeliveryTripListScreen> {
   ExternalDeliveryRepository? _repository;
   PagingController<int, TripListItem>? _pagingController;
+  final TextEditingController _searchController = TextEditingController();
   String? _lastDriver;
+  String _searchQuery = '';
 
   @override
   void didChangeDependencies() {
@@ -32,6 +35,7 @@ class _ExternalDeliveryTripListScreenState
 
   @override
   void dispose() {
+    _searchController.dispose();
     _pagingController?.dispose();
     super.dispose();
   }
@@ -63,6 +67,171 @@ class _ExternalDeliveryTripListScreenState
     _pagingController!.refresh();
   }
 
+  List<ExternalDeliveryTripSummary> _filteredTrips(
+    PagingController<int, TripListItem> controller,
+  ) {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return const [];
+    final items = controller.itemList ?? const <TripListItem>[];
+    return items
+        .whereType<TripRow>()
+        .map((item) => item.trip)
+        .where((trip) => trip.name.toLowerCase().contains(q))
+        .toList();
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
+      child: FrostCard(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+        child: TextField(
+          controller: _searchController,
+          onChanged: (value) => setState(() => _searchQuery = value),
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+            border: InputBorder.none,
+            hintText: 'Search Trip ID',
+            hintStyle: const TextStyle(color: Colors.black45),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              color: AppTheme.oceanBlue,
+              size: 18,
+            ),
+            suffixIcon: _searchQuery.trim().isEmpty
+                ? null
+                : IconButton(
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.black45,
+                      size: 18,
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.04, end: 0);
+  }
+
+  Widget _buildPagedList(PagingController<int, TripListItem> controller) {
+    return PagedListView<int, TripListItem>(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+      pagingController: controller,
+      builderDelegate: PagedChildBuilderDelegate<TripListItem>(
+        itemBuilder: (context, item, index) {
+          final delay = (index * 45).clamp(0, 320);
+          if (item is DriverHeader) {
+            return Padding(
+                  padding: const EdgeInsets.only(top: 18, bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.badge_outlined,
+                        size: 18,
+                        color: AppTheme.oceanBlue.withValues(alpha: 0.9),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(child: SectionLabel(item.driver)),
+                    ],
+                  ),
+                )
+                .animate()
+                .fadeIn(delay: delay.ms, duration: 220.ms)
+                .slideX(begin: 0.03, end: 0);
+          }
+          if (item is TripRow) {
+            return _TripCard(
+                  trip: item.trip,
+                  onTap: () => Navigator.of(context).pushNamed(
+                    AppRoutes.externalDeliveryTripDetails,
+                    arguments: item.trip.name,
+                  ),
+                )
+                .animate()
+                .fadeIn(delay: delay.ms, duration: 240.ms)
+                .slideY(begin: 0.06, end: 0)
+                .scale(
+                  begin: const Offset(0.985, 0.985),
+                  end: const Offset(1, 1),
+                  duration: 240.ms,
+                  curve: Curves.easeOutCubic,
+                );
+          }
+          return const SizedBox.shrink();
+        },
+        firstPageProgressIndicatorBuilder: (_) => const _ListLoadingState(),
+        newPageProgressIndicatorBuilder: (_) => const Padding(
+          padding: EdgeInsets.symmetric(vertical: 20),
+          child: Center(
+            child: CircularProgressIndicator(
+              color: AppTheme.oceanBlue,
+              strokeWidth: 2,
+            ),
+          ),
+        ),
+        noItemsFoundIndicatorBuilder: (_) => const _EmptyState(),
+        firstPageErrorIndicatorBuilder: (_) =>
+            _ErrorState(error: controller.error, onRetry: controller.refresh),
+        newPageErrorIndicatorBuilder: (_) => _ErrorState(
+          error: controller.error,
+          onRetry: controller.retryLastFailedRequest,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilteredList(PagingController<int, TripListItem> controller) {
+    if (controller.itemList == null) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 20),
+        child: _ListLoadingState(),
+      );
+    }
+
+    final results = _filteredTrips(controller);
+    if (results.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 20),
+        child: _SearchEmptyState(),
+      );
+    }
+
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+      itemCount: results.length,
+      itemBuilder: (context, index) {
+        final delay = (index * 45).clamp(0, 320);
+        final trip = results[index];
+        return _TripCard(
+              trip: trip,
+              onTap: () => Navigator.of(context).pushNamed(
+                AppRoutes.externalDeliveryTripDetails,
+                arguments: trip.name,
+              ),
+            )
+            .animate()
+            .fadeIn(delay: delay.ms, duration: 240.ms)
+            .slideY(begin: 0.05, end: 0)
+            .scale(
+              begin: const Offset(0.985, 0.985),
+              end: const Offset(1, 1),
+              duration: 230.ms,
+              curve: Curves.easeOutCubic,
+            );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = _pagingController;
@@ -71,60 +240,31 @@ class _ExternalDeliveryTripListScreenState
     return AppShell(
       title: 'External Delivery Trips',
       subtitle: 'All trips grouped by driver',
-      scrollable: false,
-      padding: EdgeInsets.zero,
-      child: RefreshIndicator(
-        color: AppTheme.oceanBlue,
-        onRefresh: _refresh,
-        child: PagedListView<int, TripListItem>(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-          pagingController: controller,
-          builderDelegate: PagedChildBuilderDelegate<TripListItem>(
-            itemBuilder: (context, item, index) {
-              if (item is DriverHeader) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 18, bottom: 8),
-                  child: SectionLabel(item.driver),
-                );
-              }
-              if (item is TripRow) {
-                return _TripCard(
-                  trip: item.trip,
-                  onTap: () => Navigator.of(context).pushNamed(
-                    AppRoutes.externalDeliveryTripDetails,
-                    arguments: item.trip.name,
-                  ),
-                );
-              }
-              return const SizedBox.shrink();
-            },
-            firstPageProgressIndicatorBuilder: (_) => const Padding(
-              padding: EdgeInsets.symmetric(vertical: 60),
-              child: Center(
-                child: CircularProgressIndicator(color: AppTheme.oceanBlue),
-              ),
-            ),
-            newPageProgressIndicatorBuilder: (_) => const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: CircularProgressIndicator(
-                  color: AppTheme.oceanBlue,
-                  strokeWidth: 2,
-                ),
-              ),
-            ),
-            noItemsFoundIndicatorBuilder: (_) => const _EmptyState(),
-            firstPageErrorIndicatorBuilder: (_) => _ErrorState(
-              error: controller.error,
-              onRetry: controller.refresh,
-            ),
-            newPageErrorIndicatorBuilder: (_) => _ErrorState(
-              error: controller.error,
-              onRetry: controller.retryLastFailedRequest,
-            ),
+      actions: const [
+        Padding(
+          padding: EdgeInsets.only(right: 10),
+          child: Icon(
+            Icons.local_shipping_outlined,
+            color: AppTheme.oceanBlue,
+            size: 22,
           ),
         ),
+      ],
+      scrollable: false,
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          _buildSearchBar(),
+          Expanded(
+            child: RefreshIndicator(
+              color: AppTheme.oceanBlue,
+              onRefresh: _refresh,
+              child: _searchQuery.trim().isEmpty
+                  ? _buildPagedList(controller)
+                  : _buildFilteredList(controller),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -166,7 +306,10 @@ class _TripCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
-              const Icon(Icons.local_shipping_outlined, color: AppTheme.oceanBlue),
+              const Icon(
+                Icons.local_shipping_outlined,
+                color: AppTheme.oceanBlue,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -183,14 +326,20 @@ class _TripCard extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       'Date: ${_formatDate(trip.tripDate)} • Stops: ${trip.completedStops}/${trip.totalStops}',
-                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                      ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 10),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: AppTheme.oceanBlue.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
@@ -247,6 +396,105 @@ class _EmptyState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ListLoadingState extends StatelessWidget {
+  const _ListLoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget skeletonCard(int i) {
+      return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: FrostCard(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 24,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: AppTheme.oceanBlue.withValues(alpha: 0.14),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          height: 12,
+                          width: 150,
+                          decoration: BoxDecoration(
+                            color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          height: 10,
+                          width: 220,
+                          decoration: BoxDecoration(
+                            color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .animate(onPlay: (controller) => controller.repeat())
+          .shimmer(
+            duration: (1000 + (i * 120)).ms,
+            color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+          );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Column(
+        children: [skeletonCard(0), skeletonCard(1), skeletonCard(2)],
+      ),
+    ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.03, end: 0);
+  }
+}
+
+class _SearchEmptyState extends StatelessWidget {
+  const _SearchEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return FrostCard(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.search_off_rounded,
+            size: 18,
+            color: AppTheme.oceanBlue.withValues(alpha: 0.45),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'No trip found for this ID',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.nightBlue,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Try another Trip ID',
+            style: TextStyle(fontSize: 13, color: Colors.black45),
+          ),
+        ],
       ),
     );
   }

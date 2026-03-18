@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
@@ -20,6 +21,14 @@ class ExternalDeliveryTripDetailsScreen extends StatefulWidget {
 class _ExternalDeliveryTripDetailsScreenState
     extends State<ExternalDeliveryTripDetailsScreen> {
   late Future<ExternalDeliveryTrip> _future;
+  static const List<String> _stopStatusOptions = <String>[
+    'Pending',
+    'Out for Delivery',
+    'Delivered',
+    'Failed',
+    'Cancelled',
+  ];
+  final Set<String> _updatingStops = <String>{};
 
   @override
   void initState() {
@@ -100,105 +109,477 @@ class _ExternalDeliveryTripDetailsScreenState
     return AppShell(
       title: 'External Delivery Trip',
       subtitle: widget.tripName,
+      scrollable: false,
       child: FutureBuilder<ExternalDeliveryTrip>(
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 60),
-              child: Center(
-                child: CircularProgressIndicator(color: AppTheme.oceanBlue),
-              ),
-            );
+            return _loadingView();
           }
 
           if (snapshot.hasError) {
-            return FrostCard(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.error_outline_rounded,
-                    size: 42,
-                    color: AppTheme.mango,
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    snapshot.error.toString().replaceFirst('Exception: ', ''),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.black54),
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _future = ExternalDeliveryRepository().fetchTripDetails(
-                          widget.tripName,
-                        );
-                      });
-                    },
-                    child: const Text('Retry'),
-                  ),
-                ],
+            return Center(
+              child: FrostCard(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      size: 42,
+                      color: AppTheme.mango,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      snapshot.error.toString().replaceFirst('Exception: ', ''),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.black54),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          _future = ExternalDeliveryRepository().fetchTripDetails(
+                            widget.tripName,
+                          );
+                        });
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
               ),
             );
           }
 
           final trip = snapshot.data!;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SectionLabel('Trip Summary'),
-              FrostCard(
-                child: _fieldList(_orderedTripFields(trip)),
-              ),
-              const SizedBox(height: 14),
-              const SectionLabel('Stops'),
-              if (trip.stops.isEmpty)
-                const FrostCard(
-                  child: Text(
-                    'No stops found',
-                    style: TextStyle(color: Colors.black54),
-                  ),
-                )
-              else
-                ...trip.stops.map(
-                  (stop) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: FrostCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Stop ${stop.stop}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.nightBlue,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          _fieldList(_orderedStopFields(stop)),
-                        ],
-                      ),
+          return DefaultTabController(
+            length: 3,
+            child: Column(
+              children: [
+                _tripIdentityHeader(trip)
+                    .animate()
+                    .fadeIn(duration: 220.ms)
+                    .slideY(begin: 0.04, end: 0),
+                const SizedBox(height: 10),
+                const TabBar(
+                  indicatorColor: AppTheme.oceanBlue,
+                  labelColor: AppTheme.nightBlue,
+                  unselectedLabelColor: Colors.black54,
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  dividerColor: Colors.transparent,
+                  tabs: [
+                    Tab(
+                      icon: Icon(Icons.local_shipping_outlined, size: 18),
+                      text: 'Trip',
                     ),
+                    Tab(
+                      icon: Icon(Icons.route_outlined, size: 18),
+                      text: 'Stops',
+                    ),
+                    Tab(
+                      icon: Icon(Icons.summarize_outlined, size: 18),
+                      text: 'Summary',
+                    ),
+                  ],
+                )
+                    .animate()
+                    .fadeIn(delay: 60.ms, duration: 220.ms)
+                    .slideY(begin: 0.04, end: 0)
+                    .shimmer(
+                      delay: 320.ms,
+                      duration: 900.ms,
+                      color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                    ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      _tripTab(trip),
+                      _stopsTab(trip),
+                      _summaryTab(trip),
+                    ],
                   ),
                 ),
-            ],
+              ],
+            ),
           );
         },
       ),
     );
   }
 
+  Widget _summaryTab(ExternalDeliveryTrip trip) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: FrostCard(
+        child: _fieldList(_orderedTripFields(trip)),
+      )
+          .animate()
+          .fadeIn(delay: 60.ms, duration: 260.ms)
+          .slideY(begin: 0.05, end: 0)
+          .scale(
+            begin: const Offset(0.98, 0.98),
+            end: const Offset(1, 1),
+            duration: 280.ms,
+            curve: Curves.easeOutCubic,
+          ),
+    );
+  }
+
+  Widget _tripTab(ExternalDeliveryTrip trip) {
+    final driver = _displayValue(trip.rawFields['driver']);
+    final tripDate = _displayValue(trip.rawFields['trip_date']);
+    final status = _displayValue(trip.rawFields['status']);
+
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: FrostCard(
+        child: Column(
+          children: [
+            _tripInfoRow(Icons.person_outline, 'Driver', driver),
+            _tripInfoRow(Icons.calendar_month_outlined, 'Trip Date', tripDate),
+            _tripInfoRow(Icons.flag_outlined, 'Status', status),
+          ],
+        ),
+      )
+          .animate()
+          .fadeIn(delay: 60.ms, duration: 260.ms)
+          .slideY(begin: 0.05, end: 0)
+          .scale(
+            begin: const Offset(0.98, 0.98),
+            end: const Offset(1, 1),
+            duration: 280.ms,
+            curve: Curves.easeOutCubic,
+          ),
+    );
+  }
+
+  Widget _loadingView() {
+    Widget line({double widthFactor = 1}) {
+      return FractionallySizedBox(
+        widthFactor: widthFactor,
+        child: Container(
+          height: 12,
+          decoration: BoxDecoration(
+            color: AppTheme.oceanBlue.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Container(
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(12),
+          ),
+        )
+            .animate(onPlay: (controller) => controller.repeat())
+            .shimmer(
+              duration: 1100.ms,
+              color: AppTheme.oceanBlue.withValues(alpha: 0.18),
+            ),
+        const SizedBox(height: 12),
+        Expanded(
+          child: SingleChildScrollView(
+            physics: const NeverScrollableScrollPhysics(),
+            child: Column(
+              children: [
+                FrostCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      line(widthFactor: 0.42),
+                      const SizedBox(height: 14),
+                      line(),
+                      const SizedBox(height: 10),
+                      line(widthFactor: 0.9),
+                      const SizedBox(height: 10),
+                      line(widthFactor: 0.75),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                FrostCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      line(widthFactor: 0.35),
+                      const SizedBox(height: 14),
+                      line(widthFactor: 0.95),
+                      const SizedBox(height: 10),
+                      line(widthFactor: 0.82),
+                      const SizedBox(height: 10),
+                      line(widthFactor: 0.68),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    )
+        .animate()
+        .fadeIn(duration: 220.ms)
+        .slideY(begin: 0.03, end: 0);
+  }
+
+  Widget _tripIdentityHeader(ExternalDeliveryTrip trip) {
+    return FrostCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.local_shipping_outlined,
+              size: 18,
+              color: AppTheme.oceanBlue,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Trip ID: ${trip.name}',
+              style: const TextStyle(
+                color: AppTheme.nightBlue,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tripInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 16, color: AppTheme.oceanBlue),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: AppTheme.nightBlue,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stopsTab(ExternalDeliveryTrip trip) {
+    final orderedStops = trip.stops.asMap().entries.toList();
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Column(
+        children: [
+          if (trip.stops.isEmpty)
+            const FrostCard(
+              child: Text(
+                'No stops found',
+                style: TextStyle(color: Colors.black54),
+              ),
+            )
+                .animate()
+                .fadeIn(delay: 100.ms, duration: 240.ms)
+                .slideY(begin: 0.05, end: 0)
+          else
+            ...orderedStops.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: FrostCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _stopTitleWithAction(entry.value),
+                      const SizedBox(height: 8),
+                      _fieldList(_orderedStopFields(entry.value)),
+                    ],
+                  ),
+                ),
+              )
+                  .animate()
+                  .fadeIn(
+                    delay: (100 + (entry.key * 70)).ms,
+                    duration: 250.ms,
+                  )
+                  .slideY(begin: 0.06, end: 0)
+                  .scale(
+                    begin: const Offset(0.985, 0.985),
+                    end: const Offset(1, 1),
+                    duration: 240.ms,
+                    curve: Curves.easeOutCubic,
+                  ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stopTitleWithAction(ExternalDeliveryTripStop stop) {
+    final stopKey = _stopKey(stop);
+    final isUpdating = _updatingStops.contains(stopKey);
+    return Row(
+      children: [
+        _stopTitle('Stop ${stop.stop}'),
+        const Spacer(),
+        if (isUpdating)
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppTheme.oceanBlue,
+            ),
+          )
+        else
+          PopupMenuButton<String>(
+            onSelected: (status) => _updateStopStatus(stop, status),
+            itemBuilder: (context) {
+              final options = <String>{
+                ..._stopStatusOptions,
+                if (stop.status.trim().isNotEmpty) stop.status.trim(),
+              }.toList();
+              return options
+                  .map((status) => PopupMenuItem<String>(
+                        value: status,
+                        child: Text(status),
+                      ))
+                  .toList();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.25),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(
+                    Icons.edit_rounded,
+                    size: 14,
+                    color: AppTheme.oceanBlue,
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    'Update Status',
+                    style: TextStyle(
+                      color: AppTheme.oceanBlue,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  String _stopKey(ExternalDeliveryTripStop stop) {
+    final rowName = (stop.rawFields['name'] ?? '').toString().trim();
+    if (rowName.isNotEmpty) return rowName;
+    return '${stop.externalDelivery}-${stop.stop}';
+  }
+
+  Future<void> _updateStopStatus(
+    ExternalDeliveryTripStop stop,
+    String newStatus,
+  ) async {
+    final current = stop.status.trim().toLowerCase();
+    if (current == newStatus.trim().toLowerCase()) return;
+
+    final stopKey = _stopKey(stop);
+    setState(() => _updatingStops.add(stopKey));
+    try {
+      await ExternalDeliveryRepository().updateTripStopStatus(
+        stop: stop,
+        newStatus: newStatus,
+      );
+      if (!mounted) return;
+      showInfoSnack(context, 'Stop status updated to $newStatus');
+      setState(() {
+        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _updatingStops.remove(stopKey));
+      }
+    }
+  }
+
   Widget _fieldList(List<MapEntry<String, dynamic>> entries) {
     return Column(
       children: entries
-          .map((entry) => _kv(_labelFromKey(entry.key), _displayValue(entry.value)))
+          .asMap()
+          .entries
+          .map(
+            (entry) => _kv(
+              _labelFromKey(entry.value.key),
+              _displayValue(entry.value.value),
+            )
+                .animate()
+                .fadeIn(
+                  delay: (30 + (entry.key * 24)).ms,
+                  duration: 180.ms,
+                )
+                .slideX(begin: 0.02, end: 0),
+          )
           .toList(),
     );
   }
 
   Widget _kv(String key, String value) {
+    const icon = Icon(
+      Icons.label_outline_rounded,
+      size: 14,
+      color: Colors.black45,
+    );
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
@@ -206,12 +587,24 @@ class _ExternalDeliveryTripDetailsScreenState
         children: [
           SizedBox(
             width: 140,
-            child: Text(
-              key,
-              style: const TextStyle(
-                color: Colors.black54,
-                fontWeight: FontWeight.w600,
-              ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: icon,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    key,
+                    style: const TextStyle(
+                      color: Colors.black54,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 8),
@@ -223,6 +616,26 @@ class _ExternalDeliveryTripDetailsScreenState
           ),
         ],
       ),
+    );
+  }
+
+  Widget _stopTitle(String stopText) {
+    return Row(
+      children: [
+        const Icon(
+          Icons.location_on_outlined,
+          size: 18,
+          color: AppTheme.oceanBlue,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          stopText,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            color: AppTheme.nightBlue,
+          ),
+        ),
+      ],
     );
   }
 }
