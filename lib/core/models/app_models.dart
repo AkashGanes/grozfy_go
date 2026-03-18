@@ -98,6 +98,22 @@ class VehicleDetails {
   final VerificationStatus status;
 }
 
+class VehicleSubmitResult {
+  const VehicleSubmitResult({
+    this.error,
+    this.vehicleName,
+    this.vehicleData,
+    this.wasUpdate = false,
+  });
+
+  final String? error;
+  final String? vehicleName;
+  final Map<String, dynamic>? vehicleData;
+  final bool wasUpdate;
+
+  bool get success => error == null;
+}
+
 class BankDetails {
   const BankDetails({
     required this.accountNumber,

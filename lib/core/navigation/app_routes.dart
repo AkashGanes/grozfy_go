@@ -5,6 +5,7 @@ class AppRoutes {
   static const register = '/register';
   static const kycDocuments = '/kyc-documents';
   static const vehicleDetails = '/vehicle-details';
+  static const vehicleSubmittedDetails = '/vehicle-submitted-details';
   static const bankSetup = '/bank-setup';
   static const permission = '/permission';
   static const tracking = '/tracking';

@@ -20,7 +20,6 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
   final TextEditingController _locationCtrl = TextEditingController();
   final TextEditingController _chassisNoCtrl = TextEditingController();
   final TextEditingController _vehicleValueCtrl = TextEditingController();
-  final TextEditingController _employeeCtrl = TextEditingController();
   final TextEditingController _insuranceCompanyCtrl = TextEditingController();
   final TextEditingController _policyNoCtrl = TextEditingController();
   final TextEditingController _startDateCtrl = TextEditingController();
@@ -32,6 +31,8 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
 
   String? _selectedFuel;
   String? _selectedUom;
+  String? _selectedEmployee;
+  List<String> _employeeOptions = <String>[];
   bool _busy = false;
   bool _initialized = false;
 
@@ -53,7 +54,6 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     _locationCtrl.dispose();
     _chassisNoCtrl.dispose();
     _vehicleValueCtrl.dispose();
-    _employeeCtrl.dispose();
     _insuranceCompanyCtrl.dispose();
     _policyNoCtrl.dispose();
     _startDateCtrl.dispose();
@@ -76,6 +76,8 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
         ? await app.fetchUomOptions()
         : app.uomOptions;
     final List<String> fuelOptions = app.vehicleFuelOptions;
+    final List<String> employeeOptions = await app
+        .fetchVehicleEmployeeOptions();
 
     if (!mounted || _initialized) {
       return;
@@ -91,7 +93,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
       _locationCtrl.text = vehicle.location ?? '';
       _chassisNoCtrl.text = vehicle.chassisNo ?? '';
       _vehicleValueCtrl.text = vehicle.vehicleValue?.toString() ?? '';
-      _employeeCtrl.text = vehicle.employee ?? '';
+      _selectedEmployee = vehicle.employee;
       _insuranceCompanyCtrl.text = vehicle.insuranceCompany ?? '';
       _policyNoCtrl.text = vehicle.policyNo ?? '';
       _startDateCtrl.text = vehicle.startDate ?? '';
@@ -107,8 +109,13 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     final String? defaultEmployee = app.loggedProfileDetails?.driver == null
         ? null
         : app.loggedProfileDetails!.driver!['employee']?.toString();
-    if (_employeeCtrl.text.trim().isEmpty && defaultEmployee != null) {
-      _employeeCtrl.text = defaultEmployee;
+    _employeeOptions = employeeOptions;
+    if (_selectedEmployee == null && defaultEmployee != null) {
+      _selectedEmployee = defaultEmployee;
+    }
+    if (_selectedEmployee != null &&
+        !_employeeOptions.contains(_selectedEmployee!)) {
+      _employeeOptions = <String>[_selectedEmployee!, ..._employeeOptions];
     }
 
     if (_selectedFuel == null && fuelOptions.isNotEmpty) {
@@ -161,7 +168,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
   Future<void> _submit() async {
     final app = AppScope.of(context);
     setState(() => _busy = true);
-    final String? error = await app.submitVehicleDetails(
+    final result = await app.submitVehicleDetails(
       licensePlate: _licensePlateCtrl.text,
       make: _makeCtrl.text,
       model: _modelCtrl.text,
@@ -172,7 +179,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
       location: _locationCtrl.text,
       chassisNo: _chassisNoCtrl.text,
       vehicleValue: _vehicleValueCtrl.text,
-      employee: _employeeCtrl.text,
+      employee: _selectedEmployee ?? '',
       insuranceCompany: _insuranceCompanyCtrl.text,
       policyNo: _policyNoCtrl.text,
       startDate: _startDateCtrl.text,
@@ -188,13 +195,17 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     }
     setState(() => _busy = false);
 
-    if (error != null) {
-      showInfoSnack(context, error);
+    if (!result.success) {
+      showInfoSnack(context, result.error ?? 'Vehicle save failed');
       return;
     }
 
-    showInfoSnack(context, 'Vehicle details saved successfully');
-    Navigator.of(context).pushNamed(AppRoutes.bankSetup);
+    showInfoSnack(context, 'Vehicle is created');
+
+    Navigator.of(context).pushNamed(
+      AppRoutes.vehicleSubmittedDetails,
+      arguments: result.vehicleData,
+    );
   }
 
   @override
@@ -202,6 +213,9 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     final app = AppScope.of(context);
     final List<String> fuelOptions = app.vehicleFuelOptions;
     final List<String> uomOptions = app.uomOptions;
+    final List<String> employeeOptions = _employeeOptions.isEmpty
+        ? <String>['No employees found']
+        : _employeeOptions;
 
     return AppShell(
       title: 'Vehicle Registration',
@@ -328,8 +342,24 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _employeeCtrl,
+                DropdownButtonFormField<String>(
+                  initialValue: employeeOptions.contains(_selectedEmployee)
+                      ? _selectedEmployee
+                      : null,
+                  items: employeeOptions
+                      .map(
+                        (value) => DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (String? value) {
+                    if (value == null || value == 'No employees found') {
+                      return;
+                    }
+                    setState(() => _selectedEmployee = value);
+                  },
                   decoration: const InputDecoration(
                     labelText: 'Employee',
                     prefixIcon: Icon(Icons.badge_outlined),

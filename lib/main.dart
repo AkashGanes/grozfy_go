@@ -11,6 +11,7 @@ import 'features/dashboard/dashboard_screen.dart';
 import 'features/kyc/bank_setup_screen.dart';
 import 'features/kyc/kyc_documents_screen.dart';
 import 'features/kyc/vehicle_details_screen.dart';
+import 'features/kyc/vehicle_submitted_details_screen.dart';
 import 'features/language/language_selection_screen.dart';
 import 'features/location/current_location_picker_screen.dart';
 import 'features/location/location_tracking_screen.dart';
@@ -69,6 +70,15 @@ class DeliveryPartnerApp extends ConsumerWidget {
             case AppRoutes.vehicleDetails:
               return MaterialPageRoute<void>(
                 builder: (_) => const VehicleDetailsScreen(),
+              );
+            case AppRoutes.vehicleSubmittedDetails:
+              final dynamic args = settings.arguments;
+              final Map<String, dynamic> data = args is Map<String, dynamic>
+                  ? args
+                  : <String, dynamic>{};
+              return MaterialPageRoute<void>(
+                builder: (_) =>
+                    VehicleSubmittedDetailsScreen(vehicleData: data),
               );
             case AppRoutes.bankSetup:
               return MaterialPageRoute<void>(
