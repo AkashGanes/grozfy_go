@@ -185,8 +185,8 @@ class AppController extends ChangeNotifier {
   bool get isKycComplete => _kycCompleted;
 
   bool get canGoOnline =>
-      allKycApproved &&
-      _vehicle?.status == VerificationStatus.approved &&
+      _kycCompleted &&
+      _vehicle != null &&
       (_bank?.verified ?? false) &&
       hasSelectedLocation &&
       _permissionState.allGranted;
@@ -1094,7 +1094,14 @@ class AppController extends ChangeNotifier {
 
   String? setOnline(bool value) {
     if (value && !canGoOnline) {
-      return 'Complete KYC, bank setup, location selection, and permissions before going online';
+      final List<String> missing = [];
+      if (!_kycCompleted) missing.add('KYC submission');
+      if (_vehicle == null) missing.add('vehicle details');
+      if (!(_bank?.verified ?? false)) missing.add('bank setup');
+      if (!hasSelectedLocation) missing.add('location selection');
+      if (!_permissionState.allGranted) missing.add('app permissions');
+      return 'Please complete: ${missing.join(', ')}';
+
     }
 
     _isOnline = value;
