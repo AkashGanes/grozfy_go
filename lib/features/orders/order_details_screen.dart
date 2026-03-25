@@ -62,7 +62,7 @@ class OrderDetailsScreen extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    Navigator.of(context).pushNamed(AppRoutes.navigation);
+                    Navigator.of(context).pushNamed(AppRoutes.deliveryTracking);
                   },
                   icon: const Icon(Icons.navigation_rounded),
                   label: const Text('Navigate'),

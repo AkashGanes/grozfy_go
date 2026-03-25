@@ -4,6 +4,7 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
+import 'delivery_tracking_screen.dart';
 
 class NavigationScreen extends StatelessWidget {
   const NavigationScreen({super.key});
@@ -66,7 +67,11 @@ class NavigationScreen extends StatelessWidget {
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () {
-              showInfoSnack(context, 'In-app navigation enabled');
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const DeliveryTrackingScreen(),
+                ),
+              );
             },
             icon: const Icon(Icons.map_rounded),
             label: const Text('Use In-app Navigation'),
