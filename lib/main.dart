@@ -15,6 +15,8 @@ import 'features/language/language_selection_screen.dart';
 import 'features/location/current_location_picker_screen.dart';
 import 'features/location/location_tracking_screen.dart';
 import 'features/orders/navigation_screen.dart';
+import 'features/orders/delivery_list_screen.dart';
+import 'features/orders/delivery_tracking_screen.dart';
 import 'features/orders/order_details_screen.dart';
 import 'features/orders/order_request_screen.dart';
 import 'features/orders/order_status_screen.dart';
@@ -93,6 +95,25 @@ class DeliveryPartnerApp extends ConsumerWidget {
             case AppRoutes.navigation:
               return MaterialPageRoute<void>(
                 builder: (_) => const NavigationScreen(),
+              );
+            case AppRoutes.deliveryList:
+              return MaterialPageRoute<void>(
+                builder: (_) => const DeliveryListScreen(),
+              );
+            case AppRoutes.deliveryTracking:
+              final args = settings.arguments as Map<String, dynamic>?;
+              return MaterialPageRoute<void>(
+                builder: (_) => DeliveryTrackingScreen(
+                  deliveryName: args?['name'],
+                  customerName: args?['customerName'],
+                  storeName: args?['storeName'],
+                  contactNumber: args?['contactNumber'],
+                  dropAddress: args?['dropAddress'],
+                  pickupLat: args?['pickupLat'],
+                  pickupLng: args?['pickupLng'],
+                  dropLat: args?['dropLat'],
+                  dropLng: args?['dropLng'],
+                ),
               );
             case AppRoutes.orderStatus:
               return MaterialPageRoute<void>(
