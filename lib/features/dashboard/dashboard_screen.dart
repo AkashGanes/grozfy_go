@@ -228,7 +228,7 @@ class DashboardScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${app.activeOrder!.id} · ${app.activeOrder!.status.label}',
+                        '${app.activeOrder!.orderId} · ${app.activeOrder!.orderStatus.label}',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),
@@ -325,6 +325,12 @@ class DashboardScreen extends StatelessWidget {
                   'Documents',
                   Icons.file_copy_outlined,
                   route: AppRoutes.kycDocuments,
+                ),
+                _quickButton(
+                  context,
+                  'Available Orders',
+                  Icons.local_shipping_outlined,
+                  route: AppRoutes.orderListing,
                 ),
                 _quickButton(context, 'Support', Icons.support_agent_rounded),
                 _quickButton(context, 'Settings', Icons.settings_outlined),

@@ -80,6 +80,15 @@ class AppController extends ChangeNotifier {
 
   DeliveryOrder? _incomingOrder;
   DeliveryOrder? _activeOrder;
+  final List<DeliveryOrder> _availableOrders = <DeliveryOrder>[];
+  final List<DeliveryOrder> _acceptedOrders = <DeliveryOrder>[];
+  bool _isLoadingOrders = false;
+  String? _orderLoadingError;
+  int _retryCount = 0;
+  static const int _maxRetries = 3;
+  static const Duration _retryDelay = Duration(seconds: 2);
+  Timer? _liveLocationTimer;
+  GeoLocation? _partnerLiveLocation;
 
   EarningsSummary _earnings = const EarningsSummary(
     today: 1250,
@@ -654,18 +663,31 @@ class AppController extends ChangeNotifier {
   }
 
   DeliveryOrder generateIncomingOrder() {
+    final String orderId = '#OD${1000 + _random.nextInt(8999)}';
     _incomingOrder = DeliveryOrder(
-      id: '#OD${1000 + _random.nextInt(8999)}',
+      orderId: orderId,
       customerName: 'Riya Sharma',
+      customerPhone: '9876501234',
+      deliveryAddress: 'Karol Bagh, New Delhi - 110005',
+      storeId: 'STORE${100 + _random.nextInt(899)}',
       storeName: 'Fresh Bites Kitchen',
-      contactNumber: '9876501234',
+      storeContact: '9876543210',
+      storeAddress: 'Connaught Place, New Delhi - 110001',
+      orderItems: <OrderItem>[
+        const OrderItem(name: 'Veg Biryani', quantity: 2, price: 180),
+        const OrderItem(name: 'Chicken Curry', quantity: 1, price: 250),
+        const OrderItem(name: 'Naan', quantity: 4, price: 40),
+      ],
+      orderStatus: OrderStatus.pending,
+      latitude: 28.6692 + (_random.nextDouble() - 0.5) * 0.1,
+      longitude: 77.4538 + (_random.nextDouble() - 0.5) * 0.1,
       pickup: 'Connaught Place, New Delhi',
       drop: 'Karol Bagh, New Delhi',
       deliveryInstructions: 'Call before arrival, gate code 2456',
       paymentMode: _random.nextBool() ? 'COD' : 'Online',
       distanceKm: 6.4,
       estimatedEarnings: 132,
-      status: OrderProgressStatus.accepted,
+      assignmentStatus: OrderAssignmentStatus.unassigned,
     );
     notifyListeners();
     return _incomingOrder!;
@@ -703,9 +725,9 @@ class AppController extends ChangeNotifier {
       return;
     }
 
-    _activeOrder = _activeOrder!.copyWith(status: status);
+    _activeOrder = _activeOrder!.copyWith(orderStatus: status);
 
-    if (status == OrderProgressStatus.delivered) {
+    if (status == OrderStatus.delivered) {
       final double payout = _activeOrder!.estimatedEarnings;
       _earnings = _earnings.copyWith(
         today: _earnings.today + payout,
@@ -721,13 +743,362 @@ class AppController extends ChangeNotifier {
         0,
         AppNotice(
           title: 'Delivery completed',
-          message: 'Order ${_activeOrder!.id} delivered successfully.',
+          message: 'Order ${_activeOrder!.orderId} delivered successfully.',
           time: DateTime.now(),
         ),
       );
       _activeOrder = null;
     }
 
+    notifyListeners();
+  }
+
+  List<DeliveryOrder> get availableOrders =>
+      List<DeliveryOrder>.unmodifiable(_availableOrders);
+
+  List<DeliveryOrder> get acceptedOrders =>
+      List<DeliveryOrder>.unmodifiable(_acceptedOrders);
+
+  bool get isLoadingOrders => _isLoadingOrders;
+
+  String? get orderLoadingError => _orderLoadingError;
+
+  GeoLocation? get partnerLiveLocation => _partnerLiveLocation;
+
+  Future<void> fetchAvailableOrders() async {
+    _isLoadingOrders = true;
+    _orderLoadingError = null;
+    notifyListeners();
+
+    try {
+      await _fetchOrdersWithRetry();
+    } catch (e) {
+      _orderLoadingError = 'Failed to fetch orders: $e';
+    } finally {
+      _isLoadingOrders = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _fetchOrdersWithRetry() async {
+    _retryCount = 0;
+    while (_retryCount < _maxRetries) {
+      try {
+        await _fetchOrders();
+        return;
+      } catch (e) {
+        _retryCount++;
+        if (_retryCount >= _maxRetries) {
+          rethrow;
+        }
+        await Future<void>.delayed(_retryDelay * _retryCount);
+      }
+    }
+  }
+
+  Future<void> _fetchOrders() async {
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (_random.nextBool()) {
+      throw Exception('Network error');
+    }
+    _availableOrders.clear();
+    _availableOrders.addAll(_generateMockAvailableOrders());
+    notifyListeners();
+  }
+
+  List<DeliveryOrder> _generateMockAvailableOrders() {
+    final List<DeliveryOrder> orders = <DeliveryOrder>[];
+    final List<String> customerNames = <String>[
+      'Riya Sharma',
+      'Amit Kumar',
+      'Priya Singh',
+      'Rahul Verma',
+      'Sneha Gupta',
+    ];
+    final List<String> storeNames = <String>[
+      'Fresh Bites Kitchen',
+      'Tasty Treats',
+      'Burger Barn',
+      'Pizza Palace',
+      'Sushi Station',
+    ];
+    final List<String> addresses = <String>[
+      'Connaught Place, New Delhi',
+      'Karol Bagh, New Delhi',
+      'Lajpat Nagar, New Delhi',
+      'Saket, New Delhi',
+      'Dwarka, New Delhi',
+    ];
+
+    for (int i = 0; i < 5; i++) {
+      orders.add(
+        DeliveryOrder(
+          orderId: '#OD${1000 + _random.nextInt(8999)}',
+          customerName: customerNames[i],
+          customerPhone: '98765${1000 + _random.nextInt(8999)}',
+          deliveryAddress: '${addresses[i]} - ${110001 + i * 10}',
+          storeId: 'STORE${100 + _random.nextInt(899)}',
+          storeName: storeNames[i],
+          storeContact: '98765${43210 + _random.nextInt(10000)}',
+          storeAddress: addresses[(i + 2) % addresses.length],
+          orderItems: <OrderItem>[
+            OrderItem(
+              name: 'Item ${i + 1}',
+              quantity: 1 + _random.nextInt(3),
+              price: (50 + _random.nextInt(200)).toDouble(),
+            ),
+            if (_random.nextBool())
+              OrderItem(
+                name: 'Drink ${i + 1}',
+                quantity: 1,
+                price: 30 + _random.nextInt(50).toDouble(),
+              ),
+          ],
+          orderStatus: OrderStatus.pending,
+          latitude: 28.6139 + (_random.nextDouble() - 0.5) * 0.2,
+          longitude: 77.2090 + (_random.nextDouble() - 0.5) * 0.2,
+          pickup: addresses[(i + 2) % addresses.length],
+          drop: addresses[i],
+          deliveryInstructions: _random.nextBool()
+              ? 'Call before arrival'
+              : 'Leave at door',
+          paymentMode: _random.nextBool() ? 'COD' : 'Online',
+          distanceKm: (3 + _random.nextDouble() * 7).roundToDouble(),
+          estimatedEarnings: (50 + _random.nextInt(100)).toDouble(),
+          assignmentStatus: OrderAssignmentStatus.unassigned,
+        ),
+      );
+    }
+    notifyListeners();
+    return orders;
+  }
+
+  String? acceptOrder(String orderId) {
+    final int index = _availableOrders.indexWhere(
+      (order) => order.orderId == orderId,
+    );
+    if (index == -1) {
+      return 'Order not found';
+    }
+
+    final DeliveryOrder order = _availableOrders[index];
+
+    if (order.assignmentStatus == OrderAssignmentStatus.assigned) {
+      return 'Order already assigned to another partner';
+    }
+
+    _availableOrders.removeAt(index);
+
+    _activeOrder = order.copyWith(
+      assignmentStatus: OrderAssignmentStatus.assigned,
+      assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+      orderStatus: OrderStatus.accepted,
+    );
+
+    _acceptedOrders.add(_activeOrder!);
+
+    _performance = _performance.copyWith(
+      acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
+    );
+
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Order Accepted',
+        message: 'Order $orderId has been accepted by you.',
+        time: DateTime.now(),
+      ),
+    );
+
+    notifyListeners();
+    return null;
+  }
+
+  void rejectOrder(String orderId) {
+    final int index = _availableOrders.indexWhere(
+      (order) => order.orderId == orderId,
+    );
+    if (index != -1) {
+      _availableOrders.removeAt(index);
+    }
+
+    _performance = _performance.copyWith(
+      acceptanceRate: max(0, _performance.acceptanceRate - 1.2),
+    );
+
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Order Rejected',
+        message: 'Order $orderId has been rejected.',
+        time: DateTime.now(),
+      ),
+    );
+
+    notifyListeners();
+  }
+
+  String? reachedPickup(String orderId) {
+    if (_activeOrder == null || _activeOrder!.orderId != orderId) {
+      return 'No active order found';
+    }
+
+    if (_activeOrder!.orderStatus != OrderStatus.accepted) {
+      return 'Order must be accepted first';
+    }
+
+    _activeOrder = _activeOrder!.copyWith(
+      orderStatus: OrderStatus.reachedPickup,
+      reachedStoreAt: DateTime.now(),
+      deliveryPartnerLocation:
+          _partnerLiveLocation ??
+          GeoLocation(
+            latitude: _currentLatitude ?? 28.6139,
+            longitude: _currentLongitude ?? 77.2090,
+          ),
+    );
+
+    final int acceptedIndex = _acceptedOrders.indexWhere(
+      (order) => order.orderId == orderId,
+    );
+    if (acceptedIndex != -1) {
+      _acceptedOrders[acceptedIndex] = _activeOrder!;
+    }
+
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Store Notified',
+        message: 'Store has been informed that you have arrived.',
+        time: DateTime.now(),
+      ),
+    );
+
+    notifyListeners();
+    return null;
+  }
+
+  bool validateProximityToStore(
+    double storeLat,
+    double storeLng,
+    double partnerLat,
+    double partnerLng,
+  ) {
+    const double maxDistanceKm = 0.5;
+    final double distance = _calculateDistance(
+      storeLat,
+      storeLng,
+      partnerLat,
+      partnerLng,
+    );
+    return distance <= maxDistanceKm;
+  }
+
+  double _calculateDistance(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) {
+    const double earthRadius = 6371;
+    final double dLat = _toRadians(lat2 - lat1);
+    final double dLng = _toRadians(lng2 - lng1);
+    final double a =
+        _sin(dLat / 2) * _sin(dLat / 2) +
+        _cos(_toRadians(lat1)) *
+            _cos(_toRadians(lat2)) *
+            _sin(dLng / 2) *
+            _sin(dLng / 2);
+    final double c = 2 * _atan2(_sqrt(a), _sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  double _toRadians(double degrees) => degrees * 3.141592653589793 / 180;
+  double _sin(double x) => _taylorSin(x);
+  double _cos(double x) => _taylorCos(x);
+  double _sqrt(double x) => _newtonSqrt(x);
+  double _atan2(double y, double x) => _approximateAtan2(y, x);
+
+  double _taylorSin(double x) {
+    x = x % (2 * 3.141592653589793);
+    double result = x;
+    double term = x;
+    for (int i = 1; i <= 10; i++) {
+      term *= -x * x / ((2 * i) * (2 * i + 1));
+      result += term;
+    }
+    return result;
+  }
+
+  double _taylorCos(double x) {
+    x = x % (2 * 3.141592653589793);
+    double result = 1;
+    double term = 1;
+    for (int i = 1; i <= 10; i++) {
+      term *= -x * x / ((2 * i - 1) * (2 * i));
+      result += term;
+    }
+    return result;
+  }
+
+  double _newtonSqrt(double x) {
+    if (x < 0) return double.nan;
+    if (x == 0) return 0;
+    double guess = x / 2;
+    for (int i = 0; i < 20; i++) {
+      guess = (guess + x / guess) / 2;
+    }
+    return guess;
+  }
+
+  double _approximateAtan2(double y, double x) {
+    if (x > 0) return _atan(y / x);
+    if (x < 0 && y >= 0) return _atan(y / x) + 3.141592653589793;
+    if (x < 0 && y < 0) return _atan(y / x) - 3.141592653589793;
+    if (x == 0 && y > 0) return 3.141592653589793 / 2;
+    if (x == 0 && y < 0) return -3.141592653589793 / 2;
+    return 0;
+  }
+
+  double _atan(double x) {
+    if (x.abs() > 1) {
+      return (x > 0 ? 1 : -1) * (3.141592653589793 / 2 - _atan(1 / x));
+    }
+    double result = x;
+    double term = x;
+    for (int i = 1; i <= 20; i++) {
+      term *= -x * x;
+      result += term / (2 * i + 1);
+    }
+    return result;
+  }
+
+  void startLiveLocationTracking() {
+    _liveLocationTimer?.cancel();
+    _liveLocationTimer = Timer.periodic(
+      Duration(seconds: _trackingInterval),
+      (_) => _updateLiveLocation(),
+    );
+  }
+
+  void stopLiveLocationTracking() {
+    _liveLocationTimer?.cancel();
+    _liveLocationTimer = null;
+  }
+
+  void _updateLiveLocation() {
+    final double baseLat = _currentLatitude ?? 28.6139;
+    final double baseLng = _currentLongitude ?? 77.2090;
+    _partnerLiveLocation = GeoLocation(
+      latitude: baseLat + (_random.nextDouble() - 0.5) / 100,
+      longitude: baseLng + (_random.nextDouble() - 0.5) / 100,
+    );
+    if (_activeOrder != null &&
+        _activeOrder!.orderStatus == OrderStatus.reachedPickup) {
+      _activeOrder = _activeOrder!.copyWith(
+        deliveryPartnerLocation: _partnerLiveLocation,
+      );
+    }
     notifyListeners();
   }
 

@@ -9,9 +9,11 @@ class AppRoutes {
   static const permission = '/permission';
   static const tracking = '/tracking';
   static const currentLocation = '/current-location';
+  static const orderListing = '/order-listing';
   static const orderRequest = '/order-request';
   static const orderDetails = '/order-details';
   static const navigation = '/navigation';
   static const orderStatus = '/order-status';
+  static const orderTracking = '/order-tracking';
   static const dashboard = '/dashboard';
 }
