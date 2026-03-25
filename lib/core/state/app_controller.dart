@@ -47,6 +47,10 @@ class AppController extends ChangeNotifier {
   static const String _prefProfileCompleted = 'profile_completed';
   static const String _prefDriverName = 'driver_name';
   static const String _prefKycCompleted = 'kyc_completed';
+  static const String _prefVehicleName = 'vehicle_name';
+  static const String _prefVehicleLicensePlate = 'vehicle_license_plate';
+  static const String _prefBankDocName = 'bank_doc_name';
+  static const String _prefBankAccountName = 'bank_account_name';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 200;
   static const int _profileImageMaxDimension = 4096;
@@ -105,8 +109,12 @@ class AppController extends ChangeNotifier {
   bool _profileImageSyncing = false;
   String? _profileImageSyncError;
   VehicleDetails? _vehicle;
+  Map<String, dynamic>? _submittedVehicleRaw;
   BankDetails? _bank;
-  bool _rcUploaded = false;
+  Map<String, dynamic>? _submittedBankRaw;
+  List<String> _uomOptions = <String>[];
+  List<String> _vehicleFuelOptions = <String>[];
+  Set<String> _vehicleRequiredFields = <String>{};
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
@@ -154,8 +162,14 @@ class AppController extends ChangeNotifier {
   Map<String, VerificationStatus> get kycStatus => _kycStatus;
   Map<String, double> get kycProgress => _kycProgress;
   VehicleDetails? get vehicle => _vehicle;
+  Map<String, dynamic>? get submittedVehicleRaw => _submittedVehicleRaw;
   BankDetails? get bank => _bank;
-  bool get rcUploaded => _rcUploaded;
+  Map<String, dynamic>? get submittedBankRaw => _submittedBankRaw;
+  List<String> get uomOptions => List<String>.unmodifiable(_uomOptions);
+  List<String> get vehicleFuelOptions =>
+      List<String>.unmodifiable(_vehicleFuelOptions);
+  Set<String> get vehicleRequiredFields =>
+      Set<String>.unmodifiable(_vehicleRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
   bool get isTracking => _isTracking;
@@ -438,10 +452,7 @@ class AppController extends ChangeNotifier {
       );
       final ui.FrameInfo frame = await codec.getNextFrame();
       final ui.Image image = frame.image;
-      final Size size = Size(
-        image.width.toDouble(),
-        image.height.toDouble(),
-      );
+      final Size size = Size(image.width.toDouble(), image.height.toDouble());
       image.dispose();
       codec.dispose();
       return size;
@@ -802,6 +813,13 @@ class AppController extends ChangeNotifier {
     _currentLongitude = null;
     _currentLocationLabel = null;
     _driverName = null;
+    _vehicle = null;
+    _submittedVehicleRaw = null;
+    _bank = null;
+    _submittedBankRaw = null;
+    _uomOptions = <String>[];
+    _vehicleFuelOptions = <String>[];
+    _vehicleRequiredFields = <String>{};
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await Future.wait(<Future<bool>>[
       prefs.remove(_prefAccessToken),
@@ -817,6 +835,10 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefProfileCompleted),
       prefs.remove(_prefKycCompleted),
       prefs.remove(_prefDriverName),
+      prefs.remove(_prefVehicleName),
+      prefs.remove(_prefVehicleLicensePlate),
+      prefs.remove(_prefBankDocName),
+      prefs.remove(_prefBankAccountName),
       prefs.setBool(_prefRememberMe, false),
     ]);
     _rememberMe = false;
@@ -941,12 +963,12 @@ class AppController extends ChangeNotifier {
 
       if (status == 'success') {
         // Save driver_name and mark KYC completed
-        final String? newDriverName =
-            _nullIfBlank(responseData['driver_name']?.toString());
+        final String? newDriverName = _nullIfBlank(
+          responseData['driver_name']?.toString(),
+        );
         if (newDriverName != null) {
           _driverName = newDriverName;
-          final SharedPreferences prefs =
-              await SharedPreferences.getInstance();
+          final SharedPreferences prefs = await SharedPreferences.getInstance();
           await prefs.setString(_prefDriverName, newDriverName);
         }
         _kycCompleted = true;
@@ -994,9 +1016,26 @@ class AppController extends ChangeNotifier {
     _vehicle = _vehicle == null
         ? null
         : VehicleDetails(
-            type: _vehicle!.type,
-            vehicleNumber: _vehicle!.vehicleNumber,
-            rcUploaded: _vehicle!.rcUploaded,
+            name: _vehicle!.name,
+            licensePlate: _vehicle!.licensePlate,
+            make: _vehicle!.make,
+            model: _vehicle!.model,
+            lastOdometer: _vehicle!.lastOdometer,
+            fuelType: _vehicle!.fuelType,
+            uom: _vehicle!.uom,
+            acquisitionDate: _vehicle!.acquisitionDate,
+            location: _vehicle!.location,
+            chassisNo: _vehicle!.chassisNo,
+            vehicleValue: _vehicle!.vehicleValue,
+            employee: _vehicle!.employee,
+            insuranceCompany: _vehicle!.insuranceCompany,
+            policyNo: _vehicle!.policyNo,
+            startDate: _vehicle!.startDate,
+            endDate: _vehicle!.endDate,
+            carbonCheckDate: _vehicle!.carbonCheckDate,
+            color: _vehicle!.color,
+            wheels: _vehicle!.wheels,
+            doors: _vehicle!.doors,
             status: VerificationStatus.approved,
           );
     _notices.insert(
@@ -1010,68 +1049,734 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? submitVehicleDetails({
-    required VehicleType type,
-    required String vehicleNumber,
-  }) {
-    final String sanitized = vehicleNumber.trim().toUpperCase();
-    final RegExp regExp = RegExp(
-      r'^[A-Z]{2}[\s-]?[0-9]{1,2}[\s-]?[A-Z]{1,2}[\s-]?[0-9]{4}$',
-    );
-
-    if (!regExp.hasMatch(sanitized)) {
-      return 'Vehicle number format is invalid';
+  Future<List<String>> fetchUomOptions() async {
+    try {
+      final Uri uri = Uri.parse('${ApiConstants.erpBaseUrl}/api/resource/UOM')
+          .replace(
+            queryParameters: <String, String>{
+              'fields': jsonEncode(<String>['name']),
+              'limit_page_length': '200',
+            },
+          );
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+      final dynamic data = payload['data'];
+      final List<String> values = <String>[];
+      if (data is List) {
+        for (final dynamic row in data) {
+          if (row is Map<String, dynamic>) {
+            final String? name = _nullIfBlank(row['name']?.toString());
+            if (name != null) {
+              values.add(name);
+            }
+          }
+        }
+      }
+      _uomOptions = values;
+      notifyListeners();
+      return values;
+    } catch (_) {
+      return _uomOptions;
     }
-
-    if (!_rcUploaded) {
-      return 'Upload RC document first';
-    }
-
-    _vehicle = VehicleDetails(
-      type: type,
-      vehicleNumber: sanitized,
-      rcUploaded: true,
-      status: VerificationStatus.pending,
-    );
-    notifyListeners();
-    return null;
   }
 
-  Future<void> uploadRcDocument() async {
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    _rcUploaded = true;
-    notifyListeners();
+  Future<void> fetchVehicleFormConfig() async {
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/DocType/Vehicle',
+      );
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+      final dynamic data = payload['data'];
+      if (data is! Map<String, dynamic>) {
+        return;
+      }
+      final dynamic fields = data['fields'];
+      if (fields is! List) {
+        return;
+      }
+
+      final Set<String> requiredFields = <String>{};
+      List<String> fuelOptions = <String>[];
+      for (final dynamic row in fields) {
+        if (row is! Map<String, dynamic>) {
+          continue;
+        }
+        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
+        if (fieldname == null) {
+          continue;
+        }
+        final int reqd = int.tryParse(row['reqd']?.toString() ?? '0') ?? 0;
+        final int readOnly =
+            int.tryParse(row['read_only']?.toString() ?? '0') ?? 0;
+        if (reqd == 1 && readOnly == 0) {
+          requiredFields.add(fieldname);
+        }
+
+        if (fieldname == 'fuel_type') {
+          final String? rawOptions = _nullIfBlank(row['options']?.toString());
+          if (rawOptions != null) {
+            fuelOptions = rawOptions
+                .split('\n')
+                .map((value) => value.trim())
+                .where((value) => value.isNotEmpty)
+                .toList();
+          }
+        }
+      }
+      _vehicleRequiredFields = requiredFields;
+      _vehicleFuelOptions = fuelOptions;
+      notifyListeners();
+    } catch (_) {
+      // Keep existing cached config
+    }
   }
 
-  String? submitBankDetails({
-    required String accountNumber,
-    required String ifsc,
-    required String accountHolder,
-    String? upiId,
-  }) {
-    final String normalizedAccount = accountNumber.trim();
-    if (!RegExp(r'^\d{9,18}$').hasMatch(normalizedAccount)) {
-      return 'Account number should be 9-18 digits';
+  Future<Map<String, dynamic>?> fetchVehicleByLicensePlate(
+    String licensePlate,
+  ) async {
+    final String plate = licensePlate.trim().toUpperCase();
+    if (plate.isEmpty) {
+      return null;
     }
 
-    final String normalizedIfsc = ifsc.trim().toUpperCase();
-    if (!RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$').hasMatch(normalizedIfsc)) {
-      return 'IFSC format is invalid';
-    }
-
-    if (accountHolder.trim().isEmpty) {
-      return 'Account holder name is required';
-    }
-
-    _bank = BankDetails(
-      accountNumber: normalizedAccount,
-      ifsc: normalizedIfsc,
-      accountHolder: accountHolder.trim(),
-      upiId: upiId?.trim().isEmpty == true ? null : upiId?.trim(),
-      verified: true,
+    final String? name = await _findResourceName(
+      doctype: 'Vehicle',
+      filters: <List<String>>[
+        <String>['Vehicle', 'license_plate', '=', plate],
+      ],
+      fields: <String>['name'],
     );
-    notifyListeners();
-    return null;
+    if (name == null) {
+      return null;
+    }
+    return _fetchResourceDoc('Vehicle', name);
+  }
+
+  Future<Map<String, dynamic>?> fetchVehicleByName(String vehicleName) async {
+    final String? name = _nullIfBlank(vehicleName);
+    if (name == null) {
+      return null;
+    }
+    return _fetchResourceDoc('Vehicle', name);
+  }
+
+  Future<void> hydrateVehicleFromBackend({bool forceRefresh = false}) async {
+    _logApi(
+      'vehicle.hydrate',
+      'start forceRefresh=$forceRefresh hasVehicle=${_vehicle != null}',
+    );
+    if (!forceRefresh && _vehicle != null) {
+      _logApi('vehicle.hydrate', 'skip: existing vehicle in memory');
+      return;
+    }
+    if (_sessionToken == null || _sessionToken!.isEmpty) {
+      _logApi('vehicle.hydrate', 'skip: no session token');
+      return;
+    }
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? vehicleName = _nullIfBlank(prefs.getString(_prefVehicleName));
+      final String? licensePlate = _nullIfBlank(
+        prefs.getString(_prefVehicleLicensePlate),
+      );
+
+      Map<String, dynamic>? data;
+      if (vehicleName != null) {
+        _logApi('vehicle.hydrate', 'fetch by vehicle_name=$vehicleName');
+        data = await fetchVehicleByName(vehicleName);
+      }
+      if (data == null && licensePlate != null) {
+        _logApi('vehicle.hydrate', 'fetch by license_plate=$licensePlate');
+      }
+      data ??= await fetchVehicleByLicensePlate(licensePlate ?? '');
+      if (data == null) {
+        _logApi('vehicle.hydrate', 'no vehicle found');
+        return;
+      }
+
+      _submittedVehicleRaw = data;
+      _vehicle = _vehicleFromApiData(data);
+      _logApi(
+        'vehicle.hydrate',
+        'loaded vehicle name=${_vehicle?.name} plate=${_vehicle?.licensePlate}',
+      );
+      notifyListeners();
+    } catch (e) {
+      _logApi('vehicle.hydrate', 'error: $e');
+      // Ignore hydration failures; screen stays editable.
+    }
+  }
+
+  Future<List<String>> fetchVehicleEmployeeOptions({String query = ''}) async {
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.search.search_link',
+      );
+      final Map<String, String> body = <String, String>{
+        'doctype': 'Employee',
+        'ignore_user_permissions': '0',
+        'reference_doctype': 'Vehicle',
+        'page_length': '10',
+        'start': '0',
+        'txt': query.trim(),
+      };
+      _logApi('vehicle.search_link', 'payload=$body');
+      final Map<String, dynamic> payload = await _authorizedPostForm(
+        uri: uri,
+        body: body,
+      );
+      final dynamic responseRows =
+          payload['message'] ?? payload['results'] ?? payload['data'];
+      if (responseRows is! List) {
+        return <String>[];
+      }
+
+      final List<String> values = <String>[];
+      for (final dynamic item in responseRows) {
+        if (item is Map<String, dynamic>) {
+          final String? value =
+              _nullIfBlank(item['value']?.toString()) ??
+              _nullIfBlank(item['name']?.toString()) ??
+              _nullIfBlank(item['description']?.toString());
+          if (value != null && !values.contains(value)) {
+            values.add(value);
+          }
+        } else if (item is List && item.isNotEmpty) {
+          final String? value = _nullIfBlank(item.first?.toString());
+          if (value != null && !values.contains(value)) {
+            values.add(value);
+          }
+        } else if (item != null) {
+          final String? value = _nullIfBlank(item.toString());
+          if (value != null && !values.contains(value)) {
+            values.add(value);
+          }
+        }
+      }
+      _logApi('vehicle.search_link', 'result_count=${values.length}');
+      return values;
+    } catch (e) {
+      _logApi('vehicle.search_link', 'error: $e');
+      return <String>[];
+    }
+  }
+
+  Future<List<String>> fetchLinkOptions({
+    required String doctype,
+    String referenceDoctype = 'Bank Account',
+    String query = '',
+    int pageLength = 10,
+    Map<String, dynamic>? filters,
+  }) async {
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.search.search_link',
+      );
+      final Map<String, String> body = <String, String>{
+        'doctype': doctype,
+        'ignore_user_permissions': '0',
+        'reference_doctype': referenceDoctype,
+        'page_length': '$pageLength',
+        'start': '0',
+        'txt': query.trim(),
+      };
+      if (filters != null && filters.isNotEmpty) {
+        body['filters'] = jsonEncode(filters);
+      }
+      _logApi('generic.search_link', 'payload=$body');
+      final Map<String, dynamic> payload = await _authorizedPostForm(
+        uri: uri,
+        body: body,
+      );
+      final dynamic responseRows =
+          payload['message'] ?? payload['results'] ?? payload['data'];
+      if (responseRows is! List) {
+        return <String>[];
+      }
+
+      final List<String> values = <String>[];
+      for (final dynamic item in responseRows) {
+        if (item is Map<String, dynamic>) {
+          final String? value =
+              _nullIfBlank(item['value']?.toString()) ??
+              _nullIfBlank(item['name']?.toString());
+          if (value != null && !values.contains(value)) {
+            values.add(value);
+          }
+        } else if (item is List && item.isNotEmpty) {
+          final String? value = _nullIfBlank(item.first?.toString());
+          if (value != null && !values.contains(value)) {
+            values.add(value);
+          }
+        } else if (item != null) {
+          final String? value = _nullIfBlank(item.toString());
+          if (value != null && !values.contains(value)) {
+            values.add(value);
+          }
+        }
+      }
+      _logApi(
+        'generic.search_link',
+        'doctype=$doctype result_count=${values.length}',
+      );
+      return values;
+    } catch (e) {
+      _logApi('generic.search_link', 'error: $e');
+      return <String>[];
+    }
+  }
+
+  Future<Map<String, String>> fetchBankAccountLinkDoctypes() async {
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/DocType/Bank%20Account',
+      );
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+      final dynamic data = payload['data'];
+      if (data is! Map<String, dynamic>) {
+        return <String, String>{};
+      }
+      final dynamic fields = data['fields'];
+      if (fields is! List) {
+        return <String, String>{};
+      }
+
+      final Map<String, String> doctypesByField = <String, String>{};
+      for (final dynamic row in fields) {
+        if (row is! Map<String, dynamic>) {
+          continue;
+        }
+        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
+        final String? fieldtype = _nullIfBlank(row['fieldtype']?.toString());
+        final String? options = _nullIfBlank(row['options']?.toString());
+        if (fieldname == null || fieldtype == null || options == null) {
+          continue;
+        }
+        if (fieldtype == 'Link' || fieldtype == 'Dynamic Link') {
+          doctypesByField[fieldname] = options;
+        }
+      }
+      return doctypesByField;
+    } catch (_) {
+      return <String, String>{};
+    }
+  }
+
+  Future<void> hydrateBankFromBackend({bool forceRefresh = false}) async {
+    _logApi(
+      'bank.hydrate',
+      'start forceRefresh=$forceRefresh hasBank=${_bank != null}',
+    );
+    if (!forceRefresh && _bank != null) {
+      _logApi('bank.hydrate', 'skip: existing bank in memory');
+      return;
+    }
+    if (_sessionToken == null || _sessionToken!.isEmpty) {
+      _logApi('bank.hydrate', 'skip: no session token');
+      return;
+    }
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? bankDocName = _nullIfBlank(prefs.getString(_prefBankDocName));
+      final String? accountName = _nullIfBlank(
+        prefs.getString(_prefBankAccountName),
+      );
+
+      Map<String, dynamic>? data;
+      if (bankDocName != null) {
+        _logApi('bank.hydrate', 'fetch by bank_doc_name=$bankDocName');
+        data = await _fetchResourceDoc('Bank Account', bankDocName);
+      }
+      if (data == null && accountName != null) {
+        _logApi('bank.hydrate', 'find by account_name=$accountName');
+        final String? name = await _findResourceName(
+          doctype: 'Bank Account',
+          filters: <List<String>>[
+            <String>['Bank Account', 'account_name', '=', accountName],
+          ],
+          fields: <String>['name'],
+        );
+        if (name != null) {
+          data = await _fetchResourceDoc('Bank Account', name);
+        }
+      }
+      if (data == null) {
+        _logApi('bank.hydrate', 'no bank account found');
+        return;
+      }
+
+      _submittedBankRaw = data;
+      _bank = _bankFromApiData(data);
+      _logApi(
+        'bank.hydrate',
+        'loaded bank account=${_submittedBankRaw?['name']} holder=${_bank?.accountHolder}',
+      );
+      notifyListeners();
+    } catch (e) {
+      _logApi('bank.hydrate', 'error: $e');
+      // Ignore hydration failures; screen stays editable.
+    }
+  }
+
+  Future<VehicleSubmitResult> submitVehicleDetails({
+    required String licensePlate,
+    required String make,
+    required String model,
+    required String lastOdometer,
+    required String fuelType,
+    required String uom,
+    String? acquisitionDate,
+    String? location,
+    String? chassisNo,
+    String? vehicleValue,
+    String? employee,
+    String? insuranceCompany,
+    String? policyNo,
+    String? startDate,
+    String? endDate,
+    String? carbonCheckDate,
+    String? color,
+    String? wheels,
+    String? doors,
+  }) async {
+    if (_vehicleRequiredFields.isEmpty || _vehicleFuelOptions.isEmpty) {
+      await fetchVehicleFormConfig();
+    }
+
+    bool isRequired(String fieldname) {
+      return _vehicleRequiredFields.contains(fieldname);
+    }
+
+    final String plate = licensePlate.trim().toUpperCase();
+    if (isRequired('license_plate') && plate.isEmpty) {
+      return const VehicleSubmitResult(error: 'License plate is required');
+    }
+    if (isRequired('make') && make.trim().isEmpty) {
+      return const VehicleSubmitResult(error: 'Make is required');
+    }
+    if (isRequired('model') && model.trim().isEmpty) {
+      return const VehicleSubmitResult(error: 'Model is required');
+    }
+    final int? odometer = int.tryParse(lastOdometer.trim());
+    if (isRequired('last_odometer') && (odometer == null || odometer < 0)) {
+      return const VehicleSubmitResult(
+        error: 'Odometer value must be a valid non-negative number',
+      );
+    }
+    final String fuel = fuelType.trim();
+    if (isRequired('fuel_type') && fuel.isEmpty) {
+      return const VehicleSubmitResult(error: 'Fuel type is required');
+    }
+    if (_vehicleFuelOptions.isNotEmpty && !_vehicleFuelOptions.contains(fuel)) {
+      return const VehicleSubmitResult(error: 'Select a valid fuel type');
+    }
+    final String uomValue = uom.trim();
+    if (isRequired('uom') && uomValue.isEmpty) {
+      return const VehicleSubmitResult(error: 'Fuel UOM is required');
+    }
+
+    final int? wheelsInt = _nullableInt(wheels);
+    if (wheels?.trim().isNotEmpty == true && wheelsInt == null) {
+      return const VehicleSubmitResult(error: 'Wheels must be a valid number');
+    }
+    final int? doorsInt = _nullableInt(doors);
+    if (doors?.trim().isNotEmpty == true && doorsInt == null) {
+      return const VehicleSubmitResult(error: 'Doors must be a valid number');
+    }
+    final double? vehicleValueDouble = _nullableDouble(vehicleValue);
+    if (vehicleValue?.trim().isNotEmpty == true && vehicleValueDouble == null) {
+      return const VehicleSubmitResult(
+        error: 'Vehicle value must be a valid number',
+      );
+    }
+
+    final String? defaultEmployee = _nullIfBlank(
+      _loggedProfileDetails?.driver?['employee']?.toString(),
+    );
+    final String? employeeValue = _nullIfBlank(employee) ?? defaultEmployee;
+
+    final String? acquisitionDateValue = _nullIfBlank(acquisitionDate);
+    final String? locationValue = _nullIfBlank(location);
+    final String? chassisNoValue = _nullIfBlank(chassisNo);
+    final String? insuranceCompanyValue = _nullIfBlank(insuranceCompany);
+    final String? policyNoValue = _nullIfBlank(policyNo);
+    final String? startDateValue = _nullIfBlank(startDate);
+    final String? endDateValue = _nullIfBlank(endDate);
+    final String? carbonCheckDateValue = _nullIfBlank(carbonCheckDate);
+    final String? colorValue = _nullIfBlank(color);
+
+    final Map<String, dynamic> body = <String, dynamic>{
+      'license_plate': plate,
+      'make': make.trim(),
+      'model': model.trim(),
+      'last_odometer': odometer,
+      'fuel_type': fuel,
+      'uom': uomValue,
+    };
+    if (acquisitionDateValue != null) {
+      body['acquisition_date'] = acquisitionDateValue;
+    }
+    if (locationValue != null) {
+      body['location'] = locationValue;
+    }
+    if (chassisNoValue != null) {
+      body['chassis_no'] = chassisNoValue;
+    }
+    if (vehicleValueDouble != null) {
+      body['vehicle_value'] = vehicleValueDouble;
+    }
+    if (employeeValue != null) {
+      body['employee'] = employeeValue;
+    }
+    if (insuranceCompanyValue != null) {
+      body['insurance_company'] = insuranceCompanyValue;
+    }
+    if (policyNoValue != null) {
+      body['policy_no'] = policyNoValue;
+    }
+    if (startDateValue != null) {
+      body['start_date'] = startDateValue;
+    }
+    if (endDateValue != null) {
+      body['end_date'] = endDateValue;
+    }
+    if (carbonCheckDateValue != null) {
+      body['carbon_check_date'] = carbonCheckDateValue;
+    }
+    if (colorValue != null) {
+      body['color'] = colorValue;
+    }
+    if (wheelsInt != null) {
+      body['wheels'] = wheelsInt;
+    }
+    if (doorsInt != null) {
+      body['doors'] = doorsInt;
+    }
+    _logApi('vehicle.submit', 'payload=$body');
+
+    try {
+      final Uri baseUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Vehicle',
+      );
+      final Map<String, dynamic>? existing = await fetchVehicleByLicensePlate(
+        plate,
+      );
+      final String? vehicleName = _nullIfBlank(existing?['name']?.toString());
+      Map<String, dynamic> responsePayload;
+      final bool wasUpdate = vehicleName != null;
+
+      if (vehicleName != null) {
+        final Uri updateUri = Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/Vehicle/${Uri.encodeComponent(vehicleName)}',
+        );
+        responsePayload = await _authorizedPutJson(updateUri, body);
+      } else {
+        responsePayload = await _authorizedPostJson(baseUri, body);
+      }
+
+      final dynamic rawData = responsePayload['data'];
+      final Map<String, dynamic> data = rawData is Map<String, dynamic>
+          ? rawData
+          : body;
+      final String? finalName =
+          _nullIfBlank(data['name']?.toString()) ?? vehicleName;
+      final Map<String, dynamic>? fetched = await fetchVehicleByName(
+        finalName ?? '',
+      );
+      final Map<String, dynamic> finalData = fetched ?? data;
+      _submittedVehicleRaw = finalData;
+      _vehicle = _vehicleFromApiData(finalData);
+      await _persistVehicleIdentity(
+        vehicleName: _nullIfBlank(finalData['name']?.toString()) ?? finalName,
+        licensePlate: plate,
+      );
+      notifyListeners();
+      _logApi(
+        'vehicle.submit',
+        'success wasUpdate=$wasUpdate vehicleName=$finalName',
+      );
+      return VehicleSubmitResult(
+        vehicleName: finalName,
+        vehicleData: finalData,
+        wasUpdate: wasUpdate,
+      );
+    } catch (e) {
+      _logApi('vehicle.submit', 'error: $e');
+      return VehicleSubmitResult(
+        error: e.toString().replaceFirst('Exception: ', ''),
+      );
+    }
+  }
+
+  Future<String?> submitBankDetails({
+    required String accountName,
+    required String bank,
+    String? account,
+    String? accountType,
+    String? accountSubtype,
+    bool disabled = false,
+    bool isDefault = false,
+    bool isCompanyAccount = false,
+    String? company,
+    String? partyType,
+    String? party,
+    String? iban,
+    String? branchCode,
+    String? bankAccountNo,
+    String? lastIntegrationDate,
+  }) async {
+    final String normalizedAccountName = accountName.trim();
+    if (normalizedAccountName.isEmpty) {
+      return 'Account name is required';
+    }
+    final String normalizedBank = bank.trim();
+    if (normalizedBank.isEmpty) {
+      return 'Bank is required';
+    }
+    if (disabled && isDefault) {
+      return 'Disabled account cannot be marked as default';
+    }
+
+    final String? normalizedAccount = _nullIfBlank(account);
+    final String? normalizedAccountType = _nullIfBlank(accountType);
+    final String? normalizedAccountSubtype = _nullIfBlank(accountSubtype);
+    final String? normalizedCompany = _nullIfBlank(company);
+    final String? normalizedPartyType = _nullIfBlank(partyType);
+    final String? normalizedParty = _nullIfBlank(party);
+    final String? normalizedBranchCode = _nullIfBlank(branchCode);
+    final String? normalizedBankAccountNo = _nullIfBlank(bankAccountNo);
+    final String? normalizedLastIntegrationDate = _nullIfBlank(
+      lastIntegrationDate,
+    );
+
+    if (isCompanyAccount && normalizedCompany == null) {
+      return 'Company is required when company account is enabled';
+    }
+    if ((normalizedPartyType == null) != (normalizedParty == null)) {
+      return 'Select both Party Type and Party';
+    }
+    if (normalizedLastIntegrationDate != null &&
+        DateTime.tryParse(normalizedLastIntegrationDate) == null) {
+      return 'Last integration date must be in YYYY-MM-DD format';
+    }
+    if (normalizedBranchCode == null) {
+      return 'Branch code is required';
+    }
+    if (!RegExp(
+      r'^[A-Z0-9-]{2,20}$',
+    ).hasMatch(normalizedBranchCode.toUpperCase())) {
+      return 'Branch code should be 2-20 characters (A-Z, 0-9, -)';
+    }
+    if (normalizedBankAccountNo != null &&
+        !RegExp(
+          r'^[A-Z0-9-]{6,34}$',
+        ).hasMatch(normalizedBankAccountNo.toUpperCase())) {
+      return 'Bank account no should be 6-34 characters (A-Z, 0-9, -)';
+    }
+
+    String? normalizedIban = _nullIfBlank(iban);
+    if (normalizedIban != null) {
+      normalizedIban = normalizedIban.replaceAll(' ', '').toUpperCase();
+      if (!RegExp(r'^[A-Z0-9]{8,34}$').hasMatch(normalizedIban)) {
+        return 'IBAN format is invalid';
+      }
+    }
+
+    final Map<String, dynamic> body = <String, dynamic>{
+      'account_name': normalizedAccountName,
+      'bank': normalizedBank,
+      'disabled': disabled ? 1 : 0,
+      'is_default': isDefault ? 1 : 0,
+      'is_company_account': isCompanyAccount ? 1 : 0,
+    };
+    if (normalizedAccount != null) {
+      body['account'] = normalizedAccount;
+    }
+    if (normalizedAccountType != null) {
+      body['account_type'] = normalizedAccountType;
+    }
+    if (normalizedAccountSubtype != null) {
+      body['account_subtype'] = normalizedAccountSubtype;
+    }
+    if (normalizedCompany != null) {
+      body['company'] = normalizedCompany;
+    }
+    if (normalizedPartyType != null) {
+      body['party_type'] = normalizedPartyType;
+    }
+    if (normalizedParty != null) {
+      body['party'] = normalizedParty;
+    }
+    if (normalizedIban != null) {
+      body['iban'] = normalizedIban;
+    }
+    body['branch_code'] = normalizedBranchCode.toUpperCase();
+    if (normalizedBankAccountNo != null) {
+      body['bank_account_no'] = normalizedBankAccountNo.toUpperCase();
+    }
+    if (normalizedLastIntegrationDate != null) {
+      body['last_integration_date'] = normalizedLastIntegrationDate;
+    }
+    _logApi('bank.submit', 'payload=$body');
+
+    try {
+      Map<String, dynamic>? responsePayload;
+      final String? existingName = await _findResourceName(
+        doctype: 'Bank Account',
+        filters: <List<String>>[
+          <String>['Bank Account', 'account_name', '=', normalizedAccountName],
+        ],
+        fields: <String>['name'],
+      );
+      if (existingName != null) {
+        final Uri updateUri = Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account/${Uri.encodeComponent(existingName)}',
+        );
+        responsePayload = await _authorizedPutJson(updateUri, body);
+      } else {
+        final Uri createUri = Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account',
+        );
+        responsePayload = await _authorizedPostJson(createUri, body);
+      }
+
+      final dynamic responseData = responsePayload['data'];
+      final Map<String, dynamic>? raw = responseData is Map<String, dynamic>
+          ? responseData
+          : null;
+      final String? bankName =
+          _nullIfBlank(raw?['name']?.toString()) ?? existingName;
+      if (bankName != null) {
+        final Map<String, dynamic>? fetched = await _fetchResourceDoc(
+          'Bank Account',
+          bankName,
+        );
+        _submittedBankRaw = fetched ?? raw;
+      } else {
+        _submittedBankRaw = raw;
+      }
+
+      _bank = BankDetails(
+        accountNumber: normalizedBankAccountNo ?? normalizedAccountName,
+        ifsc: normalizedBranchCode.toUpperCase(),
+        accountHolder: normalizedAccountName,
+        upiId: normalizedIban,
+        verified: true,
+      );
+      await _persistBankIdentity(
+        bankDocName:
+            _nullIfBlank(_submittedBankRaw?['name']?.toString()) ?? bankName,
+        accountName: normalizedAccountName,
+      );
+      notifyListeners();
+      _logApi(
+        'bank.submit',
+        'success bankName=$bankName accountName=$normalizedAccountName',
+      );
+      return null;
+    } catch (e) {
+      _logApi('bank.submit', 'error: $e');
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
   void setPermissionState({
@@ -1464,6 +2169,13 @@ class AppController extends ChangeNotifier {
     print(line);
   }
 
+  String _truncateForLog(String raw, {int max = 1200}) {
+    if (raw.length <= max) {
+      return raw;
+    }
+    return '${raw.substring(0, max)}...<truncated>';
+  }
+
   void _updateLiveCoordinates() {
     final double baseLat = 28.6139;
     final double baseLng = 77.2090;
@@ -1643,6 +2355,10 @@ class AppController extends ChangeNotifier {
       final http.Response response = await http
           .get(uri, headers: headers)
           .timeout(_networkTimeout);
+      _logApi(
+        'http',
+        'GET $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
+      );
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;
@@ -1670,11 +2386,16 @@ class AppController extends ChangeNotifier {
     );
 
     String? lastError;
+    final String encodedBody = jsonEncode(body);
     for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'PUT $uri');
+      _logApi('http', 'PUT $uri body=${_truncateForLog(encodedBody)}');
       final http.Response response = await http
-          .put(uri, headers: headers, body: jsonEncode(body))
+          .put(uri, headers: headers, body: encodedBody)
           .timeout(_networkTimeout);
+      _logApi(
+        'http',
+        'PUT $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
+      );
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;
@@ -1689,6 +2410,72 @@ class AppController extends ChangeNotifier {
       }
     }
     throw Exception(lastError ?? 'Authentication failed for PUT $uri');
+  }
+
+  Future<Map<String, dynamic>> _authorizedPostJson(
+    Uri uri,
+    Map<String, dynamic> body,
+  ) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders(
+      contentType: 'application/json',
+    );
+
+    String? lastError;
+    final String encodedBody = jsonEncode(body);
+    for (final Map<String, String> headers in authHeaders) {
+      _logApi('http', 'POST $uri body=${_truncateForLog(encodedBody)}');
+      final http.Response response = await http
+          .post(uri, headers: headers, body: encodedBody)
+          .timeout(_networkTimeout);
+      _logApi(
+        'http',
+        'POST $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
+      );
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Request failed (${response.statusCode})';
+      lastError = message;
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed for POST $uri');
+  }
+
+  Future<Map<String, dynamic>> _authorizedPostForm({
+    required Uri uri,
+    required Map<String, String> body,
+  }) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      _logApi('http', 'POST $uri form=$body');
+      final http.Response response = await http
+          .post(uri, headers: headers, body: body)
+          .timeout(_networkTimeout);
+      _logApi(
+        'http',
+        'POST $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
+      );
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Request failed (${response.statusCode})';
+      lastError = message;
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed for POST $uri');
   }
 
   Future<Map<String, dynamic>> _authorizedUploadFile({
@@ -1777,5 +2564,106 @@ class AppController extends ChangeNotifier {
       return digits;
     }
     return null;
+  }
+
+  VehicleDetails _vehicleFromApiData(Map<String, dynamic> data) {
+    final int? odometer = _nullableInt(data['last_odometer']?.toString());
+    final int? wheels = _nullableInt(data['wheels']?.toString());
+    final int? doors = _nullableInt(data['doors']?.toString());
+    final double? vehicleValue = _nullableDouble(
+      data['vehicle_value']?.toString(),
+    );
+
+    return VehicleDetails(
+      name: _nullIfBlank(data['name']?.toString()),
+      licensePlate: _nullIfBlank(data['license_plate']?.toString()) ?? '',
+      make: _nullIfBlank(data['make']?.toString()) ?? '',
+      model: _nullIfBlank(data['model']?.toString()) ?? '',
+      lastOdometer: odometer ?? 0,
+      fuelType: _nullIfBlank(data['fuel_type']?.toString()) ?? '',
+      uom: _nullIfBlank(data['uom']?.toString()) ?? '',
+      acquisitionDate: _nullIfBlank(data['acquisition_date']?.toString()),
+      location: _nullIfBlank(data['location']?.toString()),
+      chassisNo: _nullIfBlank(data['chassis_no']?.toString()),
+      vehicleValue: vehicleValue,
+      employee: _nullIfBlank(data['employee']?.toString()),
+      insuranceCompany: _nullIfBlank(data['insurance_company']?.toString()),
+      policyNo: _nullIfBlank(data['policy_no']?.toString()),
+      startDate: _nullIfBlank(data['start_date']?.toString()),
+      endDate: _nullIfBlank(data['end_date']?.toString()),
+      carbonCheckDate: _nullIfBlank(data['carbon_check_date']?.toString()),
+      color: _nullIfBlank(data['color']?.toString()),
+      wheels: wheels,
+      doors: doors,
+      status: VerificationStatus.approved,
+    );
+  }
+
+  BankDetails _bankFromApiData(Map<String, dynamic> data) {
+    return BankDetails(
+      accountNumber:
+          _nullIfBlank(data['bank_account_no']?.toString()) ??
+          _nullIfBlank(data['account_name']?.toString()) ??
+          '',
+      ifsc:
+          _nullIfBlank(data['branch_code']?.toString()) ??
+          _nullIfBlank(data['ifsc']?.toString()) ??
+          '',
+      accountHolder: _nullIfBlank(data['account_name']?.toString()) ?? '',
+      upiId: _nullIfBlank(data['iban']?.toString()),
+      verified: true,
+    );
+  }
+
+  Future<void> _persistVehicleIdentity({
+    String? vehicleName,
+    String? licensePlate,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<Future<bool>> writes = <Future<bool>>[];
+    if (_nullIfBlank(vehicleName) != null) {
+      writes.add(prefs.setString(_prefVehicleName, vehicleName!.trim()));
+    }
+    if (_nullIfBlank(licensePlate) != null) {
+      writes.add(
+        prefs.setString(_prefVehicleLicensePlate, licensePlate!.trim()),
+      );
+    }
+    if (writes.isNotEmpty) {
+      await Future.wait(writes);
+    }
+  }
+
+  Future<void> _persistBankIdentity({
+    String? bankDocName,
+    String? accountName,
+  }) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<Future<bool>> writes = <Future<bool>>[];
+    if (_nullIfBlank(bankDocName) != null) {
+      writes.add(prefs.setString(_prefBankDocName, bankDocName!.trim()));
+    }
+    if (_nullIfBlank(accountName) != null) {
+      writes.add(prefs.setString(_prefBankAccountName, accountName!.trim()));
+    }
+    if (writes.isNotEmpty) {
+      await Future.wait(writes);
+    }
+  }
+
+  int? _nullableInt(String? value) {
+    final String? normalized = _nullIfBlank(value);
+    if (normalized == null) {
+      return null;
+    }
+    return int.tryParse(normalized);
+  }
+
+  double? _nullableDouble(String? value) {
+    final String? normalized = _nullIfBlank(value);
+    if (normalized == null) {
+      return null;
+    }
+    return double.tryParse(normalized);
   }
 }
