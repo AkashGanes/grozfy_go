@@ -49,6 +49,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     } else if (app.isLoggedIn) {
       if (!app.profileCompleted) {
         route = AppRoutes.register;
+      } else if (!app.isKycComplete) {
+        route = AppRoutes.kycDocuments;
       } else if (!app.hasSelectedLocation) {
         route = AppRoutes.currentLocation;
       } else {

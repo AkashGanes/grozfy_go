@@ -63,7 +63,7 @@ class DashboardScreen extends StatelessWidget {
                       : 'Offline, no new orders will be assigned',
                   style: const TextStyle(color: Colors.black54),
                 ),
-                if (!app.canGoOnline) ...[
+                if (!app.canGoOnline && !app.isKycComplete) ...[
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -381,6 +381,7 @@ class DashboardScreen extends StatelessWidget {
                   context,
                   'My Profile',
                   Icons.person_outline_rounded,
+                  route: AppRoutes.profile,
                 ),
                 _quickButton(
                   context,
@@ -392,6 +393,30 @@ class DashboardScreen extends StatelessWidget {
                   'Documents',
                   Icons.file_copy_outlined,
                   route: AppRoutes.kycDocuments,
+                ),
+                _quickButton(
+                  context,
+                  'Vehicle',
+                  Icons.two_wheeler_rounded,
+                  route: AppRoutes.vehicleDetails,
+                ),
+                _quickButton(
+                  context,
+                  'Bank Details',
+                  Icons.account_balance_outlined,
+                  route: AppRoutes.bankSetup,
+                ),
+                _quickButton(
+                  context,
+                  'Orders by Location',
+                  Icons.list_alt_rounded,
+                  route: AppRoutes.ordersByLocation,
+                ),
+                _quickButton(
+                  context,
+                  'External Trips',
+                  Icons.local_shipping_outlined,
+                  route: AppRoutes.externalDeliveryTripList,
                 ),
                 _quickButton(context, 'Support', Icons.support_agent_rounded),
                 _quickButton(context, 'Settings', Icons.settings_outlined),
