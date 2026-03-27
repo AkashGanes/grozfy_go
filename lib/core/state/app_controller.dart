@@ -5,6 +5,7 @@ import 'dart:math';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -124,6 +125,7 @@ class AppController extends ChangeNotifier {
   double? _currentLatitude;
   double? _currentLongitude;
   String? _currentLocationLabel;
+  StreamSubscription<Position>? _positionStream;
   String? _selectedStoreName;
   String? _profileImagePath;
 
@@ -1174,7 +1176,9 @@ class AppController extends ChangeNotifier {
     }
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? vehicleName = _nullIfBlank(prefs.getString(_prefVehicleName));
+      final String? vehicleName = _nullIfBlank(
+        prefs.getString(_prefVehicleName),
+      );
       final String? licensePlate = _nullIfBlank(
         prefs.getString(_prefVehicleLicensePlate),
       );
@@ -1376,7 +1380,9 @@ class AppController extends ChangeNotifier {
     }
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? bankDocName = _nullIfBlank(prefs.getString(_prefBankDocName));
+      final String? bankDocName = _nullIfBlank(
+        prefs.getString(_prefBankDocName),
+      );
       final String? accountName = _nullIfBlank(
         prefs.getString(_prefBankAccountName),
       );
@@ -1806,7 +1812,6 @@ class AppController extends ChangeNotifier {
       if (!hasSelectedLocation) missing.add('location selection');
       if (!_permissionState.allGranted) missing.add('app permissions');
       return 'Please complete: ${missing.join(', ')}';
-
     }
 
     _isOnline = value;
@@ -1828,17 +1833,67 @@ class AppController extends ChangeNotifier {
     return null;
   }
 
-  String? startTracking() {
+  Future<String?> startTracking() async {
     if (!_permissionState.allGranted) {
       return 'Location and notification permissions are required';
     }
+
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return 'Location services are disabled. Please enable GPS.';
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return 'Location permission denied.';
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return 'Location permissions are permanently denied.';
+    }
+
     _isTracking = true;
-    _updateLiveCoordinates();
+
+    const locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
+    );
+
+    _positionStream =
+        Geolocator.getPositionStream(
+          locationSettings: locationSettings,
+        ).listen((Position position) {
+          _currentLatitude = position.latitude;
+          _currentLongitude = position.longitude;
+          _liveCoordinates =
+              '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+          notifyListeners();
+        });
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      _currentLatitude = position.latitude;
+      _currentLongitude = position.longitude;
+      _liveCoordinates =
+          '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+    } catch (e) {
+      debugPrint('Error getting current position: $e');
+    }
+
     notifyListeners();
     return null;
   }
 
   void stopTracking() {
+    _positionStream?.cancel();
+    _positionStream = null;
     _isTracking = false;
     notifyListeners();
   }
@@ -1847,7 +1902,6 @@ class AppController extends ChangeNotifier {
     if (!_isTracking) {
       return;
     }
-    _updateLiveCoordinates();
     notifyListeners();
   }
 
@@ -1926,6 +1980,11 @@ class AppController extends ChangeNotifier {
       _activeOrder = null;
     }
 
+    notifyListeners();
+  }
+
+  void clearActiveOrder() {
+    _activeOrder = null;
     notifyListeners();
   }
 
