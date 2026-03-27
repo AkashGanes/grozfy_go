@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_models.dart';
+import '../services/connectivity_service.dart';
 
 class AppController extends ChangeNotifier {
   static const String _storeId = 'GROZFY';
@@ -76,6 +77,14 @@ class AppController extends ChangeNotifier {
   double? _currentLongitude;
   String? _currentLocationLabel;
 
+  bool _isConnected = true;
+  bool _showNoInternetOverlay = false;
+  bool _showRetryButton = true;
+  bool _isInitialized = false;
+  bool _appIsResumed = false;
+  bool _firstFrameBuilt = false;
+  StreamSubscription<bool>? _connectivitySubscription;
+
   DeliveryOrder? _incomingOrder;
   DeliveryOrder? _activeOrder;
 
@@ -119,6 +128,10 @@ class AppController extends ChangeNotifier {
   EarningsSummary get earnings => _earnings;
   PerformanceMetrics get performance => _performance;
   List<AppNotice> get notices => List<AppNotice>.unmodifiable(_notices);
+  bool get isConnected => _isConnected;
+  bool get showNoInternetOverlay => _showNoInternetOverlay && _isInitialized && _appIsResumed && _firstFrameBuilt;
+  bool get showRetryButton => _showRetryButton;
+  bool get isInitialized => _isInitialized;
 
   bool get allKycApproved => _kycStatus.values.every(
     (status) => status == VerificationStatus.approved,
@@ -158,6 +171,71 @@ class AppController extends ChangeNotifier {
     }
 
     _bootstrapped = true;
+    notifyListeners();
+  }
+
+  Future<void> initializeConnectivity() async {
+    final ConnectivityService connectivityService = ConnectivityService();
+    await connectivityService.initialize();
+    _isConnected = connectivityService.isConnected;
+    _showNoInternetOverlay = !_isConnected;
+    _showRetryButton = true;
+    notifyListeners();
+
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription = connectivityService.connectivityStream.listen(
+      (bool isConnected) {
+        _onConnectivityChanged(isConnected);
+      },
+    );
+    connectivityService.startMonitoring();
+    _isInitialized = true;
+    notifyListeners();
+  }
+
+  void _onConnectivityChanged(bool isConnected) {
+    if (isConnected) {
+      _isConnected = true;
+      _showNoInternetOverlay = false;
+      _showRetryButton = true;
+    } else {
+      _isConnected = false;
+      _showNoInternetOverlay = true;
+      _showRetryButton = true;
+    }
+    notifyListeners();
+  }
+
+  Future<bool> checkConnectivity() async {
+    final ConnectivityService connectivityService = ConnectivityService();
+    final bool hasConnection = await connectivityService.checkConnectivity();
+    _isConnected = hasConnection;
+    if (hasConnection) {
+      _showNoInternetOverlay = false;
+      _showRetryButton = true;
+    } else {
+      _showNoInternetOverlay = true;
+      _showRetryButton = true;
+    }
+    notifyListeners();
+    return hasConnection;
+  }
+
+  Future<bool> retryConnection() async {
+    _showRetryButton = false;
+    notifyListeners();
+
+    final bool hasConnection = await checkConnectivity();
+    return hasConnection;
+  }
+
+  void setAppResumed(bool isResumed) {
+    _appIsResumed = isResumed;
+    notifyListeners();
+  }
+
+  void setFirstFrameBuilt(bool built) {
+    _firstFrameBuilt = built;
     notifyListeners();
   }
 
@@ -920,6 +998,12 @@ class AppController extends ChangeNotifier {
 
   void _logApi(String tag, String value) {
     debugPrint('[API] $tag => $value');
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
   }
 
   void _updateLiveCoordinates() {
