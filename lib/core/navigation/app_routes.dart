@@ -5,7 +5,9 @@ class AppRoutes {
   static const register = '/register';
   static const kycDocuments = '/kyc-documents';
   static const vehicleDetails = '/vehicle-details';
+  static const vehicleSubmittedDetails = '/vehicle-submitted-details';
   static const bankSetup = '/bank-setup';
+  static const bankSubmittedDetails = '/bank-submitted-details';
   static const permission = '/permission';
   static const tracking = '/tracking';
   static const currentLocation = '/current-location';
@@ -14,4 +16,8 @@ class AppRoutes {
   static const navigation = '/navigation';
   static const orderStatus = '/order-status';
   static const dashboard = '/dashboard';
+  static const profile = '/profile';
+  static const ordersByLocation = '/orders-by-location';
+  static const externalDeliveryTripList = '/external-delivery-trip-list';
+  static const externalDeliveryTripDetails = '/external-delivery-trip-details';
 }

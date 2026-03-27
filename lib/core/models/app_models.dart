@@ -1,7 +1,5 @@
 enum VerificationStatus { notSubmitted, pending, approved, rejected }
 
-enum VehicleType { bike, car, cycle }
-
 enum OrderProgressStatus {
   accepted,
   reachedPickup,
@@ -9,8 +7,6 @@ enum OrderProgressStatus {
   outForDelivery,
   delivered,
 }
-
-enum AuthMode { otp, password }
 
 class PartnerProfile {
   const PartnerProfile({
@@ -40,18 +36,82 @@ class PartnerProfile {
   }
 }
 
-class VehicleDetails {
-  const VehicleDetails({
-    required this.type,
-    required this.vehicleNumber,
-    required this.rcUploaded,
-    this.status = VerificationStatus.pending,
+class LoggedPartnerProfileDetails {
+  const LoggedPartnerProfileDetails({
+    this.loggedUser,
+    this.employee,
+    this.driver,
   });
 
-  final VehicleType type;
-  final String vehicleNumber;
-  final bool rcUploaded;
+  final String? loggedUser;
+  final Map<String, dynamic>? employee;
+  final Map<String, dynamic>? driver;
+
+  bool get hasData => employee != null || driver != null;
+}
+
+class VehicleDetails {
+  const VehicleDetails({
+    this.name,
+    required this.licensePlate,
+    required this.make,
+    required this.model,
+    required this.lastOdometer,
+    required this.fuelType,
+    required this.uom,
+    this.acquisitionDate,
+    this.location,
+    this.chassisNo,
+    this.vehicleValue,
+    this.employee,
+    this.insuranceCompany,
+    this.policyNo,
+    this.startDate,
+    this.endDate,
+    this.carbonCheckDate,
+    this.color,
+    this.wheels,
+    this.doors,
+    this.status = VerificationStatus.approved,
+  });
+
+  final String? name;
+  final String licensePlate;
+  final String make;
+  final String model;
+  final int lastOdometer;
+  final String fuelType;
+  final String uom;
+  final String? acquisitionDate;
+  final String? location;
+  final String? chassisNo;
+  final double? vehicleValue;
+  final String? employee;
+  final String? insuranceCompany;
+  final String? policyNo;
+  final String? startDate;
+  final String? endDate;
+  final String? carbonCheckDate;
+  final String? color;
+  final int? wheels;
+  final int? doors;
   final VerificationStatus status;
+}
+
+class VehicleSubmitResult {
+  const VehicleSubmitResult({
+    this.error,
+    this.vehicleName,
+    this.vehicleData,
+    this.wasUpdate = false,
+  });
+
+  final String? error;
+  final String? vehicleName;
+  final Map<String, dynamic>? vehicleData;
+  final bool wasUpdate;
+
+  bool get success => error == null;
 }
 
 class BankDetails {
@@ -220,19 +280,6 @@ extension VerificationStatusLabel on VerificationStatus {
         return 'Approved';
       case VerificationStatus.rejected:
         return 'Rejected';
-    }
-  }
-}
-
-extension VehicleTypeLabel on VehicleType {
-  String get label {
-    switch (this) {
-      case VehicleType.bike:
-        return 'Bike';
-      case VehicleType.car:
-        return 'Car';
-      case VehicleType.cycle:
-        return 'Cycle';
     }
   }
 }

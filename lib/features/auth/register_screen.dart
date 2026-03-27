@@ -1,65 +1,42 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/navigation/app_routes.dart';
-import '../../core/state/app_scope.dart';
+import '../../core/state/providers.dart';
 import '../../core/widgets/app_shell.dart';
 
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final TextEditingController _nameCtrl = TextEditingController();
-  final TextEditingController _mobileCtrl = TextEditingController();
   final TextEditingController _emailCtrl = TextEditingController();
-  final TextEditingController _passwordCtrl = TextEditingController();
-  final TextEditingController _referralCtrl = TextEditingController();
-  final TextEditingController _otpCtrl = TextEditingController();
 
   bool _busy = false;
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _mobileCtrl.dispose();
     _emailCtrl.dispose();
-    _passwordCtrl.dispose();
-    _referralCtrl.dispose();
-    _otpCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _sendOtp() async {
-    final app = AppScope.of(context);
-    setState(() => _busy = true);
-    final String message = await app.sendOtp(_mobileCtrl.text.trim());
-    if (!mounted) {
-      return;
-    }
-    setState(() => _busy = false);
-    showInfoSnack(context, message);
-  }
+  bool get _isFormValid => _nameCtrl.text.trim().isNotEmpty;
 
   Future<void> _register() async {
-    final app = AppScope.of(context);
+    final app = ref.read(appControllerProvider);
     setState(() => _busy = true);
 
-    final String? error = await app.registerPartner(
-      fullName: _nameCtrl.text,
-      mobile: _mobileCtrl.text.trim(),
-      password: _passwordCtrl.text,
-      otp: _otpCtrl.text.trim(),
-      email: _emailCtrl.text,
-      referralCode: _referralCtrl.text,
+    final String? error = await app.registerNewPartner(
+      fullName: _nameCtrl.text.trim(),
+      email: _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
     );
 
-    if (!mounted) {
-      return;
-    }
-
+    if (!mounted) return;
     setState(() => _busy = false);
 
     if (error != null) {
@@ -67,85 +44,110 @@ class _RegisterScreenState extends State<RegisterScreen> {
       return;
     }
 
-    Navigator.of(
-      context,
-    ).pushNamedAndRemoveUntil(AppRoutes.kycDocuments, (route) => false);
+    await app.completeProfile();
+
+    if (!mounted) return;
+
+    Navigator.of(context)
+        .pushNamedAndRemoveUntil(AppRoutes.kycDocuments, (route) => false);
   }
 
   @override
   Widget build(BuildContext context) {
+    final app = ref.watch(appControllerProvider);
+    final theme = Theme.of(context);
+    final String mobile = app.pendingRegistrationMobile ?? '';
+
     return AppShell(
-      title: 'Partner Registration',
-      subtitle: 'Create account and verify mobile using OTP',
+      title: 'Complete Registration',
+      subtitle: 'Your mobile has been verified. Fill in your details.',
+      loading: _busy,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           FrostCard(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Mobile number (read-only, pre-filled)
+                Text(
+                  'Mobile Number',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  enabled: false,
+                  decoration: InputDecoration(
+                    hintText: mobile.isEmpty ? 'Verified' : '+91  $mobile',
+                    prefixIcon: const Icon(Icons.phone_android_rounded),
+                    suffixIcon:
+                        const Icon(Icons.check_circle, color: Colors.green),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Full name
+                Text(
+                  'Full Name',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 10),
                 TextField(
                   controller: _nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  autofocus: true,
+                  onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(
-                    labelText: 'Full Name',
+                    hintText: 'Enter your full name',
                     prefixIcon: Icon(Icons.person_outline_rounded),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _mobileCtrl,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: 'Mobile Number',
-                    prefixIcon: Icon(Icons.phone_rounded),
+                const SizedBox(height: 20),
+
+                // Email (optional)
+                Text(
+                  'Email (Optional)',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 TextField(
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                    labelText: 'Email (Optional)',
+                    hintText: 'Enter your email address',
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _passwordCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Password',
-                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                const SizedBox(height: 24),
+
+                // Register button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isFormValid && !_busy ? _register : null,
+                    child: Text(
+                        _busy ? 'Creating account...' : 'Create Account'),
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _referralCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Referral Code (Optional)',
-                    prefixIcon: Icon(Icons.card_giftcard_rounded),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => Navigator.of(context).pushNamedAndRemoveUntil(
+                              AppRoutes.login,
+                              (route) => false,
+                            ),
+                    icon: const Icon(Icons.arrow_back, size: 18),
+                    label: const Text('Back to Login'),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _otpCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'OTP',
-                    prefixIcon: Icon(Icons.shield_outlined),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _busy ? null : _sendOtp,
-                    child: const Text('Send OTP'),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: _busy ? null : _register,
-                  child: Text(_busy ? 'Creating account...' : 'Create Account'),
                 ),
               ],
             ),
