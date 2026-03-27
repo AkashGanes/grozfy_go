@@ -78,7 +78,6 @@ class AppController extends ChangeNotifier {
   String? _currentLocationLabel;
 
   bool _isConnected = true;
-  bool _showNoInternetOverlay = false;
   bool _showRetryButton = true;
   bool _isInitialized = false;
   bool _appIsResumed = false;
@@ -129,7 +128,7 @@ class AppController extends ChangeNotifier {
   PerformanceMetrics get performance => _performance;
   List<AppNotice> get notices => List<AppNotice>.unmodifiable(_notices);
   bool get isConnected => _isConnected;
-  bool get showNoInternetOverlay => _showNoInternetOverlay && _isInitialized && _appIsResumed && _firstFrameBuilt;
+  bool get showNoInternetOverlay => !_isConnected && _isInitialized && _appIsResumed && _firstFrameBuilt;
   bool get showRetryButton => _showRetryButton;
   bool get isInitialized => _isInitialized;
 
@@ -178,7 +177,6 @@ class AppController extends ChangeNotifier {
     final ConnectivityService connectivityService = ConnectivityService();
     await connectivityService.initialize();
     _isConnected = connectivityService.isConnected;
-    _showNoInternetOverlay = !_isConnected;
     _showRetryButton = true;
     notifyListeners();
 
@@ -194,15 +192,8 @@ class AppController extends ChangeNotifier {
   }
 
   void _onConnectivityChanged(bool isConnected) {
-    if (isConnected) {
-      _isConnected = true;
-      _showNoInternetOverlay = false;
-      _showRetryButton = true;
-    } else {
-      _isConnected = false;
-      _showNoInternetOverlay = true;
-      _showRetryButton = true;
-    }
+    _isConnected = isConnected;
+    _showRetryButton = true;
     notifyListeners();
   }
 
@@ -210,13 +201,7 @@ class AppController extends ChangeNotifier {
     final ConnectivityService connectivityService = ConnectivityService();
     final bool hasConnection = await connectivityService.checkConnectivity();
     _isConnected = hasConnection;
-    if (hasConnection) {
-      _showNoInternetOverlay = false;
-      _showRetryButton = true;
-    } else {
-      _showNoInternetOverlay = true;
-      _showRetryButton = true;
-    }
+    _showRetryButton = true;
     notifyListeners();
     return hasConnection;
   }
