@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/skeleton_loader.dart';
 
 class BankSetupScreen extends StatefulWidget {
   const BankSetupScreen({super.key});
@@ -600,7 +601,7 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
               const SizedBox(height: 12),
               Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const _BankSearchLoading()
                     : _results.isEmpty
                     ? const Center(child: Text('No results found'))
                     : ListView.builder(
@@ -623,6 +624,18 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _BankSearchLoading extends StatelessWidget {
+  const _BankSearchLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return SkeletonLoader(
+      itemCount: 5,
+      spacing: 4,
     );
   }
 }
