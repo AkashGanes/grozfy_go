@@ -300,3 +300,52 @@ extension OrderStatusLabel on OrderProgressStatus {
     }
   }
 }
+
+class ProfileCompletenessItem {
+  const ProfileCompletenessItem({
+    required this.name,
+    required this.description,
+    required this.isCompleted,
+    this.route,
+  });
+
+  final String name;
+  final String description;
+  final bool isCompleted;
+  final String? route;
+}
+
+class ProfileCompleteness {
+  const ProfileCompleteness({
+    required this.percentage,
+    required this.items,
+    required this.completedCount,
+    required this.totalCount,
+  });
+
+  final double percentage;
+  final List<ProfileCompletenessItem> items;
+  final int completedCount;
+  final int totalCount;
+
+  String get message {
+    if (percentage == 100) {
+      return 'Your profile is complete! You\'re ready to go online.';
+    } else if (percentage >= 70) {
+      return 'Almost there! Complete your profile to unlock all features.';
+    } else if (percentage >= 40) {
+      return 'Your profile is $completedCount/$totalCount complete. Keep going!';
+    } else {
+      return 'Complete your profile to start delivering.';
+    }
+  }
+
+  ProfileCompletenessItem? get nextIncompleteItem {
+    for (final item in items) {
+      if (!item.isCompleted) {
+        return item;
+      }
+    }
+    return null;
+  }
+}

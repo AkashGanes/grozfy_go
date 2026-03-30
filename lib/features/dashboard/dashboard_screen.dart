@@ -5,6 +5,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/profile_completeness_indicator.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -33,6 +34,15 @@ class DashboardScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          ProfileCompletenessIndicator(
+            completeness: app.profileCompleteness,
+            onItemTap: (item) {
+              if (item.route != null) {
+                Navigator.of(context).pushNamed(item.route!);
+              }
+            },
+          ),
+          const SizedBox(height: 12),
           FrostCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
