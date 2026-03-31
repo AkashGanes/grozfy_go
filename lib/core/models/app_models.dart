@@ -300,3 +300,40 @@ extension OrderStatusLabel on OrderProgressStatus {
     }
   }
 }
+
+class NotificationLog {
+  const NotificationLog({
+    required this.name,
+    required this.subject,
+    required this.message,
+    this.type,
+    this.refDoctype,
+    this.refName,
+    this.read = false,
+    this.creation,
+  });
+
+  final String name;
+  final String subject;
+  final String message;
+  final String? type;
+  final String? refDoctype;
+  final String? refName;
+  final bool read;
+  final DateTime? creation;
+
+  factory NotificationLog.fromJson(Map<String, dynamic> json) {
+    return NotificationLog(
+      name: json['name'] ?? '',
+      subject: json['subject'] ?? '',
+      message: json['message'] ?? '',
+      type: json['type'],
+      refDoctype: json['ref_doctype'],
+      refName: json['ref_name'],
+      read: (json['read'] == 1),
+      creation: json['creation'] != null
+          ? DateTime.tryParse(json['creation'].toString())
+          : null,
+    );
+  }
+}

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../notifications/providers/notification_providers.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
@@ -17,6 +19,45 @@ class DashboardScreen extends StatelessWidget {
       title: app.t('dashboard'),
       subtitle: app.profile?.fullName ?? 'Delivery Partner',
       actions: [
+        Consumer(
+          builder: (context, ref, _) {
+            final unreadCount = ref.watch(unreadNotificationCountProvider);
+            return Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_none_rounded),
+                  onPressed: () {
+                    Navigator.of(context).pushNamed(AppRoutes.notifications);
+                  },
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        '$unreadCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
         IconButton(
           icon: const Icon(Icons.logout_rounded),
           onPressed: () async {
