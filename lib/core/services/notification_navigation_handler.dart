@@ -21,11 +21,14 @@ class NotificationNavigationHandler {
   }
 
   void _navigateToTarget(String? doctype, String? docname) {
-    if (doctype == 'External Delivery' || doctype == 'External Delivery Trip') {
+    if (doctype == 'External Delivery Trip' && docname != null) {
       navigatorKey.currentState?.pushNamed(
-        AppRoutes
-            .notifications, // For now, go to history. Expand to details later.
+        AppRoutes.externalDeliveryTripDetails,
+        arguments: docname,
       );
+    } else if (doctype == 'External Delivery' ||
+        doctype == 'External Delivery Trip') {
+      navigatorKey.currentState?.pushNamed(AppRoutes.notifications);
     }
   }
 }
