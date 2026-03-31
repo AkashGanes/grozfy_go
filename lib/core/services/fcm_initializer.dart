@@ -1,8 +1,11 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'fcm_background_handler.dart';
 import 'notification_navigation_handler.dart';
+
+import '../../features/notifications/providers/notification_providers.dart';
 
 class FCMInitializer {
   static final FCMInitializer _instance = FCMInitializer._internal();
@@ -13,7 +16,10 @@ class FCMInitializer {
   final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  Future<void> init() async {
+  ProviderContainer? _container;
+
+  Future<void> init(ProviderContainer container) async {
+    _container = container;
     // 1. Request Permissions
     NotificationSettings settings = await _fcm.requestPermission(
       alert: true,
@@ -48,6 +54,9 @@ class FCMInitializer {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint("FCM Foreground: ${message.notification?.title}");
       _showForegroundNotify(message);
+
+      // REAL-TIME REFRESH
+      _container?.invalidate(notificationsProvider);
     });
 
     // 5. Opened from Background

@@ -29,21 +29,29 @@ import 'features/permissions/location_permission_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/splash/splash_screen.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final container = ProviderContainer();
 
   // Initialize Firebase
   try {
     await Firebase.initializeApp();
     // Initialize Notifications
-    await FCMInitializer().init();
+    await FCMInitializer().init(container);
   } catch (e) {
     debugPrint(
       "⚠️ Firebase initialization failed. Make sure google-services.json is added. Error: $e",
     );
   }
 
-  runApp(const ProviderScope(child: DeliveryPartnerApp()));
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: const DeliveryPartnerApp(),
+    ),
+  );
 }
 
 class DeliveryPartnerApp extends ConsumerWidget {
@@ -55,6 +63,7 @@ class DeliveryPartnerApp extends ConsumerWidget {
     return AppScope(
       controller: controller,
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
         title: 'FlowFleet Partner',
         theme: AppTheme.lightTheme,

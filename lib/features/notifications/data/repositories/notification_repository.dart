@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/models/app_models.dart';
 import '../../../../core/state/app_controller.dart';
@@ -14,17 +15,25 @@ class NotificationRepository {
     if (!_app.isLoggedIn) return [];
 
     try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/Notification Log'
-        '?fields=["*"]&order_by=creation desc&limit_page_length=$limit&limit_start=$offset',
-      );
+      final queryParams = {
+        'fields': '["*"]',
+        'order_by': 'creation desc',
+        'limit_page_length': '$limit',
+        'limit_start': '$offset',
+      };
+
+      final String baseUrl = ApiConstants.erpBaseUrl;
+      final Uri baseUri = Uri.parse('$baseUrl/api/resource/Notification Log');
+      final Uri uri = baseUri.replace(queryParameters: queryParams);
 
       final response = await _app.authorizedGet(uri);
       final List<dynamic> data = response['data'] ?? [];
 
+      debugPrint("Fetched ${data.length} notifications from ERPNext");
+
       return data.map((json) => NotificationLog.fromJson(json)).toList();
     } catch (e) {
-      print("Error fetching notifications: $e");
+      debugPrint("Error fetching notifications: $e");
       return [];
     }
   }
@@ -38,7 +47,7 @@ class NotificationRepository {
       );
       await _app.authorizedPutJson(uri, {'read': 1});
     } catch (e) {
-      print("Error marking notification as read: $e");
+      debugPrint("Error marking notification as read: $e");
     }
   }
 
