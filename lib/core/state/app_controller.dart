@@ -51,6 +51,9 @@ class AppController extends ChangeNotifier {
   static const String _prefVehicleLicensePlate = 'vehicle_license_plate';
   static const String _prefBankDocName = 'bank_doc_name';
   static const String _prefBankAccountName = 'bank_account_name';
+  static const String _prefThemeMode = 'theme_mode';
+  static const String _prefBackgroundColor = 'background_color';
+  static const String _prefAccentColor = 'accent_color';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 200;
   static const int _profileImageMaxDimension = 4096;
@@ -127,6 +130,10 @@ class AppController extends ChangeNotifier {
   String? _selectedStoreName;
   String? _profileImagePath;
 
+  ThemeMode _themeMode = ThemeMode.system;
+  int _backgroundColorValue = 0xFFF0F4FA;
+  int _accentColorValue = 0xFF1C4E80;
+
   DeliveryOrder? _incomingOrder;
   DeliveryOrder? _activeOrder;
 
@@ -180,6 +187,9 @@ class AppController extends ChangeNotifier {
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
+  ThemeMode get themeMode => _themeMode;
+  Color get backgroundColor => Color(_backgroundColorValue);
+  Color get accentColor => Color(_accentColorValue);
   bool get hasSelectedLocation =>
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
@@ -224,6 +234,12 @@ class AppController extends ChangeNotifier {
     _selectedStoreName = _nullIfBlank(prefs.getString(_prefSelectedStore));
     _driverName = _nullIfBlank(prefs.getString(_prefDriverName));
     _profileImagePath = _nullIfBlank(prefs.getString(_prefProfileImagePath));
+    final int themeModeIndex =
+        prefs.getInt(_prefThemeMode) ?? ThemeMode.system.index;
+    _themeMode =
+        ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)];
+    _backgroundColorValue = prefs.getInt(_prefBackgroundColor) ?? 0xFFF0F4FA;
+    _accentColorValue = prefs.getInt(_prefAccentColor) ?? 0xFF1C4E80;
     _isLoggedIn = _sessionToken != null;
     if (_isLoggedIn) {
       final String fullName =
@@ -245,6 +261,43 @@ class AppController extends ChangeNotifier {
     _languageCode = code;
     _writePref((SharedPreferences prefs) {
       return prefs.setString(_prefLanguageCode, code);
+    });
+    notifyListeners();
+  }
+
+  void setThemeMode(ThemeMode mode) {
+    _themeMode = mode;
+    _writePref((SharedPreferences prefs) {
+      return prefs.setInt(_prefThemeMode, mode.index);
+    });
+    notifyListeners();
+  }
+
+  void setBackgroundColor(Color color) {
+    _backgroundColorValue = color.toARGB32();
+    _writePref((SharedPreferences prefs) {
+      return prefs.setInt(_prefBackgroundColor, _backgroundColorValue);
+    });
+    notifyListeners();
+  }
+
+  void setAccentColor(Color color) {
+    _accentColorValue = color.toARGB32();
+    _writePref((SharedPreferences prefs) {
+      return prefs.setInt(_prefAccentColor, _accentColorValue);
+    });
+    notifyListeners();
+  }
+
+  void resetThemeToDefaults() {
+    _themeMode = ThemeMode.system;
+    _backgroundColorValue = 0xFFF0F4FA;
+    _accentColorValue = 0xFF1C4E80;
+    _writePref((SharedPreferences prefs) async {
+      await prefs.setInt(_prefThemeMode, ThemeMode.system.index);
+      await prefs.setInt(_prefBackgroundColor, _backgroundColorValue);
+      await prefs.setInt(_prefAccentColor, _accentColorValue);
+      return true;
     });
     notifyListeners();
   }
@@ -856,51 +909,33 @@ class AppController extends ChangeNotifier {
     String? fieldname,
   }) async {
     if (_sessionToken == null) {
-      _logApi('upload_kyc_file', 'SKIP: no session token');
       return null;
     }
+
+    // Build request fields
+    final Map<String, String> fields = <String, String>{};
+    if (docname != null && docname.isNotEmpty) {
+      fields['driver_name'] = docname;
+    }
+    if (fieldname != null && fieldname.isNotEmpty) {
+      fields['fieldname'] = fieldname;
+    }
+    if (doctype != null && doctype.isNotEmpty) {
+      fields['doctype'] = doctype;
+    }
+
     try {
-      _logApi(
-        'upload_kyc_file request',
-        'driver_name=$docname fieldname=$fieldname file=$fileName',
+      // Use multi-auth strategy (Bearer token first, then API Key fallback)
+      final Map<String, dynamic> payload = await _authorizedUploadFileWithRetry(
+        uri: _uploadFileUri,
+        filePath: filePath,
+        fileName: fileName,
+        fields: fields,
       );
-      final http.MultipartRequest request = http.MultipartRequest(
-        'POST',
-        _uploadFileUri,
-      );
-      request.headers['Authorization'] = 'Bearer $_sessionToken';
-      request.files.add(
-        await http.MultipartFile.fromPath('file', filePath, filename: fileName),
-      );
-      if (docname != null && docname.isNotEmpty) {
-        request.fields['driver_name'] = docname;
-      }
-      if (fieldname != null && fieldname.isNotEmpty) {
-        request.fields['fieldname'] = fieldname;
-      }
-
-      final http.StreamedResponse streamed = await request.send();
-      final String body = await streamed.stream.bytesToString();
-      _logApi(
-        'upload_kyc_file response',
-        'status=${streamed.statusCode} body=$body',
-      );
-
-      final Map<String, dynamic> payload = _decodeJsonMap(body);
-
-      if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
-        final String? serverError = _extractServerError(payload);
-        _logApi(
-          'upload_kyc_file FAIL',
-          serverError ?? 'HTTP ${streamed.statusCode}',
-        );
-        return null;
-      }
 
       final Map<String, dynamic> data = _extractMethodData(payload);
       return _nullIfBlank(data['file_url']?.toString());
     } catch (e) {
-      _logApi('upload_kyc_file error', e.toString());
       return null;
     }
   }
@@ -942,21 +977,12 @@ class AppController extends ChangeNotifier {
         body['pan_attachment'] = panAttachmentUrl;
       }
 
-      _logApi('submit_driver_kyc request', body.toString());
-      final http.Response response = await http.post(
-        _submitDriverKycUri,
-        headers: <String, String>{
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $_sessionToken',
-        },
+      // Use multi-auth strategy (Bearer token first, then API Key fallback)
+      final Map<String, dynamic> payload = await _authorizedPostFormWithRetry(
+        uri: _submitDriverKycUri,
         body: body,
       );
-      _logApi(
-        'submit_driver_kyc response',
-        'status=${response.statusCode} body=${response.body}',
-      );
 
-      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       final Map<String, dynamic> responseData = _extractMethodData(payload);
       final String status = (responseData['status']?.toString() ?? '')
           .toLowerCase();
@@ -978,13 +1004,8 @@ class AppController extends ChangeNotifier {
         return null;
       }
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return _extractServerError(payload) ??
-            'KYC submission failed (${response.statusCode})';
-      }
       return _extractServerError(payload) ?? 'KYC submission failed';
     } catch (e) {
-      _logApi('submit_driver_kyc error', e.toString());
       return 'Unable to connect. Check internet and try again.';
     }
   }
@@ -1174,7 +1195,9 @@ class AppController extends ChangeNotifier {
     }
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? vehicleName = _nullIfBlank(prefs.getString(_prefVehicleName));
+      final String? vehicleName = _nullIfBlank(
+        prefs.getString(_prefVehicleName),
+      );
       final String? licensePlate = _nullIfBlank(
         prefs.getString(_prefVehicleLicensePlate),
       );
@@ -1376,7 +1399,9 @@ class AppController extends ChangeNotifier {
     }
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? bankDocName = _nullIfBlank(prefs.getString(_prefBankDocName));
+      final String? bankDocName = _nullIfBlank(
+        prefs.getString(_prefBankDocName),
+      );
       final String? accountName = _nullIfBlank(
         prefs.getString(_prefBankAccountName),
       );
@@ -1806,7 +1831,6 @@ class AppController extends ChangeNotifier {
       if (!hasSelectedLocation) missing.add('location selection');
       if (!_permissionState.allGranted) missing.add('app permissions');
       return 'Please complete: ${missing.join(', ')}';
-
     }
 
     _isOnline = value;
@@ -2509,6 +2533,77 @@ class AppController extends ChangeNotifier {
       }
     }
     throw Exception(lastError ?? 'Authentication failed for POST $uri');
+  }
+
+  Future<Map<String, dynamic>> _authorizedUploadFileWithRetry({
+    required Uri uri,
+    required String filePath,
+    required String fileName,
+    required Map<String, String> fields,
+  }) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll(headers)
+        ..fields.addAll(fields)
+        ..files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            filename: fileName,
+          ),
+        );
+
+      final streamed = await request.send().timeout(_networkTimeout);
+      final response = await http.Response.fromStream(streamed);
+      final payload = _decodeJsonMap(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      lastError =
+          _extractServerError(payload) ??
+          'Image upload failed (${response.statusCode})';
+
+      // Only retry for auth errors
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(lastError);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed');
+  }
+
+  Future<Map<String, dynamic>> _authorizedPostFormWithRetry({
+    required Uri uri,
+    required Map<String, String> body,
+  }) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      final http.Response response = await http
+          .post(uri, headers: headers, body: body)
+          .timeout(_networkTimeout);
+
+      final payload = _decodeJsonMap(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      lastError =
+          _extractServerError(payload) ??
+          'Request failed (${response.statusCode})';
+
+      // Only retry for auth errors
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(lastError);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed');
   }
 
   String? _extractUploadedFileUrl(Map<String, dynamic> payload) {

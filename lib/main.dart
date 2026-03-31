@@ -25,6 +25,7 @@ import 'features/orders/order_request_screen.dart';
 import 'features/orders/order_status_screen.dart';
 import 'features/permissions/location_permission_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/settings/settings_screen.dart';
 import 'features/splash/splash_screen.dart';
 
 void main() {
@@ -43,8 +44,11 @@ class DeliveryPartnerApp extends ConsumerWidget {
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'FlowFleet Partner',
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
+        theme: AppTheme.getTheme(
+          mode: controller.themeMode,
+          scaffoldBackgroundColor: controller.backgroundColor,
+          primaryColor: controller.accentColor,
+        ),
         initialRoute: AppRoutes.splash,
         onGenerateRoute: (RouteSettings settings) {
           switch (settings.name) {
@@ -82,8 +86,9 @@ class DeliveryPartnerApp extends ConsumerWidget {
                   settings: const RouteSettings(
                     name: AppRoutes.vehicleSubmittedDetails,
                   ),
-                  builder: (_) =>
-                      VehicleSubmittedDetailsScreen(vehicleData: submittedVehicle),
+                  builder: (_) => VehicleSubmittedDetailsScreen(
+                    vehicleData: submittedVehicle,
+                  ),
                 );
               }
               return MaterialPageRoute<void>(
@@ -181,6 +186,10 @@ class DeliveryPartnerApp extends ConsumerWidget {
             case AppRoutes.ordersByLocation:
               return MaterialPageRoute<void>(
                 builder: (_) => const OrdersByLocationScreen(),
+              );
+            case AppRoutes.settings:
+              return MaterialPageRoute<void>(
+                builder: (_) => const SettingsScreen(),
               );
             case AppRoutes.externalDeliveryTripList:
               return MaterialPageRoute<void>(
