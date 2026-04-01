@@ -7,6 +7,24 @@ import '../../../core/constants/api_constants.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 
+class ReturnProcessResult {
+  const ReturnProcessResult({
+    required this.success,
+    required this.orderUpdated,
+    required this.tripCreated,
+    required this.tripSubmitted,
+    this.tripName,
+    required this.message,
+  });
+
+  final bool success;
+  final bool orderUpdated;
+  final bool tripCreated;
+  final bool tripSubmitted;
+  final String? tripName;
+  final String message;
+}
+
 class ExternalDeliveryRepository {
   ExternalDeliveryRepository({
     this.apiKey = ApiConstants.apiKey,
@@ -33,6 +51,7 @@ class ExternalDeliveryRepository {
     'status',
     'docstatus',
     'trip_date',
+    'trip_notes',
     'total_stops',
     'completes_stops',
     'modified',
@@ -40,6 +59,8 @@ class ExternalDeliveryRepository {
 
   static const Set<int> _okCodes = {200, 201};
   static const Duration _networkTimeout = Duration(seconds: 15);
+  static const String _returnInitiatedStatus = 'Return Initiated';
+  static const String _returnedStatus = 'Returned';
 
   Future<List<String>> fetchStoreNames() async {
     final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
@@ -449,65 +470,16 @@ class ExternalDeliveryRepository {
   Future<void> markReturnedToStore({
     required ExternalDeliveryTrip trip,
   }) async {
-    final setValueUrl = Uri.parse(
-      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
-    );
-    final headers = {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'Authorization': 'token $apiKey:$apiSecret',
-    };
-
-    // Mark each non-delivered stop as Delivered (returned to store)
     for (final stop in trip.stops) {
-      if (stop.status.trim().toLowerCase() == 'delivered') continue;
-      try {
-        await updateTripStopStatus(stop: stop, newStatus: 'Delivered');
-      } catch (e) {
-        _logApi('mark_returned_to_store_stop_warn', e.toString());
+      final orderName = stop.externalDelivery.trim();
+      if (orderName.isEmpty) {
+        continue;
       }
+      await _markOrderReturned(orderName);
+      await _markStopReturned(stop);
     }
 
-    // Update trip status to Completed and set completes_stops (best-effort)
-    try {
-      _logApi('mark_returned_to_store trip', 'trip=${trip.name}');
-      final statusResp = await _post(
-        setValueUrl,
-        headers: headers,
-        body: jsonEncode({
-          'doctype': 'External Delivery Trip',
-          'name': trip.name,
-          'fieldname': 'status',
-          'value': 'Completed',
-        }),
-      );
-      if (!_okCodes.contains(statusResp.statusCode)) {
-        _logApi('mark_returned_to_store_trip_warn', _extractErrorMessage(statusResp));
-      }
-    } catch (e) {
-      _logApi('mark_returned_to_store_trip_warn', e.toString());
-    }
-
-    // Sync completes_stops = total stops (all were just marked Delivered)
-    try {
-      final countResp = await _post(
-        setValueUrl,
-        headers: headers,
-        body: jsonEncode({
-          'doctype': 'External Delivery Trip',
-          'name': trip.name,
-          'fieldname': 'completes_stops',
-          'value': trip.stops.length,
-        }),
-      );
-      if (!_okCodes.contains(countResp.statusCode)) {
-        _logApi('completes_stops_sync_warn', _extractErrorMessage(countResp));
-      } else {
-        _logApi('completes_stops_sync', 'trip=${trip.name} count=${trip.stops.length}');
-      }
-    } catch (e) {
-      _logApi('completes_stops_sync_warn', e.toString());
-    }
+    await _completeTrip(trip);
   }
 
   /// Uploads a proof photo and attaches it to the [proof_photo] field of the
@@ -566,62 +538,78 @@ class ExternalDeliveryRepository {
     required String reason,
     String? photoPath,
   }) async {
-    // Step 1 – mark stop as Failed (reuses existing logic)
+    await processFailedDeliveryReturn(
+      stop: stop,
+      orderName: orderName,
+      reason: reason,
+      photoPath: photoPath,
+      shouldCreateReturnTrip: false,
+    );
+  }
+
+  Future<ReturnProcessResult> processFailedDeliveryReturn({
+    required ExternalDeliveryTripStop stop,
+    required String orderName,
+    required String reason,
+    String? photoPath,
+    bool shouldCreateReturnTrip = true,
+  }) async {
     await updateTripStopStatus(stop: stop, newStatus: 'Failed');
+    await _tryWriteStopNotes(stop: stop, reason: reason);
 
-    // Step 2 – write reason to stop notes (best-effort)
-    final stopName = (stop.rawFields['name'] ?? '').toString().trim();
-    final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
-    if (stopName.isNotEmpty && stopDocType.isNotEmpty) {
-      try {
-        await _post(
-          Uri.parse('${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value'),
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Authorization': 'token $apiKey:$apiSecret',
-          },
-          body: jsonEncode({
-            'doctype': stopDocType,
-            'name': stopName,
-            'fieldname': 'notes',
-            'value': reason,
-          }),
-        );
-      } catch (_) {}
-    }
+    await _updateExternalDeliveryFields(orderName, {
+      'status': shouldCreateReturnTrip ? _returnInitiatedStatus : 'Failed',
+      'delivery_notes': reason,
+      'store_notified': 1,
+    });
 
-    // Step 3 – update External Delivery status, delivery_notes, store_notified
-    final uri = Uri.parse(
-      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(orderName)}',
-    );
-    _logApi('mark_failed_delivery request', '$uri reason=$reason');
-    final resp = await _put(
-      uri,
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
-      body: jsonEncode({
-        'status': 'Failed',
-        'delivery_notes': reason,
-        'store_notified': 1,
-      }),
-    );
-    if (!_okCodes.contains(resp.statusCode)) {
-      throw Exception(_extractErrorMessage(resp));
-    }
-
-    // Step 4 – upload proof photo if provided (best-effort, never throws)
     if (photoPath != null && photoPath.isNotEmpty) {
       await uploadProofPhoto(orderName: orderName, filePath: photoPath);
     }
+
+    if (!shouldCreateReturnTrip) {
+      return const ReturnProcessResult(
+        success: true,
+        orderUpdated: true,
+        tripCreated: false,
+        tripSubmitted: false,
+        tripName: null,
+        message: 'Delivery marked as failed.',
+      );
+    }
+
+    final existingTripName = await _findExistingOpenReturnTrip(orderName);
+    if (existingTripName != null) {
+      return ReturnProcessResult(
+        success: true,
+        orderUpdated: true,
+        tripCreated: false,
+        tripSubmitted: false,
+        tripName: existingTripName,
+        message: 'Return trip already exists: $existingTripName',
+      );
+    }
+
+    final tripName = await createReturnTrip(orderName: orderName);
+    return ReturnProcessResult(
+      success: true,
+      orderUpdated: true,
+      tripCreated: true,
+      tripSubmitted: true,
+      tripName: tripName,
+      message: 'Return trip created: $tripName',
+    );
   }
 
   /// Creates a return trip to the store for the given order and submits it.
   /// Returns the new trip name.
   Future<String> createReturnTrip({required String orderName}) async {
+    final existingTripName = await _findExistingOpenReturnTrip(orderName);
+    if (existingTripName != null) {
+      _logApi('create_return_trip reuse', 'order=$orderName trip=$existingTripName');
+      return existingTripName;
+    }
+
     final createPayload = {
       'driver': ApiConstants.defaultExternalDeliveryDriver,
       'status': 'Draft',
@@ -677,6 +665,167 @@ class ExternalDeliveryRepository {
     }
 
     return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+  }
+
+  Future<void> _completeTrip(ExternalDeliveryTrip trip) async {
+    _logApi('mark_returned_to_store trip', 'trip=${trip.name}');
+    await _setDocValue(
+      doctype: 'External Delivery Trip',
+      name: trip.name,
+      fieldname: 'status',
+      value: 'Completed',
+    );
+    await _setDocValue(
+      doctype: 'External Delivery Trip',
+      name: trip.name,
+      fieldname: 'completes_stops',
+      value: trip.stops.length,
+    );
+
+    try {
+      await _setDocValue(
+        doctype: 'External Delivery Trip',
+        name: trip.name,
+        fieldname: 'completed_at',
+        value: DateTime.now().toIso8601String(),
+      );
+    } catch (e) {
+      _logApi('mark_returned_to_store_completed_at_warn', e.toString());
+    }
+  }
+
+  Future<void> _updateExternalDeliveryFields(
+    String orderName,
+    Map<String, dynamic> body,
+  ) async {
+    final uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(orderName)}',
+    );
+    _logApi('external_delivery_update request', '$uri body=$body');
+    final resp = await _put(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+      body: jsonEncode(body),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
+  Future<void> _markOrderReturned(String orderName) {
+    return _updateExternalDeliveryFields(orderName, {
+      'status': _returnedStatus,
+      'store_notified': 1,
+    });
+  }
+
+  Future<void> _markStopReturned(ExternalDeliveryTripStop stop) async {
+    final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+    final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
+    if (stopName.isEmpty || stopDocType.isEmpty) {
+      return;
+    }
+
+    await _setDocValue(
+      doctype: stopDocType,
+      name: stopName,
+      fieldname: 'status',
+      value: _returnedStatus,
+    );
+  }
+
+  Future<void> _tryWriteStopNotes({
+    required ExternalDeliveryTripStop stop,
+    required String reason,
+  }) async {
+    final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+    final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
+    if (stopName.isEmpty || stopDocType.isEmpty) {
+      return;
+    }
+
+    try {
+      await _setDocValue(
+        doctype: stopDocType,
+        name: stopName,
+        fieldname: 'notes',
+        value: reason,
+      );
+    } catch (e) {
+      _logApi('mark_failed_delivery_notes_warn', e.toString());
+    }
+  }
+
+  Future<void> _setDocValue({
+    required String doctype,
+    required String name,
+    required String fieldname,
+    required Object value,
+  }) async {
+    final setValueUrl = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    final resp = await _post(
+      setValueUrl,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+      body: jsonEncode({
+        'doctype': doctype,
+        'name': name,
+        'fieldname': fieldname,
+        'value': value,
+      }),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
+  Future<String?> _findExistingOpenReturnTrip(String orderName) async {
+    final uri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+      queryParameters: {
+        'fields': jsonEncode(['name', 'status']),
+        'filters': jsonEncode([
+          ['External Delivery Trip', 'trip_notes', '=', 'Return Trip for $orderName'],
+          [
+            'External Delivery Trip',
+            'status',
+            'not in',
+            ['Completed', 'Cancelled'],
+          ],
+        ]),
+        'limit_page_length': '1',
+        'order_by': 'modified desc',
+      },
+    );
+    final resp = await _get(
+      uri,
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'token $apiKey:$apiSecret',
+      },
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      return null;
+    }
+
+    final data = jsonDecode(resp.body)['data'];
+    if (data is! List || data.isEmpty) {
+      return null;
+    }
+
+    final first = data.first;
+    if (first is! Map<String, dynamic>) {
+      return null;
+    }
+    return _value(first['name']);
   }
 
   String _extractErrorMessage(http.Response resp) {

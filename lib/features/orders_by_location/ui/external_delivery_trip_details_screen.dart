@@ -554,7 +554,7 @@ class _ExternalDeliveryTripDetailsScreenState
     try {
       await ExternalDeliveryRepository().markReturnedToStore(trip: trip);
       if (!mounted) return;
-      showInfoSnack(context, 'Package returned to store. Trip completed.');
+      showInfoSnack(context, 'Order marked Returned. Trip completed.');
       setState(() {
         _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
       });
@@ -735,31 +735,6 @@ class _ExternalDeliveryTripDetailsScreenState
         ? result.reason
         : '${result.reason} — ${result.notes}';
 
-    setState(() => _updatingStops.add(stopKey));
-    try {
-      await ExternalDeliveryRepository().markFailedDelivery(
-        stop: stop,
-        orderName: orderName,
-        reason: fullReason,
-        photoPath: result.photoPath,
-      );
-      if (!mounted) return;
-      showInfoSnack(context, 'Delivery marked as failed. Store notified.');
-      setState(() {
-        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
-      });
-    } catch (e) {
-      if (!mounted) return;
-      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
-      setState(() => _updatingStops.remove(stopKey));
-      return;
-    }
-
-    setState(() => _updatingStops.remove(stopKey));
-
-    if (!mounted) return;
-
-    // Offer to create a return trip back to the store
     final createReturn = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -801,30 +776,39 @@ class _ExternalDeliveryTripDetailsScreenState
         ],
       ),
     );
+    if (!mounted) return;
 
-    if (createReturn != true || !mounted) return;
-
-    // Show loading while creating return trip
-    final stopKeyReturn = '${stopKey}_return';
-    setState(() => _updatingStops.add(stopKeyReturn));
+    setState(() => _updatingStops.add(stopKey));
     try {
-      final returnTripName = await ExternalDeliveryRepository()
-          .createReturnTrip(orderName: orderName);
-      if (!mounted) return;
-      showInfoSnack(context, 'Return trip created: $returnTripName');
-      // Navigate to the new return trip details
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => ExternalDeliveryTripDetailsScreen(
-            tripName: returnTripName,
-          ),
-        ),
+      final processResult = await ExternalDeliveryRepository()
+          .processFailedDeliveryReturn(
+        stop: stop,
+        orderName: orderName,
+        reason: fullReason,
+        photoPath: result.photoPath,
+        shouldCreateReturnTrip: createReturn == true,
       );
+      if (!mounted) return;
+      showInfoSnack(context, processResult.message);
+      setState(() {
+        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+      });
+      if (processResult.tripName != null && createReturn == true) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ExternalDeliveryTripDetailsScreen(
+              tripName: processResult.tripName!,
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (mounted) setState(() => _updatingStops.remove(stopKeyReturn));
+      if (mounted) {
+        setState(() => _updatingStops.remove(stopKey));
+      }
     }
   }
 
