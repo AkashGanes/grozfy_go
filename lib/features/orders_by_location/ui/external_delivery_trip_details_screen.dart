@@ -594,7 +594,8 @@ class _ExternalDeliveryTripDetailsScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _stopTitleWithAction(entry.value),
+                      _stopTitleWithAction(trip, entry.value),
+                      
                       const SizedBox(height: 8),
                       _fieldList(_orderedStopFields(entry.value)),
                     ],
@@ -619,9 +620,16 @@ class _ExternalDeliveryTripDetailsScreenState
     );
   }
 
-  Widget _stopTitleWithAction(ExternalDeliveryTripStop stop) {
+  Widget _stopTitleWithAction(
+    ExternalDeliveryTrip trip,
+    ExternalDeliveryTripStop stop,
+  ) {
     final stopKey = _stopKey(stop);
     final isUpdating = _updatingStops.contains(stopKey);
+    final isEditable = _isStopEditable(
+      tripStatus: trip.status,
+      stopStatus: stop.status,
+    );
     return Row(
       children: [
         _stopTitle('Stop ${stop.stop}'),
@@ -635,7 +643,7 @@ class _ExternalDeliveryTripDetailsScreenState
               color: AppTheme.oceanBlue,
             ),
           )
-        else
+        else if (isEditable)
           PopupMenuButton<String>(
             onSelected: (status) => _updateStopStatus(stop, status),
             itemBuilder: (context) {
@@ -682,6 +690,29 @@ class _ExternalDeliveryTripDetailsScreenState
           ),
       ],
     );
+  }
+
+  bool _isStopEditable({
+    required String tripStatus,
+    required String stopStatus,
+  }) {
+    final normalizedTripStatus = tripStatus.trim().toLowerCase();
+    final normalizedStopStatus = stopStatus.trim().toLowerCase();
+    const lockedStopStatuses = <String>{
+      'delivered',
+      'returned',
+      'failed',
+    };
+
+    if (normalizedTripStatus == 'completed') {
+      return false;
+    }
+
+    if (lockedStopStatuses.contains(normalizedStopStatus)) {
+      return false;
+    }
+
+    return true;
   }
 
   String _stopKey(ExternalDeliveryTripStop stop) {
