@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/navigation/app_routes.dart';
 import '../../providers/notification_providers.dart';
 import '../../../../core/models/app_models.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_shell.dart';
+import '../../../orders_by_location/model/external_delivery.dart';
+import '../../../orders_by_location/repository/external_delivery_repository.dart';
+import '../../../orders_by_location/ui/order_location_detail_screen.dart';
 
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
@@ -152,18 +156,50 @@ class _NotificationTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isUnread = !notification.read;
+    final hasNavigationTarget =
+        (notification.refDoctype ?? '').trim().isNotEmpty &&
+        (notification.refName ?? '').trim().isNotEmpty;
+
+    Future<void> handleTap() async {
+      await ref.read(notificationRepositoryProvider).markAsRead(notification.name);
+      ref.invalidate(notificationsProvider);
+
+      final doctype = (notification.refDoctype ?? '').trim();
+      final docname = (notification.refName ?? '').trim();
+      if (doctype == 'External Delivery Trip' && docname.isNotEmpty) {
+        if (!context.mounted) return;
+        Navigator.of(context).pushNamed(
+          AppRoutes.externalDeliveryTripDetails,
+          arguments: docname,
+        );
+      } else if (doctype == 'External Delivery' && docname.isNotEmpty) {
+        if (!context.mounted) return;
+        final repository = ExternalDeliveryRepository();
+        final order = ExternalDelivery(
+          name: docname,
+          storeUrl: '',
+          storeName: '',
+          customerName: '',
+          status: '',
+          creation: '',
+          modified: '',
+        );
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) =>
+                OrderLocationDetailScreen(order: order, repository: repository),
+          ),
+        );
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: FrostCard(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () async {
-            await ref
-                .read(notificationRepositoryProvider)
-                .markAsRead(notification.name);
-            ref.invalidate(notificationsProvider);
-          },
+          onTap: handleTap,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -234,6 +270,12 @@ class _NotificationTile extends ConsumerWidget {
                     color: AppTheme.oceanBlue,
                     shape: BoxShape.circle,
                   ),
+                ),
+              ] else if (hasNavigationTarget) ...[
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.black38,
                 ),
               ],
             ],
