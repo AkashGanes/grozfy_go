@@ -555,6 +555,7 @@ class ExternalDeliveryRepository {
     bool shouldCreateReturnTrip = true,
   }) async {
     await updateTripStopStatus(stop: stop, newStatus: 'Failed');
+    await _tryMarkParentTripFailed(stop);
     await _tryWriteStopNotes(stop: stop, reason: reason);
 
     await _updateExternalDeliveryFields(orderName, {
@@ -736,6 +737,24 @@ class ExternalDeliveryRepository {
       fieldname: 'status',
       value: _returnedStatus,
     );
+  }
+
+  Future<void> _tryMarkParentTripFailed(ExternalDeliveryTripStop stop) async {
+    final parentTripName = (stop.rawFields['parent'] ?? '').toString().trim();
+    if (parentTripName.isEmpty) {
+      return;
+    }
+
+    try {
+      await _setDocValue(
+        doctype: 'External Delivery Trip',
+        name: parentTripName,
+        fieldname: 'status',
+        value: 'Failed',
+      );
+    } catch (e) {
+      _logApi('parent_trip_failed_warn', e.toString());
+    }
   }
 
   Future<void> _tryWriteStopNotes({
