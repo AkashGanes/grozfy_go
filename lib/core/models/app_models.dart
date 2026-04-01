@@ -326,10 +326,13 @@ class NotificationLog {
     return NotificationLog(
       name: json['name'] ?? '',
       subject: json['subject'] ?? '',
-      message: json['message'] ?? '',
+      // Map email_content (ERPNext field) to message
+      message: json['message'] ?? json['email_content'] ?? '',
       type: json['type'],
-      refDoctype: json['ref_doctype'],
-      refName: json['ref_name'],
+      // Map document_type to refDoctype if ref_doctype is missing
+      refDoctype: json['ref_doctype'] ?? json['document_type'],
+      // Map document_name to refName if ref_name is missing
+      refName: json['ref_name'] ?? json['document_name'],
       read: (json['read'] == 1),
       creation: json['creation'] != null
           ? DateTime.tryParse(json['creation'].toString())

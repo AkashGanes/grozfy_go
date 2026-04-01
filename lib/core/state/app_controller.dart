@@ -156,6 +156,8 @@ class AppController extends ChangeNotifier {
   PartnerProfile? get profile => _profile;
   LoggedPartnerProfileDetails? get loggedProfileDetails =>
       _loggedProfileDetails;
+  String? get loggedUser =>
+      _loggedProfileDetails?.loggedUser ?? _profile?.email;
   bool get profileDetailsLoading => _profileDetailsLoading;
   String? get profileDetailsError => _profileDetailsError;
   bool get profileImageSyncing => _profileImageSyncing;
