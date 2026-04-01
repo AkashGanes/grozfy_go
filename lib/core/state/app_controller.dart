@@ -3392,25 +3392,46 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> updateFcmToken(String token) async {
-    if (!_isLoggedIn || _sessionToken == null) return;
+    if (!_isLoggedIn || _sessionToken == null || token.isEmpty) return;
 
-    final String? userEmail = _profile?.email;
+    final String? userEmail = loggedUser;
     if (userEmail == null || userEmail.isEmpty) {
-      debugPrint('Cannot update FCM token: User email missing');
+      debugPrint('Cannot update FCM token: User missing');
       return;
     }
 
     try {
-      final Uri uri = Uri.parse(
+      // 1. Sync to FCM Device Token doctype (used by the delivery broadcast script)
+      final Uri insertUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.insert',
+      );
+
+      try {
+        await _authorizedPostJson(insertUri, <String, dynamic>{
+          'doc': jsonEncode(<String, dynamic>{
+            'doctype': 'FCM Device Token',
+            'user': userEmail,
+            'token': token,
+          }),
+        });
+        debugPrint('FCM Device Token registered for $userEmail');
+      } catch (e) {
+        // Ignore if already exists or doctype missing
+        debugPrint('FCM Device Token sync note: $e');
+      }
+
+      // 2. Fallback: Sync to User doctype field if it exists
+      final Uri userUri = Uri.parse(
         '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
       );
-      await _authorizedPostJson(uri, <String, dynamic>{
+      await _authorizedPostJson(userUri, <String, dynamic>{
         'doctype': 'User',
         'name': userEmail,
         'fieldname': 'fcm_token',
         'value': token,
-      });
-      debugPrint('FCM Token synced with server for $userEmail');
+      }).catchError((_) => <String, dynamic>{});
+
+      debugPrint('FCM Token sync process completed');
     } catch (e) {
       debugPrint('Failed to sync FCM token: $e');
     }

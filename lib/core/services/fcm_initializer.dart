@@ -110,9 +110,14 @@ class FCMInitializer {
             .toString();
     if (title.isEmpty && body.isEmpty) return;
 
+    final String doctype =
+        (message.data['doctype'] ?? message.data['type'] ?? '').toString();
+    final String docname =
+        (message.data['docname'] ?? message.data['doc_name'] ?? '').toString();
+
     final payload = jsonEncode(<String, String>{
-      'doctype': (message.data['doctype'] ?? '').toString(),
-      'docname': (message.data['docname'] ?? '').toString(),
+      'doctype': doctype,
+      'docname': docname,
     });
 
     _localNotificationsPlugin.show(
