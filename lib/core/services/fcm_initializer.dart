@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
@@ -76,6 +78,11 @@ class FCMInitializer {
   void _showForegroundNotify(RemoteMessage message) {
     if (message.notification == null) return;
 
+    final payload = jsonEncode(<String, String>{
+      'doctype': (message.data['doctype'] ?? '').toString(),
+      'docname': (message.data['docname'] ?? '').toString(),
+    });
+
     _localNotificationsPlugin.show(
       message.notification.hashCode,
       message.notification!.title,
@@ -89,7 +96,7 @@ class FCMInitializer {
           icon: '@mipmap/ic_launcher',
         ),
       ),
-      payload: message.data['click_action'] ?? '',
+      payload: payload,
     );
   }
 }

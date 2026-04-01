@@ -9,6 +9,7 @@ class FCMService {
   FCMService._internal();
 
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  StreamSubscription<String>? _tokenRefreshSub;
 
   Future<String?> getToken() async {
     return await _fcm.getToken();
@@ -18,17 +19,13 @@ class FCMService {
     if (!appController.isLoggedIn || appController.sessionToken == null) return;
 
     try {
-      String? token = await getToken();
+      final String? token = await getToken();
       if (token == null) return;
 
       debugPrint("Syncing FCM token with ERPNext...");
-
       await appController.updateFcmToken(token);
-
-      // Subscribe to all_partners topic for broadcast notifications
-      await _fcm.subscribeToTopic('all_partners');
-
-      debugPrint("FCM Subscription successful (Topic: all_partners)");
+      _bindTokenRefresh(appController);
+      debugPrint("FCM token sync successful");
     } catch (e) {
       debugPrint("FCM Subscription error: $e");
     }
@@ -39,12 +36,25 @@ class FCMService {
 
     try {
       debugPrint("Unsubscribing FCM token from ERPNext...");
-      // For now, we'll just clear the field on logout
+      // Clear user token on logout to stop targeted push delivery.
       await appController.updateFcmToken("");
-      await _fcm.unsubscribeFromTopic('all_partners');
+      await _tokenRefreshSub?.cancel();
+      _tokenRefreshSub = null;
       debugPrint("FCM Unsubscription successful");
     } catch (e) {
       debugPrint("FCM Unsubscription error: $e");
     }
+  }
+
+  void _bindTokenRefresh(AppController appController) {
+    _tokenRefreshSub?.cancel();
+    _tokenRefreshSub = _fcm.onTokenRefresh.listen((String token) async {
+      try {
+        await appController.updateFcmToken(token);
+        debugPrint("FCM token refresh synced");
+      } catch (e) {
+        debugPrint("FCM token refresh sync error: $e");
+      }
+    });
   }
 }

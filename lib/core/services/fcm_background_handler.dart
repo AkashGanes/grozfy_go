@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -26,11 +28,26 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
       >()
       ?.createNotificationChannel(channel);
 
-  if (message.notification != null) {
+  // Avoid duplicate tray entries for notification payloads:
+  // Android/iOS usually render them automatically in background.
+  if (message.notification == null) {
+    final String title =
+        (message.data['title'] ?? message.data['subject'] ?? '').toString();
+    final String body = (message.data['body'] ?? message.data['message'] ?? '')
+        .toString();
+    if (title.isEmpty && body.isEmpty) {
+      return;
+    }
+
+    final payload = jsonEncode(<String, String>{
+      'doctype': (message.data['doctype'] ?? '').toString(),
+      'docname': (message.data['docname'] ?? '').toString(),
+    });
+
     flutterLocalNotificationsPlugin.show(
-      message.notification.hashCode,
-      message.notification!.title,
-      message.notification!.body,
+      message.messageId.hashCode,
+      title,
+      body,
       NotificationDetails(
         android: AndroidNotificationDetails(
           channel.id,
@@ -39,7 +56,7 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
           icon: '@mipmap/ic_launcher',
         ),
       ),
-      payload: message.data['click_action'] ?? '',
+      payload: payload,
     );
   }
 }

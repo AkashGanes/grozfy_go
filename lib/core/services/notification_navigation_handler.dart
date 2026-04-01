@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
@@ -17,14 +19,27 @@ class NotificationNavigationHandler {
 
   void handlePayload(String payload) {
     debugPrint("Navigating from Local Payload: $payload");
-    // Handle payload if needed, e.g., if it's JSON
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map<String, dynamic>) {
+        _navigateToTarget(
+          decoded['doctype']?.toString(),
+          decoded['docname']?.toString(),
+        );
+      }
+    } catch (_) {
+      // Ignore malformed payloads.
+    }
   }
 
   void _navigateToTarget(String? doctype, String? docname) {
-    if (doctype == 'External Delivery Trip' && docname != null) {
+    final normalizedDocname = docname?.trim();
+    if (doctype == 'External Delivery Trip' &&
+        normalizedDocname != null &&
+        normalizedDocname.isNotEmpty) {
       navigatorKey.currentState?.pushNamed(
         AppRoutes.externalDeliveryTripDetails,
-        arguments: docname,
+        arguments: normalizedDocname,
       );
     } else if (doctype == 'External Delivery' ||
         doctype == 'External Delivery Trip') {
