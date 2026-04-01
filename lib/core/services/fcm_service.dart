@@ -24,6 +24,7 @@ class FCMService {
 
       debugPrint("Syncing FCM token with ERPNext...");
       await appController.updateFcmToken(token);
+      await _fcm.subscribeToTopic('all_partners');
       _bindTokenRefresh(appController);
       debugPrint("FCM token sync successful");
     } catch (e) {
@@ -38,6 +39,7 @@ class FCMService {
       debugPrint("Unsubscribing FCM token from ERPNext...");
       // Clear user token on logout to stop targeted push delivery.
       await appController.updateFcmToken("");
+      await _fcm.unsubscribeFromTopic('all_partners');
       await _tokenRefreshSub?.cancel();
       _tokenRefreshSub = null;
       debugPrint("FCM Unsubscription successful");

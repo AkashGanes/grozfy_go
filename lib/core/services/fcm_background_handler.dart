@@ -28,35 +28,41 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
       >()
       ?.createNotificationChannel(channel);
 
-  // Avoid duplicate tray entries for notification payloads:
-  // Android/iOS usually render them automatically in background.
-  if (message.notification == null) {
-    final String title =
-        (message.data['title'] ?? message.data['subject'] ?? '').toString();
-    final String body = (message.data['body'] ?? message.data['message'] ?? '')
-        .toString();
-    if (title.isEmpty && body.isEmpty) {
-      return;
-    }
-
-    final payload = jsonEncode(<String, String>{
-      'doctype': (message.data['doctype'] ?? '').toString(),
-      'docname': (message.data['docname'] ?? '').toString(),
-    });
-
-    flutterLocalNotificationsPlugin.show(
-      message.messageId.hashCode,
-      title,
-      body,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          channel.id,
-          channel.name,
-          channelDescription: channel.description,
-          icon: '@mipmap/ic_launcher',
-        ),
-      ),
-      payload: payload,
-    );
+  final String title =
+      (message.notification?.title ??
+              message.data['title'] ??
+              message.data['subject'] ??
+              '')
+          .toString();
+  final String body =
+      (message.notification?.body ??
+              message.data['body'] ??
+              message.data['message'] ??
+              '')
+          .toString();
+  if (title.isEmpty && body.isEmpty) {
+    return;
   }
+
+  final payload = jsonEncode(<String, String>{
+    'doctype': (message.data['doctype'] ?? '').toString(),
+    'docname': (message.data['docname'] ?? '').toString(),
+  });
+
+  flutterLocalNotificationsPlugin.show(
+    message.messageId.hashCode,
+    title,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        channel.id,
+        channel.name,
+        channelDescription: channel.description,
+        importance: Importance.max,
+        priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      ),
+    ),
+    payload: payload,
+  );
 }

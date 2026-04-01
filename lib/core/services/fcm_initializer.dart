@@ -37,6 +37,13 @@ class FCMInitializer {
     FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
 
     // 3. Setup Local Notifications
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'high_importance_channel',
+      'High Importance Notifications',
+      description: 'This channel is used for important notifications.',
+      importance: Importance.max,
+    );
+
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const InitializationSettings initSettings = InitializationSettings(
@@ -50,6 +57,19 @@ class FCMInitializer {
           NotificationNavigationHandler().handlePayload(response.payload!);
         }
       },
+    );
+
+    final androidNotifications = _localNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    await androidNotifications?.createNotificationChannel(channel);
+    await androidNotifications?.requestNotificationsPermission();
+
+    await _fcm.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
     );
 
     // 4. Foreground Message Handler
@@ -76,7 +96,19 @@ class FCMInitializer {
   }
 
   void _showForegroundNotify(RemoteMessage message) {
-    if (message.notification == null) return;
+    final String title =
+        (message.notification?.title ??
+                message.data['title'] ??
+                message.data['subject'] ??
+                '')
+            .toString();
+    final String body =
+        (message.notification?.body ??
+                message.data['body'] ??
+                message.data['message'] ??
+                '')
+            .toString();
+    if (title.isEmpty && body.isEmpty) return;
 
     final payload = jsonEncode(<String, String>{
       'doctype': (message.data['doctype'] ?? '').toString(),
@@ -84,13 +116,15 @@ class FCMInitializer {
     });
 
     _localNotificationsPlugin.show(
-      message.notification.hashCode,
-      message.notification!.title,
-      message.notification!.body,
+      message.messageId.hashCode,
+      title,
+      body,
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'high_importance_channel',
           'High Importance Notifications',
+          channelDescription:
+              'This channel is used for important notifications.',
           importance: Importance.max,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',

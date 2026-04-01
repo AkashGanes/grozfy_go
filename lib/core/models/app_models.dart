@@ -339,4 +339,28 @@ class NotificationLog {
           : null,
     );
   }
+
+  factory NotificationLog.fromBroadcastJson(
+    Map<String, dynamic> json, {
+    required bool read,
+  }) {
+    return NotificationLog(
+      name: (json['name'] ?? '').toString(),
+      subject: (json['title'] ?? json['subject'] ?? '').toString(),
+      message:
+          (json['message'] ?? json['body'] ?? json['email_content'] ?? '')
+              .toString(),
+      type: (json['type'] ?? 'Alert').toString(),
+      refDoctype:
+          (json['doctype_ref'] ?? json['ref_doctype'] ?? json['document_type'])
+              ?.toString(),
+      refName:
+          (json['docname_ref'] ?? json['ref_name'] ?? json['document_name'])
+              ?.toString(),
+      read: read,
+      creation: json['creation'] != null
+          ? DateTime.tryParse(json['creation'].toString())
+          : null,
+    );
+  }
 }
