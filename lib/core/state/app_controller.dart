@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
 import '../models/app_models.dart';
+import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
   static const Duration _networkTimeout = Duration(seconds: 15);
@@ -51,6 +52,7 @@ class AppController extends ChangeNotifier {
   static const String _prefVehicleLicensePlate = 'vehicle_license_plate';
   static const String _prefBankDocName = 'bank_doc_name';
   static const String _prefBankAccountName = 'bank_account_name';
+  static const String _prefIsOnline = 'is_online';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 200;
   static const int _profileImageMaxDimension = 4096;
@@ -216,6 +218,14 @@ class AppController extends ChangeNotifier {
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
+    _isOnline = prefs.getBool(_prefIsOnline) ?? false;
+
+    await PartnerWidgetManager.initialize();
+    await PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
     _currentLongitude = prefs.getDouble(_prefCurrentLng);
     _currentLocationLabel = _nullIfBlank(
@@ -820,6 +830,9 @@ class AppController extends ChangeNotifier {
     _uomOptions = <String>[];
     _vehicleFuelOptions = <String>[];
     _vehicleRequiredFields = <String>{};
+
+    await PartnerWidgetManager.clearWidget();
+
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await Future.wait(<Future<bool>>[
       prefs.remove(_prefAccessToken),
@@ -856,51 +869,33 @@ class AppController extends ChangeNotifier {
     String? fieldname,
   }) async {
     if (_sessionToken == null) {
-      _logApi('upload_kyc_file', 'SKIP: no session token');
       return null;
     }
+
+    // Build request fields
+    final Map<String, String> fields = <String, String>{};
+    if (docname != null && docname.isNotEmpty) {
+      fields['driver_name'] = docname;
+    }
+    if (fieldname != null && fieldname.isNotEmpty) {
+      fields['fieldname'] = fieldname;
+    }
+    if (doctype != null && doctype.isNotEmpty) {
+      fields['doctype'] = doctype;
+    }
+
     try {
-      _logApi(
-        'upload_kyc_file request',
-        'driver_name=$docname fieldname=$fieldname file=$fileName',
+      // Use multi-auth strategy (Bearer token first, then API Key fallback)
+      final Map<String, dynamic> payload = await _authorizedUploadFileWithRetry(
+        uri: _uploadFileUri,
+        filePath: filePath,
+        fileName: fileName,
+        fields: fields,
       );
-      final http.MultipartRequest request = http.MultipartRequest(
-        'POST',
-        _uploadFileUri,
-      );
-      request.headers['Authorization'] = 'Bearer $_sessionToken';
-      request.files.add(
-        await http.MultipartFile.fromPath('file', filePath, filename: fileName),
-      );
-      if (docname != null && docname.isNotEmpty) {
-        request.fields['driver_name'] = docname;
-      }
-      if (fieldname != null && fieldname.isNotEmpty) {
-        request.fields['fieldname'] = fieldname;
-      }
-
-      final http.StreamedResponse streamed = await request.send();
-      final String body = await streamed.stream.bytesToString();
-      _logApi(
-        'upload_kyc_file response',
-        'status=${streamed.statusCode} body=$body',
-      );
-
-      final Map<String, dynamic> payload = _decodeJsonMap(body);
-
-      if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
-        final String? serverError = _extractServerError(payload);
-        _logApi(
-          'upload_kyc_file FAIL',
-          serverError ?? 'HTTP ${streamed.statusCode}',
-        );
-        return null;
-      }
 
       final Map<String, dynamic> data = _extractMethodData(payload);
       return _nullIfBlank(data['file_url']?.toString());
     } catch (e) {
-      _logApi('upload_kyc_file error', e.toString());
       return null;
     }
   }
@@ -942,21 +937,12 @@ class AppController extends ChangeNotifier {
         body['pan_attachment'] = panAttachmentUrl;
       }
 
-      _logApi('submit_driver_kyc request', body.toString());
-      final http.Response response = await http.post(
-        _submitDriverKycUri,
-        headers: <String, String>{
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $_sessionToken',
-        },
+      // Use multi-auth strategy (Bearer token first, then API Key fallback)
+      final Map<String, dynamic> payload = await _authorizedPostFormWithRetry(
+        uri: _submitDriverKycUri,
         body: body,
       );
-      _logApi(
-        'submit_driver_kyc response',
-        'status=${response.statusCode} body=${response.body}',
-      );
 
-      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       final Map<String, dynamic> responseData = _extractMethodData(payload);
       final String status = (responseData['status']?.toString() ?? '')
           .toLowerCase();
@@ -978,13 +964,8 @@ class AppController extends ChangeNotifier {
         return null;
       }
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return _extractServerError(payload) ??
-            'KYC submission failed (${response.statusCode})';
-      }
       return _extractServerError(payload) ?? 'KYC submission failed';
     } catch (e) {
-      _logApi('submit_driver_kyc error', e.toString());
       return 'Unable to connect. Check internet and try again.';
     }
   }
@@ -1810,6 +1791,9 @@ class AppController extends ChangeNotifier {
     }
 
     _isOnline = value;
+    _writePref((SharedPreferences prefs) {
+      return prefs.setBool(_prefIsOnline, _isOnline);
+    });
     if (_isOnline) {
       startTracking();
       _notices.insert(
@@ -1823,6 +1807,12 @@ class AppController extends ChangeNotifier {
     } else {
       stopTracking();
     }
+
+    PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
 
     notifyListeners();
     return null;
@@ -1893,6 +1883,13 @@ class AppController extends ChangeNotifier {
       );
     }
     _incomingOrder = null;
+
+    PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
+
     notifyListeners();
   }
 
@@ -1925,6 +1922,12 @@ class AppController extends ChangeNotifier {
       );
       _activeOrder = null;
     }
+
+    PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
 
     notifyListeners();
   }
@@ -2509,6 +2512,71 @@ class AppController extends ChangeNotifier {
       }
     }
     throw Exception(lastError ?? 'Authentication failed for POST $uri');
+  }
+
+  Future<Map<String, dynamic>> _authorizedUploadFileWithRetry({
+    required Uri uri,
+    required String filePath,
+    required String fileName,
+    required Map<String, String> fields,
+  }) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll(headers)
+        ..fields.addAll(fields)
+        ..files.add(await http.MultipartFile.fromPath('file', filePath, filename: fileName));
+
+      final streamed = await request.send().timeout(_networkTimeout);
+      final response = await http.Response.fromStream(streamed);
+      final payload = _decodeJsonMap(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      lastError = _extractServerError(payload) ??
+          'Image upload failed (${response.statusCode})';
+
+      // Only retry for auth errors
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(lastError);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed');
+  }
+
+  Future<Map<String, dynamic>> _authorizedPostFormWithRetry({
+    required Uri uri,
+    required Map<String, String> body,
+  }) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      final http.Response response = await http.post(
+        uri,
+        headers: headers,
+        body: body,
+      ).timeout(_networkTimeout);
+
+      final payload = _decodeJsonMap(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      lastError = _extractServerError(payload) ??
+          'Request failed (${response.statusCode})';
+
+      // Only retry for auth errors
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(lastError);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed');
   }
 
   String? _extractUploadedFileUrl(Map<String, dynamic> payload) {
