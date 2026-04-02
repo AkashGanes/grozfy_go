@@ -17,11 +17,43 @@ class NotificationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notificationsAsync = ref.watch(notificationsProvider);
+    final overrides = ref.watch(notificationReadOverridesProvider);
 
     return AppShell(
       title: 'Notifications',
       subtitle: 'Delivery updates and alerts',
       scrollable: false,
+      actions: [
+        PopupMenuButton<_NotificationsMenuAction>(
+          tooltip: 'More',
+          icon: const Icon(Icons.more_vert_rounded),
+          onSelected: (value) async {
+            switch (value) {
+              case _NotificationsMenuAction.markAllRead:
+                final cached = notificationsAsync.valueOrNull;
+                final List<NotificationLog> current =
+                    cached ?? await ref.read(notificationsProvider.future);
+                if (!context.mounted) return;
+                await _markAllAsReadAction(context, ref, current);
+            }
+          },
+          itemBuilder: (context) {
+            final count = notificationsAsync.maybeWhen(
+              data: (notifications) => notifications
+                  .where((n) => !(n.read || overrides.contains(n.name)))
+                  .length,
+              orElse: () => 0,
+            );
+            return <PopupMenuEntry<_NotificationsMenuAction>>[
+              PopupMenuItem<_NotificationsMenuAction>(
+                value: _NotificationsMenuAction.markAllRead,
+                enabled: count > 0,
+                child: const Text('Mark all read'),
+              ),
+            ];
+          },
+        ),
+      ],
       child: notificationsAsync.when(
         data: (notifications) =>
             _NotificationsBody(notifications: notifications).animate().fadeIn(),
@@ -42,17 +74,27 @@ class _NotificationsBody extends ConsumerWidget {
     await ref.read(notificationsProvider.future);
   }
 
-  Future<void> _markAllAsRead(WidgetRef ref) async {
-    final unread = notifications.where((n) => !n.read).toList();
-    if (unread.isEmpty) return;
-    final repo = ref.read(notificationRepositoryProvider);
-    await Future.wait(unread.map((n) => repo.markAsRead(n.name)));
-    ref.invalidate(notificationsProvider);
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final unreadCount = notifications.where((n) => !n.read).length;
+    final overrides = ref.watch(notificationReadOverridesProvider);
+    final filter = ref.watch(notificationListFilterProvider);
+
+    final unreadNotifications = notifications
+        .where((n) => !(n.read || overrides.contains(n.name)))
+        .toList();
+    final readNotifications = notifications
+        .where((n) => (n.read || overrides.contains(n.name)))
+        .toList();
+
+    final int unreadCount = unreadNotifications.length;
+    final int readCount = readNotifications.length;
+
+    final List<NotificationLog> visibleNotifications = switch (filter) {
+      NotificationListFilter.all => notifications,
+      NotificationListFilter.unread => unreadNotifications,
+      NotificationListFilter.read => readNotifications,
+    };
+
     return Column(
       children: [
         FrostCard(
@@ -91,9 +133,48 @@ class _NotificationsBody extends ConsumerWidget {
                   ],
                 ),
               ),
-              TextButton(
-                onPressed: unreadCount == 0 ? null : () => _markAllAsRead(ref),
-                child: const Text('Mark all read'),
+            ],
+          ),
+        ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.05, end: 0),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: _NotificationFilterPill(
+                  label: 'All',
+                  count: notifications.length,
+                  selected: filter == NotificationListFilter.all,
+                  onTap: () {
+                    ref.read(notificationListFilterProvider.notifier).state =
+                        NotificationListFilter.all;
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _NotificationFilterPill(
+                  label: 'Unread',
+                  count: unreadCount,
+                  selected: filter == NotificationListFilter.unread,
+                  onTap: () {
+                    ref.read(notificationListFilterProvider.notifier).state =
+                        NotificationListFilter.unread;
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _NotificationFilterPill(
+                  label: 'Read',
+                  count: readCount,
+                  selected: filter == NotificationListFilter.read,
+                  onTap: () {
+                    ref.read(notificationListFilterProvider.notifier).state =
+                        NotificationListFilter.read;
+                  },
+                ),
               ),
             ],
           ),
@@ -103,16 +184,16 @@ class _NotificationsBody extends ConsumerWidget {
           child: RefreshIndicator(
             color: AppTheme.oceanBlue,
             onRefresh: () => _refresh(ref),
-            child: notifications.isEmpty
-                ? const _EmptyState()
+            child: visibleNotifications.isEmpty
+                ? _FilteredEmptyState(filter: filter)
                 : ListView.builder(
                     physics: const BouncingScrollPhysics(
                       parent: AlwaysScrollableScrollPhysics(),
                     ),
                     padding: EdgeInsets.zero,
-                    itemCount: notifications.length,
+                    itemCount: visibleNotifications.length,
                     itemBuilder: (context, index) {
-                      final notification = notifications[index];
+                      final notification = visibleNotifications[index];
                       return _NotificationTile(notification: notification)
                           .animate()
                           .fadeIn(
@@ -122,6 +203,170 @@ class _NotificationsBody extends ConsumerWidget {
                           .slideY(begin: 0.08, end: 0);
                     },
                   ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+enum _NotificationsMenuAction { markAllRead }
+
+Future<void> _markAllAsReadAction(
+  BuildContext context,
+  WidgetRef ref,
+  List<NotificationLog> notifications,
+) async {
+  final overrides = ref.read(notificationReadOverridesProvider);
+  final unread = notifications
+      .where((n) => !(n.read || overrides.contains(n.name)))
+      .toList();
+  if (unread.isEmpty) return;
+
+  final overrideNotifier = ref.read(notificationReadOverridesProvider.notifier);
+  final unreadIds = unread.map((n) => n.name).toSet();
+  overrideNotifier.state = {...overrideNotifier.state, ...unreadIds};
+
+  final repo = ref.read(notificationRepositoryProvider);
+  final ok = await repo.markAllAsRead();
+  if (!ok) {
+    final next = Set<String>.from(overrideNotifier.state)..removeAll(unreadIds);
+    overrideNotifier.state = next;
+    ref.invalidate(notificationsProvider);
+    if (context.mounted) {
+      showInfoSnack(context, 'Failed to mark all notifications as read');
+    }
+    return;
+  }
+
+  overrideNotifier.state = <String>{};
+  ref.invalidate(notificationsProvider);
+}
+
+class _NotificationFilterPill extends StatelessWidget {
+  const _NotificationFilterPill({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color background = selected
+        ? AppTheme.oceanBlue
+        : Colors.white.withValues(alpha: 0.6);
+    final Color foreground = selected ? Colors.white : AppTheme.nightBlue;
+    final Color badgeBackground = selected
+        ? Colors.white.withValues(alpha: 0.18)
+        : AppTheme.oceanBlue.withValues(alpha: 0.12);
+    final Color badgeForeground = selected
+        ? Colors.white
+        : AppTheme.oceanBlue.withValues(alpha: 0.95);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: 180.ms,
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: selected
+                ? const [
+                    BoxShadow(
+                      color: Color(0x1A0A1D3A),
+                      blurRadius: 14,
+                      offset: Offset(0, 8),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: foreground,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: badgeBackground,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    color: badgeForeground,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilteredEmptyState extends StatelessWidget {
+  const _FilteredEmptyState({required this.filter});
+
+  final NotificationListFilter filter;
+
+  @override
+  Widget build(BuildContext context) {
+    final (title, subtitle) = switch (filter) {
+      NotificationListFilter.all => (
+          'No notifications yet',
+          'New delivery updates will appear here',
+        ),
+      NotificationListFilter.unread => (
+          'No unread notifications',
+          'You are all caught up',
+        ),
+      NotificationListFilter.read => (
+          'No read notifications',
+          'Read notifications will appear here',
+        ),
+    };
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 54),
+        Center(
+          child: Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.nightBlue,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Center(
+          child: Text(
+            subtitle,
+            style: const TextStyle(color: Colors.black45),
           ),
         ),
       ],
@@ -155,14 +400,34 @@ class _NotificationTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isUnread = !notification.read;
+    final overrides = ref.watch(notificationReadOverridesProvider);
+    final bool effectiveRead = notification.read || overrides.contains(notification.name);
+    final isUnread = !effectiveRead;
     final hasNavigationTarget =
         (notification.refDoctype ?? '').trim().isNotEmpty &&
         (notification.refName ?? '').trim().isNotEmpty;
 
     Future<void> handleTap() async {
-      await ref.read(notificationRepositoryProvider).markAsRead(notification.name);
-      ref.invalidate(notificationsProvider);
+      final overrideNotifier = ref.read(notificationReadOverridesProvider.notifier);
+      final bool shouldMarkRead = !notification.read &&
+          !overrideNotifier.state.contains(notification.name);
+
+      if (shouldMarkRead) {
+        overrideNotifier.state = {...overrideNotifier.state, notification.name};
+      }
+
+      if (shouldMarkRead) {
+        final ok = await ref
+            .read(notificationRepositoryProvider)
+            .markAsRead(notification.name);
+        final next = Set<String>.from(overrideNotifier.state)
+          ..remove(notification.name);
+        overrideNotifier.state = next;
+        ref.invalidate(notificationsProvider);
+        if (!ok && context.mounted) {
+          showInfoSnack(context, 'Failed to mark notification as read');
+        }
+      }
 
       final doctype = (notification.refDoctype ?? '').trim();
       final docname = (notification.refName ?? '').trim();
@@ -282,37 +547,6 @@ class _NotificationTile extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: const [
-        SizedBox(height: 54),
-        Center(
-          child: Text(
-            'No notifications yet',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.nightBlue,
-            ),
-          ),
-        ),
-        SizedBox(height: 6),
-        Center(
-          child: Text(
-            'New delivery updates will appear here',
-            style: TextStyle(color: Colors.black45),
-          ),
-        ),
-      ],
     );
   }
 }

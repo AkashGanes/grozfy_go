@@ -38,21 +38,33 @@ class NotificationRepository {
     }
   }
 
-  Future<void> markAsRead(String name) async {
-    if (!_app.isLoggedIn) return;
+  Future<bool> markAsRead(String name) async {
+    if (!_app.isLoggedIn) return false;
 
     try {
       final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/Notification Log/$name',
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.doctype.notification_log.notification_log.mark_as_read',
       );
-      await _app.authorizedPutJson(uri, {'read': 1});
+      await _app.authorizedPostJson(uri, <String, dynamic>{'docname': name});
+      return true;
     } catch (e) {
       debugPrint("Error marking notification as read: $e");
+      return false;
     }
   }
 
-  Future<void> markAllAsRead() async {
-    if (!_app.isLoggedIn) return;
-    // Implementation for markAllAsRead can be added here if needed
+  Future<bool> markAllAsRead() async {
+    if (!_app.isLoggedIn) return false;
+
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.doctype.notification_log.notification_log.mark_all_as_read',
+      );
+      await _app.authorizedPostJson(uri, const <String, dynamic>{});
+      return true;
+    } catch (e) {
+      debugPrint("Error marking all notifications as read: $e");
+      return false;
+    }
   }
 }

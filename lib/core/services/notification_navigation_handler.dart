@@ -13,9 +13,9 @@ class NotificationNavigationHandler {
   NotificationNavigationHandler._internal();
 
   void handleMessage(RemoteMessage message) {
-    final String? doctype =
+    final String doctype =
         (message.data['doctype'] ?? message.data['type'] ?? '').toString();
-    final String? docname =
+    final String docname =
         (message.data['docname'] ?? message.data['doc_name'] ?? '').toString();
 
     debugPrint("Navigating from FCM Message - Type: $doctype, Name: $docname");

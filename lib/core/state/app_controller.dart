@@ -3035,6 +3035,13 @@ class AppController extends ChangeNotifier {
     throw Exception(lastError ?? 'Authentication failed for PUT $uri');
   }
 
+  Future<Map<String, dynamic>> authorizedPostJson(
+    Uri uri,
+    Map<String, dynamic> body,
+  ) async {
+    return _authorizedPostJson(uri, body);
+  }
+
   Future<Map<String, dynamic>> _authorizedPostJson(
     Uri uri,
     Map<String, dynamic> body,
