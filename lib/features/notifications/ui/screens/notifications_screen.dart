@@ -97,46 +97,6 @@ class _NotificationsBody extends ConsumerWidget {
 
     return Column(
       children: [
-        FrostCard(
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.notifications_active_rounded,
-                  color: AppTheme.oceanBlue,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Inbox',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.nightBlue,
-                      ),
-                    ),
-                    Text(
-                      unreadCount == 0
-                          ? 'All caught up'
-                          : '$unreadCount unread update${unreadCount > 1 ? 's' : ''}',
-                      style: const TextStyle(color: Colors.black54),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.05, end: 0),
-        const SizedBox(height: 10),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 2),
           child: Row(
@@ -179,6 +139,11 @@ class _NotificationsBody extends ConsumerWidget {
             ],
           ),
         ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.05, end: 0),
+        const SizedBox(height: 10),
+        _InboxSummaryBar(unreadCount: unreadCount)
+            .animate()
+            .fadeIn(duration: 260.ms)
+            .slideY(begin: 0.05, end: 0),
         const SizedBox(height: 12),
         Expanded(
           child: RefreshIndicator(
@@ -206,6 +171,117 @@ class _NotificationsBody extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _InboxSummaryBar extends ConsumerWidget {
+  const _InboxSummaryBar({required this.unreadCount});
+
+  final int unreadCount;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = ref.watch(notificationListFilterProvider);
+    final bool unreadOnly = filter == NotificationListFilter.unread;
+
+    final String subtitle = unreadCount == 0
+        ? 'All caught up'
+        : '$unreadCount unread update${unreadCount > 1 ? 's' : ''}';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x100A1D3A),
+            blurRadius: 16,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.notifications_active_rounded,
+                      size: 16,
+                      color: AppTheme.oceanBlue.withValues(alpha: 0.9),
+                    ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Inbox',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.nightBlue,
+                      ),
+                    ),
+                    if (unreadCount > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          '$unreadCount',
+                          style: TextStyle(
+                            color: AppTheme.oceanBlue.withValues(alpha: 0.95),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(subtitle, style: const TextStyle(color: Colors.black54)),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'Unread only',
+                style: TextStyle(
+                  color: unreadOnly
+                      ? AppTheme.oceanBlue.withValues(alpha: 0.95)
+                      : Colors.black54,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Transform.scale(
+                scale: 0.86,
+                child: Switch.adaptive(
+                  value: unreadOnly,
+                  onChanged: (value) {
+                    if (unreadCount == 0 && value) return;
+                    ref.read(notificationListFilterProvider.notifier).state =
+                        value
+                            ? NotificationListFilter.unread
+                            : NotificationListFilter.all;
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
