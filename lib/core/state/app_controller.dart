@@ -12,8 +12,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
 import '../models/app_models.dart';
-import '../widgets/partner_widget_manager.dart';
 import '../services/fcm_service.dart';
+import '../widgets/partner_widget_manager.dart';
+import '../services/connectivity_service.dart';
 import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
@@ -140,6 +141,13 @@ class AppController extends ChangeNotifier {
   int _backgroundColorValue = 0xFFF0F4FA;
   int _accentColorValue = 0xFF1C4E80;
 
+  bool _isConnected = true;
+  bool _showRetryButton = true;
+  bool _isInitialized = false;
+  bool _appIsResumed = false;
+  bool _firstFrameBuilt = false;
+  StreamSubscription<bool>? _connectivitySubscription;
+
   DeliveryOrder? _incomingOrder;
   DeliveryOrder? _activeOrder;
   final List<DeliveryOrder> _availableOrders = <DeliveryOrder>[];
@@ -214,6 +222,11 @@ class AppController extends ChangeNotifier {
   EarningsSummary get earnings => _earnings;
   PerformanceMetrics get performance => _performance;
   List<AppNotice> get notices => List<AppNotice>.unmodifiable(_notices);
+  bool get isConnected => _isConnected;
+  bool get showNoInternetOverlay =>
+      !_isConnected && _isInitialized && _appIsResumed && _firstFrameBuilt;
+  bool get showRetryButton => _showRetryButton;
+  bool get isInitialized => _isInitialized;
 
   String? get driverName => _driverName;
   String? get registrationToken => _registrationToken;
@@ -341,6 +354,57 @@ class AppController extends ChangeNotifier {
     // Initialize Notifications
     unawaited(FCMService().subscribe(this));
 
+    notifyListeners();
+  }
+
+  Future<void> initializeConnectivity() async {
+    final ConnectivityService connectivityService = ConnectivityService();
+    await connectivityService.initialize();
+    _isConnected = connectivityService.isConnected;
+    _showRetryButton = true;
+    notifyListeners();
+
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription = connectivityService.connectivityStream.listen((
+      bool isConnected,
+    ) {
+      _onConnectivityChanged(isConnected);
+    });
+    connectivityService.startMonitoring();
+    _isInitialized = true;
+    notifyListeners();
+  }
+
+  void _onConnectivityChanged(bool isConnected) {
+    _isConnected = isConnected;
+    _showRetryButton = true;
+    notifyListeners();
+  }
+
+  Future<bool> checkConnectivity() async {
+    final ConnectivityService connectivityService = ConnectivityService();
+    final bool hasConnection = await connectivityService.checkConnectivity();
+    _isConnected = hasConnection;
+    _showRetryButton = true;
+    notifyListeners();
+    return hasConnection;
+  }
+
+  Future<bool> retryConnection() async {
+    _showRetryButton = false;
+    notifyListeners();
+
+    final bool hasConnection = await checkConnectivity();
+    return hasConnection;
+  }
+
+  void setAppResumed(bool isResumed) {
+    _appIsResumed = isResumed;
+    notifyListeners();
+  }
+
+  void setFirstFrameBuilt(bool built) {
+    _firstFrameBuilt = built;
     notifyListeners();
   }
 
@@ -2728,6 +2792,12 @@ class AppController extends ChangeNotifier {
       return raw;
     }
     return '${raw.substring(0, max)}...<truncated>';
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
   }
 
   void _updateLiveCoordinates() {
