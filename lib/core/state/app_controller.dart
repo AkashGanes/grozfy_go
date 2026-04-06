@@ -54,6 +54,9 @@ class AppController extends ChangeNotifier {
   static const String _prefBankDocName = 'bank_doc_name';
   static const String _prefBankAccountName = 'bank_account_name';
   static const String _prefIsOnline = 'is_online';
+  static const String _prefThemeMode = 'theme_mode';
+  static const String _prefBackgroundColor = 'background_color';
+  static const String _prefAccentColor = 'accent_color';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 200;
   static const int _profileImageMaxDimension = 4096;
@@ -131,6 +134,10 @@ class AppController extends ChangeNotifier {
   String? _profileImagePath;
   StreamSubscription<Position>? _positionStream;
 
+  ThemeMode _themeMode = ThemeMode.system;
+  int _backgroundColorValue = 0xFFF0F4FA;
+  int _accentColorValue = 0xFF1C4E80;
+
   DeliveryOrder? _incomingOrder;
   DeliveryOrder? _activeOrder;
   final List<DeliveryOrder> _availableOrders = <DeliveryOrder>[];
@@ -193,6 +200,9 @@ class AppController extends ChangeNotifier {
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
+  ThemeMode get themeMode => _themeMode;
+  Color get backgroundColor => Color(_backgroundColorValue);
+  Color get accentColor => Color(_accentColorValue);
   bool get hasSelectedLocation =>
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
@@ -303,6 +313,12 @@ class AppController extends ChangeNotifier {
     _selectedStoreName = _nullIfBlank(prefs.getString(_prefSelectedStore));
     _driverName = _nullIfBlank(prefs.getString(_prefDriverName));
     _profileImagePath = _nullIfBlank(prefs.getString(_prefProfileImagePath));
+    final int themeModeIndex =
+        prefs.getInt(_prefThemeMode) ?? ThemeMode.system.index;
+    _themeMode =
+        ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)];
+    _backgroundColorValue = prefs.getInt(_prefBackgroundColor) ?? 0xFFF0F4FA;
+    _accentColorValue = prefs.getInt(_prefAccentColor) ?? 0xFF1C4E80;
     _isLoggedIn = _sessionToken != null;
     if (_isLoggedIn) {
       final String fullName =
@@ -324,6 +340,43 @@ class AppController extends ChangeNotifier {
     _languageCode = code;
     _writePref((SharedPreferences prefs) {
       return prefs.setString(_prefLanguageCode, code);
+    });
+    notifyListeners();
+  }
+
+  void setThemeMode(ThemeMode mode) {
+    _themeMode = mode;
+    _writePref((SharedPreferences prefs) {
+      return prefs.setInt(_prefThemeMode, mode.index);
+    });
+    notifyListeners();
+  }
+
+  void setBackgroundColor(Color color) {
+    _backgroundColorValue = color.toARGB32();
+    _writePref((SharedPreferences prefs) {
+      return prefs.setInt(_prefBackgroundColor, _backgroundColorValue);
+    });
+    notifyListeners();
+  }
+
+  void setAccentColor(Color color) {
+    _accentColorValue = color.toARGB32();
+    _writePref((SharedPreferences prefs) {
+      return prefs.setInt(_prefAccentColor, _accentColorValue);
+    });
+    notifyListeners();
+  }
+
+  void resetThemeToDefaults() {
+    _themeMode = ThemeMode.system;
+    _backgroundColorValue = 0xFFF0F4FA;
+    _accentColorValue = 0xFF1C4E80;
+    _writePref((SharedPreferences prefs) async {
+      await prefs.setInt(_prefThemeMode, ThemeMode.system.index);
+      await prefs.setInt(_prefBackgroundColor, _backgroundColorValue);
+      await prefs.setInt(_prefAccentColor, _accentColorValue);
+      return true;
     });
     notifyListeners();
   }
@@ -3015,7 +3068,13 @@ class AppController extends ChangeNotifier {
       final request = http.MultipartRequest('POST', uri)
         ..headers.addAll(headers)
         ..fields.addAll(fields)
-        ..files.add(await http.MultipartFile.fromPath('file', filePath, filename: fileName));
+        ..files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            filename: fileName,
+          ),
+        );
 
       final streamed = await request.send().timeout(_networkTimeout);
       final response = await http.Response.fromStream(streamed);
@@ -3025,7 +3084,8 @@ class AppController extends ChangeNotifier {
         return payload;
       }
 
-      lastError = _extractServerError(payload) ??
+      lastError =
+          _extractServerError(payload) ??
           'Image upload failed (${response.statusCode})';
 
       // Only retry for auth errors
@@ -3044,11 +3104,9 @@ class AppController extends ChangeNotifier {
 
     String? lastError;
     for (final Map<String, String> headers in authHeaders) {
-      final http.Response response = await http.post(
-        uri,
-        headers: headers,
-        body: body,
-      ).timeout(_networkTimeout);
+      final http.Response response = await http
+          .post(uri, headers: headers, body: body)
+          .timeout(_networkTimeout);
 
       final payload = _decodeJsonMap(response.body);
 
@@ -3056,7 +3114,8 @@ class AppController extends ChangeNotifier {
         return payload;
       }
 
-      lastError = _extractServerError(payload) ??
+      lastError =
+          _extractServerError(payload) ??
           'Request failed (${response.statusCode})';
 
       // Only retry for auth errors

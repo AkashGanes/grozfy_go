@@ -435,7 +435,12 @@ class DashboardScreen extends StatelessWidget {
                   route: AppRoutes.externalDeliveryTripList,
                 ),
                 _quickButton(context, 'Support', Icons.support_agent_rounded),
-                _quickButton(context, 'Settings', Icons.settings_outlined),
+                _quickButton(
+                  context,
+                  'Settings',
+                  Icons.settings_outlined,
+                  route: AppRoutes.settings,
+                ),
               ],
             ),
           ),
