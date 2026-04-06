@@ -595,3 +595,66 @@ class ProfileCompleteness {
     return null;
   }
 }
+
+class NotificationLog {
+  const NotificationLog({
+    required this.name,
+    required this.subject,
+    required this.message,
+    this.type,
+    this.refDoctype,
+    this.refName,
+    this.read = false,
+    this.creation,
+  });
+
+  final String name;
+  final String subject;
+  final String message;
+  final String? type;
+  final String? refDoctype;
+  final String? refName;
+  final bool read;
+  final DateTime? creation;
+
+  factory NotificationLog.fromJson(Map<String, dynamic> json) {
+    return NotificationLog(
+      name: json['name'] ?? '',
+      subject: json['subject'] ?? '',
+      // Map email_content (ERPNext field) to message
+      message: json['message'] ?? json['email_content'] ?? '',
+      type: json['type'],
+      // Map document_type to refDoctype if ref_doctype is missing
+      refDoctype: json['ref_doctype'] ?? json['document_type'],
+      // Map document_name to refName if ref_name is missing
+      refName: json['ref_name'] ?? json['document_name'],
+      read: json['read'] == 1,
+      creation: json['creation'] != null
+          ? DateTime.tryParse(json['creation'].toString())
+          : null,
+    );
+  }
+
+  factory NotificationLog.fromBroadcastJson(
+    Map<String, dynamic> json, {
+    required bool read,
+  }) {
+    return NotificationLog(
+      name: (json['name'] ?? '').toString(),
+      subject: (json['title'] ?? json['subject'] ?? '').toString(),
+      message: (json['message'] ?? json['body'] ?? json['email_content'] ?? '')
+          .toString(),
+      type: (json['type'] ?? 'Alert').toString(),
+      refDoctype:
+          (json['doctype_ref'] ?? json['ref_doctype'] ?? json['document_type'])
+              ?.toString(),
+      refName:
+          (json['docname_ref'] ?? json['ref_name'] ?? json['document_name'])
+              ?.toString(),
+      read: read,
+      creation: json['creation'] != null
+          ? DateTime.tryParse(json['creation'].toString())
+          : null,
+    );
+  }
+}

@@ -13,6 +13,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/api_constants.dart';
 import '../models/app_models.dart';
 import '../widgets/partner_widget_manager.dart';
+import '../services/fcm_service.dart';
+import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
   static const Duration _networkTimeout = Duration(seconds: 15);
@@ -175,6 +177,8 @@ class AppController extends ChangeNotifier {
   PartnerProfile? get profile => _profile;
   LoggedPartnerProfileDetails? get loggedProfileDetails =>
       _loggedProfileDetails;
+  String? get loggedUser =>
+      _loggedProfileDetails?.loggedUser ?? _profile?.email;
   bool get profileDetailsLoading => _profileDetailsLoading;
   String? get profileDetailsError => _profileDetailsError;
   bool get profileImageSyncing => _profileImageSyncing;
@@ -333,6 +337,10 @@ class AppController extends ChangeNotifier {
     }
 
     _bootstrapped = true;
+
+    // Initialize Notifications
+    unawaited(FCMService().subscribe(this));
+
     notifyListeners();
   }
 
@@ -491,9 +499,7 @@ class AppController extends ChangeNotifier {
       final Uri employeeUri = Uri.parse(
         '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
       );
-      await _authorizedPutJson(employeeUri, <String, dynamic>{
-        'image': fileUrl,
-      });
+      await authorizedPutJson(employeeUri, <String, dynamic>{'image': fileUrl});
       _profileImageSyncError = null;
       return null;
     } catch (e) {
@@ -815,8 +821,11 @@ class AppController extends ChangeNotifier {
         mobile: responseMobile,
         email: email,
       );
-
       await _persistSession(responseData);
+
+      // Update FCM token on login
+      unawaited(FCMService().subscribe(this));
+
       notifyListeners();
       return null;
     } catch (e) {
@@ -928,6 +937,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    unawaited(FCMService().unsubscribe(this));
     _isLoggedIn = false;
     _sessionToken = null;
     _tokenType = 'Bearer';
@@ -1675,7 +1685,7 @@ class AppController extends ChangeNotifier {
         final Uri updateUri = Uri.parse(
           '${ApiConstants.erpBaseUrl}/api/resource/Vehicle/${Uri.encodeComponent(vehicleName)}',
         );
-        responsePayload = await _authorizedPutJson(updateUri, body);
+        responsePayload = await authorizedPutJson(updateUri, body);
       } else {
         responsePayload = await _authorizedPostJson(baseUri, body);
       }
@@ -1838,7 +1848,7 @@ class AppController extends ChangeNotifier {
         final Uri updateUri = Uri.parse(
           '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account/${Uri.encodeComponent(existingName)}',
         );
-        responsePayload = await _authorizedPutJson(updateUri, body);
+        responsePayload = await authorizedPutJson(updateUri, body);
       } else {
         final Uri createUri = Uri.parse(
           '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account',
@@ -2921,7 +2931,7 @@ class AppController extends ChangeNotifier {
     throw Exception(lastError ?? 'Authentication failed for GET $uri');
   }
 
-  Future<Map<String, dynamic>> _authorizedPutJson(
+  Future<Map<String, dynamic>> authorizedPutJson(
     Uri uri,
     Map<String, dynamic> body,
   ) async {
@@ -2989,6 +2999,36 @@ class AppController extends ChangeNotifier {
       }
     }
     throw Exception(lastError ?? 'Authentication failed for POST $uri');
+  }
+
+  Future<Map<String, dynamic>> authorizedGet(Uri uri) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+    String? lastError;
+
+    for (final Map<String, String> headers in authHeaders) {
+      _logApi('http', 'GET $uri');
+      final http.Response response = await http
+          .get(uri, headers: headers)
+          .timeout(_networkTimeout);
+      _logApi(
+        'http',
+        'GET $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
+      );
+
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Request failed (${response.statusCode})';
+      lastError = message;
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed for GET $uri');
   }
 
   Future<Map<String, dynamic>> _authorizedPostForm({
@@ -3280,5 +3320,30 @@ class AppController extends ChangeNotifier {
       return null;
     }
     return double.tryParse(normalized);
+  }
+
+  Future<void> updateFcmToken(String token) async {
+    if (!_isLoggedIn || _sessionToken == null) return;
+
+    final String? userEmail = _profile?.email;
+    if (userEmail == null || userEmail.isEmpty) {
+      debugPrint('Cannot update FCM token: User email missing');
+      return;
+    }
+
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+      );
+      await _authorizedPostJson(uri, <String, dynamic>{
+        'doctype': 'User',
+        'name': userEmail,
+        'fieldname': 'fcm_token',
+        'value': token,
+      });
+      debugPrint('FCM Token synced with server for $userEmail');
+    } catch (e) {
+      debugPrint('Failed to sync FCM token: $e');
+    }
   }
 }

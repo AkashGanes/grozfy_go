@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
+import 'package:firebase_core/firebase_core.dart';
+import 'core/services/fcm_initializer.dart';
 import 'core/navigation/app_routes.dart';
 import 'core/state/providers.dart';
 import 'core/state/app_scope.dart';
@@ -8,6 +9,7 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
+import 'features/notifications/ui/screens/notifications_screen.dart';
 import 'features/kyc/bank_setup_screen.dart';
 import 'features/kyc/bank_submitted_details_screen.dart';
 import 'features/kyc/kyc_documents_screen.dart';
@@ -32,9 +34,29 @@ import 'features/profile/profile_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/splash/splash_screen.dart';
 
-void main() {
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: DeliveryPartnerApp()));
+  final container = ProviderContainer();
+
+  // Initialize Firebase
+  try {
+    await Firebase.initializeApp();
+    // Initialize Notifications
+    await FCMInitializer().init(container);
+  } catch (e) {
+    debugPrint(
+      "⚠️ Firebase initialization failed. Make sure google-services.json is added. Error: $e",
+    );
+  }
+
+  runApp(
+    UncontrolledProviderScope(
+      container: container,
+      child: const DeliveryPartnerApp(),
+    ),
+  );
 }
 
 class DeliveryPartnerApp extends ConsumerWidget {
@@ -46,6 +68,7 @@ class DeliveryPartnerApp extends ConsumerWidget {
     return AppScope(
       controller: controller,
       child: MaterialApp(
+        navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
         title: 'FlowFleet Partner',
         theme: AppTheme.getTheme(
@@ -231,6 +254,10 @@ class DeliveryPartnerApp extends ConsumerWidget {
               return MaterialPageRoute<void>(
                 builder: (_) =>
                     ExternalDeliveryTripDetailsScreen(tripName: tripName ?? ''),
+              );
+            case AppRoutes.notifications:
+              return MaterialPageRoute<void>(
+                builder: (_) => const NotificationsScreen(),
               );
             default:
               return MaterialPageRoute<void>(

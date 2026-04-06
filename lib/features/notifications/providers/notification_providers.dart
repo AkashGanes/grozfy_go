@@ -1,0 +1,21 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../data/repositories/notification_repository.dart';
+import '../../../../core/models/app_models.dart';
+import '../../../../core/state/providers.dart';
+
+final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
+  final app = ref.watch(appControllerProvider);
+  return NotificationRepository(app);
+});
+
+final notificationsProvider = FutureProvider.autoDispose<List<NotificationLog>>(
+  (ref) async {
+    final repository = ref.watch(notificationRepositoryProvider);
+    return await repository.getNotifications();
+  },
+);
+
+final unreadNotificationCountProvider = StateProvider<int>((ref) {
+  final notifications = ref.watch(notificationsProvider).value ?? [];
+  return notifications.where((n) => !n.read).length;
+});
