@@ -37,13 +37,13 @@ class PartnerWidgetManager {
     _log('  - isOnline: $isOnline');
     _log('  - todayEarnings: $todayEarnings');
     _log('  - activeOrder: ${activeOrder?.id ?? "null"}');
-    
+
     try {
       final widgetData = PartnerWidgetData(
         isOnline: isOnline,
         todayEarnings: todayEarnings,
         activeOrderId: activeOrder?.id,
-        activeOrderStatus: activeOrder?.status.label,
+        activeOrderStatus: activeOrder?.orderStatus.label,
         lastUpdated: DateTime.now(),
       );
 
@@ -56,7 +56,7 @@ class PartnerWidgetManager {
       _log('Step 1: Saving widget data to SharedPreferences...');
       _log('  Key: $_widgetDataKey');
       _log('  Value length: ${jsonString.length}');
-      
+
       final saveResult = await HomeWidget.saveWidgetData<String>(
         _widgetDataKey,
         jsonString,
@@ -65,7 +65,7 @@ class PartnerWidgetManager {
 
       _log('Step 2: Triggering Android widget update...');
       _log('  androidWidgetName: $_androidWidgetName');
-      
+
       final updateResult = await HomeWidget.updateWidget(
         name: _androidWidgetName,
         androidName: _androidWidgetName,
@@ -83,14 +83,16 @@ class PartnerWidgetManager {
   static Future<PartnerWidgetData> getWidgetData() async {
     _log('=== GET WIDGET DATA START ===');
     try {
-      final String? data = await HomeWidget.getWidgetData<String>(_widgetDataKey);
+      final String? data = await HomeWidget.getWidgetData<String>(
+        _widgetDataKey,
+      );
       _log('Raw data from HomeWidget: ${data ?? "null"}');
-      
+
       if (data == null || data.isEmpty) {
         _log('No data found, returning empty widget data');
         return PartnerWidgetData.empty();
       }
-      
+
       try {
         final Map<String, dynamic> map = jsonDecode(data);
         _log('Decoded map: $map');
@@ -112,7 +114,7 @@ class PartnerWidgetManager {
     try {
       _log('Saving empty string to clear data...');
       await HomeWidget.saveWidgetData<String>(_widgetDataKey, '');
-      
+
       _log('Triggering widget update after clear...');
       await HomeWidget.updateWidget(
         name: _androidWidgetName,
