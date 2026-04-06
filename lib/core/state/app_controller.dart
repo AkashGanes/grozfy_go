@@ -12,9 +12,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
 import '../models/app_models.dart';
-import '../services/fcm_service.dart';
-import '../widgets/partner_widget_manager.dart';
 import '../services/connectivity_service.dart';
+import '../services/fcm_service.dart';
 import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {

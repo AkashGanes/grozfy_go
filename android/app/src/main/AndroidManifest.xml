@@ -12,6 +12,7 @@
         android:label="delivery_partner_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true">
         
         <meta-data android:name="com.google.android.geo.API_KEY"
