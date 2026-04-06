@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/api_constants.dart';
 import '../../core/state/providers.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -139,31 +140,92 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _buildLoadingState() {
     return FrostCard(
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator()
-                  .animate(onPlay: (controller) => controller.repeat())
-                  .fadeIn(duration: 280.ms)
-                  .scale(
-                    begin: const Offset(0.92, 0.92),
-                    end: const Offset(1.0, 1.0),
-                    duration: 500.ms,
-                    curve: Curves.easeOut,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
                   ),
-              const SizedBox(height: 10),
-              const Text(
-                'Loading driver details...',
-                style: TextStyle(color: Colors.black54),
-              )
-                  .animate(delay: 80.ms)
-                  .fadeIn(duration: 320.ms)
-                  .slideY(begin: 0.2, end: 0, duration: 320.ms),
-            ],
-          ),
+                )
+                    .animate(onPlay: (controller) => controller.repeat())
+                    .shimmer(
+                      duration: 1200.ms,
+                      color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                    ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 150,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      )
+                          .animate(onPlay: (controller) => controller.repeat())
+                          .shimmer(
+                            duration: 1200.ms,
+                            color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                          ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: 100,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      )
+                          .animate(onPlay: (controller) => controller.repeat())
+                          .shimmer(
+                            duration: 1200.ms,
+                            color: AppTheme.oceanBlue.withValues(alpha: 0.04),
+                          ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Container(
+              width: double.infinity,
+              height: 14,
+              decoration: BoxDecoration(
+                color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(6),
+              ),
+            )
+                .animate(onPlay: (controller) => controller.repeat())
+                .shimmer(
+                  duration: 1200.ms,
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                ),
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              height: 14,
+              decoration: BoxDecoration(
+                color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(6),
+              ),
+            )
+                .animate(onPlay: (controller) => controller.repeat())
+                .shimmer(
+                  duration: 1200.ms,
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                ),
+          ],
         ),
       ),
     );
