@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../repository/external_delivery_repository.dart';
+import 'failed_delivery_bottom_sheet.dart';
 
 class ExternalDeliveryTripDetailsScreen extends StatefulWidget {
   const ExternalDeliveryTripDetailsScreen({super.key, required this.tripName});
@@ -403,12 +404,178 @@ class _ExternalDeliveryTripDetailsScreenState
     );
   }
 
+  bool _returningToStore = false;
+
+  Widget _returnTripBanner(ExternalDeliveryTrip trip) {
+    final alreadyCompleted =
+        trip.status.trim().toLowerCase() == 'completed' ||
+        trip.stops.every(
+          (s) => s.status.trim().toLowerCase() == 'delivered',
+        );
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: alreadyCompleted
+            ? const Color(0xFF2E7D32).withValues(alpha: 0.08)
+            : AppTheme.mango.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: alreadyCompleted
+              ? const Color(0xFF2E7D32).withValues(alpha: 0.3)
+              : AppTheme.mango.withValues(alpha: 0.4),
+        ),
+      ),
+      child: alreadyCompleted
+          ? const Row(
+              children: [
+                Icon(Icons.check_circle_outline, color: Color(0xFF2E7D32), size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Package returned to store successfully.',
+                    style: TextStyle(
+                      color: Color(0xFF2E7D32),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.undo_rounded, color: AppTheme.mango, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Return Trip',
+                      style: TextStyle(
+                        color: AppTheme.nightBlue,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Once you arrive at the store, confirm the package has been handed back.',
+                  style: TextStyle(color: Colors.black54, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: _returningToStore
+                      ? const Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: AppTheme.oceanBlue,
+                            ),
+                          ),
+                        )
+                      : ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.oceanBlue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          icon: const Icon(Icons.store_outlined, size: 18),
+                          label: const Text(
+                            'Returned to Store',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
+                          onPressed: () => _handleReturnedToStore(trip),
+                        ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Future<void> _handleReturnedToStore(ExternalDeliveryTrip trip) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.store_outlined, color: AppTheme.oceanBlue),
+            SizedBox(width: 8),
+            Text(
+              'Returned to Store?',
+              style: TextStyle(
+                color: AppTheme.nightBlue,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Confirm that you have handed the package back to the store.',
+          style: TextStyle(color: Colors.black54),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.oceanBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _returningToStore = true);
+    try {
+      await ExternalDeliveryRepository().markReturnedToStore(trip: trip);
+      if (!mounted) return;
+      showInfoSnack(context, 'Order marked Returned. Trip completed.');
+      setState(() {
+        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _returningToStore = false);
+    }
+  }
+
   Widget _stopsTab(ExternalDeliveryTrip trip) {
     final orderedStops = trip.stops.asMap().entries.toList();
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Column(
         children: [
+          if (trip.isReturnTrip) ...[
+            _returnTripBanner(trip),
+            const SizedBox(height: 10),
+          ],
           if (trip.stops.isEmpty)
             const FrostCard(
               child: Text(
@@ -427,7 +594,8 @@ class _ExternalDeliveryTripDetailsScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _stopTitleWithAction(entry.value),
+                      _stopTitleWithAction(trip, entry.value),
+                      
                       const SizedBox(height: 8),
                       _fieldList(_orderedStopFields(entry.value)),
                     ],
@@ -452,9 +620,16 @@ class _ExternalDeliveryTripDetailsScreenState
     );
   }
 
-  Widget _stopTitleWithAction(ExternalDeliveryTripStop stop) {
+  Widget _stopTitleWithAction(
+    ExternalDeliveryTrip trip,
+    ExternalDeliveryTripStop stop,
+  ) {
     final stopKey = _stopKey(stop);
     final isUpdating = _updatingStops.contains(stopKey);
+    final isEditable = _isStopEditable(
+      tripStatus: trip.status,
+      stopStatus: stop.status,
+    );
     return Row(
       children: [
         _stopTitle('Stop ${stop.stop}'),
@@ -468,7 +643,7 @@ class _ExternalDeliveryTripDetailsScreenState
               color: AppTheme.oceanBlue,
             ),
           )
-        else
+        else if (isEditable)
           PopupMenuButton<String>(
             onSelected: (status) => _updateStopStatus(stop, status),
             itemBuilder: (context) {
@@ -517,6 +692,29 @@ class _ExternalDeliveryTripDetailsScreenState
     );
   }
 
+  bool _isStopEditable({
+    required String tripStatus,
+    required String stopStatus,
+  }) {
+    final normalizedTripStatus = tripStatus.trim().toLowerCase();
+    final normalizedStopStatus = stopStatus.trim().toLowerCase();
+    const lockedStopStatuses = <String>{
+      'delivered',
+      'returned',
+      'failed',
+    };
+
+    if (normalizedTripStatus == 'completed') {
+      return false;
+    }
+
+    if (lockedStopStatuses.contains(normalizedStopStatus)) {
+      return false;
+    }
+
+    return true;
+  }
+
   String _stopKey(ExternalDeliveryTripStop stop) {
     final rowName = (stop.rawFields['name'] ?? '').toString().trim();
     if (rowName.isNotEmpty) return rowName;
@@ -530,6 +728,12 @@ class _ExternalDeliveryTripDetailsScreenState
     final current = stop.status.trim().toLowerCase();
     if (current == newStatus.trim().toLowerCase()) return;
 
+    // Intercept "Failed" — show reason sheet and handle return trip flow
+    if (newStatus == 'Failed') {
+      await _handleFailedDelivery(stop);
+      return;
+    }
+
     final stopKey = _stopKey(stop);
     setState(() => _updatingStops.add(stopKey));
     try {
@@ -542,6 +746,93 @@ class _ExternalDeliveryTripDetailsScreenState
       setState(() {
         _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
       });
+    } catch (e) {
+      if (!mounted) return;
+      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _updatingStops.remove(stopKey));
+      }
+    }
+  }
+
+  Future<void> _handleFailedDelivery(ExternalDeliveryTripStop stop) async {
+    final result = await showFailedDeliverySheet(context);
+    if (result == null || !mounted) return;
+
+    final orderName = stop.externalDelivery.trim();
+    final stopKey = _stopKey(stop);
+    final fullReason = result.notes.isEmpty
+        ? result.reason
+        : '${result.reason} — ${result.notes}';
+
+    final createReturn = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.undo_rounded, color: AppTheme.oceanBlue),
+            SizedBox(width: 8),
+            Text(
+              'Return to Store?',
+              style: TextStyle(
+                color: AppTheme.nightBlue,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Create a return trip to bring "$orderName" back to the store?',
+          style: const TextStyle(color: Colors.black54),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.oceanBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Yes, Return'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+
+    setState(() => _updatingStops.add(stopKey));
+    try {
+      final processResult = await ExternalDeliveryRepository()
+          .processFailedDeliveryReturn(
+        stop: stop,
+        orderName: orderName,
+        reason: fullReason,
+        photoPath: result.photoPath,
+        shouldCreateReturnTrip: createReturn == true,
+      );
+      if (!mounted) return;
+      showInfoSnack(context, processResult.message);
+      setState(() {
+        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+      });
+      if (processResult.tripName != null && createReturn == true) {
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ExternalDeliveryTripDetailsScreen(
+              tripName: processResult.tripName!,
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
