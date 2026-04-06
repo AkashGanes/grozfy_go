@@ -34,7 +34,7 @@ class OrderStatusScreen extends StatelessWidget {
       OrderProgressStatus.delivered,
     ];
 
-    final int currentIndex = flow.indexOf(order.status);
+    final int currentIndex = flow.indexOf(order.orderStatus);
 
     return AppShell(
       title: 'Order Progress',
@@ -75,10 +75,10 @@ class OrderStatusScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          if (order.status != OrderProgressStatus.delivered)
+          if (order.orderStatus != OrderProgressStatus.delivered)
             ElevatedButton(
               onPressed: () {
-                final OrderProgressStatus next = _nextStatus(order.status);
+                final OrderProgressStatus next = _nextStatus(order.orderStatus);
                 app.updateOrderStatus(next);
                 if (next == OrderProgressStatus.delivered) {
                   showInfoSnack(
@@ -91,7 +91,7 @@ class OrderStatusScreen extends StatelessWidget {
                   );
                 }
               },
-              child: Text(_nextButtonLabel(order.status)),
+              child: Text(_nextButtonLabel(order.orderStatus)),
             ),
         ],
       ),
@@ -100,31 +100,43 @@ class OrderStatusScreen extends StatelessWidget {
 
   OrderProgressStatus _nextStatus(OrderProgressStatus current) {
     switch (current) {
-      case OrderProgressStatus.accepted:
-        return OrderProgressStatus.reachedPickup;
-      case OrderProgressStatus.reachedPickup:
-        return OrderProgressStatus.pickedUp;
-      case OrderProgressStatus.pickedUp:
-        return OrderProgressStatus.outForDelivery;
-      case OrderProgressStatus.outForDelivery:
-        return OrderProgressStatus.delivered;
-      case OrderProgressStatus.delivered:
-        return OrderProgressStatus.delivered;
+      case OrderStatus.pending:
+        return OrderStatus.accepted;
+      case OrderStatus.accepted:
+        return OrderStatus.reachedPickup;
+      case OrderStatus.rejected:
+        return OrderStatus.rejected;
+      case OrderStatus.reachedPickup:
+        return OrderStatus.pickedUp;
+      case OrderStatus.pickedUp:
+        return OrderStatus.outForDelivery;
+      case OrderStatus.outForDelivery:
+        return OrderStatus.delivered;
+      case OrderStatus.delivered:
+        return OrderStatus.delivered;
+      case OrderStatus.cancelled:
+        return OrderStatus.cancelled;
     }
   }
 
   String _nextButtonLabel(OrderProgressStatus current) {
     switch (current) {
-      case OrderProgressStatus.accepted:
+      case OrderStatus.pending:
+        return 'Accept Order';
+      case OrderStatus.accepted:
         return 'Mark Reached Pickup';
-      case OrderProgressStatus.reachedPickup:
+      case OrderStatus.rejected:
+        return 'Rejected';
+      case OrderStatus.reachedPickup:
         return 'Mark Picked Up';
-      case OrderProgressStatus.pickedUp:
+      case OrderStatus.pickedUp:
         return 'Start Out for Delivery';
-      case OrderProgressStatus.outForDelivery:
+      case OrderStatus.outForDelivery:
         return 'Mark Delivered';
-      case OrderProgressStatus.delivered:
+      case OrderStatus.delivered:
         return 'Completed';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
     }
   }
 }

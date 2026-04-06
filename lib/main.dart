@@ -23,8 +23,10 @@ import 'features/orders_by_location/ui/external_delivery_trip_details_screen.dar
 import 'features/orders_by_location/ui/external_delivery_trip_list_screen.dart';
 import 'features/orders_by_location/ui/orders_by_location_screen.dart';
 import 'features/orders/order_details_screen.dart';
+import 'features/orders/order_listing_screen.dart';
 import 'features/orders/order_request_screen.dart';
 import 'features/orders/order_status_screen.dart';
+import 'features/orders/order_tracking_screen.dart';
 import 'features/permissions/location_permission_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/splash/splash_screen.dart';
@@ -146,6 +148,10 @@ class DeliveryPartnerApp extends ConsumerWidget {
               return MaterialPageRoute<void>(
                 builder: (_) => const CurrentLocationPickerScreen(),
               );
+            case AppRoutes.orderListing:
+              return MaterialPageRoute<void>(
+                builder: (_) => const OrderListingScreen(),
+              );
             case AppRoutes.orderRequest:
               return MaterialPageRoute<void>(
                 builder: (_) => const OrderRequestScreen(),
@@ -180,6 +186,10 @@ class DeliveryPartnerApp extends ConsumerWidget {
             case AppRoutes.orderStatus:
               return MaterialPageRoute<void>(
                 builder: (_) => const OrderStatusScreen(),
+              );
+            case AppRoutes.orderTracking:
+              return MaterialPageRoute<void>(
+                builder: (_) => const OrderTrackingScreen(),
               );
             case AppRoutes.dashboard:
               // Route guard: Force location selection if not selected
