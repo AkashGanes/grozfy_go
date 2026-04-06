@@ -207,6 +207,64 @@ class AppController extends ChangeNotifier {
       hasSelectedLocation &&
       _permissionState.allGranted;
 
+  ProfileCompleteness get profileCompleteness {
+    final List<ProfileCompletenessItem> items = <ProfileCompletenessItem>[
+      ProfileCompletenessItem(
+        name: 'Basic Profile',
+        description: 'Name, mobile & email',
+        isCompleted: _profile != null && _profile!.fullName.isNotEmpty,
+        route: null,
+      ),
+      ProfileCompletenessItem(
+        name: 'Profile Photo',
+        description: 'Add a profile picture',
+        isCompleted: _profileImagePath != null,
+        route: null,
+      ),
+      ProfileCompletenessItem(
+        name: 'KYC Documents',
+        description: 'ID proof & driving license',
+        isCompleted: _kycCompleted,
+        route: '/kyc-documents',
+      ),
+      ProfileCompletenessItem(
+        name: 'Vehicle Details',
+        description: 'Register your vehicle',
+        isCompleted: _vehicle != null,
+        route: '/vehicle-details',
+      ),
+      ProfileCompletenessItem(
+        name: 'Bank Account',
+        description: 'Add bank for payouts',
+        isCompleted: _bank != null,
+        route: '/bank-setup',
+      ),
+      ProfileCompletenessItem(
+        name: 'Delivery Zone',
+        description: 'Select your working area',
+        isCompleted: hasSelectedLocation,
+        route: '/current-location',
+      ),
+      ProfileCompletenessItem(
+        name: 'Permissions',
+        description: 'Location & notifications',
+        isCompleted: _permissionState.allGranted,
+        route: '/permission',
+      ),
+    ];
+
+    final int completedCount = items.where((item) => item.isCompleted).length;
+    final int totalCount = items.length;
+    final double percentage = totalCount > 0 ? completedCount / totalCount : 0;
+
+    return ProfileCompleteness(
+      percentage: percentage,
+      items: items,
+      completedCount: completedCount,
+      totalCount: totalCount,
+    );
+  }
+
   Future<void> bootstrap() async {
     await Future<void>.delayed(const Duration(milliseconds: 1100));
     _configVersion = 'cfg_2026_02_16';
