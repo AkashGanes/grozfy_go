@@ -89,19 +89,30 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
                   children: [
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: () {
+                        onPressed: () async {
+                          final scaffoldMessenger = ScaffoldMessenger.of(
+                            context,
+                          );
                           if (app.isTracking) {
                             app.stopTracking();
                             _timer?.cancel();
-                            showInfoSnack(context, 'Tracking stopped');
+                            scaffoldMessenger.showSnackBar(
+                              const SnackBar(content: Text('Tracking stopped')),
+                            );
                           } else {
-                            final String? error = app.startTracking();
+                            final String? error = await app.startTracking();
                             if (error != null) {
-                              showInfoSnack(context, error);
+                              scaffoldMessenger.showSnackBar(
+                                SnackBar(content: Text(error)),
+                              );
                               return;
                             }
                             _startTimer(app);
-                            showInfoSnack(context, 'Live tracking started');
+                            scaffoldMessenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Live tracking started'),
+                              ),
+                            );
                           }
                         },
                         child: Text(

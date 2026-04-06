@@ -14,6 +14,8 @@ class AppRoutes {
   static const orderRequest = '/order-request';
   static const orderDetails = '/order-details';
   static const navigation = '/navigation';
+  static const deliveryList = '/delivery-list';
+  static const deliveryTracking = '/delivery-tracking';
   static const orderStatus = '/order-status';
   static const dashboard = '/dashboard';
   static const profile = '/profile';
