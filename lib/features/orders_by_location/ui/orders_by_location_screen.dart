@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
-import '../../../core/navigation/app_routes.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
@@ -23,7 +22,6 @@ class _OrdersByLocationScreenState
   late final ExternalDeliveryRepository _repository;
   late final PagingController<int, LocationListItem> _pagingController;
   String? _lastStoreName;
-  final Set<String> _submittingOrderIds = <String>{};
 
   @override
   void initState() {
@@ -78,32 +76,7 @@ class _OrdersByLocationScreenState
     _pagingController.refresh();
   }
 
-  bool _isEligibleForTrip(ExternalDelivery order) => order.status == 'Pending';
-
   Future<void> _handleOrderTap(ExternalDelivery order) async {
-    if (_submittingOrderIds.contains(order.name)) return;
-
-    if (_isEligibleForTrip(order)) {
-      setState(() => _submittingOrderIds.add(order.name));
-      try {
-        final tripName = await _repository.createAndSubmitTripForOrder(order);
-        if (!mounted) return;
-        await Navigator.of(
-          context,
-        ).pushNamed(AppRoutes.externalDeliveryTripDetails, arguments: tripName);
-        if (!mounted) return;
-        await _refresh();
-      } catch (e) {
-        if (!mounted) return;
-        showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
-      } finally {
-        if (mounted) {
-          setState(() => _submittingOrderIds.remove(order.name));
-        }
-      }
-      return;
-    }
-
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -290,7 +263,6 @@ class _OrdersByLocationScreenState
               if (item is OrderRow) {
                 return _OrderCard(
                   order: item.order,
-                  busy: _submittingOrderIds.contains(item.order.name),
                   onTap: () => _handleOrderTap(item.order),
                 );
               }
@@ -351,11 +323,9 @@ class _StoreHeaderTile extends StatelessWidget {
 class _OrderCard extends StatelessWidget {
   const _OrderCard({
     required this.order,
-    required this.busy,
     required this.onTap,
   });
   final ExternalDelivery order;
-  final bool busy;
   final VoidCallback onTap;
 
   String _formatDate(String raw) {
@@ -370,10 +340,8 @@ class _OrderCard extends StatelessWidget {
     final statusColor = order.status.statusColor;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Opacity(
-        opacity: busy ? 0.7 : 1,
-        child: GestureDetector(
-          onTap: busy ? null : onTap,
+      child: GestureDetector(
+          onTap: onTap,
           child: FrostCard(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
@@ -438,41 +406,30 @@ class _OrderCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 // Status badge
-                if (busy)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.oceanBlue,
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: statusColor.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    child: Text(
-                      order.status,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: statusColor.withValues(alpha: 0.35),
                     ),
                   ),
+                  child: Text(
+                    order.status,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-        ),
       ),
     );
   }

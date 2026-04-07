@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_shell.dart';
 
 class SearchResult {
   final String displayName;
@@ -405,7 +406,7 @@ class _CurrentLocationPickerScreenState
       body: Stack(
         children: [
           // Full-screen Map
-          FlutterMap(
+          SafeMap(child: FlutterMap(
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _selectedPoint,
@@ -433,7 +434,7 @@ class _CurrentLocationPickerScreenState
                 ],
               ),
             ],
-          ),
+          )),
 
           // Loading overlay
           if (_loading)

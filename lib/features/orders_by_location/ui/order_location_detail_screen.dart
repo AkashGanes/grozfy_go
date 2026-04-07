@@ -1,9 +1,16 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
@@ -30,8 +37,27 @@ class _OrderLocationDetailScreenState
   String? _error;
   bool _updating = false;
 
+  // Map & tracking state
   final MapController _mapController = MapController();
-  bool _started = false;
+  bool _isMapReady = false;
+  StreamSubscription<Position>? _positionStream;
+  LatLng? _currentLocation;
+  LatLng? _destination;
+  double _currentHeading = 0;
+  bool _isTracking = false;
+  bool _hasArrived = false;
+  double _distanceToDestination = 0;
+
+  // Route state
+  List<LatLng> _polylineCoordinates = [];
+  bool _isFetchingRoute = false;
+  DateTime? _lastRouteFetchAt;
+
+  static const double _arrivalThreshold = 50.0;
+  static const String _osrmBaseUrl =
+      'https://router.project-osrm.org/route/v1/driving';
+  static const Duration _routeRefreshInterval = Duration(seconds: 20);
+  static const int _maxRoutePoints = 400;
 
   @override
   void initState() {
@@ -41,9 +67,14 @@ class _OrderLocationDetailScreenState
 
   @override
   void dispose() {
+    _positionStream?.cancel();
     _mapController.dispose();
     super.dispose();
   }
+
+  // ---------------------------------------------------------------------------
+  // Data loading
+  // ---------------------------------------------------------------------------
 
   Future<void> _load() async {
     setState(() {
@@ -52,11 +83,17 @@ class _OrderLocationDetailScreenState
     });
     try {
       final detail = await widget.repository.fetchDetail(widget.order.name);
+      if (!mounted) return;
       setState(() {
         _detail = detail;
         _loading = false;
+        if (detail.latitude != null && detail.longitude != null) {
+          _destination = LatLng(detail.latitude!, detail.longitude!);
+        }
       });
+      await _initializeLocation();
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -64,11 +101,32 @@ class _OrderLocationDetailScreenState
     }
   }
 
+  /// Refresh only the detail data after a status update.
+  /// Does NOT reset _loading (keeps map + tracking alive).
+  Future<void> _refreshDetail() async {
+    try {
+      final detail = await widget.repository.fetchDetail(widget.order.name);
+      if (!mounted) return;
+      setState(() {
+        _detail = detail;
+        if (detail.latitude != null && detail.longitude != null) {
+          _destination = LatLng(detail.latitude!, detail.longitude!);
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Refresh failed: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _updateStatus(String newStatus) async {
     setState(() => _updating = true);
     try {
       await widget.repository.updateStatus(widget.order.name, newStatus);
-      await _load();
+      await _refreshDetail();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -80,22 +138,365 @@ class _OrderLocationDetailScreenState
     }
   }
 
-  void _startTracking(ExternalDeliveryDetail detail) {
-    setState(() => _started = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (detail.latitude != null && detail.longitude != null) {
-        _mapController.fitCamera(
-          CameraFit.coordinates(
-            coordinates: [
-              const LatLng(8.1833, 77.4119), // partner location
-              LatLng(detail.latitude!, detail.longitude!),
-            ],
-            padding: const EdgeInsets.fromLTRB(48, 80, 48, 220),
-          ),
-        );
+  // ---------------------------------------------------------------------------
+  // Location & GPS
+  // ---------------------------------------------------------------------------
+
+  Future<void> _initializeLocation() async {
+    final hasPermission = await _checkLocationPermission();
+    if (!hasPermission) return;
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _currentLocation = LatLng(position.latitude, position.longitude);
+      });
+
+      if (_destination != null) {
+        _getRoutePoints();
+        _fitMapToPoints();
+      } else if (_isMapReady) {
+        _mapController.move(_currentLocation!, 16.0);
       }
+    } catch (e) {
+      debugPrint('Could not get GPS: $e');
+    }
+  }
+
+  Future<bool> _checkLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return false;
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    return permission == LocationPermission.whileInUse ||
+        permission == LocationPermission.always;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Live tracking
+  // ---------------------------------------------------------------------------
+
+  void _startTracking() {
+    if (_isTracking || _destination == null) return;
+
+    setState(() => _isTracking = true);
+
+    if (_currentLocation != null && _polylineCoordinates.isEmpty) {
+      _getRoutePoints();
+    }
+
+    _positionStream = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      ),
+    ).listen(
+      (Position position) {
+        final nextLocation = LatLng(position.latitude, position.longitude);
+        final movedMeters = _currentLocation != null
+            ? _calculateDistance(
+                _currentLocation!.latitude, _currentLocation!.longitude,
+                nextLocation.latitude, nextLocation.longitude)
+            : 0.0;
+        final nextHeading = movedMeters > 2 && _currentLocation != null
+            ? _calculateBearing(_currentLocation!, nextLocation)
+            : _currentHeading;
+
+        setState(() {
+          _currentLocation = nextLocation;
+          _currentHeading = nextHeading;
+          _updateRemainingRoute();
+        });
+
+        _checkArrival();
+
+        if (_isMapReady && _isTracking) {
+          _mapController.move(_currentLocation!, 16.0);
+        }
+
+        if (_shouldRefreshRoute()) {
+          _getRoutePoints();
+        }
+      },
+      onError: (e) => debugPrint('Location stream error: $e'),
+    );
+
+    _fitMapToPoints();
+  }
+
+  void _stopTracking() {
+    _positionStream?.cancel();
+    _positionStream = null;
+    setState(() => _isTracking = false);
+  }
+
+  // ---------------------------------------------------------------------------
+  // OSRM routing
+  // ---------------------------------------------------------------------------
+
+  Future<void> _getRoutePoints() async {
+    if (_currentLocation == null || _destination == null || _isFetchingRoute) {
+      return;
+    }
+
+    _isFetchingRoute = true;
+    try {
+      final routeData = await _fetchOsrmRoute(
+        from: _currentLocation!,
+        to: _destination!,
+      );
+      if (!mounted) return;
+
+      if (routeData != null && routeData.points.length >= 2) {
+        setState(() {
+          _polylineCoordinates = routeData.points;
+          _distanceToDestination = routeData.distanceMeters;
+          _lastRouteFetchAt = DateTime.now();
+          _updateRemainingRoute();
+        });
+      } else {
+        _setFallbackRoute();
+      }
+    } catch (e) {
+      debugPrint('Route fetch failed: $e');
+      if (mounted) _setFallbackRoute();
+    } finally {
+      _isFetchingRoute = false;
+    }
+
+    if (mounted) _fitMapToPoints();
+  }
+
+  Future<_RouteData?> _fetchOsrmRoute({
+    required LatLng from,
+    required LatLng to,
+  }) async {
+    final uri = Uri.parse(
+      '$_osrmBaseUrl/${from.longitude},${from.latitude};${to.longitude},${to.latitude}',
+    ).replace(
+      queryParameters: const {
+        'overview': 'full',
+        'geometries': 'geojson',
+        'steps': 'false',
+      },
+    );
+
+    final response = await http.get(uri).timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) return null;
+
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final routes = payload['routes'] as List<dynamic>?;
+    if (routes == null || routes.isEmpty) return null;
+
+    final firstRoute = routes.first as Map<String, dynamic>;
+    final routeDistance =
+        (firstRoute['distance'] as num?)?.toDouble() ?? 0;
+    final geometry = firstRoute['geometry'] as Map<String, dynamic>?;
+    final coordinates = geometry?['coordinates'] as List<dynamic>?;
+    if (coordinates == null || coordinates.length < 2) return null;
+
+    final routePoints = <LatLng>[
+      for (final pair in coordinates)
+        if (pair is List && pair.length >= 2 && pair[0] is num && pair[1] is num)
+          LatLng((pair[1] as num).toDouble(), (pair[0] as num).toDouble()),
+    ];
+
+    if (routePoints.length < 2) return null;
+
+    return _RouteData(
+      points: _compressRoutePoints(routePoints),
+      distanceMeters: routeDistance,
+    );
+  }
+
+  List<LatLng> _compressRoutePoints(List<LatLng> points) {
+    if (points.length <= _maxRoutePoints) return points;
+    final stride = max(1, (points.length / _maxRoutePoints).ceil());
+    final compressed = <LatLng>[];
+    for (int i = 0; i < points.length; i += stride) {
+      compressed.add(points[i]);
+    }
+    if (compressed.last != points.last) compressed.add(points.last);
+    return compressed;
+  }
+
+  void _setFallbackRoute() {
+    if (_currentLocation == null || _destination == null) return;
+    const numPoints = 30;
+    final fallback = <LatLng>[];
+    for (int i = 0; i <= numPoints; i++) {
+      final lat = _currentLocation!.latitude +
+          (_destination!.latitude - _currentLocation!.latitude) * i / numPoints;
+      final lng = _currentLocation!.longitude +
+          (_destination!.longitude - _currentLocation!.longitude) *
+              i /
+              numPoints;
+      fallback.add(LatLng(lat, lng));
+    }
+    setState(() {
+      _polylineCoordinates = fallback;
+      _distanceToDestination = _calculateDistance(
+        _currentLocation!.latitude, _currentLocation!.longitude,
+        _destination!.latitude, _destination!.longitude,
+      );
+      _lastRouteFetchAt = DateTime.now();
     });
   }
+
+  void _updateRemainingRoute() {
+    if (_polylineCoordinates.length < 2 || _currentLocation == null) return;
+    final nearestIdx = _findNearestRoutePointIndex(_currentLocation!);
+    final nextIdx = min(nearestIdx + 1, _polylineCoordinates.length - 1);
+    final remaining = <LatLng>[_currentLocation!, ..._polylineCoordinates.sublist(nextIdx)];
+    if (_destination != null) {
+      final last = remaining.last;
+      final d = _calculateDistance(
+        last.latitude, last.longitude,
+        _destination!.latitude, _destination!.longitude,
+      );
+      if (d > 3) remaining.add(_destination!);
+    }
+    _polylineCoordinates = remaining;
+  }
+
+  int _findNearestRoutePointIndex(LatLng from) {
+    int nearestIdx = 0;
+    double nearestDist = double.infinity;
+    for (int i = 0; i < _polylineCoordinates.length; i++) {
+      final d = _calculateDistance(
+        from.latitude, from.longitude,
+        _polylineCoordinates[i].latitude, _polylineCoordinates[i].longitude,
+      );
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearestIdx = i;
+      }
+    }
+    return nearestIdx;
+  }
+
+  bool _shouldRefreshRoute() {
+    if (_destination == null || _isFetchingRoute) return false;
+    if (_lastRouteFetchAt == null) return true;
+    return DateTime.now().difference(_lastRouteFetchAt!) >= _routeRefreshInterval;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Map helpers
+  // ---------------------------------------------------------------------------
+
+  void _fitMapToPoints() {
+    if (!_isMapReady) return;
+    final points = <LatLng>[];
+    if (_currentLocation != null) points.add(_currentLocation!);
+    if (_destination != null) points.add(_destination!);
+    if (points.length < 2) {
+      if (points.length == 1) _mapController.move(points.first, 16.0);
+      return;
+    }
+    _mapController.fitCamera(
+      CameraFit.coordinates(
+        coordinates: points,
+        padding: const EdgeInsets.fromLTRB(48, 80, 48, 300),
+      ),
+    );
+  }
+
+  void _checkArrival() {
+    if (_destination == null || _currentLocation == null || _hasArrived) return;
+    final distance = _calculateDistance(
+      _currentLocation!.latitude, _currentLocation!.longitude,
+      _destination!.latitude, _destination!.longitude,
+    );
+    setState(() {
+      _distanceToDestination = distance;
+      _hasArrived = distance < _arrivalThreshold;
+    });
+    if (_hasArrived) _stopTracking();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Math
+  // ---------------------------------------------------------------------------
+
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const earthRadius = 6371000.0;
+    final dLat = _toRadians(lat2 - lat1);
+    final dLon = _toRadians(lon2 - lon1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRadians(lat1)) *
+            cos(_toRadians(lat2)) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
+    return earthRadius * 2 * atan2(sqrt(a), sqrt(1 - a));
+  }
+
+  double _toRadians(double deg) => deg * pi / 180;
+
+  double _calculateBearing(LatLng from, LatLng to) {
+    final lat1 = _toRadians(from.latitude);
+    final lat2 = _toRadians(to.latitude);
+    final dLon = _toRadians(to.longitude - from.longitude);
+    final y = sin(dLon) * cos(lat2);
+    final x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon);
+    return (atan2(y, x) * 180 / pi + 360) % 360;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Status helpers
+  // ---------------------------------------------------------------------------
+
+  void _onSlideStartDelivery() {
+    _startTracking();
+    _updateStatus('Out for Delivery');
+  }
+
+  void _onSlideReached() {
+    _stopTracking();
+    // Status stays 'Out for Delivery', just show delivered option
+    setState(() => _hasArrived = true);
+  }
+
+  void _onSlideDelivered() {
+    _updateStatus('Delivered').then((_) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green, size: 32),
+              SizedBox(width: 8),
+              Text('Delivered!'),
+            ],
+          ),
+          content: const Text('Order delivered successfully!'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pop(context);
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -111,7 +512,7 @@ class _OrderLocationDetailScreenState
   Widget _buildLoading() {
     return Stack(
       children: [
-        _MapLayer(mapController: _mapController, started: false),
+        _buildMap(),
         const _BackButton(),
         DraggableScrollableSheet(
           initialChildSize: 0.28,
@@ -134,7 +535,7 @@ class _OrderLocationDetailScreenState
   Widget _buildError() {
     return Stack(
       children: [
-        _MapLayer(mapController: _mapController, started: false),
+        _buildMap(),
         const _BackButton(),
         DraggableScrollableSheet(
           initialChildSize: 0.35,
@@ -151,8 +552,7 @@ class _OrderLocationDetailScreenState
                 Text(
                   _error ?? 'Something went wrong',
                   textAlign: TextAlign.center,
-                  style:
-                      const TextStyle(color: Colors.black54, fontSize: 13),
+                  style: const TextStyle(color: Colors.black54, fontSize: 13),
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
@@ -168,30 +568,182 @@ class _OrderLocationDetailScreenState
     );
   }
 
+  Widget _buildMap() {
+    final initialCenter = _currentLocation ??
+        _destination ??
+        const LatLng(11.1271, 78.6569);
+
+    return SafeMap(
+      child: FlutterMap(
+        mapController: _mapController,
+        options: MapOptions(
+          initialCenter: initialCenter,
+          initialZoom: 15.0,
+          onMapReady: () {
+            _isMapReady = true;
+            if (_currentLocation != null && _destination != null) {
+              _fitMapToPoints();
+            } else if (_currentLocation != null) {
+              _mapController.move(_currentLocation!, 16.0);
+            }
+          },
+        ),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.example.delivery_partner_app',
+          ),
+          if (_polylineCoordinates.isNotEmpty)
+            PolylineLayer(
+              polylines: [
+                Polyline(
+                  points: _polylineCoordinates,
+                  color: Colors.blue,
+                  strokeWidth: 5.0,
+                ),
+              ],
+            ),
+          MarkerLayer(
+            markers: [
+              // Partner location marker
+              if (_currentLocation != null)
+                Marker(
+                  point: _currentLocation!,
+                  width: 52,
+                  height: 52,
+                  child: Transform.rotate(
+                    angle: _toRadians(_currentHeading),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppTheme.oceanBlue,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.oceanBlue.withValues(alpha: 0.4),
+                            blurRadius: 8,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.delivery_dining_rounded,
+                        color: Colors.white,
+                        size: 26,
+                      ),
+                    ),
+                  ),
+                ),
+              // Destination marker
+              if (_destination != null)
+                Marker(
+                  point: _destination!,
+                  width: 48,
+                  height: 48,
+                  child: const Icon(
+                    Icons.location_pin,
+                    color: Colors.redAccent,
+                    size: 42,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildContent() {
     final detail = _detail!;
     final statusColor = detail.status.statusColor;
+    final s = detail.status.toLowerCase();
 
     return Stack(
       children: [
-        // Full screen map
-        _MapLayer(
-          mapController: _mapController,
-          started: _started,
-          latitude: detail.latitude,
-          longitude: detail.longitude,
-        ),
-
-        // Back button
+        _buildMap(),
         const _BackButton(),
 
-        // Draggable bottom sheet
+        // Re-center button
+        Positioned(
+          top: MediaQuery.of(context).padding.top + 8,
+          right: 12,
+          child: GestureDetector(
+            onTap: () {
+              if (_isMapReady && _currentLocation != null) {
+                _mapController.move(_currentLocation!, 16.0);
+              }
+            },
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.my_location_rounded,
+                color: AppTheme.oceanBlue,
+                size: 20,
+              ),
+            ),
+          ),
+        ),
+
+        // Distance indicator (when tracking)
+        if (_isTracking && _distanceToDestination > 0)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 56,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.directions, size: 16, color: Colors.blue),
+                    const SizedBox(width: 6),
+                    Text(
+                      _distanceToDestination >= 1000
+                          ? '${(_distanceToDestination / 1000).toStringAsFixed(1)} km away'
+                          : '${_distanceToDestination.toStringAsFixed(0)} m away',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: AppTheme.nightBlue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        // Bottom sheet
         DraggableScrollableSheet(
-          initialChildSize: 0.45,
-          minChildSize: 0.22,
-          maxChildSize: 0.92,
+          initialChildSize: 0.42,
+          minChildSize: 0.18,
+          maxChildSize: 0.88,
           snap: true,
-          snapSizes: const [0.22, 0.45, 0.92],
+          snapSizes: const [0.18, 0.42, 0.88],
           builder: (context, scrollController) {
             return Container(
               decoration: const BoxDecoration(
@@ -209,9 +761,7 @@ class _OrderLocationDetailScreenState
               child: ListView(
                 controller: scrollController,
                 padding: EdgeInsets.fromLTRB(
-                  20,
-                  0,
-                  20,
+                  20, 0, 20,
                   MediaQuery.of(context).padding.bottom + 16,
                 ),
                 children: [
@@ -228,7 +778,7 @@ class _OrderLocationDetailScreenState
                     ),
                   ),
 
-                  // ── Order ID + Store + Status ──────────────────
+                  // Order ID + Store + Status
                   Row(
                     children: [
                       Expanded(
@@ -252,8 +802,7 @@ class _OrderLocationDetailScreenState
                                 Text(
                                   detail.storeName,
                                   style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black54),
+                                      fontSize: 12, color: Colors.black54),
                                 ),
                               ],
                             ),
@@ -284,15 +833,14 @@ class _OrderLocationDetailScreenState
                   const Divider(height: 1),
                   const SizedBox(height: 14),
 
-                  // ── Customer ───────────────────────────────────
+                  // Customer
                   Row(
                     children: [
                       Container(
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color:
-                              AppTheme.oceanBlue.withValues(alpha: 0.10),
+                          color: AppTheme.oceanBlue.withValues(alpha: 0.10),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -331,12 +879,13 @@ class _OrderLocationDetailScreenState
                   ),
                   const SizedBox(height: 14),
 
-                  // ── Delivery address ───────────────────────────
+                  // Addresses
                   _AddressRow(
                     icon: Icons.location_on_rounded,
                     iconColor: Colors.redAccent,
                     label: 'Delivery',
-                    address: detail.deliveryAddress ?? 'Address not available',
+                    address:
+                        detail.deliveryAddress ?? 'Address not available',
                   ),
                   if (detail.pickupAddress != null) ...[
                     const SizedBox(height: 12),
@@ -351,7 +900,7 @@ class _OrderLocationDetailScreenState
                   const Divider(height: 1),
                   const SizedBox(height: 14),
 
-                  // ── Items ──────────────────────────────────────
+                  // Items
                   if (detail.items.isNotEmpty) ...[
                     const _SheetSectionLabel(
                         icon: Icons.shopping_bag_rounded, label: 'Items'),
@@ -364,8 +913,7 @@ class _OrderLocationDetailScreenState
                             Container(
                               width: 6,
                               height: 6,
-                              margin:
-                                  const EdgeInsets.only(right: 10, top: 1),
+                              margin: const EdgeInsets.only(right: 10, top: 1),
                               decoration: const BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: AppTheme.oceanBlue,
@@ -405,29 +953,90 @@ class _OrderLocationDetailScreenState
                     const SizedBox(height: 14),
                   ],
 
-                  // ── Action buttons ─────────────────────────────
-                  if (_updating)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: CircularProgressIndicator(
-                            color: AppTheme.oceanBlue),
+                  // Action slide buttons
+                  if (s != 'delivered' && s != 'cancelled') ...[
+                    if (_updating)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: AppTheme.oceanBlue,
+                            ),
+                          ),
+                        ),
                       ),
-                    )
-                  else ...[
-                    const _SheetSectionLabel(
-                        icon: Icons.touch_app_rounded, label: 'Actions'),
-                    const SizedBox(height: 12),
-                    _ActionButtons(
-                      status: detail.status,
-                      started: _started,
-                      onStart: () => _startTracking(detail),
-                      onAccept: () => _updateStatus('Accepted'),
-                      onStartDelivery: () =>
-                          _updateStatus('Out for Delivery'),
-                      onDelivered: () => _updateStatus('Delivered'),
-                    ),
+
+                    // Accept order (pending / added to trip)
+                    if (!_updating &&
+                        (s == 'pending' || s == '' || s == 'added to trip'))
+                      _SlideToAction(
+                        key: const ValueKey('accept'),
+                        label: 'Slide to Accept Order',
+                        color: AppTheme.oceanBlue,
+                        icon: Icons.check_circle_rounded,
+                        onSlideComplete: () => _updateStatus('Accepted'),
+                      ),
+
+                    // Start delivery (accepted)
+                    if (!_updating && s == 'accepted')
+                      _SlideToAction(
+                        key: const ValueKey('start'),
+                        label: 'Slide to Start Delivery',
+                        color: const Color(0xFF4CAF50),
+                        icon: Icons.local_shipping_rounded,
+                        onSlideComplete: _onSlideStartDelivery,
+                      ),
+
+                    // Reached (out for delivery, not arrived)
+                    if (!_updating &&
+                        s == 'out for delivery' &&
+                        !_hasArrived)
+                      _SlideToAction(
+                        key: const ValueKey('reached'),
+                        label: 'Slide to Mark Reached',
+                        color: const Color(0xFFFF9800),
+                        icon: Icons.flag_rounded,
+                        onSlideComplete: _onSlideReached,
+                      ),
+
+                    // Delivered (out for delivery, arrived)
+                    if (!_updating &&
+                        s == 'out for delivery' &&
+                        _hasArrived)
+                      _SlideToAction(
+                        key: const ValueKey('delivered'),
+                        label: 'Slide to Confirm Delivered',
+                        color: const Color(0xFF4CAF50),
+                        icon: Icons.done_all_rounded,
+                        onSlideComplete: _onSlideDelivered,
+                      ),
                   ],
+
+                  if (s == 'delivered')
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.check_circle,
+                              color: Colors.green, size: 24),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Delivered Successfully',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.green[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             );
@@ -438,93 +1047,124 @@ class _OrderLocationDetailScreenState
   }
 }
 
-// ---------------------------------------------------------------------------
-// Full-screen map layer
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Slide-to-action widget
+// =============================================================================
 
-class _MapLayer extends StatelessWidget {
-  const _MapLayer({
-    required this.mapController,
-    required this.started,
-    this.latitude,
-    this.longitude,
+class _SlideToAction extends StatefulWidget {
+  const _SlideToAction({
+    super.key,
+    required this.label,
+    required this.color,
+    required this.icon,
+    required this.onSlideComplete,
   });
 
-  final MapController mapController;
-  final bool started;
-  final double? latitude;
-  final double? longitude;
+  final String label;
+  final Color color;
+  final IconData icon;
+  final VoidCallback onSlideComplete;
 
-  static const _partnerLocation = LatLng(8.1833, 77.4119);
+  @override
+  State<_SlideToAction> createState() => _SlideToActionState();
+}
+
+class _SlideToActionState extends State<_SlideToAction> {
+  double _dragPosition = 0;
+  bool _completed = false;
+
+  static const double _thumbSize = 56;
+  static const double _completeThreshold = 0.85;
 
   @override
   Widget build(BuildContext context) {
-    final hasDestination = latitude != null && longitude != null;
-    final destination =
-        hasDestination ? LatLng(latitude!, longitude!) : null;
-    final initialCenter = hasDestination ? destination! : _partnerLocation;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxDrag = constraints.maxWidth - _thumbSize;
 
-    return FlutterMap(
-      mapController: mapController,
-      options: MapOptions(
-        initialCenter: initialCenter,
-        initialZoom: hasDestination ? 15.0 : 13.0,
-      ),
-      children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.example.delivery_partner_app',
-        ),
-        MarkerLayer(
-          markers: [
-            // Delivery partner marker (shown when started)
-            if (started)
-              Marker(
-                point: _partnerLocation,
-                width: 52,
-                height: 52,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: AppTheme.oceanBlue,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.4),
-                        blurRadius: 8,
-                        spreadRadius: 2,
+          return GestureDetector(
+            onHorizontalDragUpdate: (details) {
+              if (_completed) return;
+              setState(() {
+                _dragPosition =
+                    (_dragPosition + details.delta.dx).clamp(0.0, maxDrag);
+              });
+            },
+            onHorizontalDragEnd: (details) {
+              if (_completed) return;
+              if (_dragPosition / maxDrag >= _completeThreshold) {
+                setState(() => _completed = true);
+                widget.onSlideComplete();
+              } else {
+                setState(() => _dragPosition = 0);
+              }
+            },
+            child: Container(
+              height: 60,
+              decoration: BoxDecoration(
+                color: widget.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                    color: widget.color.withValues(alpha: 0.3)),
+              ),
+              child: Stack(
+                alignment: Alignment.centerLeft,
+                children: [
+                  // Label
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 40),
+                      child: Text(
+                        _completed ? 'Done!' : widget.label,
+                        style: TextStyle(
+                          color: widget.color,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.delivery_dining_rounded,
-                    color: Colors.white,
-                    size: 26,
+                  // Sliding thumb
+                  Positioned(
+                    left: _dragPosition + 2,
+                    child: Container(
+                      width: _thumbSize,
+                      height: _thumbSize,
+                      decoration: BoxDecoration(
+                        color: widget.color,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: widget.color.withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        _completed
+                            ? Icons.check_rounded
+                            : Icons.arrow_forward_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            // Destination marker
-            if (hasDestination)
-              Marker(
-                point: destination!,
-                width: 48,
-                height: 48,
-                child: const Icon(
-                  Icons.location_pin,
-                  color: Colors.redAccent,
-                  size: 42,
-                ),
-              ),
-          ],
-        ),
-      ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Back button overlay
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Supporting widgets (unchanged helpers)
+// =============================================================================
 
 class _BackButton extends StatelessWidget {
   const _BackButton();
@@ -561,13 +1201,8 @@ class _BackButton extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Sheet shell (loading / error states)
-// ---------------------------------------------------------------------------
-
 class _SheetShell extends StatelessWidget {
-  const _SheetShell(
-      {required this.scrollController, required this.child});
+  const _SheetShell({required this.scrollController, required this.child});
   final ScrollController scrollController;
   final Widget child;
 
@@ -607,10 +1242,6 @@ class _SheetShell extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Sheet section label
-// ---------------------------------------------------------------------------
-
 class _SheetSectionLabel extends StatelessWidget {
   const _SheetSectionLabel({required this.icon, required this.label});
   final IconData icon;
@@ -635,10 +1266,6 @@ class _SheetSectionLabel extends StatelessWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Address row
-// ---------------------------------------------------------------------------
 
 class _AddressRow extends StatelessWidget {
   const _AddressRow({
@@ -689,10 +1316,6 @@ class _AddressRow extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Call button
-// ---------------------------------------------------------------------------
-
 class _CallButton extends StatelessWidget {
   const _CallButton({required this.mobile});
   final String mobile;
@@ -712,8 +1335,8 @@ class _CallButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFFE8F5E9),
           shape: BoxShape.circle,
-          border: Border.all(
-              color: const Color(0xFF4CAF50).withValues(alpha: 0.3)),
+          border:
+              Border.all(color: const Color(0xFF4CAF50).withValues(alpha: 0.3)),
         ),
         child: const Icon(Icons.phone_rounded,
             color: Color(0xFF4CAF50), size: 18),
@@ -722,108 +1345,12 @@ class _CallButton extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Action buttons
-// ---------------------------------------------------------------------------
+// =============================================================================
+// Route data
+// =============================================================================
 
-class _ActionButtons extends StatelessWidget {
-  const _ActionButtons({
-    required this.status,
-    required this.started,
-    required this.onStart,
-    required this.onAccept,
-    required this.onStartDelivery,
-    required this.onDelivered,
-  });
-
-  final String status;
-  final bool started;
-  final VoidCallback onStart;
-  final VoidCallback onAccept;
-  final VoidCallback onStartDelivery;
-  final VoidCallback onDelivered;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = status.toLowerCase();
-
-    if (s == 'delivered' || s == 'cancelled') {
-      return const SizedBox.shrink();
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Start button — shows partner + destination on the map (no external app)
-        _Btn(
-          label: started ? 'Tracking Active' : 'Start',
-          icon: started
-              ? Icons.my_location_rounded
-              : Icons.play_arrow_rounded,
-          color: started
-              ? const Color(0xFF4CAF50)
-              : const Color(0xFFE8384F),
-          onTap: onStart,
-        ),
-        const SizedBox(height: 10),
-        if (s == 'pending' || s == '')
-          _Btn(
-            label: 'Accept Order',
-            icon: Icons.check_circle_rounded,
-            color: AppTheme.oceanBlue,
-            onTap: onAccept,
-          ),
-        if (s == 'accepted')
-          _Btn(
-            label: 'Start Delivery',
-            icon: Icons.local_shipping_rounded,
-            color: const Color(0xFF4CAF50),
-            onTap: onStartDelivery,
-          ),
-        if (s == 'out for delivery')
-          _Btn(
-            label: 'Delivered',
-            icon: Icons.done_all_rounded,
-            color: const Color(0xFF4CAF50),
-            onTap: onDelivered,
-          ),
-      ],
-    );
-  }
-}
-
-class _Btn extends StatelessWidget {
-  const _Btn({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ElevatedButton.icon(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        elevation: 0,
-      ),
-      onPressed: onTap,
-      icon: Icon(icon, size: 20),
-      label: Text(
-        label,
-        style:
-            const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-      ),
-    );
-  }
+class _RouteData {
+  const _RouteData({required this.points, required this.distanceMeters});
+  final List<LatLng> points;
+  final double distanceMeters;
 }

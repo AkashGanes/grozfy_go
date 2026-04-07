@@ -213,7 +213,7 @@ class DashboardScreen extends StatelessWidget {
               const SectionLabel('Available Deliveries'),
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).pushNamed(AppRoutes.deliveryList);
+                  Navigator.of(context).pushNamed(AppRoutes.ordersByLocation);
                 },
                 child: const Text('View All'),
               ),
@@ -260,7 +260,7 @@ class DashboardScreen extends StatelessWidget {
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      Navigator.of(context).pushNamed(AppRoutes.deliveryList);
+                      Navigator.of(context).pushNamed(AppRoutes.ordersByLocation);
                     },
                     icon: const Icon(Icons.list_alt),
                     label: const Text('View Deliveries'),

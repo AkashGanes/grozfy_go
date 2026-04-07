@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -238,6 +239,8 @@ class AppController extends ChangeNotifier {
         email: email,
       );
     }
+
+    await syncPermissionsFromOS();
 
     _bootstrapped = true;
     notifyListeners();
@@ -1798,6 +1801,23 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> syncPermissionsFromOS() async {
+    final locationPerm = await Geolocator.checkPermission();
+    final notifStatus = await ph.Permission.notification.status;
+
+    final foreground = locationPerm == LocationPermission.whileInUse ||
+        locationPerm == LocationPermission.always;
+    final background = locationPerm == LocationPermission.always;
+    final notification = notifStatus.isGranted;
+
+    _permissionState = PermissionState(
+      foregroundLocation: foreground,
+      backgroundLocation: background,
+      notification: notification,
+    );
+    notifyListeners();
+  }
+
   void setTrackingInterval(int seconds) {
     _trackingInterval = seconds;
     notifyListeners();
@@ -1834,6 +1854,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<String?> startTracking() async {
+    await syncPermissionsFromOS();
     if (!_permissionState.allGranted) {
       return 'Location and notification permissions are required';
     }
@@ -2233,14 +2254,6 @@ class AppController extends ChangeNotifier {
       return raw;
     }
     return '${raw.substring(0, max)}...<truncated>';
-  }
-
-  void _updateLiveCoordinates() {
-    final double baseLat = 28.6139;
-    final double baseLng = 77.2090;
-    final double lat = baseLat + (_random.nextDouble() - 0.5) / 100;
-    final double lng = baseLng + (_random.nextDouble() - 0.5) / 100;
-    _liveCoordinates = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
   }
 
   Future<void> fetchLoggedInEmployeeDriverProfile({
