@@ -79,6 +79,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     ref.invalidate(notificationsProvider);
     ref.invalidate(notificationCountsProvider);
     ref.invalidate(unreadNotificationCountProvider);
+    ref.invalidate(recentNotificationsProvider);
     _pagingController.refresh();
   }
 
@@ -567,6 +568,7 @@ class _NotificationTile extends ConsumerWidget {
         }
         ref.invalidate(notificationsProvider);
         ref.invalidate(notificationCountsProvider);
+        ref.invalidate(recentNotificationsProvider);
         await onChanged?.call();
       }
 

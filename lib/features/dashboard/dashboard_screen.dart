@@ -386,41 +386,86 @@ class DashboardScreen extends StatelessWidget {
           const SectionLabel('Notifications'),
           FrostCard(
             child: Column(
-              children: app.notices.take(4).map((notice) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.notifications_active_outlined, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              notice.title,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
+              children: [
+                Consumer(
+                  builder: (context, ref, _) {
+                    final async = ref.watch(recentNotificationsProvider);
+                    return async.when(
+                      data: (items) {
+                        final overrides =
+                            ref.watch(notificationReadOverridesProvider);
+                        final List<Widget> rows = <Widget>[
+                          ...items.take(2).map((notification) {
+                            final effectiveRead = notification.read ||
+                                overrides.contains(notification.name);
+                            return _NotificationRow(
+                              title: notification.subject,
+                              message: notification.message,
+                              time: notification.creation,
+                              isUnread: !effectiveRead,
+                              onTap: () {
+                                Navigator.of(
+                                  context,
+                                ).pushNamed(AppRoutes.notifications);
+                              },
+                            );
+                          }),
+                          ...app.notices.take(4).map((notice) {
+                            return _NotificationRow(
+                              title: notice.title,
+                              message: notice.message,
+                              time: notice.time,
+                              onTap: () {
+                                Navigator.of(
+                                  context,
+                                ).pushNamed(AppRoutes.notifications);
+                              },
+                            );
+                          }),
+                        ];
+
+                        if (rows.isEmpty) {
+                          return const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Text(
+                              'No notifications yet.',
+                              style: TextStyle(color: Colors.black54),
                             ),
-                            const SizedBox(height: 2),
-                            Text(notice.message),
-                            const SizedBox(height: 1),
-                            Text(
-                              _timeAgo(notice.time),
-                              style: const TextStyle(
-                                color: Colors.black45,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
+                          );
+                        }
+
+                        return Column(children: rows);
+                      },
+                      loading: () => const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.4),
+                          ),
                         ),
                       ),
-                    ],
-                  ),
-                );
-              }).toList(),
+                      error: (err, _) => Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Unable to load notifications.',
+                              style: TextStyle(color: Colors.black54),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              ref.invalidate(recentNotificationsProvider);
+                            },
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 14),
@@ -535,5 +580,100 @@ class DashboardScreen extends StatelessWidget {
       return '${diff.inHours}h ago';
     }
     return '${diff.inDays}d ago';
+  }
+}
+
+class _NotificationRow extends StatelessWidget {
+  const _NotificationRow({
+    required this.title,
+    required this.message,
+    required this.time,
+    this.isUnread,
+    this.onTap,
+  });
+
+  final String title;
+  final String message;
+  final DateTime? time;
+  final bool? isUnread;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedTitle = title.trim();
+    final trimmedMessage = message.trim();
+
+    final bool showUnread = isUnread ?? false;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 10, top: 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 1),
+                    child: Icon(Icons.notifications_active_outlined, size: 18),
+                  ),
+                  if (showUnread)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: AppTheme.oceanBlue,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      trimmedTitle.isEmpty ? 'Notification' : trimmedTitle,
+                      style: TextStyle(
+                        fontWeight: showUnread ? FontWeight.w800 : FontWeight.w700,
+                        color:
+                            showUnread ? AppTheme.nightBlue : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    if (trimmedMessage.isNotEmpty)
+                      Text(
+                        trimmedMessage,
+                        style: TextStyle(
+                          color: showUnread ? Colors.black87 : Colors.black54,
+                        ),
+                      ),
+                    if (time != null) ...[
+                      const SizedBox(height: 1),
+                      Text(
+                        DashboardScreen._timeAgo(time!),
+                        style: const TextStyle(
+                          color: Colors.black45,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

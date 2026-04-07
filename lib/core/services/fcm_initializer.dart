@@ -82,6 +82,7 @@ class FCMInitializer {
       _container?.invalidate(notificationsProvider);
       _container?.invalidate(notificationCountsProvider);
       _container?.invalidate(unreadNotificationCountProvider);
+      _container?.invalidate(recentNotificationsProvider);
     });
 
     // 5. Opened from Background

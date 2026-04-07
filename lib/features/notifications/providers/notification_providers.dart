@@ -15,6 +15,12 @@ final notificationsProvider = FutureProvider.autoDispose<List<NotificationLog>>(
   },
 );
 
+final recentNotificationsProvider =
+    FutureProvider.autoDispose<List<NotificationLog>>((ref) async {
+      final repository = ref.watch(notificationRepositoryProvider);
+      return await repository.getNotifications(limit: 2, offset: 0);
+    });
+
 final notificationCountsProvider =
     FutureProvider.autoDispose<({int all, int unread, int read})>((ref) async {
       final repository = ref.watch(notificationRepositoryProvider);
