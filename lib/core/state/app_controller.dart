@@ -675,9 +675,6 @@ class AppController extends ChangeNotifier {
       _isLoggedIn = true;
       // Successful OTP login means user exists — profile is always completed.
       _profileCompleted = true;
-      _currentLatitude = null;
-      _currentLongitude = null;
-      _currentLocationLabel = null;
       _profile = PartnerProfile(
         fullName: fullName,
         mobile: responseMobile,
@@ -773,9 +770,6 @@ class AppController extends ChangeNotifier {
 
       _sessionToken = token;
       _isLoggedIn = true;
-      _currentLatitude = null;
-      _currentLongitude = null;
-      _currentLocationLabel = null;
       _profile = PartnerProfile(
         fullName: respFullName,
         mobile: responseMobile,
@@ -1980,9 +1974,6 @@ class AppController extends ChangeNotifier {
     await Future.wait(<Future<bool>>[
       prefs.setString(_prefAccessToken, _sessionToken!),
       prefs.setBool(_prefRememberMe, _rememberMe),
-      prefs.remove(_prefCurrentLat),
-      prefs.remove(_prefCurrentLng),
-      prefs.remove(_prefCurrentLocationLabel),
       if (refreshToken != null)
         prefs.setString(_prefRefreshToken, refreshToken),
       if (tokenType != null) prefs.setString(_prefTokenType, tokenType),

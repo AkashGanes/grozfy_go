@@ -59,18 +59,7 @@ class _CurrentLocationPickerScreenState
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final app = AppScope.of(context);
-      if (app.hasSelectedLocation &&
-          app.currentLatitude != null &&
-          app.currentLongitude != null) {
-        _selectedPoint = LatLng(app.currentLatitude!, app.currentLongitude!);
-        _addressLabel = app.currentLocationLabel ?? 'Selected location';
-        _loading = false;
-        _moveMapToSelected();
-        setState(() {});
-      } else {
-        _checkLocationStatus();
-      }
+      _checkLocationStatus();
     });
   }
 
@@ -79,6 +68,7 @@ class _CurrentLocationPickerScreenState
     WidgetsBinding.instance.removeObserver(this);
     _searchDebounce?.cancel();
     _debounceTimer?.cancel();
+    _geocodeTimeoutTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -92,44 +82,58 @@ class _CurrentLocationPickerScreenState
 
   Future<void> _checkLocationStatus() async {
     final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    final LocationPermission permission = await Geolocator.checkPermission();
+    var permission = await Geolocator.checkPermission();
     
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     
     final app = AppScope.of(context);
     final bool hasSavedLocation = app.hasSelectedLocation && 
         app.currentLatitude != null && 
         app.currentLongitude != null;
 
-    if (serviceEnabled && 
-        (permission == LocationPermission.always || 
-         permission == LocationPermission.whileInUse)) {
-      // If GPS is enabled and permission granted
-      if (!hasSavedLocation) {
-        // No saved location - auto load current GPS
+    if (serviceEnabled) {
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      
+      if (permission == LocationPermission.always || 
+          permission == LocationPermission.whileInUse) {
+        setState(() {
+          _error = null;
+          _loading = false;
+        });
         _loadCurrentLocation();
-      } else if (_error != null) {
-        // Has saved location but had error - retry
-        _loadCurrentLocation();
-      } else if (_loading) {
-        // Has saved location, no error - just stop loading
-        setState(() => _loading = false);
+      } else {
+        setState(() {
+          _loading = false;
+          _error = 'Location permission permanently denied. Open settings to enable it.';
+          _addressLabel = 'Tap on map to select location';
+          if (hasSavedLocation) {
+            _selectedPoint = LatLng(app.currentLatitude!, app.currentLongitude!);
+            _addressLabel = app.currentLocationLabel ?? 'Selected location';
+          } else {
+            _selectedPoint = const LatLng(28.6139, 77.2090);
+          }
+        });
       }
     } else {
-      // GPS is disabled or permission denied
       setState(() {
         _loading = false;
-        if (_error == null) {
-          if (!serviceEnabled) {
-            _error = 'Location service is disabled. Please enable GPS.';
-          } else if (permission == LocationPermission.denied) {
-            _error = 'Location permission denied. Please allow access.';
-          } else if (permission == LocationPermission.deniedForever) {
-            _error = 'Location permission permanently denied. Open settings to enable it.';
-          }
-          _addressLabel = 'Tap on map to select location';
+        _error = 'Location service is disabled. Please enable GPS.';
+        _addressLabel = 'Tap on map to select location';
+        if (hasSavedLocation) {
+          _selectedPoint = LatLng(app.currentLatitude!, app.currentLongitude!);
+          _addressLabel = app.currentLocationLabel ?? 'Selected location';
+        } else {
+          _selectedPoint = const LatLng(28.6139, 77.2090);
         }
       });
+    }
+    
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -141,6 +145,7 @@ class _CurrentLocationPickerScreenState
 
     try {
       final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      
       if (!serviceEnabled) {
         setState(() {
           _loading = false;
@@ -151,6 +156,7 @@ class _CurrentLocationPickerScreenState
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
+      
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
@@ -208,15 +214,31 @@ class _CurrentLocationPickerScreenState
 
   DateTime? _lastReverseGeocodeTime;
   Timer? _debounceTimer;
+  Timer? _geocodeTimeoutTimer;
+  LatLng? _lastGeocodedPoint;
 
   Future<void> _reverseGeocode(double lat, double lng) async {
     _debounceTimer?.cancel();
+    _geocodeTimeoutTimer?.cancel();
+    
+    // Set a timeout to fallback to coordinates if geocoding takes too long
+    _geocodeTimeoutTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() {
+          _addressLabel = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
+        });
+      }
+    });
+    
     _debounceTimer = Timer(const Duration(milliseconds: 500), () {
       _performReverseGeocode(lat, lng);
     });
   }
 
   Future<void> _performReverseGeocode(double lat, double lng) async {
+    // Cancel timeout timer since we're starting the actual request
+    _geocodeTimeoutTimer?.cancel();
+    
     final now = DateTime.now();
     if (_lastReverseGeocodeTime != null) {
       final diff = now.difference(_lastReverseGeocodeTime!).inMilliseconds;
@@ -226,12 +248,9 @@ class _CurrentLocationPickerScreenState
     }
     _lastReverseGeocodeTime = now;
     
-    final currentLat = lat;
-    final currentLng = lng;
-    
     try {
       final uri = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?lat=$currentLat&lon=$currentLng&format=json'
+        'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json'
       );
       
       final response = await http.get(
@@ -239,9 +258,12 @@ class _CurrentLocationPickerScreenState
         headers: {'User-Agent': 'FlowFleetPartner/1.0'}
       );
       
-      if (!mounted || _selectedPoint.latitude != currentLat || _selectedPoint.longitude != currentLng) {
+      if (!mounted || _selectedPoint.latitude != lat || _selectedPoint.longitude != lng) {
         return;
       }
+      
+      // Update last geocoded point for drag optimization
+      _lastGeocodedPoint = LatLng(lat, lng);
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -257,21 +279,21 @@ class _CurrentLocationPickerScreenState
         } else {
           if (mounted) {
             setState(() {
-              _addressLabel = '${currentLat.toStringAsFixed(5)}, ${currentLng.toStringAsFixed(5)}';
+              _addressLabel = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
             });
           }
         }
       } else {
         if (mounted) {
           setState(() {
-            _addressLabel = '${currentLat.toStringAsFixed(5)}, ${currentLng.toStringAsFixed(5)}';
+            _addressLabel = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
           });
         }
       }
     } catch (_) {
       if (mounted) {
         setState(() {
-          _addressLabel = '${currentLat.toStringAsFixed(5)}, ${currentLng.toStringAsFixed(5)}';
+          _addressLabel = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
         });
       }
     }
@@ -337,13 +359,16 @@ class _CurrentLocationPickerScreenState
 
   void _selectSearchResult(SearchResult result) {
     final LatLng point = LatLng(result.lat, result.lon);
+    final shortAddress = _shortenAddress(result.displayName);
     setState(() {
       _selectedPoint = point;
-      _addressLabel = result.displayName;
+      _addressLabel = shortAddress;
       _searchResults = [];
       _searchController.clear();
     });
     _moveMapToSelected();
+    // Update last geocoded point
+    _lastGeocodedPoint = point;
   }
 
   void _clearSearch() {
@@ -351,6 +376,53 @@ class _CurrentLocationPickerScreenState
     setState(() {
       _searchResults = [];
     });
+  }
+
+  void _showEditAddressDialog() {
+    final TextEditingController editController = TextEditingController(
+      text: _addressLabel == 'Getting address...' || _addressLabel == 'Selecting location...'
+          ? ''
+          : _addressLabel,
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Location Label'),
+        content: TextField(
+          controller: editController,
+          decoration: const InputDecoration(
+            hintText: 'Enter a custom label (e.g., "My Neighborhood")',
+            border: OutlineInputBorder(),
+          ),
+          maxLength: 50,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newLabel = editController.text.trim();
+              if (newLabel.isNotEmpty) {
+                setState(() {
+                  _addressLabel = newLabel;
+                });
+              }
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.nightBlue,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _confirmSelection() async {
@@ -389,14 +461,40 @@ class _CurrentLocationPickerScreenState
 
   void _onMapDrag(MapCamera camera, bool hasGesture) {
     if (hasGesture) {
+      final newCenter = camera.center;
+      
+      // Only update if moved significantly (~10 meters)
+      if (_lastGeocodedPoint != null) {
+        final distance = _calculateDistance(
+          _lastGeocodedPoint!.latitude,
+          _lastGeocodedPoint!.longitude,
+          newCenter.latitude,
+          newCenter.longitude,
+        );
+        if (distance < 0.01) {
+          // Less than ~1km change, skip geocoding
+          setState(() {
+            _selectedPoint = newCenter;
+          });
+          return;
+        }
+      }
+      
       setState(() {
-        _selectedPoint = camera.center;
+        _selectedPoint = newCenter;
         _addressLabel = 'Getting address...';
       });
       
-      // Call reverse geocode - rate limiting is handled in the method
-      _reverseGeocode(camera.center.latitude, camera.center.longitude);
+      _reverseGeocode(newCenter.latitude, newCenter.longitude);
     }
+  }
+  
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    // Simple Euclidean approximation for small distances
+    // 1 degree latitude ≈ 111 km
+    final latDiff = (lat2 - lat1) * 111;
+    final lonDiff = (lon2 - lon1) * 111 * 0.85; // cos(latitude) approximation
+    return (latDiff * latDiff + lonDiff * lonDiff);
   }
 
   @override
@@ -712,9 +810,8 @@ class _CurrentLocationPickerScreenState
                                   Icons.edit_rounded,
                                   size: 20,
                                 ),
-                                onPressed: () {
-                                  // Allow manual edit if needed
-                                },
+                                onPressed: _showEditAddressDialog,
+                                tooltip: 'Edit location label',
                               ),
                           ],
                         ),
