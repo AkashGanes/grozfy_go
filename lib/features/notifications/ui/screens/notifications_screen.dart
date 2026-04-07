@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../../../core/navigation/app_routes.dart';
 import '../../providers/notification_providers.dart';
@@ -11,33 +12,119 @@ import '../../../orders_by_location/model/external_delivery.dart';
 import '../../../orders_by_location/repository/external_delivery_repository.dart';
 import '../../../orders_by_location/ui/order_location_detail_screen.dart';
 
-class NotificationsScreen extends ConsumerWidget {
+class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final notificationsAsync = ref.watch(notificationsProvider);
-    final overrides = ref.watch(notificationReadOverridesProvider);
+  ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
+}
 
-    ref.listen<AsyncValue<List<NotificationLog>>>(notificationsProvider, (
-      _,
-      next,
-    ) {
-      next.whenData((notifications) {
-        final currentOverrides = ref.read(notificationReadOverridesProvider);
-        if (currentOverrides.isEmpty) return;
+class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
+  static const int _pageSize = 50;
 
-        final readNames = notifications
-            .where((n) => n.read)
-            .map((n) => n.name)
-            .toSet();
-        if (readNames.isEmpty) return;
+  late final PagingController<int, NotificationLog> _pagingController;
 
-        final pruned = Set<String>.from(currentOverrides)..removeAll(readNames);
-        if (pruned.length == currentOverrides.length) return;
-        ref.read(notificationReadOverridesProvider.notifier).state = pruned;
-      });
-    });
+  @override
+  void initState() {
+    super.initState();
+    _pagingController = PagingController<int, NotificationLog>(firstPageKey: 0)
+      ..addPageRequestListener(_fetchPage);
+  }
+
+  int? _readFilterFor(NotificationListFilter filter) {
+    switch (filter) {
+      case NotificationListFilter.all:
+        return null;
+      case NotificationListFilter.unread:
+        return 0;
+      case NotificationListFilter.read:
+        return 1;
+    }
+  }
+
+  Future<void> _fetchPage(int offset) async {
+    try {
+      final filter = ref.read(notificationListFilterProvider);
+      final repo = ref.read(notificationRepositoryProvider);
+      final items = await repo.getNotifications(
+        limit: _pageSize,
+        offset: offset,
+        read: _readFilterFor(filter),
+      );
+
+      final currentOverrides = ref.read(notificationReadOverridesProvider);
+      if (currentOverrides.isNotEmpty) {
+        final readNames = items.where((n) => n.read).map((n) => n.name).toSet();
+        if (readNames.isNotEmpty) {
+          final pruned = Set<String>.from(currentOverrides)
+            ..removeAll(readNames);
+          if (pruned.length != currentOverrides.length) {
+            ref.read(notificationReadOverridesProvider.notifier).state = pruned;
+          }
+        }
+      }
+
+      final isLastPage = items.length < _pageSize;
+      if (isLastPage) {
+        _pagingController.appendLastPage(items);
+      } else {
+        _pagingController.appendPage(items, offset + items.length);
+      }
+    } catch (e) {
+      _pagingController.error = e;
+    }
+  }
+
+  Future<void> _refresh() async {
+    ref.invalidate(notificationsProvider);
+    ref.invalidate(notificationCountsProvider);
+    ref.invalidate(unreadNotificationCountProvider);
+    _pagingController.refresh();
+  }
+
+  Future<void> _markAllAsReadAction(BuildContext context) async {
+    final currentOverrides = ref.read(notificationReadOverridesProvider);
+    final overrideNotifier = ref.read(notificationReadOverridesProvider.notifier);
+    final loaded = _pagingController.itemList ?? const <NotificationLog>[];
+    final optimistic = loaded
+        .where((n) => !n.read)
+        .map((n) => n.name)
+        .where((name) => name.isNotEmpty)
+        .toSet();
+
+    if (optimistic.isNotEmpty) {
+      overrideNotifier.state = {...overrideNotifier.state, ...optimistic};
+    }
+
+    final repo = ref.read(notificationRepositoryProvider);
+    final ok = await repo.markAllAsRead();
+    if (!ok) {
+      final next = Set<String>.from(currentOverrides)..removeAll(optimistic);
+      overrideNotifier.state = next;
+      if (context.mounted) {
+        showInfoSnack(context, 'Failed to mark all notifications as read');
+      }
+      return;
+    }
+
+    await _refresh();
+  }
+
+  @override
+  void dispose() {
+    _pagingController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filter = ref.watch(notificationListFilterProvider);
+    final countsAsync = ref.watch(notificationCountsProvider);
+
+    final counts = countsAsync.valueOrNull;
+    final int allCount = counts?.all ?? 0;
+    final int unreadCount = counts?.unread ?? 0;
+    final int readCount = counts?.read ?? 0;
 
     return AppShell(
       title: 'Notifications',
@@ -50,148 +137,123 @@ class NotificationsScreen extends ConsumerWidget {
           onSelected: (value) async {
             switch (value) {
               case _NotificationsMenuAction.markAllRead:
-                final cached = notificationsAsync.valueOrNull;
-                final List<NotificationLog> current =
-                    cached ?? await ref.read(notificationsProvider.future);
-                if (!context.mounted) return;
-                await _markAllAsReadAction(context, ref, current);
+                await _markAllAsReadAction(context);
             }
           },
           itemBuilder: (context) {
-            final count = notificationsAsync.maybeWhen(
-              data: (notifications) => notifications
-                  .where((n) => !(n.read || overrides.contains(n.name)))
-                  .length,
-              orElse: () => 0,
-            );
             return <PopupMenuEntry<_NotificationsMenuAction>>[
               PopupMenuItem<_NotificationsMenuAction>(
                 value: _NotificationsMenuAction.markAllRead,
-                enabled: count > 0,
+                enabled: unreadCount > 0,
                 child: const Text('Mark all read'),
               ),
             ];
           },
         ),
       ],
-      child: notificationsAsync.when(
-        data: (notifications) =>
-            _NotificationsBody(notifications: notifications).animate().fadeIn(),
-        loading: () => const _LoadingState(),
-        error: (err, stack) => _ErrorState(message: err.toString()),
-      ),
-    );
-  }
-}
-
-class _NotificationsBody extends ConsumerWidget {
-  const _NotificationsBody({required this.notifications});
-
-  final List<NotificationLog> notifications;
-
-  Future<void> _refresh(WidgetRef ref) async {
-    ref.invalidate(notificationsProvider);
-    await ref.read(notificationsProvider.future);
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final overrides = ref.watch(notificationReadOverridesProvider);
-    final filter = ref.watch(notificationListFilterProvider);
-
-    final unreadNotifications = notifications
-        .where((n) => !(n.read || overrides.contains(n.name)))
-        .toList();
-    final readNotifications = notifications
-        .where((n) => (n.read || overrides.contains(n.name)))
-        .toList();
-
-    final int unreadCount = unreadNotifications.length;
-    final int readCount = readNotifications.length;
-
-    final List<NotificationLog> visibleNotifications = switch (filter) {
-      NotificationListFilter.all => notifications,
-      NotificationListFilter.unread => unreadNotifications,
-      NotificationListFilter.read => readNotifications,
-    };
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Row(
-            children: [
-              Expanded(
-                child: _NotificationFilterPill(
-                  label: 'All',
-                  count: notifications.length,
-                  selected: filter == NotificationListFilter.all,
-                  onTap: () {
-                    ref.read(notificationListFilterProvider.notifier).state =
-                        NotificationListFilter.all;
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _NotificationFilterPill(
-                  label: 'Unread',
-                  count: unreadCount,
-                  selected: filter == NotificationListFilter.unread,
-                  onTap: () {
-                    ref.read(notificationListFilterProvider.notifier).state =
-                        NotificationListFilter.unread;
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _NotificationFilterPill(
-                  label: 'Read',
-                  count: readCount,
-                  selected: filter == NotificationListFilter.read,
-                  onTap: () {
-                    ref.read(notificationListFilterProvider.notifier).state =
-                        NotificationListFilter.read;
-                  },
-                ),
-              ),
-            ],
-          ),
-        ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.05, end: 0),
-        const SizedBox(height: 10),
-        _InboxSummaryBar(
-          unreadCount: unreadCount,
-        ).animate().fadeIn(duration: 260.ms).slideY(begin: 0.05, end: 0),
-        const SizedBox(height: 12),
-        Expanded(
-          child: RefreshIndicator(
-            color: AppTheme.oceanBlue,
-            onRefresh: () => _refresh(ref),
-            child: visibleNotifications.isEmpty
-                ? _FilteredEmptyState(filter: filter)
-                : ListView.builder(
-                    physics: const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
-                    padding: EdgeInsets.zero,
-                    itemCount: visibleNotifications.length,
-                    itemBuilder: (context, index) {
-                      final notification = visibleNotifications[index];
-                      return _NotificationTile(notification: notification)
-                          .animate()
-                          .fadeIn(
-                            delay: Duration(
-                              milliseconds: (index * 50).clamp(0, 300),
-                            ),
-                            duration: 220.ms,
-                          )
-                          .slideY(begin: 0.08, end: 0);
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _NotificationFilterPill(
+                    label: 'All',
+                    count: allCount,
+                    selected: filter == NotificationListFilter.all,
+                    onTap: () {
+                      ref.read(notificationListFilterProvider.notifier).state =
+                          NotificationListFilter.all;
+                      _pagingController.refresh();
                     },
                   ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _NotificationFilterPill(
+                    label: 'Unread',
+                    count: unreadCount,
+                    selected: filter == NotificationListFilter.unread,
+                    onTap: () {
+                      ref.read(notificationListFilterProvider.notifier).state =
+                          NotificationListFilter.unread;
+                      _pagingController.refresh();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _NotificationFilterPill(
+                    label: 'Read',
+                    count: readCount,
+                    selected: filter == NotificationListFilter.read,
+                    onTap: () {
+                      ref.read(notificationListFilterProvider.notifier).state =
+                          NotificationListFilter.read;
+                      _pagingController.refresh();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.05, end: 0),
+          const SizedBox(height: 10),
+          _InboxSummaryBar(
+            unreadCount: unreadCount,
+          ).animate().fadeIn(duration: 260.ms).slideY(begin: 0.05, end: 0),
+          const SizedBox(height: 12),
+          Expanded(
+            child: RefreshIndicator(
+              color: AppTheme.oceanBlue,
+              onRefresh: _refresh,
+              child: PagedListView<int, NotificationLog>(
+                pagingController: _pagingController,
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                padding: EdgeInsets.zero,
+                builderDelegate: PagedChildBuilderDelegate<NotificationLog>(
+                  noItemsFoundIndicatorBuilder: (context) =>
+                      _FilteredEmptyState(filter: filter),
+                  firstPageProgressIndicatorBuilder: (context) => const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  ),
+                  newPageProgressIndicatorBuilder: (context) => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 18),
+                    child: Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.4),
+                      ),
+                    ),
+                  ),
+                  firstPageErrorIndicatorBuilder: (context) => _ErrorState(
+                    message: _pagingController.error?.toString() ?? 'Error',
+                  ),
+                  itemBuilder: (context, item, index) {
+                    return _NotificationTile(
+                      notification: item,
+                      onChanged: () async {
+                        await _refresh();
+                      },
+                    )
+                        .animate()
+                        .fadeIn(
+                          delay: Duration(
+                            milliseconds: (index * 50).clamp(0, 300),
+                          ),
+                          duration: 220.ms,
+                        )
+                        .slideY(begin: 0.08, end: 0);
+                  },
+                ),
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -298,6 +360,7 @@ Future<void> _markAllAsReadAction(
     final next = Set<String>.from(overrideNotifier.state)..removeAll(unreadIds);
     overrideNotifier.state = next;
     ref.invalidate(notificationsProvider);
+    ref.invalidate(notificationCountsProvider);
     await ref.read(notificationsProvider.future);
     if (context.mounted) {
       showInfoSnack(context, 'Failed to mark all notifications as read');
@@ -306,6 +369,7 @@ Future<void> _markAllAsReadAction(
   }
 
   ref.invalidate(notificationsProvider);
+  ref.invalidate(notificationCountsProvider);
   await ref.read(notificationsProvider.future);
 }
 
@@ -414,32 +478,38 @@ class _FilteredEmptyState extends StatelessWidget {
       ),
     };
 
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        const SizedBox(height: 54),
-        Center(
-          child: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.nightBlue,
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 54),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.nightBlue,
+              ),
+              textAlign: TextAlign.center,
             ),
-          ),
+            const SizedBox(height: 6),
+            Text(
+              subtitle,
+              style: const TextStyle(color: Colors.black45),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
-        const SizedBox(height: 6),
-        Center(
-          child: Text(subtitle, style: const TextStyle(color: Colors.black45)),
-        ),
-      ],
+      ),
     );
   }
 }
 
 class _NotificationTile extends ConsumerWidget {
   final NotificationLog notification;
-  const _NotificationTile({required this.notification});
+  final Future<void> Function()? onChanged;
+  const _NotificationTile({required this.notification, this.onChanged});
 
   IconData _iconForNotification() {
     final doctype = (notification.refDoctype ?? '').toLowerCase();
@@ -496,6 +566,8 @@ class _NotificationTile extends ConsumerWidget {
           }
         }
         ref.invalidate(notificationsProvider);
+        ref.invalidate(notificationCountsProvider);
+        await onChanged?.call();
       }
 
       final doctype = (notification.refDoctype ?? '').trim();

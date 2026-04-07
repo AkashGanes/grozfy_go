@@ -22,7 +22,9 @@ class DashboardScreen extends StatelessWidget {
       actions: [
         Consumer(
           builder: (context, ref, _) {
-            final unreadCount = ref.watch(unreadNotificationCountProvider);
+            final unreadCount = ref
+                .watch(unreadNotificationCountProvider)
+                .maybeWhen(data: (v) => v, orElse: () => 0);
             return Stack(
               children: [
                 IconButton(

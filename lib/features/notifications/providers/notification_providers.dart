@@ -15,6 +15,12 @@ final notificationsProvider = FutureProvider.autoDispose<List<NotificationLog>>(
   },
 );
 
+final notificationCountsProvider =
+    FutureProvider.autoDispose<({int all, int unread, int read})>((ref) async {
+      final repository = ref.watch(notificationRepositoryProvider);
+      return await repository.getNotificationCounts();
+    });
+
 enum NotificationListFilter { all, unread, read }
 
 final notificationListFilterProvider =
@@ -25,7 +31,7 @@ final notificationListFilterProvider =
 final notificationReadOverridesProvider =
     StateProvider.autoDispose<Set<String>>((ref) => <String>{});
 
-final unreadNotificationCountProvider = Provider.autoDispose<int>((ref) {
-  final notifications = ref.watch(notificationsProvider).value ?? const [];
-  return notifications.where((n) => !n.read).length;
+final unreadNotificationCountProvider = FutureProvider.autoDispose<int>((ref) {
+  final repository = ref.watch(notificationRepositoryProvider);
+  return repository.getUnreadCount();
 });

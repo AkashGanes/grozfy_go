@@ -80,6 +80,8 @@ class FCMInitializer {
 
       // REAL-TIME REFRESH
       _container?.invalidate(notificationsProvider);
+      _container?.invalidate(notificationCountsProvider);
+      _container?.invalidate(unreadNotificationCountProvider);
     });
 
     // 5. Opened from Background
