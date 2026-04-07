@@ -19,6 +19,26 @@ class NotificationsScreen extends ConsumerWidget {
     final notificationsAsync = ref.watch(notificationsProvider);
     final overrides = ref.watch(notificationReadOverridesProvider);
 
+    ref.listen<AsyncValue<List<NotificationLog>>>(notificationsProvider, (
+      _,
+      next,
+    ) {
+      next.whenData((notifications) {
+        final currentOverrides = ref.read(notificationReadOverridesProvider);
+        if (currentOverrides.isEmpty) return;
+
+        final readNames = notifications
+            .where((n) => n.read)
+            .map((n) => n.name)
+            .toSet();
+        if (readNames.isEmpty) return;
+
+        final pruned = Set<String>.from(currentOverrides)..removeAll(readNames);
+        if (pruned.length == currentOverrides.length) return;
+        ref.read(notificationReadOverridesProvider.notifier).state = pruned;
+      });
+    });
+
     return AppShell(
       title: 'Notifications',
       subtitle: 'Delivery updates and alerts',
@@ -140,10 +160,9 @@ class _NotificationsBody extends ConsumerWidget {
           ),
         ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.05, end: 0),
         const SizedBox(height: 10),
-        _InboxSummaryBar(unreadCount: unreadCount)
-            .animate()
-            .fadeIn(duration: 260.ms)
-            .slideY(begin: 0.05, end: 0),
+        _InboxSummaryBar(
+          unreadCount: unreadCount,
+        ).animate().fadeIn(duration: 260.ms).slideY(begin: 0.05, end: 0),
         const SizedBox(height: 12),
         Expanded(
           child: RefreshIndicator(
@@ -162,7 +181,9 @@ class _NotificationsBody extends ConsumerWidget {
                       return _NotificationTile(notification: notification)
                           .animate()
                           .fadeIn(
-                            delay: Duration(milliseconds: (index * 50).clamp(0, 300)),
+                            delay: Duration(
+                              milliseconds: (index * 50).clamp(0, 300),
+                            ),
                             duration: 220.ms,
                           )
                           .slideY(begin: 0.08, end: 0);
@@ -182,15 +203,12 @@ class _InboxSummaryBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final filter = ref.watch(notificationListFilterProvider);
-    final bool unreadOnly = filter == NotificationListFilter.unread;
-
     final String subtitle = unreadCount == 0
         ? 'All caught up'
         : '$unreadCount unread update${unreadCount > 1 ? 's' : ''}';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.62),
         borderRadius: BorderRadius.circular(18),
@@ -251,35 +269,6 @@ class _InboxSummaryBar extends ConsumerWidget {
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                'Unread only',
-                style: TextStyle(
-                  color: unreadOnly
-                      ? AppTheme.oceanBlue.withValues(alpha: 0.95)
-                      : Colors.black54,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Transform.scale(
-                scale: 0.86,
-                child: Switch.adaptive(
-                  value: unreadOnly,
-                  onChanged: (value) {
-                    if (unreadCount == 0 && value) return;
-                    ref.read(notificationListFilterProvider.notifier).state =
-                        value
-                            ? NotificationListFilter.unread
-                            : NotificationListFilter.all;
-                  },
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -309,14 +298,15 @@ Future<void> _markAllAsReadAction(
     final next = Set<String>.from(overrideNotifier.state)..removeAll(unreadIds);
     overrideNotifier.state = next;
     ref.invalidate(notificationsProvider);
+    await ref.read(notificationsProvider.future);
     if (context.mounted) {
       showInfoSnack(context, 'Failed to mark all notifications as read');
     }
     return;
   }
 
-  overrideNotifier.state = <String>{};
   ref.invalidate(notificationsProvider);
+  await ref.read(notificationsProvider.future);
 }
 
 class _NotificationFilterPill extends StatelessWidget {
@@ -411,17 +401,17 @@ class _FilteredEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     final (title, subtitle) = switch (filter) {
       NotificationListFilter.all => (
-          'No notifications yet',
-          'New delivery updates will appear here',
-        ),
+        'No notifications yet',
+        'New delivery updates will appear here',
+      ),
       NotificationListFilter.unread => (
-          'No unread notifications',
-          'You are all caught up',
-        ),
+        'No unread notifications',
+        'You are all caught up',
+      ),
       NotificationListFilter.read => (
-          'No read notifications',
-          'Read notifications will appear here',
-        ),
+        'No read notifications',
+        'Read notifications will appear here',
+      ),
     };
 
     return ListView(
@@ -440,10 +430,7 @@ class _FilteredEmptyState extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Center(
-          child: Text(
-            subtitle,
-            style: const TextStyle(color: Colors.black45),
-          ),
+          child: Text(subtitle, style: const TextStyle(color: Colors.black45)),
         ),
       ],
     );
@@ -477,15 +464,19 @@ class _NotificationTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final overrides = ref.watch(notificationReadOverridesProvider);
-    final bool effectiveRead = notification.read || overrides.contains(notification.name);
+    final bool effectiveRead =
+        notification.read || overrides.contains(notification.name);
     final isUnread = !effectiveRead;
     final hasNavigationTarget =
         (notification.refDoctype ?? '').trim().isNotEmpty &&
         (notification.refName ?? '').trim().isNotEmpty;
 
     Future<void> handleTap() async {
-      final overrideNotifier = ref.read(notificationReadOverridesProvider.notifier);
-      final bool shouldMarkRead = !notification.read &&
+      final overrideNotifier = ref.read(
+        notificationReadOverridesProvider.notifier,
+      );
+      final bool shouldMarkRead =
+          !notification.read &&
           !overrideNotifier.state.contains(notification.name);
 
       if (shouldMarkRead) {
@@ -496,23 +487,24 @@ class _NotificationTile extends ConsumerWidget {
         final ok = await ref
             .read(notificationRepositoryProvider)
             .markAsRead(notification.name);
-        final next = Set<String>.from(overrideNotifier.state)
-          ..remove(notification.name);
-        overrideNotifier.state = next;
-        ref.invalidate(notificationsProvider);
-        if (!ok && context.mounted) {
-          showInfoSnack(context, 'Failed to mark notification as read');
+        if (!ok) {
+          final next = Set<String>.from(overrideNotifier.state)
+            ..remove(notification.name);
+          overrideNotifier.state = next;
+          if (context.mounted) {
+            showInfoSnack(context, 'Failed to mark notification as read');
+          }
         }
+        ref.invalidate(notificationsProvider);
       }
 
       final doctype = (notification.refDoctype ?? '').trim();
       final docname = (notification.refName ?? '').trim();
       if (doctype == 'External Delivery Trip' && docname.isNotEmpty) {
         if (!context.mounted) return;
-        Navigator.of(context).pushNamed(
-          AppRoutes.externalDeliveryTripDetails,
-          arguments: docname,
-        );
+        Navigator.of(
+          context,
+        ).pushNamed(AppRoutes.externalDeliveryTripDetails, arguments: docname);
       } else if (doctype == 'External Delivery' && docname.isNotEmpty) {
         if (!context.mounted) return;
         final repository = ExternalDeliveryRepository();
@@ -614,10 +606,7 @@ class _NotificationTile extends ConsumerWidget {
                 ),
               ] else if (hasNavigationTarget) ...[
                 const SizedBox(width: 8),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.black38,
-                ),
+                const Icon(Icons.chevron_right_rounded, color: Colors.black38),
               ],
             ],
           ),

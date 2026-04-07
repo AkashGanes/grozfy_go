@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/models/app_models.dart';
 import '../../../../core/state/app_controller.dart';
@@ -14,9 +15,14 @@ class NotificationRepository {
     if (!_app.isLoggedIn) return [];
 
     try {
+      final String? loggedUser = _app.loggedUser?.trim();
+      if (loggedUser == null || loggedUser.isEmpty) return [];
+
       final queryParams = {
-        'fields': '["*"]',
-        'filters': '[["for_user", "=", "${_app.loggedUser} "]]'.trim(),
+        'fields': jsonEncode(<String>['*']),
+        'filters': jsonEncode([
+          ['for_user', '=', loggedUser],
+        ]),
         'order_by': 'creation desc',
         'limit_page_length': '$limit',
         'limit_start': '$offset',

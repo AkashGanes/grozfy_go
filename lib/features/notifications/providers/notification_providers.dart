@@ -19,13 +19,13 @@ enum NotificationListFilter { all, unread, read }
 
 final notificationListFilterProvider =
     StateProvider.autoDispose<NotificationListFilter>(
-  (ref) => NotificationListFilter.all,
-);
+      (ref) => NotificationListFilter.all,
+    );
 
 final notificationReadOverridesProvider =
     StateProvider.autoDispose<Set<String>>((ref) => <String>{});
 
-final unreadNotificationCountProvider = StateProvider<int>((ref) {
-  final notifications = ref.watch(notificationsProvider).value ?? [];
+final unreadNotificationCountProvider = Provider.autoDispose<int>((ref) {
+  final notifications = ref.watch(notificationsProvider).value ?? const [];
   return notifications.where((n) => !n.read).length;
 });
