@@ -18,7 +18,8 @@ void main() {
       ),
     );
 
-    expect(find.text('Mobile + OTP'), findsOneWidget);
-    expect(find.text('Create New Account'), findsOneWidget);
+    expect(find.text('Mobile Number'), findsOneWidget);
+    expect(find.text('Enter your mobile number to continue'), findsOneWidget);
+    expect(find.text('Send OTP'), findsOneWidget);
   });
 }

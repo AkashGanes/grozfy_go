@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'fcm_background_handler.dart';
 import 'notification_navigation_handler.dart';
+import '../utils/html_utils.dart';
 
 import '../../features/notifications/providers/notification_providers.dart';
 
@@ -96,18 +97,21 @@ class FCMInitializer {
   }
 
   void _showForegroundNotify(RemoteMessage message) {
-    final String title =
+    final String rawTitle =
         (message.notification?.title ??
                 message.data['title'] ??
                 message.data['subject'] ??
                 '')
             .toString();
-    final String body =
+    final String rawBody =
         (message.notification?.body ??
                 message.data['body'] ??
                 message.data['message'] ??
                 '')
             .toString();
+
+    final String title = HtmlUtils.stripHtml(rawTitle);
+    final String body = HtmlUtils.stripHtmlPreserveLineBreaks(rawBody);
     if (title.isEmpty && body.isEmpty) return;
 
     final String doctype =
