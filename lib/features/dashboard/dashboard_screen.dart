@@ -415,11 +415,6 @@ class DashboardScreen extends StatelessWidget {
                               title: notice.title,
                               message: notice.message,
                               time: notice.time,
-                              onTap: () {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(AppRoutes.notifications);
-                              },
                             );
                           }),
                         ];
