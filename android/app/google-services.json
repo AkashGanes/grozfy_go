@@ -1,29 +1,29 @@
 {
-    "project_info": {
-        "project_number": "984431531071",
-        "project_id": "grozfygo",
-        "storage_bucket": "grozfygo.firebasestorage.app"
-    },
-    "client": [
-        {
-            "client_info": {
-                "mobilesdk_app_id": "1:984431531071:android:67da34ae862e877ca9948a",
-                "android_client_info": {
-                    "package_name": "com.example.delivery_partner_app"
-                }
-            },
-            "oauth_client": [],
-            "api_key": [
-                {
-                    "current_key": "AIzaSyDxXbNpYCLUTNsQnVUU0tFBgFs5RJggMBI"
-                }
-            ],
-            "services": {
-                "appinvite_service": {
-                    "other_platform_oauth_client": []
-                }
-            }
+  "project_info": {
+    "project_number": "984431531071",
+    "project_id": "grozfygo",
+    "storage_bucket": "grozfygo.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:984431531071:android:67da34ae862e877ca9948a",
+        "android_client_info": {
+          "package_name": "com.example.delivery_partner_app"
         }
-    ],
-    "configuration_version": "1"
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDxXbNpYCLUTNsQnVUU0tFBgFs5RJggMBI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
 }

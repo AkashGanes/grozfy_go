@@ -9,7 +9,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_core/firebase_core.dart';
 
 import '../constants/api_constants.dart';
 import '../models/app_models.dart';
@@ -3404,60 +3403,4 @@ class AppController extends ChangeNotifier {
     return double.tryParse(normalized);
   }
 
-  Future<void> updateFcmToken(String token) async {
-    if (!_isLoggedIn || _sessionToken == null || token.isEmpty) return;
-
-    final String? userEmail = loggedUser;
-    if (userEmail == null || userEmail.isEmpty) {
-      debugPrint('Cannot update FCM token: User missing');
-      return;
-    }
-
-    final String siteName = Uri.parse(ApiConstants.erpBaseUrl).host;
-    final String projectId = Firebase.apps.isNotEmpty
-        ? Firebase.app().options.projectId
-        : '';
-    if (projectId.isEmpty) {
-      debugPrint('Cannot update FCM token: Firebase project id missing');
-      return;
-    }
-
-    try {
-      // 1. Sync to the ERPNext device-token doctype used by the FCM broadcaster.
-      final Uri insertUri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.insert',
-      );
-
-      try {
-        await _authorizedPostJson(insertUri, <String, dynamic>{
-          'doc': jsonEncode(<String, dynamic>{
-            'doctype': 'FN User Device Token',
-            'project_name': projectId,
-            'site_name': siteName,
-            'user_id': userEmail,
-            'fcm_token': token,
-          }),
-        });
-        debugPrint('FN User Device Token registered for $userEmail');
-      } catch (e) {
-        // Ignore if already exists or doctype missing
-        debugPrint('FN User Device Token sync note: $e');
-      }
-
-      // 2. Fallback: Sync to User doctype field if it exists
-      final Uri userUri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
-      );
-      await _authorizedPostJson(userUri, <String, dynamic>{
-        'doctype': 'User',
-        'name': userEmail,
-        'fieldname': 'fcm_token',
-        'value': token,
-      }).catchError((_) => <String, dynamic>{});
-
-      debugPrint('FCM Token sync process completed');
-    } catch (e) {
-      debugPrint('Failed to sync FCM token: $e');
-    }
-  }
 }

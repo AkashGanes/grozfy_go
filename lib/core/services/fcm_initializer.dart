@@ -75,6 +75,11 @@ class FCMInitializer {
 
     // 4. Foreground Message Handler
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      debugPrint(
+        'FCM received foreground notification: '
+        'id=${message.messageId}, title=${message.notification?.title}, '
+        'data=${message.data}',
+      );
       debugPrint("FCM Foreground: ${message.notification?.title}");
       _showForegroundNotify(message);
 
@@ -87,6 +92,11 @@ class FCMInitializer {
 
     // 5. Opened from Background
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      debugPrint(
+        'FCM opened from background notification: '
+        'id=${message.messageId}, title=${message.notification?.title}, '
+        'data=${message.data}',
+      );
       debugPrint("FCM Background Open: ${message.notification?.title}");
       NotificationNavigationHandler().handleMessage(message);
     });
@@ -94,12 +104,22 @@ class FCMInitializer {
     // 6. Opened from Terminated
     RemoteMessage? initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
+      debugPrint(
+        'FCM opened from terminated notification: '
+        'id=${initialMessage.messageId}, title=${initialMessage.notification?.title}, '
+        'data=${initialMessage.data}',
+      );
       debugPrint("FCM Terminated Open: ${initialMessage.notification?.title}");
       NotificationNavigationHandler().handleMessage(initialMessage);
     }
   }
 
   void _showForegroundNotify(RemoteMessage message) {
+    debugPrint(
+      'FCM showing local notification: '
+      'id=${message.messageId}, notification=${message.notification}, '
+      'data=${message.data}',
+    );
     final String rawTitle =
         (message.notification?.title ??
                 message.data['title'] ??
