@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import '../constants/api_constants.dart';
 import '../models/app_models.dart';
@@ -3412,8 +3413,17 @@ class AppController extends ChangeNotifier {
       return;
     }
 
+    final String siteName = Uri.parse(ApiConstants.erpBaseUrl).host;
+    final String projectId = Firebase.apps.isNotEmpty
+        ? Firebase.app().options.projectId
+        : '';
+    if (projectId.isEmpty) {
+      debugPrint('Cannot update FCM token: Firebase project id missing');
+      return;
+    }
+
     try {
-      // 1. Sync to FCM Device Token doctype (used by the delivery broadcast script)
+      // 1. Sync to the ERPNext device-token doctype used by the FCM broadcaster.
       final Uri insertUri = Uri.parse(
         '${ApiConstants.erpBaseUrl}/api/method/frappe.client.insert',
       );
@@ -3421,15 +3431,17 @@ class AppController extends ChangeNotifier {
       try {
         await _authorizedPostJson(insertUri, <String, dynamic>{
           'doc': jsonEncode(<String, dynamic>{
-            'doctype': 'FCM Device Token',
-            'user': userEmail,
-            'token': token,
+            'doctype': 'FN User Device Token',
+            'project_name': projectId,
+            'site_name': siteName,
+            'user_id': userEmail,
+            'fcm_token': token,
           }),
         });
-        debugPrint('FCM Device Token registered for $userEmail');
+        debugPrint('FN User Device Token registered for $userEmail');
       } catch (e) {
         // Ignore if already exists or doctype missing
-        debugPrint('FCM Device Token sync note: $e');
+        debugPrint('FN User Device Token sync note: $e');
       }
 
       // 2. Fallback: Sync to User doctype field if it exists
