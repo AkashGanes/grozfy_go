@@ -2827,7 +2827,12 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final String? loggedUser = await _fetchLoggedUser();
+      final String? fetchedLoggedUser = await _fetchLoggedUser();
+      final String? loggedUser =
+          fetchedLoggedUser != null &&
+                  fetchedLoggedUser.trim().toLowerCase() == 'administrator'
+              ? null
+              : fetchedLoggedUser;
       String? driverName;
       Map<String, dynamic>? driverDoc;
 

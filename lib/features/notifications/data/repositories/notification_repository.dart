@@ -8,6 +8,19 @@ class NotificationRepository {
   final AppController _app;
   NotificationRepository(this._app);
 
+  String? _notificationUser() {
+    final String? email = _app.profile?.email?.trim();
+    if (email != null && email.isNotEmpty) return email;
+
+    final String? loggedUser = _app.loggedUser?.trim();
+    if (loggedUser == null || loggedUser.isEmpty) return null;
+
+    // Notification Log `for_user` is typically stored as email.
+    if (loggedUser.contains('@')) return loggedUser;
+
+    return null;
+  }
+
   Future<int> _getCount(List<List<dynamic>> filters) async {
     final queryParams = {
       'doctype': 'Notification Log',
@@ -29,7 +42,7 @@ class NotificationRepository {
     if (!_app.isLoggedIn) return 0;
 
     try {
-      final String? loggedUser = _app.loggedUser?.trim();
+      final String? loggedUser = _notificationUser();
       if (loggedUser == null || loggedUser.isEmpty) return 0;
 
       return await _getCount([
@@ -46,7 +59,7 @@ class NotificationRepository {
     if (!_app.isLoggedIn) return (all: 0, unread: 0, read: 0);
 
     try {
-      final String? loggedUser = _app.loggedUser?.trim();
+      final String? loggedUser = _notificationUser();
       if (loggedUser == null || loggedUser.isEmpty) {
         return (all: 0, unread: 0, read: 0);
       }
@@ -80,7 +93,7 @@ class NotificationRepository {
     if (!_app.isLoggedIn) return [];
 
     try {
-      final String? loggedUser = _app.loggedUser?.trim();
+      final String? loggedUser = _notificationUser();
       if (loggedUser == null || loggedUser.isEmpty) return [];
 
       final filters = [
