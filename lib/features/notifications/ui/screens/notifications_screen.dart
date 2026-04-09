@@ -7,6 +7,7 @@ import '../../providers/notification_providers.dart';
 import '../../../../core/models/app_models.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_shell.dart';
+import '../../../../core/state/app_scope.dart';
 import '../../../orders_by_location/model/external_delivery.dart';
 import '../../../orders_by_location/repository/external_delivery_repository.dart';
 import '../../../orders_by_location/ui/order_location_detail_screen.dart';
@@ -17,14 +18,17 @@ class NotificationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notificationsAsync = ref.watch(notificationsProvider);
+    final app = AppScope.of(context);
 
     return AppShell(
       title: 'Notifications',
       subtitle: 'Delivery updates and alerts',
       scrollable: false,
       child: notificationsAsync.when(
-        data: (notifications) =>
-            _NotificationsBody(notifications: notifications).animate().fadeIn(),
+        data: (notifications) => _NotificationsBody(
+          notifications: notifications,
+          systemNotices: app.notices,
+        ).animate().fadeIn(),
         loading: () => const _LoadingState(),
         error: (err, stack) => _ErrorState(message: err.toString()),
       ),
@@ -33,9 +37,13 @@ class NotificationsScreen extends ConsumerWidget {
 }
 
 class _NotificationsBody extends ConsumerWidget {
-  const _NotificationsBody({required this.notifications});
+  const _NotificationsBody({
+    required this.notifications,
+    required this.systemNotices,
+  });
 
   final List<NotificationLog> notifications;
+  final List<AppNotice> systemNotices;
 
   Future<void> _refresh(WidgetRef ref) async {
     ref.invalidate(notificationsProvider);
@@ -52,7 +60,8 @@ class _NotificationsBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final unreadCount = notifications.where((n) => !n.read).length;
+    final unreadCount =
+        notifications.where((n) => !n.read).length + systemNotices.length;
     return Column(
       children: [
         FrostCard(
@@ -92,7 +101,7 @@ class _NotificationsBody extends ConsumerWidget {
                 ),
               ),
               TextButton(
-                onPressed: unreadCount == 0 ? null : () => _markAllAsRead(ref),
+                onPressed: unreadCount == 0 ? null : () {},
                 child: const Text('Mark all read'),
               ),
             ],
@@ -103,28 +112,156 @@ class _NotificationsBody extends ConsumerWidget {
           child: RefreshIndicator(
             color: AppTheme.oceanBlue,
             onRefresh: () => _refresh(ref),
-            child: notifications.isEmpty
+            child: (notifications.isEmpty && systemNotices.isEmpty)
                 ? const _EmptyState()
-                : ListView.builder(
-                    physics: const BouncingScrollPhysics(
-                      parent: AlwaysScrollableScrollPhysics(),
-                    ),
-                    padding: EdgeInsets.zero,
-                    itemCount: notifications.length,
-                    itemBuilder: (context, index) {
-                      final notification = notifications[index];
-                      return _NotificationTile(notification: notification)
-                          .animate()
-                          .fadeIn(
-                            delay: Duration(milliseconds: (index * 50).clamp(0, 300)),
-                            duration: 220.ms,
-                          )
-                          .slideY(begin: 0.08, end: 0);
-                    },
+                : CustomScrollView(
+                    slivers: [
+                      if (systemNotices.isNotEmpty) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 8, 4, 12),
+                            child: Text(
+                              'SYSTEM NOTICES',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.outline,
+                                letterSpacing: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SliverList(
+                          delegate: SliverChildBuilderDelegate((
+                            context,
+                            index,
+                          ) {
+                            final notice = systemNotices[index];
+                            return _SystemNoticeTile(notice: notice)
+                                .animate()
+                                .fadeIn(
+                                  delay: Duration(milliseconds: index * 50),
+                                )
+                                .slideY(begin: 0.08, end: 0);
+                          }, childCount: systemNotices.length),
+                        ),
+                        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+                      ],
+                      SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final notification = notifications[index];
+                          return _NotificationTile(notification: notification)
+                              .animate()
+                              .fadeIn(
+                                delay: Duration(
+                                  milliseconds:
+                                      ((index + systemNotices.length) * 50)
+                                          .clamp(0, 300),
+                                ),
+                                duration: 220.ms,
+                              )
+                              .slideY(begin: 0.08, end: 0);
+                        }, childCount: notifications.length),
+                      ),
+                    ],
                   ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SystemNoticeTile extends StatelessWidget {
+  final AppNotice notice;
+  const _SystemNoticeTile({required this.notice});
+
+  String _timeAgo() {
+    final now = DateTime.now();
+    final diff = now.difference(notice.time);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${notice.time.day.toString().padLeft(2, '0')}/${notice.time.month.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Color indicatorColor = AppColors.primary;
+    final titleLower = notice.title.toLowerCase();
+    if (titleLower.contains('rain') ||
+        titleLower.contains('forecast') ||
+        titleLower.contains('payout') ||
+        titleLower.contains('successful')) {
+      indicatorColor = AppColors.outlineVariant;
+    } else if (titleLower.contains('policy') ||
+        titleLower.contains('alert') ||
+        titleLower.contains('update')) {
+      indicatorColor = AppColors.error;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: FrostCard(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: indicatorColor.withValues(alpha: 0.18),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.info_outline_rounded,
+                color: indicatorColor,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          notice.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.nightBlue,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _timeAgo(),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.black45,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    notice.message,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.black54, height: 1.35),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -161,17 +298,18 @@ class _NotificationTile extends ConsumerWidget {
         (notification.refName ?? '').trim().isNotEmpty;
 
     Future<void> handleTap() async {
-      await ref.read(notificationRepositoryProvider).markAsRead(notification.name);
+      await ref
+          .read(notificationRepositoryProvider)
+          .markAsRead(notification.name);
       ref.invalidate(notificationsProvider);
 
       final doctype = (notification.refDoctype ?? '').trim();
       final docname = (notification.refName ?? '').trim();
       if (doctype == 'External Delivery Trip' && docname.isNotEmpty) {
         if (!context.mounted) return;
-        Navigator.of(context).pushNamed(
-          AppRoutes.externalDeliveryTripDetails,
-          arguments: docname,
-        );
+        Navigator.of(
+          context,
+        ).pushNamed(AppRoutes.externalDeliveryTripDetails, arguments: docname);
       } else if (doctype == 'External Delivery' && docname.isNotEmpty) {
         if (!context.mounted) return;
         final repository = ExternalDeliveryRepository();
@@ -227,7 +365,9 @@ class _NotificationTile extends ConsumerWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            notification.subject,
+                            notification.subject.isNotEmpty
+                                ? notification.subject
+                                : notification.type ?? 'Notification',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -250,7 +390,9 @@ class _NotificationTile extends ConsumerWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      notification.message,
+                      notification.message.isNotEmpty
+                          ? notification.message
+                          : 'You have a new notification',
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -273,10 +415,7 @@ class _NotificationTile extends ConsumerWidget {
                 ),
               ] else if (hasNavigationTarget) ...[
                 const SizedBox(width: 8),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.black38,
-                ),
+                const Icon(Icons.chevron_right_rounded, color: Colors.black38),
               ],
             ],
           ),
