@@ -1854,11 +1854,6 @@ class AppController extends ChangeNotifier {
   }
 
   Future<String?> startTracking() async {
-    await syncPermissionsFromOS();
-    if (!_permissionState.allGranted) {
-      return 'Location and notification permissions are required';
-    }
-
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       return 'Location services are disabled. Please enable GPS.';

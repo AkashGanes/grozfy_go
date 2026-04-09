@@ -185,8 +185,38 @@ class _OrderLocationDetailScreenState
   // Live tracking
   // ---------------------------------------------------------------------------
 
-  void _startTracking() {
+  Future<void> _startTracking() async {
     if (_isTracking || _destination == null) return;
+
+    final hasPermission = await _checkLocationPermission();
+    if (!hasPermission) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location permission is required to start tracking'),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Get a fresh position before starting the stream
+    if (_currentLocation == null) {
+      try {
+        final position = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 10),
+          ),
+        );
+        if (!mounted) return;
+        setState(() {
+          _currentLocation = LatLng(position.latitude, position.longitude);
+        });
+      } catch (e) {
+        debugPrint('Could not get initial GPS for tracking: $e');
+      }
+    }
 
     setState(() => _isTracking = true);
 
@@ -456,8 +486,8 @@ class _OrderLocationDetailScreenState
   // ---------------------------------------------------------------------------
 
   void _onSlideStartDelivery() {
-    _startTracking();
     _updateStatus('Out for Delivery');
+    _startTracking();
   }
 
   void _onSlideReached() {
@@ -1072,9 +1102,19 @@ class _SlideToAction extends StatefulWidget {
 class _SlideToActionState extends State<_SlideToAction> {
   double _dragPosition = 0;
   bool _completed = false;
+  bool _isDragging = false;
 
   static const double _thumbSize = 56;
   static const double _completeThreshold = 0.85;
+
+  @override
+  void didUpdateWidget(covariant _SlideToAction oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.label != widget.label || oldWidget.color != widget.color) {
+      _completed = false;
+      _dragPosition = 0;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1084,36 +1124,21 @@ class _SlideToActionState extends State<_SlideToAction> {
         builder: (context, constraints) {
           final maxDrag = constraints.maxWidth - _thumbSize;
 
-          return GestureDetector(
-            onHorizontalDragUpdate: (details) {
-              if (_completed) return;
-              setState(() {
-                _dragPosition =
-                    (_dragPosition + details.delta.dx).clamp(0.0, maxDrag);
-              });
-            },
-            onHorizontalDragEnd: (details) {
-              if (_completed) return;
-              if (_dragPosition / maxDrag >= _completeThreshold) {
-                setState(() => _completed = true);
-                widget.onSlideComplete();
-              } else {
-                setState(() => _dragPosition = 0);
-              }
-            },
-            child: Container(
-              height: 60,
-              decoration: BoxDecoration(
-                color: widget.color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                    color: widget.color.withValues(alpha: 0.3)),
-              ),
-              child: Stack(
-                alignment: Alignment.centerLeft,
-                children: [
-                  // Label
-                  Center(
+          return SizedBox(
+            height: 60,
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                // Background track
+                Container(
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: widget.color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                        color: widget.color.withValues(alpha: 0.3)),
+                  ),
+                  child: Center(
                     child: Padding(
                       padding: const EdgeInsets.only(left: 40),
                       child: Text(
@@ -1126,9 +1151,41 @@ class _SlideToActionState extends State<_SlideToAction> {
                       ),
                     ),
                   ),
-                  // Sliding thumb
-                  Positioned(
-                    left: _dragPosition + 2,
+                ),
+                // Draggable thumb — uses its own GestureDetector so it wins
+                // over the parent ListView's scroll recognizer.
+                Positioned(
+                  left: _dragPosition + 2,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onHorizontalDragStart: (_) {
+                      if (_completed) return;
+                      _isDragging = true;
+                    },
+                    onHorizontalDragUpdate: (details) {
+                      if (_completed || !_isDragging) return;
+                      setState(() {
+                        _dragPosition =
+                            (_dragPosition + details.delta.dx)
+                                .clamp(0.0, maxDrag);
+                      });
+                    },
+                    onHorizontalDragEnd: (details) {
+                      if (_completed || !_isDragging) return;
+                      _isDragging = false;
+                      if (_dragPosition / maxDrag >= _completeThreshold) {
+                        setState(() => _completed = true);
+                        widget.onSlideComplete();
+                      } else {
+                        setState(() => _dragPosition = 0);
+                      }
+                    },
+                    onHorizontalDragCancel: () {
+                      if (!_completed) {
+                        _isDragging = false;
+                        setState(() => _dragPosition = 0);
+                      }
+                    },
                     child: Container(
                       width: _thumbSize,
                       height: _thumbSize,
@@ -1152,8 +1209,8 @@ class _SlideToActionState extends State<_SlideToAction> {
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           );
         },
