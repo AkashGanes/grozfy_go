@@ -45,6 +45,7 @@ class ExternalDeliveryTrip {
     required this.driver,
     required this.status,
     required this.tripDate,
+    required this.tripNotes,
     required this.docstatus,
     required this.totalStops,
     required this.completedStops,
@@ -59,6 +60,7 @@ class ExternalDeliveryTrip {
   final String driver;
   final String status;
   final String tripDate;
+  final String tripNotes;
   final int docstatus;
   final int totalStops;
   final int completedStops;
@@ -68,6 +70,9 @@ class ExternalDeliveryTrip {
   final List<ExternalDeliveryTripStop> stops;
   final Map<String, dynamic> rawFields;
 
+  /// True when this trip was created as a return-to-store trip.
+  bool get isReturnTrip => tripNotes.contains('Return Trip');
+
   factory ExternalDeliveryTrip.fromJson(Map<String, dynamic> m) {
     final rawStops = m['stops'];
     final raw = Map<String, dynamic>.from(m);
@@ -76,6 +81,7 @@ class ExternalDeliveryTrip {
       driver: (m['driver'] ?? '').toString(),
       status: (m['status'] ?? '').toString(),
       tripDate: (m['trip_date'] ?? '').toString(),
+      tripNotes: (m['trip_notes'] ?? '').toString(),
       docstatus: (m['docstatus'] as num?)?.toInt() ?? 0,
       totalStops: (m['total_stops'] as num?)?.toInt() ?? 0,
       completedStops: (m['completes_stops'] as num?)?.toInt() ?? 0,

@@ -1,9 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
+
+class _SplashLoader extends StatelessWidget {
+  const _SplashLoader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 28,
+      height: 4,
+      decoration: BoxDecoration(
+        color: AppTheme.mango.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(2),
+      ),
+    )
+        .animate(onPlay: (controller) => controller.repeat())
+        .shimmer(
+          duration: 800.ms,
+          color: AppTheme.mango.withValues(alpha: 0.6),
+        );
+  }
+}
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -125,10 +147,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               const SizedBox(
                 width: 28,
                 height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                  valueColor: AlwaysStoppedAnimation<Color>(AppTheme.mango),
-                ),
+                child: _SplashLoader(),
               ),
             ],
           ),

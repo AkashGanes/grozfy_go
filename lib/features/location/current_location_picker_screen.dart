@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -441,9 +442,7 @@ class _CurrentLocationPickerScreenState
             Container(
               color: Colors.black.withValues(alpha: 0.3),
               child: const Center(
-                child: CircularProgressIndicator(
-                  color: AppTheme.mango,
-                ),
+                child: _LocationPickerLoading(),
               ),
             ),
 
@@ -858,6 +857,57 @@ class _CurrentLocationPickerScreenState
                   ),
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationPickerLoading extends StatelessWidget {
+  const _LocationPickerLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return FrostCard(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppTheme.mango.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                )
+                    .animate(onPlay: (controller) => controller.repeat())
+                    .shimmer(
+                      duration: 1000.ms,
+                      color: AppTheme.mango.withValues(alpha: 0.3),
+                    ),
+                const Icon(
+                  Icons.my_location_rounded,
+                  color: AppTheme.mango,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Loading location...',
+            style: TextStyle(
+              color: AppTheme.nightBlue.withValues(alpha: 0.7),
+              fontSize: 13,
             ),
           ),
         ],

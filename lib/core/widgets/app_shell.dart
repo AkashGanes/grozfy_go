@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../theme/app_theme.dart';
 
@@ -95,7 +96,7 @@ class AppShell extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const CircularProgressIndicator(),
+                            const _ShellLoadingIndicator(),
                             const SizedBox(height: 16),
                             Text(
                               'Please wait...',
@@ -343,4 +344,48 @@ class _MapErrorBoundary extends StatelessWidget {
 
 void showInfoSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+}
+
+class _ShellLoadingIndicator extends StatelessWidget {
+  const _ShellLoadingIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat())
+              .shimmer(
+                duration: 1000.ms,
+                color: AppTheme.oceanBlue.withValues(alpha: 0.25),
+              ),
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: AppTheme.oceanBlue.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat())
+              .shimmer(
+                duration: 800.ms,
+                delay: 200.ms,
+                color: AppTheme.oceanBlue.withValues(alpha: 0.3),
+              ),
+        ],
+      ),
+    );
+  }
 }

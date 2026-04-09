@@ -2,13 +2,20 @@
 
 enum VerificationStatus { notSubmitted, pending, approved, rejected }
 
-enum OrderProgressStatus {
+enum OrderStatus {
+  pending,
   accepted,
+  rejected,
   reachedPickup,
   pickedUp,
   outForDelivery,
   delivered,
+  cancelled,
 }
+
+typedef OrderProgressStatus = OrderStatus;
+
+enum OrderAssignmentStatus { unassigned, assigned }
 
 enum AuthMode { otp, password }
 
@@ -319,24 +326,90 @@ class AppNotice {
   final DateTime time;
 }
 
+class OrderItem {
+  const OrderItem({
+    required this.name,
+    required this.quantity,
+    required this.price,
+  });
+
+  final String name;
+  final int quantity;
+  final double price;
+
+  OrderItem copyWith({String? name, int? quantity, double? price}) {
+    return OrderItem(
+      name: name ?? this.name,
+      quantity: quantity ?? this.quantity,
+      price: price ?? this.price,
+    );
+  }
+}
+
+class GeoLocation {
+  const GeoLocation({required this.latitude, required this.longitude});
+
+  final double latitude;
+  final double longitude;
+
+  GeoLocation copyWith({double? latitude, double? longitude}) {
+    return GeoLocation(
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+    );
+  }
+
+  String get coordinateString =>
+      '${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}';
+
+  bool get isValid =>
+      latitude >= -90 &&
+      latitude <= 90 &&
+      longitude >= -180 &&
+      longitude <= 180;
+}
+
 class DeliveryOrder {
   const DeliveryOrder({
-    required this.id,
+    required this.orderId,
     required this.customerName,
+    required this.customerPhone,
+    required this.deliveryAddress,
+    required this.storeId,
     required this.storeName,
-    required this.contactNumber,
-    required this.pickup,
-    required this.drop,
-    required this.deliveryInstructions,
-    required this.paymentMode,
-    required this.distanceKm,
-    required this.estimatedEarnings,
-    this.status = OrderProgressStatus.accepted,
+    required this.storeContact,
+    required this.storeAddress,
+    required this.orderItems,
+    required this.orderStatus,
+    required this.latitude,
+    required this.longitude,
+    this.id = '',
+    this.contactNumber = '',
+    this.pickup = '',
+    this.drop = '',
+    this.deliveryInstructions = '',
+    this.paymentMode = '',
+    this.distanceKm = 0,
+    this.estimatedEarnings = 0,
+    this.assignmentStatus = OrderAssignmentStatus.unassigned,
+    this.assignedDeliveryPartnerId,
+    this.reachedStoreAt,
+    this.deliveryPartnerLocation,
   });
 
   final String id;
+  final String orderId;
   final String customerName;
+  final String customerPhone;
+  final String deliveryAddress;
+  final String storeId;
   final String storeName;
+  final String storeContact;
+  final String storeAddress;
+  final List<OrderItem> orderItems;
+  final OrderStatus orderStatus;
+  final double latitude;
+  final double longitude;
   final String contactNumber;
   final String pickup;
   final String drop;
@@ -344,21 +417,67 @@ class DeliveryOrder {
   final String paymentMode;
   final double distanceKm;
   final double estimatedEarnings;
-  final OrderProgressStatus status;
+  final OrderAssignmentStatus assignmentStatus;
+  final String? assignedDeliveryPartnerId;
+  final DateTime? reachedStoreAt;
+  final GeoLocation? deliveryPartnerLocation;
 
-  DeliveryOrder copyWith({OrderProgressStatus? status}) {
+  double get totalAmount =>
+      orderItems.fold(0, (sum, item) => sum + (item.price * item.quantity));
+
+  DeliveryOrder copyWith({
+    String? id,
+    String? orderId,
+    String? customerName,
+    String? customerPhone,
+    String? deliveryAddress,
+    String? storeId,
+    String? storeName,
+    String? storeContact,
+    String? storeAddress,
+    List<OrderItem>? orderItems,
+    OrderStatus? orderStatus,
+    double? latitude,
+    double? longitude,
+    String? contactNumber,
+    String? pickup,
+    String? drop,
+    String? deliveryInstructions,
+    String? paymentMode,
+    double? distanceKm,
+    double? estimatedEarnings,
+    OrderAssignmentStatus? assignmentStatus,
+    String? assignedDeliveryPartnerId,
+    DateTime? reachedStoreAt,
+    GeoLocation? deliveryPartnerLocation,
+  }) {
     return DeliveryOrder(
-      id: id,
-      customerName: customerName,
-      storeName: storeName,
-      contactNumber: contactNumber,
-      pickup: pickup,
-      drop: drop,
-      deliveryInstructions: deliveryInstructions,
-      paymentMode: paymentMode,
-      distanceKm: distanceKm,
-      estimatedEarnings: estimatedEarnings,
-      status: status ?? this.status,
+      id: id ?? this.id,
+      orderId: orderId ?? this.orderId,
+      customerName: customerName ?? this.customerName,
+      customerPhone: customerPhone ?? this.customerPhone,
+      deliveryAddress: deliveryAddress ?? this.deliveryAddress,
+      storeId: storeId ?? this.storeId,
+      storeName: storeName ?? this.storeName,
+      storeContact: storeContact ?? this.storeContact,
+      storeAddress: storeAddress ?? this.storeAddress,
+      orderItems: orderItems ?? this.orderItems,
+      orderStatus: orderStatus ?? this.orderStatus,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      contactNumber: contactNumber ?? this.contactNumber,
+      pickup: pickup ?? this.pickup,
+      drop: drop ?? this.drop,
+      deliveryInstructions: deliveryInstructions ?? this.deliveryInstructions,
+      paymentMode: paymentMode ?? this.paymentMode,
+      distanceKm: distanceKm ?? this.distanceKm,
+      estimatedEarnings: estimatedEarnings ?? this.estimatedEarnings,
+      assignmentStatus: assignmentStatus ?? this.assignmentStatus,
+      assignedDeliveryPartnerId:
+          assignedDeliveryPartnerId ?? this.assignedDeliveryPartnerId,
+      reachedStoreAt: reachedStoreAt ?? this.reachedStoreAt,
+      deliveryPartnerLocation:
+          deliveryPartnerLocation ?? this.deliveryPartnerLocation,
     );
   }
 }
@@ -408,16 +527,134 @@ extension VerificationStatusLabel on VerificationStatus {
 extension OrderStatusLabel on OrderProgressStatus {
   String get label {
     switch (this) {
-      case OrderProgressStatus.accepted:
+      case OrderStatus.pending:
+        return 'Pending';
+      case OrderStatus.accepted:
         return 'Accepted';
-      case OrderProgressStatus.reachedPickup:
+      case OrderStatus.rejected:
+        return 'Rejected';
+      case OrderStatus.reachedPickup:
         return 'Reached Pickup';
-      case OrderProgressStatus.pickedUp:
+      case OrderStatus.pickedUp:
         return 'Picked Up';
-      case OrderProgressStatus.outForDelivery:
+      case OrderStatus.outForDelivery:
         return 'Out for Delivery';
-      case OrderProgressStatus.delivered:
+      case OrderStatus.delivered:
         return 'Delivered';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
     }
+  }
+}
+
+class ProfileCompletenessItem {
+  const ProfileCompletenessItem({
+    required this.name,
+    required this.description,
+    required this.isCompleted,
+    this.route,
+  });
+
+  final String name;
+  final String description;
+  final bool isCompleted;
+  final String? route;
+}
+
+class ProfileCompleteness {
+  const ProfileCompleteness({
+    required this.percentage,
+    required this.items,
+    required this.completedCount,
+    required this.totalCount,
+  });
+
+  final double percentage;
+  final List<ProfileCompletenessItem> items;
+  final int completedCount;
+  final int totalCount;
+
+  String get message {
+    if (percentage == 100) {
+      return 'Your profile is complete! You\'re ready to go online.';
+    } else if (percentage >= 70) {
+      return 'Almost there! Complete your profile to unlock all features.';
+    } else if (percentage >= 40) {
+      return 'Your profile is $completedCount/$totalCount complete. Keep going!';
+    } else {
+      return 'Complete your profile to start delivering.';
+    }
+  }
+
+  ProfileCompletenessItem? get nextIncompleteItem {
+    for (final item in items) {
+      if (!item.isCompleted) {
+        return item;
+      }
+    }
+    return null;
+  }
+}
+
+class NotificationLog {
+  const NotificationLog({
+    required this.name,
+    required this.subject,
+    required this.message,
+    this.type,
+    this.refDoctype,
+    this.refName,
+    this.read = false,
+    this.creation,
+  });
+
+  final String name;
+  final String subject;
+  final String message;
+  final String? type;
+  final String? refDoctype;
+  final String? refName;
+  final bool read;
+  final DateTime? creation;
+
+  factory NotificationLog.fromJson(Map<String, dynamic> json) {
+    return NotificationLog(
+      name: json['name'] ?? '',
+      subject: json['subject'] ?? '',
+      // Map email_content (ERPNext field) to message
+      message: json['message'] ?? json['email_content'] ?? '',
+      type: json['type'],
+      // Map document_type to refDoctype if ref_doctype is missing
+      refDoctype: json['ref_doctype'] ?? json['document_type'],
+      // Map document_name to refName if ref_name is missing
+      refName: json['ref_name'] ?? json['document_name'],
+      read: json['read'] == 1,
+      creation: json['creation'] != null
+          ? DateTime.tryParse(json['creation'].toString())
+          : null,
+    );
+  }
+
+  factory NotificationLog.fromBroadcastJson(
+    Map<String, dynamic> json, {
+    required bool read,
+  }) {
+    return NotificationLog(
+      name: (json['name'] ?? '').toString(),
+      subject: (json['title'] ?? json['subject'] ?? '').toString(),
+      message: (json['message'] ?? json['body'] ?? json['email_content'] ?? '')
+          .toString(),
+      type: (json['type'] ?? 'Alert').toString(),
+      refDoctype:
+          (json['doctype_ref'] ?? json['ref_doctype'] ?? json['document_type'])
+              ?.toString(),
+      refName:
+          (json['docname_ref'] ?? json['ref_name'] ?? json['document_name'])
+              ?.toString(),
+      read: read,
+      creation: json['creation'] != null
+          ? DateTime.tryParse(json['creation'].toString())
+          : null,
+    );
   }
 }

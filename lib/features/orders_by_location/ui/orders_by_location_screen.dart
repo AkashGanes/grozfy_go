@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../../../core/widgets/skeleton_loader.dart';
 import '../model/external_delivery.dart';
 import '../repository/external_delivery_repository.dart';
 import 'order_location_detail_screen.dart';
@@ -269,18 +271,28 @@ class _OrdersByLocationScreenState
               return const SizedBox.shrink();
             },
             firstPageProgressIndicatorBuilder: (_) => const Padding(
-              padding: EdgeInsets.symmetric(vertical: 60),
-              child: Center(
-                child: CircularProgressIndicator(color: AppTheme.oceanBlue),
-              ),
-            ),
-            newPageProgressIndicatorBuilder: (_) => const Padding(
               padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: CircularProgressIndicator(
-                  color: AppTheme.oceanBlue,
-                  strokeWidth: 2,
-                ),
+              child: SkeletonLoader(itemCount: 4, spacing: 12),
+            ),
+            newPageProgressIndicatorBuilder: (_) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                  )
+                      .animate(onPlay: (controller) => controller.repeat())
+                      .shimmer(
+                        duration: 800.ms,
+                        color: AppTheme.oceanBlue.withValues(alpha: 0.3),
+                      ),
+                ],
               ),
             ),
             noItemsFoundIndicatorBuilder: (_) => const _EmptyState(),

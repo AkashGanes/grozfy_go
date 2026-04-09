@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../notifications/providers/notification_providers.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/profile_completeness_indicator.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -17,6 +20,45 @@ class DashboardScreen extends StatelessWidget {
       title: app.t('dashboard'),
       subtitle: app.profile?.fullName ?? 'Delivery Partner',
       actions: [
+        Consumer(
+          builder: (context, ref, _) {
+            final unreadCount = ref.watch(unreadNotificationCountProvider);
+            return Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_none_rounded),
+                  onPressed: () {
+                    Navigator.of(context).pushNamed(AppRoutes.notifications);
+                  },
+                ),
+                if (unreadCount > 0)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        '$unreadCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
         IconButton(
           icon: const Icon(Icons.logout_rounded),
           onPressed: () async {
@@ -33,6 +75,15 @@ class DashboardScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          ProfileCompletenessIndicator(
+            completeness: app.profileCompleteness,
+            onItemTap: (item) {
+              if (item.route != null) {
+                Navigator.of(context).pushNamed(item.route!);
+              }
+            },
+          ),
+          const SizedBox(height: 12),
           FrostCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -295,7 +346,7 @@ class DashboardScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${app.activeOrder!.id} · ${app.activeOrder!.status.label}',
+                        '${app.activeOrder!.orderId} · ${app.activeOrder!.orderStatus.label}',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),
@@ -414,12 +465,23 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 _quickButton(
                   context,
+                  'Available Orders',
+                  Icons.local_shipping_outlined,
+                  route: AppRoutes.orderListing,
+                ),
+                _quickButton(
+                  context,
                   'External Trips',
                   Icons.local_shipping_outlined,
                   route: AppRoutes.externalDeliveryTripList,
                 ),
                 _quickButton(context, 'Support', Icons.support_agent_rounded),
-                _quickButton(context, 'Settings', Icons.settings_outlined),
+                _quickButton(
+                  context,
+                  'Settings',
+                  Icons.settings_outlined,
+                  route: AppRoutes.settings,
+                ),
               ],
             ),
           ),

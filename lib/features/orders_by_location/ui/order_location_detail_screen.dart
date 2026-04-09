@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -550,12 +551,7 @@ class _OrderLocationDetailScreenState
           maxChildSize: 0.28,
           builder: (_, controller) => _SheetShell(
             scrollController: controller,
-            child: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: CircularProgressIndicator(color: AppTheme.oceanBlue),
-              ),
-            ),
+            child: const _LoadingSkeleton(),
           ),
         ),
       ],
@@ -1410,4 +1406,86 @@ class _RouteData {
   const _RouteData({required this.points, required this.distanceMeters});
   final List<LatLng> points;
   final double distanceMeters;
+}
+
+class _LoadingSkeleton extends StatelessWidget {
+  const _LoadingSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: double.infinity,
+            height: 18,
+            decoration: BoxDecoration(
+              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat())
+              .shimmer(
+                duration: 1000.ms,
+                color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+              ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+              )
+                  .animate(onPlay: (controller) => controller.repeat())
+                  .shimmer(
+                    duration: 1000.ms,
+                    color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                  ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    )
+                        .animate(onPlay: (controller) => controller.repeat())
+                        .shimmer(
+                          duration: 1000.ms,
+                          color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                        ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 150,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    )
+                        .animate(onPlay: (controller) => controller.repeat())
+                        .shimmer(
+                          duration: 1000.ms,
+                          color: AppTheme.oceanBlue.withValues(alpha: 0.04),
+                        ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }

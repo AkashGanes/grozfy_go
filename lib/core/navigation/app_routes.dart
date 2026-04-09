@@ -11,15 +11,19 @@ class AppRoutes {
   static const permission = '/permission';
   static const tracking = '/tracking';
   static const currentLocation = '/current-location';
+  static const orderListing = '/order-listing';
   static const orderRequest = '/order-request';
   static const orderDetails = '/order-details';
   static const navigation = '/navigation';
   static const deliveryList = '/delivery-list';
   static const deliveryTracking = '/delivery-tracking';
   static const orderStatus = '/order-status';
+  static const orderTracking = '/order-tracking';
   static const dashboard = '/dashboard';
   static const profile = '/profile';
   static const ordersByLocation = '/orders-by-location';
   static const externalDeliveryTripList = '/external-delivery-trip-list';
   static const externalDeliveryTripDetails = '/external-delivery-trip-details';
+  static const settings = '/settings';
+  static const notifications = '/notifications';
 }

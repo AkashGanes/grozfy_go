@@ -13,6 +13,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
 import '../models/app_models.dart';
+import '../services/connectivity_service.dart';
+import '../services/fcm_service.dart';
+import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
   static const Duration _networkTimeout = Duration(seconds: 15);
@@ -53,6 +56,10 @@ class AppController extends ChangeNotifier {
   static const String _prefVehicleLicensePlate = 'vehicle_license_plate';
   static const String _prefBankDocName = 'bank_doc_name';
   static const String _prefBankAccountName = 'bank_account_name';
+  static const String _prefIsOnline = 'is_online';
+  static const String _prefThemeMode = 'theme_mode';
+  static const String _prefBackgroundColor = 'background_color';
+  static const String _prefAccentColor = 'accent_color';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 200;
   static const int _profileImageMaxDimension = 4096;
@@ -126,12 +133,32 @@ class AppController extends ChangeNotifier {
   double? _currentLatitude;
   double? _currentLongitude;
   String? _currentLocationLabel;
-  StreamSubscription<Position>? _positionStream;
   String? _selectedStoreName;
   String? _profileImagePath;
+  StreamSubscription<Position>? _positionStream;
+
+  ThemeMode _themeMode = ThemeMode.system;
+  int _backgroundColorValue = 0xFFF0F4FA;
+  int _accentColorValue = 0xFF1C4E80;
+
+  bool _isConnected = true;
+  bool _showRetryButton = true;
+  bool _isInitialized = false;
+  bool _appIsResumed = false;
+  bool _firstFrameBuilt = false;
+  StreamSubscription<bool>? _connectivitySubscription;
 
   DeliveryOrder? _incomingOrder;
   DeliveryOrder? _activeOrder;
+  final List<DeliveryOrder> _availableOrders = <DeliveryOrder>[];
+  final List<DeliveryOrder> _acceptedOrders = <DeliveryOrder>[];
+  bool _isLoadingOrders = false;
+  String? _orderLoadingError;
+  int _retryCount = 0;
+  static const int _maxRetries = 3;
+  static const Duration _retryDelay = Duration(seconds: 2);
+  Timer? _liveLocationTimer;
+  GeoLocation? _partnerLiveLocation;
 
   EarningsSummary _earnings = const EarningsSummary(
     today: 1250,
@@ -158,6 +185,8 @@ class AppController extends ChangeNotifier {
   PartnerProfile? get profile => _profile;
   LoggedPartnerProfileDetails? get loggedProfileDetails =>
       _loggedProfileDetails;
+  String? get loggedUser =>
+      _loggedProfileDetails?.loggedUser ?? _profile?.email;
   bool get profileDetailsLoading => _profileDetailsLoading;
   String? get profileDetailsError => _profileDetailsError;
   bool get profileImageSyncing => _profileImageSyncing;
@@ -183,6 +212,9 @@ class AppController extends ChangeNotifier {
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
+  ThemeMode get themeMode => _themeMode;
+  Color get backgroundColor => Color(_backgroundColorValue);
+  Color get accentColor => Color(_accentColorValue);
   bool get hasSelectedLocation =>
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
@@ -190,6 +222,11 @@ class AppController extends ChangeNotifier {
   EarningsSummary get earnings => _earnings;
   PerformanceMetrics get performance => _performance;
   List<AppNotice> get notices => List<AppNotice>.unmodifiable(_notices);
+  bool get isConnected => _isConnected;
+  bool get showNoInternetOverlay =>
+      !_isConnected && _isInitialized && _appIsResumed && _firstFrameBuilt;
+  bool get showRetryButton => _showRetryButton;
+  bool get isInitialized => _isInitialized;
 
   String? get driverName => _driverName;
   String? get registrationToken => _registrationToken;
@@ -208,6 +245,64 @@ class AppController extends ChangeNotifier {
       hasSelectedLocation &&
       _permissionState.allGranted;
 
+  ProfileCompleteness get profileCompleteness {
+    final List<ProfileCompletenessItem> items = <ProfileCompletenessItem>[
+      ProfileCompletenessItem(
+        name: 'Basic Profile',
+        description: 'Name, mobile & email',
+        isCompleted: _profile != null && _profile!.fullName.isNotEmpty,
+        route: null,
+      ),
+      ProfileCompletenessItem(
+        name: 'Profile Photo',
+        description: 'Add a profile picture',
+        isCompleted: _profileImagePath != null,
+        route: null,
+      ),
+      ProfileCompletenessItem(
+        name: 'KYC Documents',
+        description: 'ID proof & driving license',
+        isCompleted: _kycCompleted,
+        route: '/kyc-documents',
+      ),
+      ProfileCompletenessItem(
+        name: 'Vehicle Details',
+        description: 'Register your vehicle',
+        isCompleted: _vehicle != null,
+        route: '/vehicle-details',
+      ),
+      ProfileCompletenessItem(
+        name: 'Bank Account',
+        description: 'Add bank for payouts',
+        isCompleted: _bank != null,
+        route: '/bank-setup',
+      ),
+      ProfileCompletenessItem(
+        name: 'Delivery Zone',
+        description: 'Select your working area',
+        isCompleted: hasSelectedLocation,
+        route: '/current-location',
+      ),
+      ProfileCompletenessItem(
+        name: 'Permissions',
+        description: 'Location & notifications',
+        isCompleted: _permissionState.allGranted,
+        route: '/permission',
+      ),
+    ];
+
+    final int completedCount = items.where((item) => item.isCompleted).length;
+    final int totalCount = items.length;
+    final double percentage = totalCount > 0 ? completedCount / totalCount : 0;
+
+    return ProfileCompleteness(
+      percentage: percentage,
+      items: items,
+      completedCount: completedCount,
+      totalCount: totalCount,
+    );
+  }
+
   Future<void> bootstrap() async {
     await Future<void>.delayed(const Duration(milliseconds: 1100));
     _configVersion = 'cfg_2026_02_16';
@@ -219,6 +314,14 @@ class AppController extends ChangeNotifier {
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
+    _isOnline = prefs.getBool(_prefIsOnline) ?? false;
+
+    await PartnerWidgetManager.initialize();
+    await PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
     _currentLongitude = prefs.getDouble(_prefCurrentLng);
     _currentLocationLabel = _nullIfBlank(
@@ -227,6 +330,12 @@ class AppController extends ChangeNotifier {
     _selectedStoreName = _nullIfBlank(prefs.getString(_prefSelectedStore));
     _driverName = _nullIfBlank(prefs.getString(_prefDriverName));
     _profileImagePath = _nullIfBlank(prefs.getString(_prefProfileImagePath));
+    final int themeModeIndex =
+        prefs.getInt(_prefThemeMode) ?? ThemeMode.system.index;
+    _themeMode =
+        ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)];
+    _backgroundColorValue = prefs.getInt(_prefBackgroundColor) ?? 0xFFF0F4FA;
+    _accentColorValue = prefs.getInt(_prefAccentColor) ?? 0xFF1C4E80;
     _isLoggedIn = _sessionToken != null;
     if (_isLoggedIn) {
       final String fullName =
@@ -243,6 +352,61 @@ class AppController extends ChangeNotifier {
     await syncPermissionsFromOS();
 
     _bootstrapped = true;
+
+    // Initialize Notifications
+    unawaited(FCMService().subscribe(this));
+
+    notifyListeners();
+  }
+
+  Future<void> initializeConnectivity() async {
+    final ConnectivityService connectivityService = ConnectivityService();
+    await connectivityService.initialize();
+    _isConnected = connectivityService.isConnected;
+    _showRetryButton = true;
+    notifyListeners();
+
+    _connectivitySubscription?.cancel();
+    _connectivitySubscription = connectivityService.connectivityStream.listen((
+      bool isConnected,
+    ) {
+      _onConnectivityChanged(isConnected);
+    });
+    connectivityService.startMonitoring();
+    _isInitialized = true;
+    notifyListeners();
+  }
+
+  void _onConnectivityChanged(bool isConnected) {
+    _isConnected = isConnected;
+    _showRetryButton = true;
+    notifyListeners();
+  }
+
+  Future<bool> checkConnectivity() async {
+    final ConnectivityService connectivityService = ConnectivityService();
+    final bool hasConnection = await connectivityService.checkConnectivity();
+    _isConnected = hasConnection;
+    _showRetryButton = true;
+    notifyListeners();
+    return hasConnection;
+  }
+
+  Future<bool> retryConnection() async {
+    _showRetryButton = false;
+    notifyListeners();
+
+    final bool hasConnection = await checkConnectivity();
+    return hasConnection;
+  }
+
+  void setAppResumed(bool isResumed) {
+    _appIsResumed = isResumed;
+    notifyListeners();
+  }
+
+  void setFirstFrameBuilt(bool built) {
+    _firstFrameBuilt = built;
     notifyListeners();
   }
 
@@ -250,6 +414,43 @@ class AppController extends ChangeNotifier {
     _languageCode = code;
     _writePref((SharedPreferences prefs) {
       return prefs.setString(_prefLanguageCode, code);
+    });
+    notifyListeners();
+  }
+
+  void setThemeMode(ThemeMode mode) {
+    _themeMode = mode;
+    _writePref((SharedPreferences prefs) {
+      return prefs.setInt(_prefThemeMode, mode.index);
+    });
+    notifyListeners();
+  }
+
+  void setBackgroundColor(Color color) {
+    _backgroundColorValue = color.toARGB32();
+    _writePref((SharedPreferences prefs) {
+      return prefs.setInt(_prefBackgroundColor, _backgroundColorValue);
+    });
+    notifyListeners();
+  }
+
+  void setAccentColor(Color color) {
+    _accentColorValue = color.toARGB32();
+    _writePref((SharedPreferences prefs) {
+      return prefs.setInt(_prefAccentColor, _accentColorValue);
+    });
+    notifyListeners();
+  }
+
+  void resetThemeToDefaults() {
+    _themeMode = ThemeMode.system;
+    _backgroundColorValue = 0xFFF0F4FA;
+    _accentColorValue = 0xFF1C4E80;
+    _writePref((SharedPreferences prefs) async {
+      await prefs.setInt(_prefThemeMode, ThemeMode.system.index);
+      await prefs.setInt(_prefBackgroundColor, _backgroundColorValue);
+      await prefs.setInt(_prefAccentColor, _accentColorValue);
+      return true;
     });
     notifyListeners();
   }
@@ -364,9 +565,7 @@ class AppController extends ChangeNotifier {
       final Uri employeeUri = Uri.parse(
         '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
       );
-      await _authorizedPutJson(employeeUri, <String, dynamic>{
-        'image': fileUrl,
-      });
+      await authorizedPutJson(employeeUri, <String, dynamic>{'image': fileUrl});
       _profileImageSyncError = null;
       return null;
     } catch (e) {
@@ -688,8 +887,11 @@ class AppController extends ChangeNotifier {
         mobile: responseMobile,
         email: email,
       );
-
       await _persistSession(responseData);
+
+      // Update FCM token on login
+      unawaited(FCMService().subscribe(this));
+
       notifyListeners();
       return null;
     } catch (e) {
@@ -801,6 +1003,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    unawaited(FCMService().unsubscribe(this));
     _isLoggedIn = false;
     _sessionToken = null;
     _tokenType = 'Bearer';
@@ -825,6 +1028,9 @@ class AppController extends ChangeNotifier {
     _uomOptions = <String>[];
     _vehicleFuelOptions = <String>[];
     _vehicleRequiredFields = <String>{};
+
+    await PartnerWidgetManager.clearWidget();
+
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await Future.wait(<Future<bool>>[
       prefs.remove(_prefAccessToken),
@@ -861,51 +1067,33 @@ class AppController extends ChangeNotifier {
     String? fieldname,
   }) async {
     if (_sessionToken == null) {
-      _logApi('upload_kyc_file', 'SKIP: no session token');
       return null;
     }
+
+    // Build request fields
+    final Map<String, String> fields = <String, String>{};
+    if (docname != null && docname.isNotEmpty) {
+      fields['driver_name'] = docname;
+    }
+    if (fieldname != null && fieldname.isNotEmpty) {
+      fields['fieldname'] = fieldname;
+    }
+    if (doctype != null && doctype.isNotEmpty) {
+      fields['doctype'] = doctype;
+    }
+
     try {
-      _logApi(
-        'upload_kyc_file request',
-        'driver_name=$docname fieldname=$fieldname file=$fileName',
+      // Use multi-auth strategy (Bearer token first, then API Key fallback)
+      final Map<String, dynamic> payload = await _authorizedUploadFileWithRetry(
+        uri: _uploadFileUri,
+        filePath: filePath,
+        fileName: fileName,
+        fields: fields,
       );
-      final http.MultipartRequest request = http.MultipartRequest(
-        'POST',
-        _uploadFileUri,
-      );
-      request.headers['Authorization'] = 'Bearer $_sessionToken';
-      request.files.add(
-        await http.MultipartFile.fromPath('file', filePath, filename: fileName),
-      );
-      if (docname != null && docname.isNotEmpty) {
-        request.fields['driver_name'] = docname;
-      }
-      if (fieldname != null && fieldname.isNotEmpty) {
-        request.fields['fieldname'] = fieldname;
-      }
-
-      final http.StreamedResponse streamed = await request.send();
-      final String body = await streamed.stream.bytesToString();
-      _logApi(
-        'upload_kyc_file response',
-        'status=${streamed.statusCode} body=$body',
-      );
-
-      final Map<String, dynamic> payload = _decodeJsonMap(body);
-
-      if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
-        final String? serverError = _extractServerError(payload);
-        _logApi(
-          'upload_kyc_file FAIL',
-          serverError ?? 'HTTP ${streamed.statusCode}',
-        );
-        return null;
-      }
 
       final Map<String, dynamic> data = _extractMethodData(payload);
       return _nullIfBlank(data['file_url']?.toString());
     } catch (e) {
-      _logApi('upload_kyc_file error', e.toString());
       return null;
     }
   }
@@ -947,21 +1135,12 @@ class AppController extends ChangeNotifier {
         body['pan_attachment'] = panAttachmentUrl;
       }
 
-      _logApi('submit_driver_kyc request', body.toString());
-      final http.Response response = await http.post(
-        _submitDriverKycUri,
-        headers: <String, String>{
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $_sessionToken',
-        },
+      // Use multi-auth strategy (Bearer token first, then API Key fallback)
+      final Map<String, dynamic> payload = await _authorizedPostFormWithRetry(
+        uri: _submitDriverKycUri,
         body: body,
       );
-      _logApi(
-        'submit_driver_kyc response',
-        'status=${response.statusCode} body=${response.body}',
-      );
 
-      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       final Map<String, dynamic> responseData = _extractMethodData(payload);
       final String status = (responseData['status']?.toString() ?? '')
           .toLowerCase();
@@ -983,13 +1162,8 @@ class AppController extends ChangeNotifier {
         return null;
       }
 
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        return _extractServerError(payload) ??
-            'KYC submission failed (${response.statusCode})';
-      }
       return _extractServerError(payload) ?? 'KYC submission failed';
     } catch (e) {
-      _logApi('submit_driver_kyc error', e.toString());
       return 'Unable to connect. Check internet and try again.';
     }
   }
@@ -1577,7 +1751,7 @@ class AppController extends ChangeNotifier {
         final Uri updateUri = Uri.parse(
           '${ApiConstants.erpBaseUrl}/api/resource/Vehicle/${Uri.encodeComponent(vehicleName)}',
         );
-        responsePayload = await _authorizedPutJson(updateUri, body);
+        responsePayload = await authorizedPutJson(updateUri, body);
       } else {
         responsePayload = await _authorizedPostJson(baseUri, body);
       }
@@ -1740,7 +1914,7 @@ class AppController extends ChangeNotifier {
         final Uri updateUri = Uri.parse(
           '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account/${Uri.encodeComponent(existingName)}',
         );
-        responsePayload = await _authorizedPutJson(updateUri, body);
+        responsePayload = await authorizedPutJson(updateUri, body);
       } else {
         final Uri createUri = Uri.parse(
           '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account',
@@ -1805,7 +1979,8 @@ class AppController extends ChangeNotifier {
     final locationPerm = await Geolocator.checkPermission();
     final notifStatus = await ph.Permission.notification.status;
 
-    final foreground = locationPerm == LocationPermission.whileInUse ||
+    final foreground =
+        locationPerm == LocationPermission.whileInUse ||
         locationPerm == LocationPermission.always;
     final background = locationPerm == LocationPermission.always;
     final notification = notifStatus.isGranted;
@@ -1835,6 +2010,9 @@ class AppController extends ChangeNotifier {
     }
 
     _isOnline = value;
+    _writePref((SharedPreferences prefs) {
+      return prefs.setBool(_prefIsOnline, _isOnline);
+    });
     if (_isOnline) {
       startTracking();
       _notices.insert(
@@ -1848,6 +2026,12 @@ class AppController extends ChangeNotifier {
     } else {
       stopTracking();
     }
+
+    PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
 
     notifyListeners();
     return null;
@@ -1922,18 +2106,31 @@ class AppController extends ChangeNotifier {
   }
 
   DeliveryOrder generateIncomingOrder() {
+    final String orderId = '#OD${1000 + _random.nextInt(8999)}';
     _incomingOrder = DeliveryOrder(
-      id: '#OD${1000 + _random.nextInt(8999)}',
+      orderId: orderId,
       customerName: 'Riya Sharma',
+      customerPhone: '9876501234',
+      deliveryAddress: 'Karol Bagh, New Delhi - 110005',
+      storeId: 'STORE${100 + _random.nextInt(899)}',
       storeName: 'Fresh Bites Kitchen',
-      contactNumber: '9876501234',
+      storeContact: '9876543210',
+      storeAddress: 'Connaught Place, New Delhi - 110001',
+      orderItems: <OrderItem>[
+        const OrderItem(name: 'Veg Biryani', quantity: 2, price: 180),
+        const OrderItem(name: 'Chicken Curry', quantity: 1, price: 250),
+        const OrderItem(name: 'Naan', quantity: 4, price: 40),
+      ],
+      orderStatus: OrderStatus.pending,
+      latitude: 28.6692 + (_random.nextDouble() - 0.5) * 0.1,
+      longitude: 77.4538 + (_random.nextDouble() - 0.5) * 0.1,
       pickup: 'Connaught Place, New Delhi',
       drop: 'Karol Bagh, New Delhi',
       deliveryInstructions: 'Call before arrival, gate code 2456',
       paymentMode: _random.nextBool() ? 'COD' : 'Online',
       distanceKm: 6.4,
       estimatedEarnings: 132,
-      status: OrderProgressStatus.accepted,
+      assignmentStatus: OrderAssignmentStatus.unassigned,
     );
     notifyListeners();
     return _incomingOrder!;
@@ -1963,6 +2160,13 @@ class AppController extends ChangeNotifier {
       );
     }
     _incomingOrder = null;
+
+    PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
+
     notifyListeners();
   }
 
@@ -1971,9 +2175,9 @@ class AppController extends ChangeNotifier {
       return;
     }
 
-    _activeOrder = _activeOrder!.copyWith(status: status);
+    _activeOrder = _activeOrder!.copyWith(orderStatus: status);
 
-    if (status == OrderProgressStatus.delivered) {
+    if (status == OrderStatus.delivered) {
       final double payout = _activeOrder!.estimatedEarnings;
       _earnings = _earnings.copyWith(
         today: _earnings.today + payout,
@@ -1989,18 +2193,373 @@ class AppController extends ChangeNotifier {
         0,
         AppNotice(
           title: 'Delivery completed',
-          message: 'Order ${_activeOrder!.id} delivered successfully.',
+          message: 'Order ${_activeOrder!.orderId} delivered successfully.',
           time: DateTime.now(),
         ),
       );
       _activeOrder = null;
     }
 
+    PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
+
     notifyListeners();
   }
 
   void clearActiveOrder() {
     _activeOrder = null;
+    notifyListeners();
+  }
+
+  List<DeliveryOrder> get availableOrders =>
+      List<DeliveryOrder>.unmodifiable(_availableOrders);
+
+  List<DeliveryOrder> get acceptedOrders =>
+      List<DeliveryOrder>.unmodifiable(_acceptedOrders);
+
+  bool get isLoadingOrders => _isLoadingOrders;
+
+  String? get orderLoadingError => _orderLoadingError;
+
+  GeoLocation? get partnerLiveLocation => _partnerLiveLocation;
+
+  Future<void> fetchAvailableOrders() async {
+    _isLoadingOrders = true;
+    _orderLoadingError = null;
+    notifyListeners();
+
+    try {
+      await _fetchOrdersWithRetry();
+    } catch (e) {
+      _orderLoadingError = 'Failed to fetch orders: $e';
+    } finally {
+      _isLoadingOrders = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _fetchOrdersWithRetry() async {
+    _retryCount = 0;
+    while (_retryCount < _maxRetries) {
+      try {
+        await _fetchOrders();
+        return;
+      } catch (e) {
+        _retryCount++;
+        if (_retryCount >= _maxRetries) {
+          rethrow;
+        }
+        await Future<void>.delayed(_retryDelay * _retryCount);
+      }
+    }
+  }
+
+  Future<void> _fetchOrders() async {
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (_random.nextBool()) {
+      throw Exception('Network error');
+    }
+    _availableOrders.clear();
+    _availableOrders.addAll(_generateMockAvailableOrders());
+    notifyListeners();
+  }
+
+  List<DeliveryOrder> _generateMockAvailableOrders() {
+    final List<DeliveryOrder> orders = <DeliveryOrder>[];
+    final List<String> customerNames = <String>[
+      'Riya Sharma',
+      'Amit Kumar',
+      'Priya Singh',
+      'Rahul Verma',
+      'Sneha Gupta',
+    ];
+    final List<String> storeNames = <String>[
+      'Fresh Bites Kitchen',
+      'Tasty Treats',
+      'Burger Barn',
+      'Pizza Palace',
+      'Sushi Station',
+    ];
+    final List<String> addresses = <String>[
+      'Connaught Place, New Delhi',
+      'Karol Bagh, New Delhi',
+      'Lajpat Nagar, New Delhi',
+      'Saket, New Delhi',
+      'Dwarka, New Delhi',
+    ];
+
+    for (int i = 0; i < 5; i++) {
+      orders.add(
+        DeliveryOrder(
+          orderId: '#OD${1000 + _random.nextInt(8999)}',
+          customerName: customerNames[i],
+          customerPhone: '98765${1000 + _random.nextInt(8999)}',
+          deliveryAddress: '${addresses[i]} - ${110001 + i * 10}',
+          storeId: 'STORE${100 + _random.nextInt(899)}',
+          storeName: storeNames[i],
+          storeContact: '98765${43210 + _random.nextInt(10000)}',
+          storeAddress: addresses[(i + 2) % addresses.length],
+          orderItems: <OrderItem>[
+            OrderItem(
+              name: 'Item ${i + 1}',
+              quantity: 1 + _random.nextInt(3),
+              price: (50 + _random.nextInt(200)).toDouble(),
+            ),
+            if (_random.nextBool())
+              OrderItem(
+                name: 'Drink ${i + 1}',
+                quantity: 1,
+                price: 30 + _random.nextInt(50).toDouble(),
+              ),
+          ],
+          orderStatus: OrderStatus.pending,
+          latitude: 28.6139 + (_random.nextDouble() - 0.5) * 0.2,
+          longitude: 77.2090 + (_random.nextDouble() - 0.5) * 0.2,
+          pickup: addresses[(i + 2) % addresses.length],
+          drop: addresses[i],
+          deliveryInstructions: _random.nextBool()
+              ? 'Call before arrival'
+              : 'Leave at door',
+          paymentMode: _random.nextBool() ? 'COD' : 'Online',
+          distanceKm: (3 + _random.nextDouble() * 7).roundToDouble(),
+          estimatedEarnings: (50 + _random.nextInt(100)).toDouble(),
+          assignmentStatus: OrderAssignmentStatus.unassigned,
+        ),
+      );
+    }
+    notifyListeners();
+    return orders;
+  }
+
+  String? acceptOrder(String orderId) {
+    final int index = _availableOrders.indexWhere(
+      (order) => order.orderId == orderId,
+    );
+    if (index == -1) {
+      return 'Order not found';
+    }
+
+    final DeliveryOrder order = _availableOrders[index];
+
+    if (order.assignmentStatus == OrderAssignmentStatus.assigned) {
+      return 'Order already assigned to another partner';
+    }
+
+    _availableOrders.removeAt(index);
+
+    _activeOrder = order.copyWith(
+      assignmentStatus: OrderAssignmentStatus.assigned,
+      assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+      orderStatus: OrderStatus.accepted,
+    );
+
+    _acceptedOrders.add(_activeOrder!);
+
+    _performance = _performance.copyWith(
+      acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
+    );
+
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Order Accepted',
+        message: 'Order $orderId has been accepted by you.',
+        time: DateTime.now(),
+      ),
+    );
+
+    notifyListeners();
+    return null;
+  }
+
+  void rejectOrder(String orderId) {
+    final int index = _availableOrders.indexWhere(
+      (order) => order.orderId == orderId,
+    );
+    if (index != -1) {
+      _availableOrders.removeAt(index);
+    }
+
+    _performance = _performance.copyWith(
+      acceptanceRate: max(0, _performance.acceptanceRate - 1.2),
+    );
+
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Order Rejected',
+        message: 'Order $orderId has been rejected.',
+        time: DateTime.now(),
+      ),
+    );
+
+    notifyListeners();
+  }
+
+  String? reachedPickup(String orderId) {
+    if (_activeOrder == null || _activeOrder!.orderId != orderId) {
+      return 'No active order found';
+    }
+
+    if (_activeOrder!.orderStatus != OrderStatus.accepted) {
+      return 'Order must be accepted first';
+    }
+
+    _activeOrder = _activeOrder!.copyWith(
+      orderStatus: OrderStatus.reachedPickup,
+      reachedStoreAt: DateTime.now(),
+      deliveryPartnerLocation:
+          _partnerLiveLocation ??
+          GeoLocation(
+            latitude: _currentLatitude ?? 28.6139,
+            longitude: _currentLongitude ?? 77.2090,
+          ),
+    );
+
+    final int acceptedIndex = _acceptedOrders.indexWhere(
+      (order) => order.orderId == orderId,
+    );
+    if (acceptedIndex != -1) {
+      _acceptedOrders[acceptedIndex] = _activeOrder!;
+    }
+
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Store Notified',
+        message: 'Store has been informed that you have arrived.',
+        time: DateTime.now(),
+      ),
+    );
+
+    notifyListeners();
+    return null;
+  }
+
+  bool validateProximityToStore(
+    double storeLat,
+    double storeLng,
+    double partnerLat,
+    double partnerLng,
+  ) {
+    const double maxDistanceKm = 0.5;
+    final double distance = _calculateDistance(
+      storeLat,
+      storeLng,
+      partnerLat,
+      partnerLng,
+    );
+    return distance <= maxDistanceKm;
+  }
+
+  double _calculateDistance(
+    double lat1,
+    double lng1,
+    double lat2,
+    double lng2,
+  ) {
+    const double earthRadius = 6371;
+    final double dLat = _toRadians(lat2 - lat1);
+    final double dLng = _toRadians(lng2 - lng1);
+    final double a =
+        _sin(dLat / 2) * _sin(dLat / 2) +
+        _cos(_toRadians(lat1)) *
+            _cos(_toRadians(lat2)) *
+            _sin(dLng / 2) *
+            _sin(dLng / 2);
+    final double c = 2 * _atan2(_sqrt(a), _sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  double _toRadians(double degrees) => degrees * 3.141592653589793 / 180;
+  double _sin(double x) => _taylorSin(x);
+  double _cos(double x) => _taylorCos(x);
+  double _sqrt(double x) => _newtonSqrt(x);
+  double _atan2(double y, double x) => _approximateAtan2(y, x);
+
+  double _taylorSin(double x) {
+    x = x % (2 * 3.141592653589793);
+    double result = x;
+    double term = x;
+    for (int i = 1; i <= 10; i++) {
+      term *= -x * x / ((2 * i) * (2 * i + 1));
+      result += term;
+    }
+    return result;
+  }
+
+  double _taylorCos(double x) {
+    x = x % (2 * 3.141592653589793);
+    double result = 1;
+    double term = 1;
+    for (int i = 1; i <= 10; i++) {
+      term *= -x * x / ((2 * i - 1) * (2 * i));
+      result += term;
+    }
+    return result;
+  }
+
+  double _newtonSqrt(double x) {
+    if (x < 0) return double.nan;
+    if (x == 0) return 0;
+    double guess = x / 2;
+    for (int i = 0; i < 20; i++) {
+      guess = (guess + x / guess) / 2;
+    }
+    return guess;
+  }
+
+  double _approximateAtan2(double y, double x) {
+    if (x > 0) return _atan(y / x);
+    if (x < 0 && y >= 0) return _atan(y / x) + 3.141592653589793;
+    if (x < 0 && y < 0) return _atan(y / x) - 3.141592653589793;
+    if (x == 0 && y > 0) return 3.141592653589793 / 2;
+    if (x == 0 && y < 0) return -3.141592653589793 / 2;
+    return 0;
+  }
+
+  double _atan(double x) {
+    if (x.abs() > 1) {
+      return (x > 0 ? 1 : -1) * (3.141592653589793 / 2 - _atan(1 / x));
+    }
+    double result = x;
+    double term = x;
+    for (int i = 1; i <= 20; i++) {
+      term *= -x * x;
+      result += term / (2 * i + 1);
+    }
+    return result;
+  }
+
+  void startLiveLocationTracking() {
+    _liveLocationTimer?.cancel();
+    _liveLocationTimer = Timer.periodic(
+      Duration(seconds: _trackingInterval),
+      (_) => _updateLiveLocation(),
+    );
+  }
+
+  void stopLiveLocationTracking() {
+    _liveLocationTimer?.cancel();
+    _liveLocationTimer = null;
+  }
+
+  void _updateLiveLocation() {
+    final double baseLat = _currentLatitude ?? 28.6139;
+    final double baseLng = _currentLongitude ?? 77.2090;
+    _partnerLiveLocation = GeoLocation(
+      latitude: baseLat + (_random.nextDouble() - 0.5) / 100,
+      longitude: baseLng + (_random.nextDouble() - 0.5) / 100,
+    );
+    if (_activeOrder != null &&
+        _activeOrder!.orderStatus == OrderStatus.reachedPickup) {
+      _activeOrder = _activeOrder!.copyWith(
+        deliveryPartnerLocation: _partnerLiveLocation,
+      );
+    }
     notifyListeners();
   }
 
@@ -2251,6 +2810,20 @@ class AppController extends ChangeNotifier {
     return '${raw.substring(0, max)}...<truncated>';
   }
 
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
+  }
+
+  void _updateLiveCoordinates() {
+    final double baseLat = 28.6139;
+    final double baseLng = 77.2090;
+    final double lat = baseLat + (_random.nextDouble() - 0.5) / 100;
+    final double lng = baseLng + (_random.nextDouble() - 0.5) / 100;
+    _liveCoordinates = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
+  }
+
   Future<void> fetchLoggedInEmployeeDriverProfile({
     bool forceRefresh = false,
   }) async {
@@ -2444,7 +3017,7 @@ class AppController extends ChangeNotifier {
     throw Exception(lastError ?? 'Authentication failed for GET $uri');
   }
 
-  Future<Map<String, dynamic>> _authorizedPutJson(
+  Future<Map<String, dynamic>> authorizedPutJson(
     Uri uri,
     Map<String, dynamic> body,
   ) async {
@@ -2514,6 +3087,36 @@ class AppController extends ChangeNotifier {
     throw Exception(lastError ?? 'Authentication failed for POST $uri');
   }
 
+  Future<Map<String, dynamic>> authorizedGet(Uri uri) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+    String? lastError;
+
+    for (final Map<String, String> headers in authHeaders) {
+      _logApi('http', 'GET $uri');
+      final http.Response response = await http
+          .get(uri, headers: headers)
+          .timeout(_networkTimeout);
+      _logApi(
+        'http',
+        'GET $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
+      );
+
+      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      final String message =
+          _extractServerError(payload) ??
+          'Request failed (${response.statusCode})';
+      lastError = message;
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(message);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed for GET $uri');
+  }
+
   Future<Map<String, dynamic>> _authorizedPostForm({
     required Uri uri,
     required Map<String, String> body,
@@ -2576,6 +3179,77 @@ class AppController extends ChangeNotifier {
       }
     }
     throw Exception(lastError ?? 'Authentication failed for POST $uri');
+  }
+
+  Future<Map<String, dynamic>> _authorizedUploadFileWithRetry({
+    required Uri uri,
+    required String filePath,
+    required String fileName,
+    required Map<String, String> fields,
+  }) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      final request = http.MultipartRequest('POST', uri)
+        ..headers.addAll(headers)
+        ..fields.addAll(fields)
+        ..files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            filename: fileName,
+          ),
+        );
+
+      final streamed = await request.send().timeout(_networkTimeout);
+      final response = await http.Response.fromStream(streamed);
+      final payload = _decodeJsonMap(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      lastError =
+          _extractServerError(payload) ??
+          'Image upload failed (${response.statusCode})';
+
+      // Only retry for auth errors
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(lastError);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed');
+  }
+
+  Future<Map<String, dynamic>> _authorizedPostFormWithRetry({
+    required Uri uri,
+    required Map<String, String> body,
+  }) async {
+    final List<Map<String, String>> authHeaders = _authorizationHeaders();
+
+    String? lastError;
+    for (final Map<String, String> headers in authHeaders) {
+      final http.Response response = await http
+          .post(uri, headers: headers, body: body)
+          .timeout(_networkTimeout);
+
+      final payload = _decodeJsonMap(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return payload;
+      }
+
+      lastError =
+          _extractServerError(payload) ??
+          'Request failed (${response.statusCode})';
+
+      // Only retry for auth errors
+      if (response.statusCode != 401 && response.statusCode != 403) {
+        throw Exception(lastError);
+      }
+    }
+    throw Exception(lastError ?? 'Authentication failed');
   }
 
   String? _extractUploadedFileUrl(Map<String, dynamic> payload) {
@@ -2732,5 +3406,30 @@ class AppController extends ChangeNotifier {
       return null;
     }
     return double.tryParse(normalized);
+  }
+
+  Future<void> updateFcmToken(String token) async {
+    if (!_isLoggedIn || _sessionToken == null) return;
+
+    final String? userEmail = _profile?.email;
+    if (userEmail == null || userEmail.isEmpty) {
+      debugPrint('Cannot update FCM token: User email missing');
+      return;
+    }
+
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+      );
+      await _authorizedPostJson(uri, <String, dynamic>{
+        'doctype': 'User',
+        'name': userEmail,
+        'fieldname': 'fcm_token',
+        'value': token,
+      });
+      debugPrint('FCM Token synced with server for $userEmail');
+    } catch (e) {
+      debugPrint('Failed to sync FCM token: $e');
+    }
   }
 }
