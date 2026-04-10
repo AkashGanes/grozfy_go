@@ -2827,7 +2827,12 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final String? loggedUser = await _fetchLoggedUser();
+      final String? fetchedLoggedUser = await _fetchLoggedUser();
+      final String? loggedUser =
+          fetchedLoggedUser != null &&
+                  fetchedLoggedUser.trim().toLowerCase() == 'administrator'
+              ? null
+              : fetchedLoggedUser;
       String? driverName;
       Map<String, dynamic>? driverDoc;
 
@@ -3033,6 +3038,13 @@ class AppController extends ChangeNotifier {
       }
     }
     throw Exception(lastError ?? 'Authentication failed for PUT $uri');
+  }
+
+  Future<Map<String, dynamic>> authorizedPostJson(
+    Uri uri,
+    Map<String, dynamic> body,
+  ) async {
+    return _authorizedPostJson(uri, body);
   }
 
   Future<Map<String, dynamic>> _authorizedPostJson(
@@ -3391,28 +3403,4 @@ class AppController extends ChangeNotifier {
     return double.tryParse(normalized);
   }
 
-  Future<void> updateFcmToken(String token) async {
-    if (!_isLoggedIn || _sessionToken == null) return;
-
-    final String? userEmail = _profile?.email;
-    if (userEmail == null || userEmail.isEmpty) {
-      debugPrint('Cannot update FCM token: User email missing');
-      return;
-    }
-
-    try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
-      );
-      await _authorizedPostJson(uri, <String, dynamic>{
-        'doctype': 'User',
-        'name': userEmail,
-        'fieldname': 'fcm_token',
-        'value': token,
-      });
-      debugPrint('FCM Token synced with server for $userEmail');
-    } catch (e) {
-      debugPrint('Failed to sync FCM token: $e');
-    }
-  }
 }

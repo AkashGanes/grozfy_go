@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'fcm_background_handler.dart';
 import 'notification_navigation_handler.dart';
+import '../utils/html_utils.dart';
 
 import '../../features/notifications/providers/notification_providers.dart';
 
@@ -74,15 +75,28 @@ class FCMInitializer {
 
     // 4. Foreground Message Handler
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      debugPrint(
+        'FCM received foreground notification: '
+        'id=${message.messageId}, title=${message.notification?.title}, '
+        'data=${message.data}',
+      );
       debugPrint("FCM Foreground: ${message.notification?.title}");
       _showForegroundNotify(message);
 
       // REAL-TIME REFRESH
       _container?.invalidate(notificationsProvider);
+      _container?.invalidate(notificationCountsProvider);
+      _container?.invalidate(unreadNotificationCountProvider);
+      _container?.invalidate(recentNotificationsProvider);
     });
 
     // 5. Opened from Background
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      debugPrint(
+        'FCM opened from background notification: '
+        'id=${message.messageId}, title=${message.notification?.title}, '
+        'data=${message.data}',
+      );
       debugPrint("FCM Background Open: ${message.notification?.title}");
       NotificationNavigationHandler().handleMessage(message);
     });
@@ -90,29 +104,47 @@ class FCMInitializer {
     // 6. Opened from Terminated
     RemoteMessage? initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
+      debugPrint(
+        'FCM opened from terminated notification: '
+        'id=${initialMessage.messageId}, title=${initialMessage.notification?.title}, '
+        'data=${initialMessage.data}',
+      );
       debugPrint("FCM Terminated Open: ${initialMessage.notification?.title}");
       NotificationNavigationHandler().handleMessage(initialMessage);
     }
   }
 
   void _showForegroundNotify(RemoteMessage message) {
-    final String title =
+    debugPrint(
+      'FCM showing local notification: '
+      'id=${message.messageId}, notification=${message.notification}, '
+      'data=${message.data}',
+    );
+    final String rawTitle =
         (message.notification?.title ??
                 message.data['title'] ??
                 message.data['subject'] ??
                 '')
             .toString();
-    final String body =
+    final String rawBody =
         (message.notification?.body ??
                 message.data['body'] ??
                 message.data['message'] ??
                 '')
             .toString();
+
+    final String title = HtmlUtils.stripHtml(rawTitle);
+    final String body = HtmlUtils.stripHtmlPreserveLineBreaks(rawBody);
     if (title.isEmpty && body.isEmpty) return;
 
+    final String doctype =
+        (message.data['doctype'] ?? message.data['type'] ?? '').toString();
+    final String docname =
+        (message.data['docname'] ?? message.data['doc_name'] ?? '').toString();
+
     final payload = jsonEncode(<String, String>{
-      'doctype': (message.data['doctype'] ?? '').toString(),
-      'docname': (message.data['docname'] ?? '').toString(),
+      'doctype': doctype,
+      'docname': docname,
     });
 
     _localNotificationsPlugin.show(

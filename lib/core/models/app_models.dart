@@ -1,4 +1,5 @@
 // ignore_for_file: constant_identifier_names
+import '../utils/html_utils.dart';
 
 enum VerificationStatus { notSubmitted, pending, approved, rejected }
 
@@ -617,18 +618,28 @@ class NotificationLog {
   final bool read;
   final DateTime? creation;
 
+  static bool _parseReadFlag(dynamic value) {
+    if (value == null) return false;
+    if (value is bool) return value;
+    if (value is num) return value.toInt() == 1;
+    final String normalized = value.toString().trim().toLowerCase();
+    return normalized == '1' || normalized == 'true' || normalized == 'yes';
+  }
+
   factory NotificationLog.fromJson(Map<String, dynamic> json) {
     return NotificationLog(
-      name: json['name'] ?? '',
-      subject: json['subject'] ?? '',
+      name: (json['name'] ?? '').toString().trim(),
+      subject: HtmlUtils.stripHtml((json['subject'] ?? '').toString()),
       // Map email_content (ERPNext field) to message
-      message: json['message'] ?? json['email_content'] ?? '',
+      message: HtmlUtils.stripHtmlPreserveLineBreaks(
+        (json['message'] ?? json['email_content'] ?? '').toString(),
+      ),
       type: json['type'],
       // Map document_type to refDoctype if ref_doctype is missing
       refDoctype: json['ref_doctype'] ?? json['document_type'],
       // Map document_name to refName if ref_name is missing
       refName: json['ref_name'] ?? json['document_name'],
-      read: json['read'] == 1,
+      read: _parseReadFlag(json['read']),
       creation: json['creation'] != null
           ? DateTime.tryParse(json['creation'].toString())
           : null,
@@ -641,9 +652,13 @@ class NotificationLog {
   }) {
     return NotificationLog(
       name: (json['name'] ?? '').toString(),
-      subject: (json['title'] ?? json['subject'] ?? '').toString(),
-      message: (json['message'] ?? json['body'] ?? json['email_content'] ?? '')
-          .toString(),
+      subject: HtmlUtils.stripHtml(
+        (json['title'] ?? json['subject'] ?? '').toString(),
+      ),
+      message: HtmlUtils.stripHtmlPreserveLineBreaks(
+        (json['message'] ?? json['body'] ?? json['email_content'] ?? '')
+            .toString(),
+      ),
       type: (json['type'] ?? 'Alert').toString(),
       refDoctype:
           (json['doctype_ref'] ?? json['ref_doctype'] ?? json['document_type'])

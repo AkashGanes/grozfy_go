@@ -13,8 +13,13 @@ class NotificationNavigationHandler {
   NotificationNavigationHandler._internal();
 
   void handleMessage(RemoteMessage message) {
-    debugPrint("Navigating from FCM Message: ${message.data}");
-    _navigateToTarget(message.data['doctype'], message.data['docname']);
+    final String doctype =
+        (message.data['doctype'] ?? message.data['type'] ?? '').toString();
+    final String docname =
+        (message.data['docname'] ?? message.data['doc_name'] ?? '').toString();
+
+    debugPrint("Navigating from FCM Message - Type: $doctype, Name: $docname");
+    _navigateToTarget(doctype, docname);
   }
 
   void handlePayload(String payload) {
@@ -34,7 +39,7 @@ class NotificationNavigationHandler {
 
   void _navigateToTarget(String? doctype, String? docname) {
     final normalizedDocname = docname?.trim();
-    if (doctype == 'External Delivery Trip' &&
+    if ((doctype == 'External Delivery Trip' || doctype == 'new_trip') &&
         normalizedDocname != null &&
         normalizedDocname.isNotEmpty) {
       navigatorKey.currentState?.pushNamed(
@@ -42,7 +47,9 @@ class NotificationNavigationHandler {
         arguments: normalizedDocname,
       );
     } else if (doctype == 'External Delivery' ||
-        doctype == 'External Delivery Trip') {
+        doctype == 'new_delivery' ||
+        doctype == 'External Delivery Trip' ||
+        doctype == 'new_trip') {
       navigatorKey.currentState?.pushNamed(AppRoutes.notifications);
     }
   }

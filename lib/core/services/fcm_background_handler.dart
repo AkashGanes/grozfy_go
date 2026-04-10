@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
+import '../utils/html_utils.dart';
 
 @pragma('vm:entry-point')
 Future<void> fcmBackgroundHandler(RemoteMessage message) async {
@@ -28,25 +29,32 @@ Future<void> fcmBackgroundHandler(RemoteMessage message) async {
       >()
       ?.createNotificationChannel(channel);
 
-  final String title =
+  final String rawTitle =
       (message.notification?.title ??
               message.data['title'] ??
               message.data['subject'] ??
               '')
           .toString();
-  final String body =
+  final String rawBody =
       (message.notification?.body ??
               message.data['body'] ??
               message.data['message'] ??
               '')
           .toString();
+  final String title = HtmlUtils.stripHtml(rawTitle);
+  final String body = HtmlUtils.stripHtmlPreserveLineBreaks(rawBody);
   if (title.isEmpty && body.isEmpty) {
     return;
   }
 
+  final String doctype = (message.data['doctype'] ?? message.data['type'] ?? '')
+      .toString();
+  final String docname =
+      (message.data['docname'] ?? message.data['doc_name'] ?? '').toString();
+
   final payload = jsonEncode(<String, String>{
-    'doctype': (message.data['doctype'] ?? '').toString(),
-    'docname': (message.data['docname'] ?? '').toString(),
+    'doctype': doctype,
+    'docname': docname,
   });
 
   flutterLocalNotificationsPlugin.show(
