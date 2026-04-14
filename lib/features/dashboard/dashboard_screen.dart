@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 import '../notifications/providers/notification_providers.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
+import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
@@ -149,36 +152,7 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          FrostCard(
-            child: Row(
-              children: [
-                const Icon(Icons.my_location_rounded),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Current Location',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        app.currentLocationLabel ?? 'Location not selected yet',
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pushNamed(AppRoutes.currentLocation);
-                  },
-                  child: Text(app.hasSelectedLocation ? 'Change' : 'Select'),
-                ),
-              ],
-            ),
-          ),
+          _DashboardLocationCard(app: app),
           const SizedBox(height: 14),
           const SectionLabel('Earnings Summary'),
           FrostCard(
@@ -400,7 +374,9 @@ class DashboardScreen extends StatelessWidget {
                                 overrides.contains(notification.name);
                             return _NotificationRow(
                               title: notification.subject,
-                              message: notification.message,
+                              message: _dashboardNotificationMessage(
+                                notification.message,
+                              ),
                               time: notification.creation,
                               isUnread: !effectiveRead,
                               onTap: () {
@@ -576,6 +552,218 @@ class DashboardScreen extends StatelessWidget {
     }
     return '${diff.inDays}d ago';
   }
+
+  static String _dashboardNotificationMessage(String message) {
+    String cleaned = message.trim();
+    cleaned = cleaned.replaceAll(
+      RegExp(
+        r'you have been assigned a new task[\s:.-]*',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    cleaned = cleaned.replaceAll(
+      RegExp(
+        r'dear team[\s,:.-]*',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    cleaned = cleaned.replaceAll(
+      RegExp(
+        r'assigned by[\s:.-]*[^\n\r]*',
+        caseSensitive: false,
+      ),
+      '',
+    );
+
+    final lines = cleaned
+        .split(RegExp(r'\r?\n'))
+        .map((line) => line.trim())
+        .where(
+          (line) =>
+              line.isNotEmpty && !line.toLowerCase().startsWith('from:'),
+        )
+        .toList();
+
+    if (lines.isEmpty) {
+      return cleaned;
+    }
+
+    return lines.join('\n');
+  }
+
+  static bool _shouldHideDashboardNotificationMessage(
+    String title,
+    String message,
+  ) {
+    final combined = '${title.trim()} ${message.trim()}'.toLowerCase();
+    return combined.contains('assigned') && combined.contains('task');
+  }
+}
+
+class _DashboardLocationCard extends StatelessWidget {
+  const _DashboardLocationCard({required this.app});
+
+  final AppController app;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasLocation =
+        app.hasSelectedLocation &&
+        app.currentLatitude != null &&
+        app.currentLongitude != null;
+    final LatLng center = hasLocation
+        ? LatLng(app.currentLatitude!, app.currentLongitude!)
+        : const LatLng(28.6139, 77.2090);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: SizedBox(
+        width: double.infinity,
+        height: 136,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: hasLocation
+                  ? FlutterMap(
+                      options: MapOptions(
+                        initialCenter: center,
+                        initialZoom: 15.5,
+                        interactionOptions: const InteractionOptions(
+                          flags: InteractiveFlag.none,
+                        ),
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.example.delivery_partner_app',
+                        ),
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: center,
+                              width: 52,
+                              height: 52,
+                              child: const Icon(
+                                Icons.location_pin,
+                                size: 40,
+                                color: AppTheme.nightBlue,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppTheme.oceanBlue.withValues(alpha: 0.92),
+                            AppTheme.nightBlue,
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.10),
+                      Colors.black.withValues(alpha: 0.20),
+                      Colors.black.withValues(alpha: 0.45),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    Navigator.of(context).pushNamed(AppRoutes.currentLocation);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: const Icon(
+                                Icons.my_location_rounded,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.16),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.24),
+                                ),
+                              ),
+                              child: TextButton(
+                                onPressed: () {
+                                  Navigator.of(
+                                    context,
+                                  ).pushNamed(AppRoutes.currentLocation);
+                                },
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.white,
+                                ),
+                                child: Text(
+                                  app.hasSelectedLocation ? 'Change' : 'Select',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        const Text(
+                          'Current Location',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          app.currentLocationLabel ?? 'Location not selected yet',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.92),
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _NotificationRow extends StatelessWidget {
@@ -597,6 +785,10 @@ class _NotificationRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final trimmedTitle = title.trim();
     final trimmedMessage = message.trim();
+    final hideMessage = DashboardScreen._shouldHideDashboardNotificationMessage(
+      trimmedTitle,
+      trimmedMessage,
+    );
 
     final bool showUnread = isUnread ?? false;
 
@@ -638,6 +830,8 @@ class _NotificationRow extends StatelessWidget {
                   children: [
                     Text(
                       trimmedTitle.isEmpty ? 'Notification' : trimmedTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontWeight: showUnread ? FontWeight.w800 : FontWeight.w700,
                         color:
@@ -645,11 +839,14 @@ class _NotificationRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 2),
-                    if (trimmedMessage.isNotEmpty)
+                    if (trimmedMessage.isNotEmpty && !hideMessage)
                       Text(
                         trimmedMessage,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: showUnread ? Colors.black87 : Colors.black54,
+                          height: 1.35,
                         ),
                       ),
                     if (time != null) ...[
