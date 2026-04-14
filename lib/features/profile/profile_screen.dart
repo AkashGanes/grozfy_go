@@ -56,7 +56,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final app = ref.watch(appControllerProvider);
-    _initBasicInfoFromState(app);
+    _syncBasicInfoFromState(app);
 
     final Map<String, dynamic>? driver = app.loggedProfileDetails?.driver;
     final String displayName =
@@ -84,48 +84,68 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return AppShell(
       title: 'My Profile',
       subtitle: 'Driver account',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _animatedEntry(
-            child: _profileHeader(
-              name: displayName,
-              imagePath: app.profileImagePath,
-              busy: _savingBasicInfo || app.profileImageSyncing,
-            ),
-            delayMs: 0,
+      scrollable: false,
+      child: RefreshIndicator(
+        onRefresh: _refreshProfile,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
           ),
-          const SizedBox(height: 12),
-          _animatedEntry(
-            child: _basicInformationSection(app),
-            delayMs: 120,
-          ),
-          const SizedBox(height: 12),
-          _animatedEntry(
-            delayMs: 220,
-            child: AnimatedSwitcher(
-              duration: 320.ms,
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) {
-                final Animation<Offset> offset = Tween<Offset>(
-                  begin: const Offset(0.0, 0.08),
-                  end: Offset.zero,
-                ).animate(animation);
-                return FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(position: offset, child: child),
-                );
-              },
-              child: KeyedSubtree(
-                key: ValueKey<String>(detailsStateKey),
-                child: detailsSection,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _animatedEntry(
+                child: _profileHeader(
+                  name: displayName,
+                  imagePath: app.profileImagePath,
+                  busy: _savingBasicInfo || app.profileImageSyncing,
+                ),
+                delayMs: 0,
               ),
-            ),
+              const SizedBox(height: 12),
+              _animatedEntry(
+                child: _basicInformationSection(app),
+                delayMs: 120,
+              ),
+              const SizedBox(height: 12),
+              _animatedEntry(
+                delayMs: 220,
+                child: AnimatedSwitcher(
+                  duration: 320.ms,
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final Animation<Offset> offset = Tween<Offset>(
+                      begin: const Offset(0.0, 0.08),
+                      end: Offset.zero,
+                    ).animate(animation);
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(position: offset, child: child),
+                    );
+                  },
+                  child: KeyedSubtree(
+                    key: ValueKey<String>(detailsStateKey),
+                    child: detailsSection,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
+  }
+
+  Future<void> _refreshProfile() async {
+    final app = ref.read(appControllerProvider);
+    await app.fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _syncBasicInfoFromState(app, force: true);
+    });
   }
 
   Widget _animatedEntry({
@@ -619,13 +639,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return sanitized.isEmpty ? 'attachment.bin' : sanitized;
   }
 
-  void _initBasicInfoFromState(dynamic app) {
-    if (_basicInfoInitialized) {
+  void _syncBasicInfoFromState(dynamic app, {bool force = false}) {
+    if (_basicInfoInitialized && !force) {
       return;
     }
-    _nameCtrl.text = app.profile?.fullName ?? '';
-    _mobileCtrl.text = app.profile?.mobile ?? '';
-    _emailCtrl.text = app.profile?.email ?? '';
+    final Map<String, dynamic>? driver = app.loggedProfileDetails?.driver;
+    _nameCtrl.text = app.profile?.fullName ?? _field(driver, 'full_name') ?? '';
+    _mobileCtrl.text =
+        app.profile?.mobile ?? _field(driver, 'cell_number') ?? '';
+    _emailCtrl.text =
+        app.profile?.email ??
+        _field(driver, 'user_id') ??
+        _field(driver, 'email') ??
+        '';
     _basicInfoInitialized = true;
   }
 
