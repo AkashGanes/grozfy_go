@@ -8,13 +8,12 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/services/api_service.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/utils/call_utils.dart';
 
 class DeliveryTrackingScreen extends StatefulWidget {
   final String? deliveryName;
@@ -710,55 +709,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     return (bearing * 180 / pi + 360) % 360;
   }
 
-  Future<void> _callCustomer(String phoneNumber) async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-
-    final status = await Permission.phone.request();
-
-    if (status.isGranted) {
-      final String phoneUrl = 'tel:$phoneNumber';
-      final Uri launchUri = Uri.parse(phoneUrl);
-
-      try {
-        if (await canLaunchUrl(launchUri)) {
-          await launchUrl(launchUri, mode: LaunchMode.externalApplication);
-        } else {
-          scaffoldMessenger.showSnackBar(
-            SnackBar(
-              content: Text('No phone app found. Number: $phoneNumber'),
-              duration: const Duration(seconds: 3),
-            ),
-          );
-        }
-      } catch (e) {
-        debugPrint('Error launching phone: $e');
-        scaffoldMessenger.showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } else if (status.isDenied) {
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Phone permission denied. Please enable it in settings.',
-          ),
-          duration: Duration(seconds: 3),
-        ),
-      );
-      await openAppSettings();
-    } else if (status.isPermanentlyDenied) {
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Phone permission permanently denied. Please enable in settings.',
-          ),
-          duration: Duration(seconds: 3),
-        ),
-      );
-      await openAppSettings();
-    }
-  }
-
   void _showCancelDialog() {
     showDialog(
       context: context,
@@ -1412,10 +1362,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                           Expanded(
                             child: ElevatedButton.icon(
                               onPressed: _contactNumber.isNotEmpty
-                                  ? () => _callCustomer(_contactNumber)
+                                  ? () => makePhoneCall(context, _contactNumber, label: 'Customer')
                                   : null,
                               icon: const Icon(Icons.call),
-                              label: const Text('Call'),
+                              label: const Text('Call Customer'),
                               style: ElevatedButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 14,
