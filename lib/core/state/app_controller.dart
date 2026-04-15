@@ -489,6 +489,107 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<String?> updateProfileAndSync({
+    String? fullName,
+    String? email,
+    String? mobile,
+  }) async {
+    await updateProfile(fullName: fullName, email: email, mobile: mobile);
+
+    final String? normalizedName = _nullIfBlank(fullName);
+    final String? normalizedEmail = _nullIfBlank(email);
+    final String? normalizedMobile = _nullIfBlank(mobile);
+
+    try {
+      if (_loggedProfileDetails?.driver == null) {
+        await fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+      }
+
+      final String? driverName = _nullIfBlank(
+        _loggedProfileDetails?.driver?['name']?.toString(),
+      );
+      if (driverName == null) {
+        return 'Basic information saved on this device. Driver link missing for backend sync.';
+      }
+
+      final Map<String, dynamic> driverPayload = <String, dynamic>{};
+      if (normalizedName != null) {
+        driverPayload['full_name'] = normalizedName;
+      }
+      if (normalizedMobile != null) {
+        driverPayload['cell_number'] = normalizedMobile;
+      }
+      if (email != null) {
+        driverPayload['email'] = normalizedEmail ?? '';
+      }
+
+      if (driverPayload.isNotEmpty) {
+        final Uri driverUri = Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/Driver/${Uri.encodeComponent(driverName)}',
+        );
+        final Map<String, dynamic> updatedDriver = await authorizedPutJson(
+          driverUri,
+          driverPayload,
+        );
+        final Map<String, dynamic>? refreshedDriver = _extractResourceData(
+          updatedDriver,
+        );
+        if (refreshedDriver != null) {
+          _loggedProfileDetails = LoggedPartnerProfileDetails(
+            loggedUser: _loggedProfileDetails?.loggedUser,
+            employee: _loggedProfileDetails?.employee,
+            driver: refreshedDriver,
+          );
+          notifyListeners();
+        }
+      }
+
+      final String? employeeName = await _resolveEmployeeNameForProfileSync();
+      if (employeeName != null) {
+        final Map<String, dynamic> employeePayload =
+            await _buildEmployeeProfileUpdatePayload(
+              fullName: normalizedName,
+              email: email != null ? normalizedEmail : '',
+              mobile: normalizedMobile,
+            );
+        if (employeePayload.isNotEmpty) {
+          final Uri employeeUri = Uri.parse(
+            '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
+          );
+          final Map<String, dynamic> updatedEmployee = await authorizedPutJson(
+            employeeUri,
+            employeePayload,
+          );
+          final Map<String, dynamic>? refreshedEmployee = _extractResourceData(
+            updatedEmployee,
+          );
+          if (refreshedEmployee != null) {
+            _loggedProfileDetails = LoggedPartnerProfileDetails(
+              loggedUser: _loggedProfileDetails?.loggedUser,
+              employee: refreshedEmployee,
+              driver: _loggedProfileDetails?.driver,
+            );
+            notifyListeners();
+          }
+        }
+      }
+
+      final String? userName = _resolveUserNameForProfileSync();
+      if (userName != null) {
+        await _updateUserProfileAndMaybeRename(
+          currentUserName: userName,
+          fullName: normalizedName,
+          email: email != null ? normalizedEmail : null,
+          mobile: normalizedMobile,
+        );
+      }
+
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
   Future<void> setProfileImagePath(String? path) async {
     _profileImagePath = _nullIfBlank(path);
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -498,6 +599,51 @@ class AppController extends ChangeNotifier {
       await prefs.remove(_prefProfileImagePath);
     }
     notifyListeners();
+  }
+
+  Future<String?> removeProfileImageAndSync() async {
+    if (_profileImageSyncing) {
+      return 'Profile image update is already in progress';
+    }
+
+    _profileImageSyncing = true;
+    _profileImageSyncError = null;
+    notifyListeners();
+
+    try {
+      await setProfileImagePath(null);
+
+      final String? employeeName = await _resolveEmployeeNameForProfileSync();
+      if (employeeName == null) {
+        _profileImageSyncError =
+            'Profile image removed on this device. Employee link missing for web sync.';
+        return _profileImageSyncError;
+      }
+
+      final Uri employeeUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
+      );
+      final Map<String, dynamic> payload = await authorizedPutJson(
+        employeeUri,
+        <String, dynamic>{'image': ''},
+      );
+      final Map<String, dynamic>? refreshedEmployee = _extractResourceData(
+        payload,
+      );
+      _loggedProfileDetails = LoggedPartnerProfileDetails(
+        loggedUser: _loggedProfileDetails?.loggedUser,
+        employee: refreshedEmployee ?? _loggedProfileDetails?.employee,
+        driver: _loggedProfileDetails?.driver,
+      );
+      _profileImageSyncError = null;
+      return null;
+    } catch (e) {
+      _profileImageSyncError = e.toString().replaceFirst('Exception: ', '');
+      return _profileImageSyncError;
+    } finally {
+      _profileImageSyncing = false;
+      notifyListeners();
+    }
   }
 
   Future<String?> updateProfileImageAndSync({
@@ -526,12 +672,7 @@ class AppController extends ChangeNotifier {
       final String localPath = await _copyProfileImageToAppStorage(sourcePath);
       await setProfileImagePath(localPath);
 
-      if (_loggedProfileDetails?.driver == null) {
-        await fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
-      }
-      final String? employeeName = _nullIfBlank(
-        _loggedProfileDetails?.driver?['employee']?.toString(),
-      );
+      final String? employeeName = await _resolveEmployeeNameForProfileSync();
       if (employeeName == null) {
         _profileImageSyncError =
             'Image saved on this device. Employee link missing for web sync.';
@@ -559,10 +700,7 @@ class AppController extends ChangeNotifier {
         );
       }
 
-      final Uri employeeUri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
-      );
-      await authorizedPutJson(employeeUri, <String, dynamic>{'image': fileUrl});
+      await _updateEmployeeImage(employeeName: employeeName, imageUrl: fileUrl);
       _profileImageSyncError = null;
       return null;
     } catch (e) {
@@ -2830,11 +2968,13 @@ class AppController extends ChangeNotifier {
       final String? fetchedLoggedUser = await _fetchLoggedUser();
       final String? loggedUser =
           fetchedLoggedUser != null &&
-                  fetchedLoggedUser.trim().toLowerCase() == 'administrator'
-              ? null
-              : fetchedLoggedUser;
+              fetchedLoggedUser.trim().toLowerCase() == 'administrator'
+          ? null
+          : fetchedLoggedUser;
       String? driverName;
+      String? employeeName;
       Map<String, dynamic>? driverDoc;
+      Map<String, dynamic>? employeeDoc;
 
       // Login identity is best mapped through mobile returned in OTP login flow.
       driverName = await _findDriverByMobile();
@@ -2843,18 +2983,19 @@ class AppController extends ChangeNotifier {
       if (driverName == null &&
           loggedUser != null &&
           loggedUser.toLowerCase() != 'administrator') {
-        final String? employeeName = await _findResourceName(
+        final String? linkedEmployeeName = await _findResourceName(
           doctype: 'Employee',
           filters: <List<String>>[
             <String>['Employee', 'user_id', '=', loggedUser],
           ],
           fields: <String>['name'],
         );
-        if (employeeName != null) {
+        if (linkedEmployeeName != null) {
+          employeeName = linkedEmployeeName;
           driverName = await _findResourceName(
             doctype: 'Driver',
             filters: <List<String>>[
-              <String>['Driver', 'employee', '=', employeeName],
+              <String>['Driver', 'employee', '=', linkedEmployeeName],
             ],
             fields: <String>['name'],
           );
@@ -2864,11 +3005,15 @@ class AppController extends ChangeNotifier {
 
       if (driverName != null) {
         driverDoc = await _fetchResourceDoc('Driver', driverName);
+        employeeName ??= _nullIfBlank(driverDoc?['employee']?.toString());
+      }
+      if (employeeName != null) {
+        employeeDoc = await _fetchResourceDoc('Employee', employeeName);
       }
 
       _loggedProfileDetails = LoggedPartnerProfileDetails(
         loggedUser: loggedUser,
-        employee: null,
+        employee: employeeDoc,
         driver: driverDoc,
       );
 
@@ -3264,6 +3409,225 @@ class AppController extends ChangeNotifier {
     return null;
   }
 
+  Future<String?> _resolveEmployeeNameForProfileSync() async {
+    if (_loggedProfileDetails?.driver == null) {
+      await fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+    }
+
+    return _nullIfBlank(_loggedProfileDetails?.employee?['name']?.toString()) ??
+        _nullIfBlank(_loggedProfileDetails?.driver?['employee']?.toString());
+  }
+
+  Future<void> _updateEmployeeImage({
+    required String employeeName,
+    required String imageUrl,
+  }) async {
+    final Uri employeeUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
+    );
+    final Map<String, dynamic> payload = await authorizedPutJson(
+      employeeUri,
+      <String, dynamic>{'image': imageUrl},
+    );
+    final Map<String, dynamic>? refreshedEmployee = _extractResourceData(
+      payload,
+    );
+    _loggedProfileDetails = LoggedPartnerProfileDetails(
+      loggedUser: _loggedProfileDetails?.loggedUser,
+      employee: refreshedEmployee ?? _loggedProfileDetails?.employee,
+      driver: _loggedProfileDetails?.driver,
+    );
+  }
+
+  Map<String, dynamic>? _extractResourceData(Map<String, dynamic> payload) {
+    final dynamic data = payload['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    final dynamic message = payload['message'];
+    if (message is Map<String, dynamic>) {
+      return message;
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>> _buildEmployeeProfileUpdatePayload({
+    String? fullName,
+    required String? email,
+    String? mobile,
+  }) async {
+    final Map<String, String> employeeFields = await _fetchDoctypeFieldTypes(
+      'Employee',
+    );
+    final Map<String, dynamic> payload = <String, dynamic>{};
+
+    void setIfEditable(String fieldname, dynamic value) {
+      if (!employeeFields.containsKey(fieldname)) {
+        return;
+      }
+      payload[fieldname] = value;
+    }
+
+    if (fullName != null) {
+      setIfEditable('employee_name', fullName);
+      final List<String> nameParts = fullName
+          .split(RegExp(r'\s+'))
+          .where((part) => part.isNotEmpty)
+          .toList();
+      if (nameParts.isNotEmpty) {
+        setIfEditable('first_name', nameParts.first);
+        if (nameParts.length > 1) {
+          setIfEditable('last_name', nameParts.skip(1).join(' '));
+        } else {
+          setIfEditable('last_name', '');
+        }
+      }
+    }
+
+    if (mobile != null) {
+      if (employeeFields.containsKey('cell_number')) {
+        payload['cell_number'] = mobile;
+      } else if (employeeFields.containsKey('mobile_no')) {
+        payload['mobile_no'] = mobile;
+      }
+    }
+
+    if (email != null) {
+      if (employeeFields.containsKey('personal_email')) {
+        payload['personal_email'] = email;
+      } else if (employeeFields.containsKey('company_email')) {
+        payload['company_email'] = email;
+      } else if (employeeFields.containsKey('email')) {
+        payload['email'] = email;
+      }
+    }
+
+    return payload;
+  }
+
+  String? _resolveUserNameForProfileSync() {
+    return _nullIfBlank(
+          _loggedProfileDetails?.driver?['user_id']?.toString(),
+        ) ??
+        _nullIfBlank(_loggedProfileDetails?.loggedUser);
+  }
+
+  Future<void> _updateUserProfileAndMaybeRename({
+    required String currentUserName,
+    String? fullName,
+    String? email,
+    String? mobile,
+  }) async {
+    String effectiveUserName = currentUserName;
+
+    if (email != null &&
+        email.isNotEmpty &&
+        currentUserName.toLowerCase() != email.toLowerCase()) {
+      final Uri renameUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.rename_doc',
+      );
+      await authorizedPostJson(renameUri, <String, dynamic>{
+        'doctype': 'User',
+        'old_name': currentUserName,
+        'new_name': email,
+        'merge': false,
+      });
+      effectiveUserName = email;
+    }
+
+    final Map<String, String> userFields = await _fetchDoctypeFieldTypes(
+      'User',
+    );
+    final Map<String, dynamic> payload = <String, dynamic>{};
+
+    if (fullName != null) {
+      final List<String> nameParts = fullName
+          .split(RegExp(r'\s+'))
+          .where((part) => part.isNotEmpty)
+          .toList();
+      if (userFields.containsKey('full_name')) {
+        payload['full_name'] = fullName;
+      }
+      if (nameParts.isNotEmpty) {
+        if (userFields.containsKey('first_name')) {
+          payload['first_name'] = nameParts.first;
+        }
+        if (userFields.containsKey('last_name')) {
+          payload['last_name'] = nameParts.length > 1
+              ? nameParts.skip(1).join(' ')
+              : '';
+        }
+      }
+    }
+
+    if (email != null) {
+      if (userFields.containsKey('username')) {
+        payload['username'] = email;
+      }
+      if (userFields.containsKey('email')) {
+        payload['email'] = email;
+      }
+    }
+
+    if (mobile != null && userFields.containsKey('mobile_no')) {
+      payload['mobile_no'] = mobile;
+    }
+
+    if (payload.isEmpty) {
+      _loggedProfileDetails = LoggedPartnerProfileDetails(
+        loggedUser: effectiveUserName,
+        employee: _loggedProfileDetails?.employee,
+        driver: _loggedProfileDetails?.driver,
+      );
+      return;
+    }
+
+    final Uri userUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/User/${Uri.encodeComponent(effectiveUserName)}',
+    );
+    await authorizedPutJson(userUri, payload);
+    _loggedProfileDetails = LoggedPartnerProfileDetails(
+      loggedUser: effectiveUserName,
+      employee: _loggedProfileDetails?.employee,
+      driver: _loggedProfileDetails?.driver,
+    );
+  }
+
+  Future<Map<String, String>> _fetchDoctypeFieldTypes(String doctype) async {
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/DocType/${Uri.encodeComponent(doctype)}',
+      );
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+      final dynamic data = payload['data'];
+      if (data is! Map<String, dynamic>) {
+        return <String, String>{};
+      }
+      final dynamic fields = data['fields'];
+      if (fields is! List) {
+        return <String, String>{};
+      }
+
+      final Map<String, String> fieldTypes = <String, String>{};
+      for (final dynamic row in fields) {
+        if (row is! Map<String, dynamic>) {
+          continue;
+        }
+        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
+        final String? fieldtype = _nullIfBlank(row['fieldtype']?.toString());
+        final int readOnly =
+            int.tryParse(row['read_only']?.toString() ?? '0') ?? 0;
+        if (fieldname == null || fieldtype == null || readOnly == 1) {
+          continue;
+        }
+        fieldTypes[fieldname] = fieldtype;
+      }
+      return fieldTypes;
+    } catch (_) {
+      return <String, String>{};
+    }
+  }
+
   List<Map<String, String>> _authorizationHeaders({String? contentType}) {
     final List<Map<String, String>> authHeaders = <Map<String, String>>[];
     if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
@@ -3402,5 +3766,4 @@ class AppController extends ChangeNotifier {
     }
     return double.tryParse(normalized);
   }
-
 }
