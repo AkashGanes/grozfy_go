@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
 import '../models/app_models.dart';
+import '../navigation/app_routes.dart';
 import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
 import '../widgets/partner_widget_manager.dart';
@@ -250,43 +251,43 @@ class AppController extends ChangeNotifier {
         name: 'Basic Profile',
         description: 'Name, mobile & email',
         isCompleted: _profile != null && _profile!.fullName.isNotEmpty,
-        route: null,
+        route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
         name: 'Profile Photo',
         description: 'Add a profile picture',
         isCompleted: _profileImagePath != null,
-        route: null,
+        route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
         name: 'KYC Documents',
         description: 'ID proof & driving license',
         isCompleted: _kycCompleted,
-        route: '/kyc-documents',
+        route: AppRoutes.kycDocuments,
       ),
       ProfileCompletenessItem(
         name: 'Vehicle Details',
         description: 'Register your vehicle',
         isCompleted: _vehicle != null,
-        route: '/vehicle-details',
+        route: AppRoutes.vehicleDetails,
       ),
       ProfileCompletenessItem(
         name: 'Bank Account',
         description: 'Add bank for payouts',
         isCompleted: _bank != null,
-        route: '/bank-setup',
+        route: AppRoutes.bankSetup,
       ),
       ProfileCompletenessItem(
         name: 'Delivery Zone',
         description: 'Select your working area',
         isCompleted: hasSelectedLocation,
-        route: '/current-location',
+        route: AppRoutes.currentLocation,
       ),
       ProfileCompletenessItem(
         name: 'Permissions',
         description: 'Location & notifications',
         isCompleted: _permissionState.allGranted,
-        route: '/permission',
+        route: AppRoutes.permission,
       ),
     ];
 
