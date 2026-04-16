@@ -197,6 +197,19 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_ready) {
+      return AppShell(
+        title: 'Bank Account Setup',
+        subtitle: 'Loading bank details…',
+        child: FrostCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: List.generate(8, (_) => const SkeletonFormField()),
+          ),
+        ),
+      );
+    }
+
     final dynamic args = ModalRoute.of(context)?.settings.arguments;
     final bool forceEdit =
         args is Map<String, dynamic> && args['force_edit'] == true;
@@ -552,6 +565,50 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
     super.dispose();
   }
 
+  Widget _buildResults(BuildContext context) {
+    final String typed = _queryCtrl.text.trim();
+    if (_results.isNotEmpty) {
+      return ListView.builder(
+        itemCount: _results.length,
+        itemBuilder: (BuildContext context, int index) {
+          final String item = _results[index];
+          return ListTile(
+            dense: true,
+            title: Text(item, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () => Navigator.of(context).pop(item),
+          );
+        },
+      );
+    }
+    // No results from API (possibly 403 or genuinely empty).
+    // Let the user confirm whatever they've typed as a free-text value.
+    if (typed.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.check_circle_outline),
+            title: Text(
+              'Use "$typed"',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () => Navigator.of(context).pop(typed),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'No matching records found. You can use the typed value above.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ),
+        ],
+      );
+    }
+    return const Center(child: Text('No results found'));
+  }
+
   Future<void> _load(String query, {bool showLoading = true}) async {
     if (showLoading) {
       setState(() => _loading = true);
@@ -602,23 +659,7 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
               Expanded(
                 child: _loading
                     ? const _BankSearchLoading()
-                    : _results.isEmpty
-                    ? const Center(child: Text('No results found'))
-                    : ListView.builder(
-                        itemCount: _results.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final String item = _results[index];
-                          return ListTile(
-                            dense: true,
-                            title: Text(
-                              item,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onTap: () => Navigator.of(context).pop(item),
-                          );
-                        },
-                      ),
+                    : _buildResults(context),
               ),
             ],
           ),
@@ -633,9 +674,11 @@ class _BankSearchLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SkeletonLoader(
-      itemCount: 5,
-      spacing: 4,
+    return SingleChildScrollView(
+      child: SkeletonLoader(
+        itemCount: 5,
+        spacing: 4,
+      ),
     );
   }
 }
