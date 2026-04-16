@@ -34,5 +34,5 @@ class ApiConstants {
   // ---------------------------------------------------------------------------
 
   static const String apiKey = 'fcce513c95f7a5c';
-  static const String apiSecret = 'c46e6e790a765ee';
+  static const String apiSecret = 'cb2247333639cda7eb79cc41598410c90eb2061922608248fcb060cc';
 }
