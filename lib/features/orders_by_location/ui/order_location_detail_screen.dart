@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/call_utils.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
@@ -322,7 +322,7 @@ class _OrderLocationDetailScreenState
                         ),
                       ),
                       if (detail.contactMobile != null)
-                        _CallButton(mobile: detail.contactMobile!),
+                        CallButton(phoneNumber: detail.contactMobile!),
                     ],
                   ),
                   const SizedBox(height: 14),
@@ -685,38 +685,7 @@ class _AddressRow extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Call button
-// ---------------------------------------------------------------------------
 
-class _CallButton extends StatelessWidget {
-  const _CallButton({required this.mobile});
-  final String mobile;
-
-  Future<void> _call() async {
-    final digits = mobile.replaceAll(RegExp(r'\s+'), '');
-    await launchUrl(Uri.parse('tel:$digits'));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _call,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE8F5E9),
-          shape: BoxShape.circle,
-          border: Border.all(
-              color: const Color(0xFF4CAF50).withValues(alpha: 0.3)),
-        ),
-        child: const Icon(Icons.phone_rounded,
-            color: Color(0xFF4CAF50), size: 18),
-      ),
-    );
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Action buttons

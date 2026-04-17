@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/utils/call_utils.dart';
 import '../../core/widgets/app_shell.dart';
 
 class OrderDetailsScreen extends StatelessWidget {
@@ -123,31 +124,27 @@ class OrderDetailsScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      showInfoSnack(
-                        context,
-                        'Calling ${order.customerName} at ${order.customerPhone}',
-                      );
-                    },
-                    icon: const Icon(Icons.call_rounded),
-                    label: const Text('Call Customer'),
-                  ),
+            CallButtonRow(
+              calls: [
+                CallEntry(
+                  phoneNumber: order.customerPhone,
+                  label: 'Customer',
+                  icon: Icons.person_rounded,
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).pushNamed(AppRoutes.navigation);
-                    },
-                    icon: const Icon(Icons.navigation_rounded),
-                    label: const Text('Navigate'),
-                  ),
+                CallEntry(
+                  phoneNumber: order.storeContact,
+                  label: 'Store',
+                  icon: Icons.store_rounded,
                 ),
               ],
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pushNamed(AppRoutes.navigation);
+              },
+              icon: const Icon(Icons.navigation_rounded),
+              label: const Text('Navigate'),
             ),
             const SizedBox(height: 12),
             if (order.orderStatus == OrderStatus.accepted)
