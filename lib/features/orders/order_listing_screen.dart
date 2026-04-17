@@ -6,7 +6,6 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
 
 class OrderListingScreen extends StatefulWidget {
@@ -20,20 +19,14 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   final MapController _mapController = MapController();
   DeliveryOrder? _selectedOrder;
   bool _showMap = true;
-  int _selectedTab = 0;
-  bool _hasFetchedOrders = false;
 
   @override
   void initState() {
     super.initState();
-  }
-
-  void _fetchOrders(AppController app) {
-    if (!_hasFetchedOrders) {
-      _hasFetchedOrders = true;
-      debugPrint('[OrderListing] Fetching orders...');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final app = AppScope.of(context);
       app.fetchAvailableOrders();
-    }
+    });
   }
 
   void _centerOnOrder(DeliveryOrder order) {
@@ -63,11 +56,10 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
-    _fetchOrders(app);
 
     return AppShell(
-      title: 'Orders',
-      subtitle: 'Manage your deliveries',
+      title: 'Available Orders',
+      subtitle: 'Accept orders to start delivering',
       actions: [
         IconButton(
           icon: Icon(_showMap ? Icons.list : Icons.map),
@@ -76,26 +68,9 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       ],
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
-              children: [
-                Expanded(child: _buildTab('Available', 0)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildTab('Active', 1)),
-                const SizedBox(width: 12),
-                Expanded(child: _buildTab('Completed', 2)),
-                if (_selectedTab == 0)
-                  IconButton(
-                    icon: const Icon(Icons.refresh, size: 20),
-                    onPressed: () => app.fetchAvailableOrders(),
-                  ),
-              ],
-            ),
-          ),
-          if (_showMap && _selectedTab == 0)
+          if (_showMap)
             SizedBox(
-              height: 180,
+              height: 200,
               child: FrostCard(
                 child: Padding(
                   padding: EdgeInsets.zero,
@@ -142,6 +117,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                 ),
               ),
             ),
+          const SizedBox(height: 12),
           Expanded(child: _buildOrderList(app)),
           if (_selectedOrder != null) _buildOrderActions(_selectedOrder!),
         ],
@@ -149,69 +125,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     );
   }
 
-  Widget _buildTab(String label, int index) {
-    final isSelected = _selectedTab == index;
-    return GestureDetector(
-      onTap: () => setState(() {
-        _selectedTab = index;
-        _selectedOrder = null;
-      }),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected
-                ? AppColors.primary
-                : AppColors.outline.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? AppColors.onPrimary : AppColors.onSurface,
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildOrderList(AppController app) {
-    debugPrint(
-      '[OrderListing] _buildOrderList called, tab: $_selectedTab, available: ${app.availableOrders.length}, active: ${app.activeOrder != null}, accepted: ${app.acceptedOrders.length}',
-    );
-    List<DeliveryOrder> orders = [];
-    String emptyMessage = '';
-    IconData emptyIcon = Icons.local_shipping_outlined;
-
-    switch (_selectedTab) {
-      case 0:
-        orders = app.availableOrders;
-        emptyMessage = 'No available orders';
-        break;
-      case 1:
-        if (app.activeOrder != null) {
-          orders = [app.activeOrder!];
-        }
-        emptyMessage = 'No active order';
-        emptyIcon = Icons.delivery_dining;
-        break;
-      case 2:
-        orders = app.acceptedOrders
-            .where(
-              (o) =>
-                  o.orderStatus == OrderStatus.delivered ||
-                  o.orderStatus == OrderStatus.cancelled,
-            )
-            .toList();
-        emptyMessage = 'No completed orders';
-        emptyIcon = Icons.check_circle_outline;
-        break;
-    }
-
     if (app.isLoadingOrders) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -232,31 +146,32 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       );
     }
 
-    if (orders.isEmpty) {
+    if (app.availableOrders.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(emptyIcon, size: 64, color: Colors.grey),
+            const Icon(
+              Icons.local_shipping_outlined,
+              size: 64,
+              color: Colors.grey,
+            ),
             const SizedBox(height: 12),
-            Text(emptyMessage),
-            if (_selectedTab == 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: ElevatedButton(
-                  onPressed: () => app.fetchAvailableOrders(),
-                  child: const Text('Refresh'),
-                ),
-              ),
+            const Text('No available orders'),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => app.fetchAvailableOrders(),
+              child: const Text('Refresh'),
+            ),
           ],
         ),
       );
     }
 
     return ListView.builder(
-      itemCount: orders.length,
+      itemCount: app.availableOrders.length,
       itemBuilder: (context, index) {
-        final order = orders[index];
+        final order = app.availableOrders[index];
         final isSelected = _selectedOrder?.orderId == order.orderId;
         return FrostCard(
           child: InkWell(
@@ -328,34 +243,19 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      if (_selectedTab == 0) ...[
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => _rejectOrder(order),
-                            child: const Text('Reject'),
-                          ),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => _rejectOrder(order),
+                          child: const Text('Reject'),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () => _acceptOrder(order),
-                            child: const Text('Accept'),
-                          ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => _acceptOrder(order),
+                          child: const Text('Accept'),
                         ),
-                      ] else ...[
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.of(
-                                context,
-                              ).pushNamed(AppRoutes.orderDetails);
-                            },
-                            child: Text(
-                              _selectedTab == 1 ? 'View Details' : 'View',
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ],
                   ),
                 ],

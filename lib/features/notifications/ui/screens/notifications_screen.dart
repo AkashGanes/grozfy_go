@@ -16,8 +16,7 @@ class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  ConsumerState<NotificationsScreen> createState() =>
-      _NotificationsScreenState();
+  ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
@@ -86,9 +85,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
   Future<void> _markAllAsReadAction(BuildContext context) async {
     final currentOverrides = ref.read(notificationReadOverridesProvider);
-    final overrideNotifier = ref.read(
-      notificationReadOverridesProvider.notifier,
-    );
+    final overrideNotifier = ref.read(notificationReadOverridesProvider.notifier);
     final loaded = _pagingController.itemList ?? const <NotificationLog>[];
     final optimistic = loaded
         .where((n) => !n.read)
@@ -238,11 +235,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   ),
                   itemBuilder: (context, item, index) {
                     return _NotificationTile(
-                          notification: item,
-                          onChanged: () async {
-                            await _refresh();
-                          },
-                        )
+                      notification: item,
+                      onChanged: () async {
+                        await _refresh();
+                      },
+                    )
                         .animate()
                         .fadeIn(
                           delay: Duration(

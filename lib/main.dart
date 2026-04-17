@@ -26,7 +26,6 @@ import 'features/orders_by_location/ui/external_delivery_trip_list_screen.dart';
 import 'features/orders_by_location/ui/orders_by_location_screen.dart';
 import 'features/orders/order_details_screen.dart';
 import 'features/orders/order_listing_screen.dart';
-import 'features/earnings/earnings_screen.dart';
 import 'features/orders/order_request_screen.dart';
 import 'features/orders/order_status_screen.dart';
 import 'features/orders/order_tracking_screen.dart';
@@ -90,12 +89,11 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-
+    
     if (state == AppLifecycleState.resumed) {
       ref.read(appControllerProvider.notifier).setAppResumed(true);
       ref.read(appControllerProvider.notifier).checkConnectivity();
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       ref.read(appControllerProvider.notifier).setAppResumed(false);
     }
   }
@@ -278,10 +276,6 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
               return MaterialPageRoute<void>(
                 builder: (_) => const ProfileScreen(),
               );
-            case AppRoutes.earnings:
-              return MaterialPageRoute<void>(
-                builder: (_) => const EarningsScreen(),
-              );
             case AppRoutes.ordersByLocation:
               return MaterialPageRoute<void>(
                 builder: (_) => const OrdersByLocationScreen(),
@@ -362,7 +356,8 @@ class NoInternetOverlayWithRetry extends StatefulWidget {
       _NoInternetOverlayWithRetryState();
 }
 
-class _NoInternetOverlayWithRetryState extends State<NoInternetOverlayWithRetry>
+class _NoInternetOverlayWithRetryState
+    extends State<NoInternetOverlayWithRetry>
     with TickerProviderStateMixin {
   bool _isRetrying = false;
   late AnimationController _retryScaleController;
@@ -571,7 +566,11 @@ class _NoInternetOverlayWithRetryState extends State<NoInternetOverlayWithRetry>
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.refresh_rounded, color: AppTheme.oceanBlue, size: 18),
+            Icon(
+              Icons.refresh_rounded,
+              color: AppTheme.oceanBlue,
+              size: 18,
+            ),
             SizedBox(width: 8),
             Text(
               'Retry',
@@ -589,4 +588,5 @@ class _NoInternetOverlayWithRetryState extends State<NoInternetOverlayWithRetry>
       ),
     );
   }
+
 }

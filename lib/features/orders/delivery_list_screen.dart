@@ -21,7 +21,7 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMockDeliveries();
+    _fetchDeliveries();
   }
 
   Future<void> _fetchDeliveries() async {
@@ -51,25 +51,6 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
         });
       }
     }
-  }
-
-  void _loadMockDeliveries() {
-    debugPrint('[DeliveryList] Loading mock deliveries...');
-    _deliveries = List.generate(5, (index) {
-      return ExternalDeliveryOrder(
-        name: 'DEL-${1000 + index}',
-        storeName: 'Store ${index + 1}',
-        customerName: 'Customer ${index + 1}',
-        status: ['Pending', 'In Progress', 'Delivered'][index % 3],
-        creation: DateTime.now().subtract(Duration(hours: index * 2)),
-        modified: DateTime.now().subtract(Duration(hours: index)),
-        storeUrl: '',
-      );
-    });
-    setState(() {
-      _isLoading = false;
-    });
-    debugPrint('[DeliveryList] Mock deliveries loaded: ${_deliveries.length}');
   }
 
   Future<void> _refreshDeliveries() async {

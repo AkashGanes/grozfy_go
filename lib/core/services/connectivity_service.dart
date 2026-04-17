@@ -32,17 +32,11 @@ class ConnectivityService {
 
   void startMonitoring() {
     _subscription?.cancel();
-    _subscription = _internetConnection.onStatusChange.listen(
-      (InternetStatus status) {
-        final hasConnection = status == InternetStatus.connected;
-        _isConnected = hasConnection;
-        _connectivityController.add(hasConnection);
-      },
-      onError: (_) {
-        _isConnected = false;
-        _connectivityController.add(false);
-      },
-    );
+    _subscription = _internetConnection.onStatusChange.listen((InternetStatus status) {
+      final hasConnection = status == InternetStatus.connected;
+      _isConnected = hasConnection;
+      _connectivityController.add(hasConnection);
+    });
   }
 
   void stopMonitoring() {
