@@ -16,11 +16,14 @@ Future<void> makePhoneCall(
   final uri = Uri.parse('tel:$digits');
 
   final status = await Permission.phone.request();
+  if (!context.mounted) return;
 
   if (status.isGranted) {
-    if (await canLaunchUrl(uri)) {
+    final canLaunch = await canLaunchUrl(uri);
+    if (canLaunch) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
+      if (!context.mounted) return;
       _showSnackBar(context, 'Unable to open phone app', isError: true);
     }
   } else if (status.isDenied) {
@@ -40,7 +43,11 @@ Future<void> makePhoneCall(
   }
 }
 
-void _showSnackBar(BuildContext context, String message, {bool isError = false}) {
+void _showSnackBar(
+  BuildContext context,
+  String message, {
+  bool isError = false,
+}) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(message),
@@ -74,9 +81,7 @@ class CallButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFFE8F5E9),
           shape: BoxShape.circle,
-          border: Border.all(
-            color: const Color(0xFF4CAF50).withAlpha(77),
-          ),
+          border: Border.all(color: const Color(0xFF4CAF50).withAlpha(77)),
         ),
         child: Icon(
           Icons.phone_rounded,
@@ -110,14 +115,11 @@ class CallButtonRow extends StatelessWidget {
               onPressed: calls[i].phoneNumber.isEmpty
                   ? null
                   : () => makePhoneCall(
-                        context,
-                        calls[i].phoneNumber,
-                        label: calls[i].label,
-                      ),
-              icon: Icon(
-                calls[i].icon ?? Icons.call,
-                size: 18,
-              ),
+                      context,
+                      calls[i].phoneNumber,
+                      label: calls[i].label,
+                    ),
+              icon: Icon(calls[i].icon ?? Icons.call, size: 18),
               label: Text(
                 calls[i].label,
                 style: const TextStyle(fontWeight: FontWeight.w600),
@@ -138,11 +140,7 @@ class CallButtonRow extends StatelessWidget {
 }
 
 class CallEntry {
-  const CallEntry({
-    required this.phoneNumber,
-    required this.label,
-    this.icon,
-  });
+  const CallEntry({required this.phoneNumber, required this.label, this.icon});
 
   final String phoneNumber;
   final String label;
