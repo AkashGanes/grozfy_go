@@ -11,7 +11,12 @@ final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
 final notificationsProvider = FutureProvider.autoDispose<List<NotificationLog>>(
   (ref) async {
     final repository = ref.watch(notificationRepositoryProvider);
-    return await repository.getNotifications();
+    final notifications = await repository.getNotifications();
+    return notifications
+        .where(
+          (n) => (n.subject.trim().isNotEmpty || n.message.trim().isNotEmpty),
+        )
+        .toList();
   },
 );
 
@@ -40,4 +45,10 @@ final notificationReadOverridesProvider =
 final unreadNotificationCountProvider = FutureProvider.autoDispose<int>((ref) {
   final repository = ref.watch(notificationRepositoryProvider);
   return repository.getUnreadCount();
+});
+
+final totalUnreadCountProvider = Provider.autoDispose<int>((ref) {
+  return ref
+      .watch(unreadNotificationCountProvider)
+      .maybeWhen(data: (value) => value, orElse: () => 0);
 });

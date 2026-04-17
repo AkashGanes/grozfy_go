@@ -1,836 +1,787 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:latlong2/latlong.dart';
-import '../notifications/providers/notification_providers.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
-import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
-import '../../core/widgets/profile_completeness_indicator.dart';
+import '../../features/notifications/providers/notification_providers.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final app = AppScope.of(context);
 
-    return AppShell(
-      title: app.t('dashboard'),
-      subtitle: app.profile?.fullName ?? 'Delivery Partner',
-      actions: [
-        Consumer(
-          builder: (context, ref, _) {
-            final unreadCount = ref
-                .watch(unreadNotificationCountProvider)
-                .maybeWhen(data: (v) => v, orElse: () => 0);
-            return Stack(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.notifications_none_rounded),
-                  onPressed: () {
-                    Navigator.of(context).pushNamed(AppRoutes.notifications);
-                  },
-                ),
-                if (unreadCount > 0)
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 16,
-                        minHeight: 16,
-                      ),
-                      child: Text(
-                        '$unreadCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-        IconButton(
-          icon: const Icon(Icons.logout_rounded),
-          onPressed: () async {
-            await app.logout();
-            if (!context.mounted) {
-              return;
-            }
-            Navigator.of(
-              context,
-            ).pushNamedAndRemoveUntil(AppRoutes.login, (route) => false);
-          },
-        ),
-      ],
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Stack(
         children: [
-          ProfileCompletenessIndicator(
-            completeness: app.profileCompleteness,
-            onItemTap: (item) {
-              if (item.route != null) {
-                Navigator.of(context).pushNamed(item.route!);
-              }
-            },
-          ),
-          const SizedBox(height: 12),
-          FrostCard(
+          SafeArea(
+            bottom: false,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Availability',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    Switch(
-                      value: app.isOnline,
-                      onChanged: (bool value) {
-                        final String? error = app.setOnline(value);
-                        if (error != null) {
-                          showInfoSnack(context, error);
-                        }
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  app.isOnline
-                      ? 'Online and receiving order requests'
-                      : 'Offline, no new orders will be assigned',
-                  style: const TextStyle(color: Colors.black54),
-                ),
-                if (!app.canGoOnline && !app.isKycComplete) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      color: AppTheme.mango.withValues(alpha: 0.12),
-                    ),
-                    child: Row(
+                _buildHeader(context, app),
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 140),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.warning_amber_rounded),
-                        const SizedBox(width: 10),
-                        const Expanded(
-                          child: Text(
-                            'Complete KYC + bank + permissions before going online.',
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.of(
+                        if (!app.isKycComplete) ...[
+                          KYCWarningBanner(
+                            title: 'Action Required',
+                            message:
+                                'Your document verification is pending. Please complete your KYC to avoid service interruptions.',
+                            onTap: () => Navigator.of(
                               context,
-                            ).pushNamed(AppRoutes.kycDocuments);
-                          },
-                          child: const Text('Complete'),
-                        ),
+                            ).pushNamed(AppRoutes.kycDocuments),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                        _buildAvailabilityCard(context, app),
+                        const SizedBox(height: 16),
+                        if (app.activeOrder != null) ...[
+                          _buildActiveOrderCard(context, app),
+                          const SizedBox(height: 16),
+                        ],
+                        _buildEarningsSection(context, app),
+                        const SizedBox(height: 16),
+                        _buildPerformanceSection(context, app),
+                        const SizedBox(height: 24),
+                        _buildPrimaryServicesSection(context, app),
+                        const SizedBox(height: 24),
+                        _buildManagementSection(context, app),
+                        const SizedBox(height: 24),
                       ],
                     ),
                   ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          _DashboardLocationCard(app: app),
-          const SizedBox(height: 14),
-          const SectionLabel('Earnings Summary'),
-          FrostCard(
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    StatTile(
-                      label: 'Today',
-                      value: 'Rs. ${app.earnings.today.toStringAsFixed(0)}',
-                    ),
-                    const SizedBox(width: 10),
-                    StatTile(
-                      label: 'This Week',
-                      value: 'Rs. ${app.earnings.week.toStringAsFixed(0)}',
-                      color: AppTheme.mint,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    StatTile(
-                      label: 'Total',
-                      value: 'Rs. ${app.earnings.total.toStringAsFixed(0)}',
-                      color: AppTheme.nightBlue,
-                    ),
-                    const SizedBox(width: 10),
-                    StatTile(
-                      label: 'Pending Payout',
-                      value:
-                          'Rs. ${app.earnings.pendingPayout.toStringAsFixed(0)}',
-                      color: AppTheme.mango,
-                    ),
-                  ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          const SectionLabel('Performance Metrics'),
-          FrostCard(
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    StatTile(
-                      label: 'Rating',
-                      value:
-                          '${app.performance.rating.toStringAsFixed(1)} star',
-                    ),
-                    const SizedBox(width: 10),
-                    StatTile(
-                      label: 'Acceptance',
-                      value:
-                          '${app.performance.acceptanceRate.toStringAsFixed(1)}%',
-                      color: AppTheme.nightBlue,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    StatTile(
-                      label: 'Completion',
-                      value:
-                          '${app.performance.completionRate.toStringAsFixed(1)}%',
-                      color: AppTheme.mint,
-                    ),
-                    const SizedBox(width: 10),
-                    StatTile(
-                      label: 'Total Deliveries',
-                      value: '${app.performance.totalDeliveries}',
-                      color: AppTheme.mango,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          const SectionLabel('Batch Pickup'),
-          FrostCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.playlist_add_check,
-                        color: AppTheme.oceanBlue,
-                        size: 28,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Multi-Order Pickup',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Pick up multiple orders in one trip',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right, color: Colors.grey),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.of(
-                            context,
-                          ).pushNamed(AppRoutes.ordersByLocation);
-                        },
-                        icon: const Icon(Icons.list_alt_rounded),
-                        label: const Text('Select Orders'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.of(
-                            context,
-                          ).pushNamed(AppRoutes.externalDeliveryTripList);
-                        },
-                        icon: const Icon(Icons.route_rounded),
-                        label: const Text('View Trips'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.mint,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const SectionLabel('Available Deliveries'),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pushNamed(AppRoutes.deliveryList);
-                },
-                child: const Text('View All'),
-              ),
-            ],
-          ),
-          FrostCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.local_shipping,
-                        color: Colors.blue,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'External Deliveries',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            'View and manage deliveries from ERPNext',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Icon(Icons.chevron_right, color: Colors.grey),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).pushNamed(AppRoutes.deliveryList);
-                    },
-                    icon: const Icon(Icons.list_alt),
-                    label: const Text('View Deliveries'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          const SectionLabel('Active Order'),
-          FrostCard(
-            child: app.activeOrder == null
-                ? Row(
-                    children: [
-                      const Expanded(child: Text('No active order right now.')),
-                      TextButton(
-                        onPressed: () {
-                          app.generateIncomingOrder();
-                          Navigator.of(
-                            context,
-                          ).pushNamed(AppRoutes.orderRequest);
-                        },
-                        child: const Text('Get Request'),
-                      ),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${app.activeOrder!.orderId} · ${app.activeOrder!.orderStatus.label}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(app.activeOrder!.drop),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(AppRoutes.orderDetails);
-                              },
-                              child: const Text('View Order'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(AppRoutes.navigation);
-                              },
-                              child: const Text('Quick Navigate'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-          ),
-          const SizedBox(height: 14),
-          const SectionLabel('Notifications'),
-          FrostCard(
-            child: Column(
-              children: [
-                Consumer(
-                  builder: (context, ref, _) {
-                    final async = ref.watch(recentNotificationsProvider);
-                    return async.when(
-                      data: (items) {
-                        final overrides = ref.watch(
-                          notificationReadOverridesProvider,
-                        );
-                        final List<Widget> rows = <Widget>[
-                          ...items.take(2).map((notification) {
-                            final effectiveRead =
-                                notification.read ||
-                                overrides.contains(notification.name);
-                            return _NotificationRow(
-                              title: notification.subject,
-                              message: _dashboardNotificationMessage(
-                                notification.message,
-                              ),
-                              time: notification.creation,
-                              isUnread: !effectiveRead,
-                              onTap: () {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(AppRoutes.notifications);
-                              },
-                            );
-                          }),
-                          ...app.notices.take(4).map((notice) {
-                            return _NotificationRow(
-                              title: notice.title,
-                              message: notice.message,
-                              time: notice.time,
-                            );
-                          }),
-                        ];
-
-                        if (rows.isEmpty) {
-                          return const Padding(
-                            padding: EdgeInsets.only(top: 2),
-                            child: Text(
-                              'No notifications yet.',
-                              style: TextStyle(color: Colors.black54),
-                            ),
-                          );
-                        }
-
-                        return Column(children: rows);
-                      },
-                      loading: () => const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Center(
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2.4),
-                          ),
-                        ),
-                      ),
-                      error: (err, _) => Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Unable to load notifications.',
-                              style: TextStyle(color: Colors.black54),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              ref.invalidate(recentNotificationsProvider);
-                            },
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          const SectionLabel('Quick Access'),
-          FrostCard(
-            child: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _quickButton(
-                  context,
-                  'My Profile',
-                  Icons.person_outline_rounded,
-                  route: AppRoutes.profile,
-                ),
-                _quickButton(
-                  context,
-                  'Earnings History',
-                  Icons.receipt_long_rounded,
-                ),
-                _quickButton(
-                  context,
-                  'Documents',
-                  Icons.file_copy_outlined,
-                  route: AppRoutes.kycDocuments,
-                ),
-                _quickButton(
-                  context,
-                  'Vehicle',
-                  Icons.two_wheeler_rounded,
-                  route: AppRoutes.vehicleDetails,
-                ),
-                _quickButton(
-                  context,
-                  'Bank Details',
-                  Icons.account_balance_outlined,
-                  route: AppRoutes.bankSetup,
-                ),
-                _quickButton(
-                  context,
-                  'Orders by Location',
-                  Icons.list_alt_rounded,
-                  route: AppRoutes.ordersByLocation,
-                ),
-                _quickButton(
-                  context,
-                  'Available Orders',
-                  Icons.local_shipping_outlined,
-                  route: AppRoutes.orderListing,
-                ),
-                _quickButton(
-                  context,
-                  'External Trips',
-                  Icons.local_shipping_outlined,
-                  route: AppRoutes.externalDeliveryTripList,
-                ),
-                _quickButton(context, 'Support', Icons.support_agent_rounded),
-                _quickButton(
-                  context,
-                  'Settings',
-                  Icons.settings_outlined,
-                  route: AppRoutes.settings,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: () {
-              app.generateIncomingOrder();
-              Navigator.of(context).pushNamed(AppRoutes.orderRequest);
-            },
-            icon: const Icon(Icons.local_shipping_rounded),
-            label: const Text('Simulate Incoming Order'),
-          ),
+          _buildSimulateButton(context, app),
+          _buildBottomNav(context),
         ],
       ),
     );
   }
 
-  static Widget _quickButton(
-    BuildContext context,
-    String label,
-    IconData icon, {
-    String? route,
-  }) {
-    return SizedBox(
-      width: 150,
-      child: OutlinedButton.icon(
-        onPressed: () {
-          if (route != null) {
-            Navigator.of(context).pushNamed(route);
-            return;
-          }
-          showInfoSnack(context, '$label module can be expanded next');
-        },
-        icon: Icon(icon),
-        label: Text(label),
-      ),
-    );
-  }
-
-  static String _timeAgo(DateTime time) {
-    final Duration diff = DateTime.now().difference(time);
-    if (diff.inMinutes < 1) {
-      return 'just now';
-    }
-    if (diff.inHours < 1) {
-      return '${diff.inMinutes}m ago';
-    }
-    if (diff.inDays < 1) {
-      return '${diff.inHours}h ago';
-    }
-    return '${diff.inDays}d ago';
-  }
-
-  static String _dashboardNotificationMessage(String message) {
-    String cleaned = message.trim();
-    cleaned = cleaned.replaceAll(
-      RegExp(
-        r'you have been assigned a new task[\s:.-]*',
-        caseSensitive: false,
-      ),
-      '',
-    );
-    cleaned = cleaned.replaceAll(
-      RegExp(r'dear team[\s,:.-]*', caseSensitive: false),
-      '',
-    );
-    cleaned = cleaned.replaceAll(
-      RegExp(r'assigned by[\s:.-]*[^\n\r]*', caseSensitive: false),
-      '',
-    );
-
-    final lines = cleaned
-        .split(RegExp(r'\r?\n'))
-        .map((line) => line.trim())
-        .where(
-          (line) => line.isNotEmpty && !line.toLowerCase().startsWith('from:'),
-        )
-        .toList();
-
-    if (lines.isEmpty) {
-      return cleaned;
-    }
-
-    return lines.join('\n');
-  }
-
-  static bool _shouldHideDashboardNotificationMessage(
-    String title,
-    String message,
-  ) {
-    final combined = '${title.trim()} ${message.trim()}'.toLowerCase();
-    return combined.contains('assigned') && combined.contains('task');
-  }
-}
-
-class _DashboardLocationCard extends StatelessWidget {
-  const _DashboardLocationCard({required this.app});
-
-  final AppController app;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool hasLocation =
-        app.hasSelectedLocation &&
-        app.currentLatitude != null &&
-        app.currentLongitude != null;
-    final LatLng center = hasLocation
-        ? LatLng(app.currentLatitude!, app.currentLongitude!)
-        : const LatLng(28.6139, 77.2090);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(22),
-      child: SizedBox(
-        width: double.infinity,
-        height: 136,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: hasLocation
-                  ? FlutterMap(
-                      options: MapOptions(
-                        initialCenter: center,
-                        initialZoom: 15.5,
-                        interactionOptions: const InteractionOptions(
-                          flags: InteractiveFlag.none,
-                        ),
-                      ),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName:
-                              'com.example.delivery_partner_app',
-                        ),
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: center,
-                              width: 52,
-                              height: 52,
-                              child: const Icon(
-                                Icons.location_pin,
-                                size: 40,
-                                color: AppTheme.nightBlue,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    )
-                  : Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            AppTheme.oceanBlue.withValues(alpha: 0.92),
-                            AppTheme.nightBlue,
-                          ],
-                        ),
-                      ),
-                    ),
+  Widget _buildHeader(BuildContext context, dynamic app) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainerLowest,
+              shape: BoxShape.circle,
             ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.10),
-                      Colors.black.withValues(alpha: 0.20),
-                      Colors.black.withValues(alpha: 0.45),
+            child: const Icon(Icons.person, color: AppColors.primary, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Navigator',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.primary,
+                    fontFamily: 'Manrope',
+                  ),
+                ),
+                Text(
+                  app.profile?.fullName ?? 'Delivery Partner',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.outline,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Consumer(
+            builder: (context, ref, _) {
+              final totalCount = ref.watch(totalUnreadCountProvider);
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () async {
+                    await Navigator.of(
+                      context,
+                    ).pushNamed(AppRoutes.notifications);
+                  },
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Icon(
+                        Icons.notifications_outlined,
+                        color: AppColors.primary,
+                        size: 22,
+                      ),
+                      if (totalCount > 0)
+                        Positioned(
+                          right: -4,
+                          top: -4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.error,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 16,
+                              minHeight: 16,
+                            ),
+                            child: Text(
+                              totalCount > 9 ? '9+' : totalCount.toString(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
+              );
+            },
+          ),
+          OnlineStatusIndicator(isOnline: app.isOnline),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvailabilityCard(BuildContext context, dynamic app) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A181D1A),
+            blurRadius: 24,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Availability',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.onSurface,
+                        fontFamily: 'Manrope',
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      app.isOnline
+                          ? 'Accepting new orders'
+                          : 'Not accepting orders',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Positioned.fill(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () {
-                    Navigator.of(context).pushNamed(AppRoutes.currentLocation);
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.18),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: const Icon(
-                                Icons.my_location_rounded,
-                                color: Colors.white,
-                              ),
-                            ),
-                            const Spacer(),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.16),
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.24),
-                                ),
-                              ),
-                              child: TextButton(
-                                onPressed: () {
-                                  Navigator.of(
-                                    context,
-                                  ).pushNamed(AppRoutes.currentLocation);
-                                },
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.white,
-                                ),
-                                child: Text(
-                                  app.hasSelectedLocation ? 'Change' : 'Select',
-                                ),
-                              ),
+              const SizedBox(width: 12),
+              Container(
+                width: 56,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: app.isOnline
+                      ? AppColors.primary
+                      : AppColors.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () {
+                      final String? error = app.setOnline(!app.isOnline);
+                      if (error != null) {
+                        showInfoSnack(context, error);
+                      }
+                    },
+                    child: Align(
+                      alignment: app.isOnline
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceContainerLowest,
+                          shape: BoxShape.circle,
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x29000000),
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
                             ),
                           ],
                         ),
-                        const Spacer(),
-                        const Text(
-                          'Current Location',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          app.currentLocationLabel ??
-                              'Location not selected yet',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.92),
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.location_on, color: AppColors.secondary, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'CURRENT LOCATION',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.outline,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        app.currentLocationLabel ?? 'Location not selected',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pushNamed(AppRoutes.currentLocation);
+                  },
+                  child: Text(
+                    app.hasSelectedLocation ? 'Change' : 'Select',
+                    style: TextStyle(
+                      color: AppColors.secondary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (app.notices.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              'SYSTEM NOTICES',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppColors.outline,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: app.notices
+                    .take(4)
+                    .toList()
+                    .asMap()
+                    .entries
+                    .map<Widget>((entry) {
+                      final index = entry.key;
+                      final notice = entry.value as AppNotice;
+                      final isLast =
+                          index == (app.notices.length - 1).clamp(0, 3);
+
+                      Color indicatorColor = AppColors.primary;
+                      final titleLower = notice.title.toLowerCase();
+                      if (titleLower.contains('rain') ||
+                          titleLower.contains('forecast') ||
+                          titleLower.contains('payout') ||
+                          titleLower.contains('successful')) {
+                        indicatorColor = AppColors.outlineVariant;
+                      } else if (titleLower.contains('policy') ||
+                          titleLower.contains('alert') ||
+                          titleLower.contains('update')) {
+                        indicatorColor = AppColors.error;
+                      }
+
+                      return NotificationListItem(
+                        title: notice.title,
+                        message: notice.message,
+                        time: _timeAgo(notice.time),
+                        indicatorColor: indicatorColor,
+                        isLast: isLast,
+                      );
+                    })
+                    .toList(),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveOrderCard(BuildContext context, dynamic app) {
+    final order = app.activeOrder as DeliveryOrder;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Active Delivery',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Manrope',
+              ),
+            ),
+            const StatusBadge(
+              label: 'IN PROGRESS',
+              backgroundColor: Color(0x4D959EFD),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceContainerLowest,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A181D1A),
+                blurRadius: 24,
+                offset: Offset(0, -4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          Icons.restaurant,
+                          color: AppColors.primary,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Order #${order.orderId}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.outline,
+                            ),
+                          ),
+                          Text(
+                            order.storeName,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  Text(
+                    'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.primary,
+                      fontFamily: 'Manrope',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              OrderTrackingVisual(
+                pickupLabel: 'Pickup',
+                pickupAddress: order.pickup.isNotEmpty
+                    ? order.pickup
+                    : order.storeAddress,
+                dropoffLabel: 'Dropoff',
+                dropoffAddress: order.drop.isNotEmpty
+                    ? order.drop
+                    : order.deliveryAddress,
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: SecondaryButton(
+                      onPressed: () {
+                        Navigator.of(context).pushNamed(AppRoutes.orderDetails);
+                      },
+                      label: 'Details',
+                      icon: Icons.info_outline,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GradientButton(
+                      onPressed: () {
+                        Navigator.of(context).pushNamed(AppRoutes.navigation);
+                      },
+                      label: 'Navigate',
+                      icon: Icons.navigation,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEarningsSection(BuildContext context, dynamic app) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Earnings Summary',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Manrope',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: StatCard(
+                label: 'Today',
+                value: 'Rs. ${app.earnings.today.toStringAsFixed(0)}',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StatCard(
+                label: 'This Week',
+                value: 'Rs. ${app.earnings.week.toStringAsFixed(0)}',
+                valueColor: AppColors.primary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: StatCard(
+                label: 'Total',
+                value: 'Rs. ${app.earnings.total.toStringAsFixed(0)}',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StatCard(
+                label: 'Pending Payout',
+                value: 'Rs. ${app.earnings.pendingPayout.toStringAsFixed(0)}',
+                valueColor: AppColors.tertiary,
+                backgroundColor: AppColors.tertiaryContainer.withValues(
+                  alpha: 0.1,
+                ),
+                borderColor: AppColors.tertiary.withValues(alpha: 0.1),
+                isHighlighted: true,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPerformanceSection(BuildContext context, dynamic app) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Performance Metrics',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Manrope',
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: StatCard(
+                label: 'Rating',
+                value: '${app.performance.rating.toStringAsFixed(1)} star',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StatCard(
+                label: 'Acceptance',
+                value: '${app.performance.acceptanceRate.toStringAsFixed(1)}%',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: StatCard(
+                label: 'Completion',
+                value: '${app.performance.completionRate.toStringAsFixed(1)}%',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: StatCard(
+                label: 'Total Deliveries',
+                value: '${app.performance.totalDeliveries}',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPrimaryServicesSection(BuildContext context, dynamic app) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Primary Services',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: AppColors.outline,
+            letterSpacing: 1,
+          ),
+        ),
+        const SizedBox(height: 12),
+        PrimaryServiceCard(
+          title: 'Delivery Orders',
+          subtitle: '24 completed this week',
+          icon: Icons.local_shipping,
+          iconColor: AppColors.primary,
+          onTap: () {
+            Navigator.of(context).pushNamed(AppRoutes.deliveryList);
+          },
+        ),
+        const SizedBox(height: 12),
+        PrimaryServiceCard(
+          title: 'Multi-Order Pickup',
+          subtitle: 'Pick up multiple orders in one trip',
+          icon: Icons.playlist_add_check,
+          iconColor: AppColors.tertiary,
+          onTap: () {
+            Navigator.of(context).pushNamed(AppRoutes.ordersByLocation);
+          },
+        ),
+        const SizedBox(height: 12),
+        PrimaryServiceCard(
+          title: 'External Trips',
+          subtitle: 'View available long-haul routes',
+          icon: Icons.explore,
+          iconColor: AppColors.secondary,
+          onTap: () {
+            Navigator.of(context).pushNamed(AppRoutes.externalDeliveryTripList);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildManagementSection(BuildContext context, dynamic app) {
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildSimulateButton(BuildContext context, dynamic app) {
+    return Positioned(
+      bottom: 100,
+      left: 24,
+      right: 24,
+      child: GradientButton(
+        onPressed: () {
+          app.generateIncomingOrder();
+          Navigator.of(context).pushNamed(AppRoutes.orderRequest);
+        },
+        label: 'SIMULATE INCOMING ORDER',
+        icon: Icons.flash_on,
+        fromColor: AppColors.primary,
+        toColor: AppColors.primaryContainer,
+      ),
+    );
+  }
+
+  Widget _buildBottomNav(BuildContext context) {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceContainerLowest.withValues(alpha: 0.9),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(24),
+            topRight: Radius.circular(24),
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A181D1A),
+              blurRadius: 24,
+              offset: Offset(0, -4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildNavItem(
+              icon: Icons.home,
+              label: 'Home',
+              isSelected: true,
+              onTap: () {},
+            ),
+            _buildNavItem(
+              icon: Icons.local_shipping_outlined,
+              label: 'Orders',
+              isSelected: false,
+              onTap: () {
+                Navigator.of(context).pushNamed(AppRoutes.orderListing);
+              },
+            ),
+            _buildNavItem(
+              icon: Icons.payments_outlined,
+              label: 'Earnings',
+              isSelected: false,
+              onTap: () {
+                Navigator.of(context).pushNamed(AppRoutes.earnings);
+              },
+            ),
+            _buildNavItem(
+              icon: Icons.person_outline,
+              label: 'Profile',
+              isSelected: false,
+              onTap: () {
+                Navigator.of(context).pushNamed(AppRoutes.profile);
+              },
+            ),
+            _buildNavItem(
+              icon: Icons.more_horiz,
+              label: 'More',
+              isSelected: false,
+              onTap: () {
+                _showMoreMenu(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required IconData icon,
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: isSelected
+                  ? AppColors.onPrimary
+                  : AppColors.onSurface.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: isSelected
+                    ? AppColors.onPrimary
+                    : AppColors.onSurface.withValues(alpha: 0.5),
               ),
             ),
           ],
@@ -838,109 +789,189 @@ class _DashboardLocationCard extends StatelessWidget {
       ),
     );
   }
-}
 
-class _NotificationRow extends StatelessWidget {
-  const _NotificationRow({
-    required this.title,
-    required this.message,
-    required this.time,
-    this.isUnread,
-    this.onTap,
-  });
+  String _timeAgo(DateTime time) {
+    final Duration diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) {
+      return 'just now';
+    }
+    if (diff.inMinutes < 60) {
+      return '${diff.inMinutes}m ago';
+    }
+    if (diff.inHours < 24) {
+      return '${diff.inHours}h ago';
+    }
+    return '${diff.inDays}d ago';
+  }
 
-  final String title;
-  final String message;
-  final DateTime? time;
-  final bool? isUnread;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final trimmedTitle = title.trim();
-    final trimmedMessage = message.trim();
-    final hideMessage = DashboardScreen._shouldHideDashboardNotificationMessage(
-      trimmedTitle,
-      trimmedMessage,
-    );
-
-    final bool showUnread = isUnread ?? false;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 10, top: 2),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Stack(
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 1),
-                    child: Icon(Icons.notifications_active_outlined, size: 18),
-                  ),
-                  if (showUnread)
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                          color: AppTheme.oceanBlue,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      trimmedTitle.isEmpty ? 'Notification' : trimmedTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontWeight: showUnread
-                            ? FontWeight.w800
-                            : FontWeight.w700,
-                        color: showUnread ? AppTheme.nightBlue : Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    if (trimmedMessage.isNotEmpty && !hideMessage)
-                      Text(
-                        trimmedMessage,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: showUnread ? Colors.black87 : Colors.black54,
-                          height: 1.35,
-                        ),
-                      ),
-                    if (time != null) ...[
-                      const SizedBox(height: 1),
-                      Text(
-                        DashboardScreen._timeAgo(time!),
-                        style: const TextStyle(
-                          color: Colors.black45,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ],
+  void _showMoreMenu(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: AppColors.surfaceContainerLowest,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.outline.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Management',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: AppColors.outline,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildMoreMenuItem(
+              icon: Icons.person_outline,
+              title: 'My Profile',
+              onTap: () {
+                Navigator.of(context).pushNamed(AppRoutes.profile);
+              },
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.receipt_long_outlined,
+              title: 'Earnings History',
+              onTap: () {},
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.description_outlined,
+              title: 'Documents',
+              onTap: () {
+                Navigator.of(context).pushNamed(AppRoutes.kycDocuments);
+              },
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.directions_car_outlined,
+              title: 'Vehicle Info',
+              trailing: Text(
+                'Toyota Prius',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.outline,
+                ),
+              ),
+              onTap: () {
+                Navigator.of(context).pushNamed(AppRoutes.vehicleDetails);
+              },
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.account_balance_outlined,
+              title: 'Bank Details',
+              onTap: () {
+                Navigator.of(context).pushNamed(AppRoutes.bankSetup);
+              },
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.verified_user_outlined,
+              iconColor: AppColors.tertiary,
+              title: 'KYC Documents',
+              trailing: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.tertiaryFixed,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'PENDING',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.onTertiaryFixedVariant,
+                  ),
+                ),
+              ),
+              onTap: () {
+                Navigator.of(context).pushNamed(AppRoutes.kycDocuments);
+              },
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.map_outlined,
+              title: 'Orders by Location',
+              onTap: () {
+                Navigator.of(context).pushNamed(AppRoutes.ordersByLocation);
+              },
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.headset_mic_outlined,
+              title: 'Support',
+              onTap: () {},
+            ),
+            _buildMoreMenuItem(
+              icon: Icons.settings_outlined,
+              title: 'Settings',
+              showDivider: false,
+              onTap: () {
+                Navigator.of(context).pushNamed(AppRoutes.settings);
+              },
+            ),
+            const SizedBox(height: 34),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildMoreMenuItem({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    Widget? trailing,
+    Color? iconColor,
+    bool showDivider = true,
+  }) {
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Row(
+              children: [
+                Icon(icon, color: iconColor ?? AppColors.outline, size: 22),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.onSurface,
+                    ),
+                  ),
+                ),
+                trailing ??
+                    Icon(
+                      Icons.chevron_right,
+                      color: AppColors.outline,
+                      size: 20,
+                    ),
+              ],
+            ),
+          ),
+        ),
+        if (showDivider)
+          Divider(height: 1, color: AppColors.outline.withValues(alpha: 0.1)),
+      ],
     );
   }
 }
