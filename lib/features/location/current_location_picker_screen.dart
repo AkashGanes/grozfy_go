@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -454,20 +455,13 @@ class _CurrentLocationPickerScreenState
             child: Column(
               children: [
                 // Header
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: AppTheme.nightBlue,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                _MapOverlayCard(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 16,
                   ),
+                  backgroundColor: AppTheme.nightBlue.withValues(alpha: 0.72),
+                  borderColor: Colors.white.withValues(alpha: 0.22),
                   child: const Row(
                     children: [
                       Icon(
@@ -491,18 +485,7 @@ class _CurrentLocationPickerScreenState
                 ),
                 const SizedBox(height: 12),
                 // Search Bar
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
+                _MapOverlayCard(
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
@@ -537,19 +520,8 @@ class _CurrentLocationPickerScreenState
                 ),
                 // Search Results Dropdown
                 if (_searchResults.isNotEmpty)
-                  Container(
+                  _MapOverlayCard(
                     margin: const EdgeInsets.only(top: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
                     constraints: const BoxConstraints(maxHeight: 200),
                     child: ListView.builder(
                       shrinkWrap: true,
@@ -619,20 +591,13 @@ class _CurrentLocationPickerScreenState
             left: 0,
             right: 0,
             bottom: 0,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 20,
-                    offset: const Offset(0, -5),
-                  ),
-                ],
+            child: _MapOverlayCard(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
               ),
+              backgroundColor: AppTheme.nightBlue.withValues(alpha: 0.54),
+              borderColor: Colors.white.withValues(alpha: 0.16),
+              shadowAlpha: 0.24,
               child: SafeArea(
                 top: false,
                 child: Padding(
@@ -647,7 +612,7 @@ class _CurrentLocationPickerScreenState
                           width: 40,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: Colors.grey[300],
+                            color: Colors.white.withValues(alpha: 0.52),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -660,26 +625,23 @@ class _CurrentLocationPickerScreenState
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w800,
-                          color: AppTheme.nightBlue,
+                          color: Colors.white,
                         ),
                       ),
                       const SizedBox(height: 8),
 
                       // Address Display
-                      Container(
+                      _MapOverlayCard(
                         padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppTheme.nightBlue.withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppTheme.nightBlue.withValues(alpha: 0.1),
-                          ),
-                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        backgroundColor: Colors.white.withValues(alpha: 0.18),
+                        borderColor: Colors.white.withValues(alpha: 0.16),
+                        blurSigma: 14,
                         child: Row(
                           children: [
                             const Icon(
                               Icons.location_on_rounded,
-                              color: AppTheme.nightBlue,
+                              color: Colors.white,
                               size: 24,
                             ),
                             const SizedBox(width: 12),
@@ -691,7 +653,7 @@ class _CurrentLocationPickerScreenState
                                     'Selected Location',
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.black54,
+                                      color: Colors.white70,
                                     ),
                                   ),
                                   const SizedBox(height: 2),
@@ -700,7 +662,7 @@ class _CurrentLocationPickerScreenState
                                     style: const TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600,
-                                      color: AppTheme.nightBlue,
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ],
@@ -711,6 +673,7 @@ class _CurrentLocationPickerScreenState
                                 icon: const Icon(
                                   Icons.edit_rounded,
                                   size: 20,
+                                  color: Colors.white,
                                 ),
                                 onPressed: () {
                                   // Allow manual edit if needed
@@ -723,15 +686,14 @@ class _CurrentLocationPickerScreenState
                       // Error message with actions
                       if (_error != null) ...[
                         const SizedBox(height: 12),
-                        Container(
+                        _MapOverlayCard(
                           padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.red.withValues(alpha: 0.3),
-                            ),
-                          ),
+                          borderRadius: BorderRadius.circular(12),
+                          backgroundColor: const Color(
+                            0xFFB3261E,
+                          ).withValues(alpha: 0.18),
+                          borderColor: Colors.red.withValues(alpha: 0.3),
+                          blurSigma: 14,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -777,8 +739,10 @@ class _CurrentLocationPickerScreenState
                                       ),
                                       label: const Text('Turn On GPS'),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.red,
-                                        side: const BorderSide(color: Colors.red),
+                                        foregroundColor: Colors.white,
+                                        side: BorderSide(
+                                          color: Colors.white.withValues(alpha: 0.8),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -792,8 +756,10 @@ class _CurrentLocationPickerScreenState
                                       ),
                                       label: const Text('Retry'),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.red,
-                                        side: const BorderSide(color: Colors.red),
+                                        foregroundColor: Colors.white,
+                                        side: BorderSide(
+                                          color: Colors.white.withValues(alpha: 0.8),
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -860,6 +826,69 @@ class _CurrentLocationPickerScreenState
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MapOverlayCard extends StatelessWidget {
+  const _MapOverlayCard({
+    required this.child,
+    this.padding,
+    this.margin,
+    this.constraints,
+    this.borderRadius,
+    this.backgroundColor,
+    this.borderColor,
+    this.blurSigma = 18,
+    this.shadowAlpha = 0.14,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry? margin;
+  final BoxConstraints? constraints;
+  final BorderRadius? borderRadius;
+  final Color? backgroundColor;
+  final Color? borderColor;
+  final double blurSigma;
+  final double shadowAlpha;
+
+  @override
+  Widget build(BuildContext context) {
+    final BorderRadius resolvedRadius =
+        borderRadius ?? BorderRadius.circular(16);
+
+    return Container(
+      margin: margin,
+      constraints: constraints,
+      decoration: BoxDecoration(
+        borderRadius: resolvedRadius,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: shadowAlpha),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: resolvedRadius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+          child: Container(
+            padding: padding,
+            decoration: BoxDecoration(
+              color:
+                  backgroundColor ?? Colors.white.withValues(alpha: 0.78),
+              borderRadius: resolvedRadius,
+              border: Border.all(
+                color: borderColor ?? Colors.white.withValues(alpha: 0.42),
+              ),
+            ),
+            child: child,
+          ),
+        ),
       ),
     );
   }

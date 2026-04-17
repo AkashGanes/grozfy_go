@@ -56,7 +56,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final app = ref.watch(appControllerProvider);
-    _initBasicInfoFromState(app);
+    _syncBasicInfoFromState(app);
 
     final Map<String, dynamic>? driver = app.loggedProfileDetails?.driver;
     final String displayName =
@@ -84,58 +84,80 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return AppShell(
       title: 'My Profile',
       subtitle: 'Driver account',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _animatedEntry(
-            child: _profileHeader(
-              name: displayName,
-              imagePath: app.profileImagePath,
-              busy: _savingBasicInfo || app.profileImageSyncing,
-            ),
-            delayMs: 0,
+      scrollable: false,
+      child: RefreshIndicator(
+        onRefresh: _refreshProfile,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
           ),
-          const SizedBox(height: 12),
-          _animatedEntry(
-            child: _basicInformationSection(app),
-            delayMs: 120,
-          ),
-          const SizedBox(height: 12),
-          _animatedEntry(
-            delayMs: 220,
-            child: AnimatedSwitcher(
-              duration: 320.ms,
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              transitionBuilder: (child, animation) {
-                final Animation<Offset> offset = Tween<Offset>(
-                  begin: const Offset(0.0, 0.08),
-                  end: Offset.zero,
-                ).animate(animation);
-                return FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(position: offset, child: child),
-                );
-              },
-              child: KeyedSubtree(
-                key: ValueKey<String>(detailsStateKey),
-                child: detailsSection,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _animatedEntry(
+                child: _profileHeader(
+                  name: displayName,
+                  imagePath: app.profileImagePath,
+                  busy: _savingBasicInfo || app.profileImageSyncing,
+                ),
+                delayMs: 0,
               ),
-            ),
+              const SizedBox(height: 12),
+              _animatedEntry(
+                child: _basicInformationSection(app),
+                delayMs: 120,
+              ),
+              const SizedBox(height: 12),
+              _animatedEntry(
+                delayMs: 220,
+                child: AnimatedSwitcher(
+                  duration: 320.ms,
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final Animation<Offset> offset = Tween<Offset>(
+                      begin: const Offset(0.0, 0.08),
+                      end: Offset.zero,
+                    ).animate(animation);
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(position: offset, child: child),
+                    );
+                  },
+                  child: KeyedSubtree(
+                    key: ValueKey<String>(detailsStateKey),
+                    child: detailsSection,
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _animatedEntry({
-    required Widget child,
-    required int delayMs,
-  }) {
+  Future<void> _refreshProfile() async {
+    final app = ref.read(appControllerProvider);
+    await app.fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _syncBasicInfoFromState(app, force: true);
+    });
+  }
+
+  Widget _animatedEntry({required Widget child, required int delayMs}) {
     return child
         .animate(delay: Duration(milliseconds: delayMs))
         .fadeIn(duration: 420.ms, curve: Curves.easeOutCubic)
-        .slideY(begin: 0.06, end: 0, duration: 420.ms, curve: Curves.easeOutCubic);
+        .slideY(
+          begin: 0.06,
+          end: 0,
+          duration: 420.ms,
+          curve: Curves.easeOutCubic,
+        );
   }
 
   Widget _buildLoadingState() {
@@ -148,13 +170,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             Row(
               children: [
                 Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                )
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                    )
                     .animate(onPlay: (controller) => controller.repeat())
                     .shimmer(
                       duration: 1200.ms,
@@ -166,13 +188,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        width: 150,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      )
+                            width: 150,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          )
                           .animate(onPlay: (controller) => controller.repeat())
                           .shimmer(
                             duration: 1200.ms,
@@ -180,13 +202,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                       const SizedBox(height: 8),
                       Container(
-                        width: 100,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      )
+                            width: 100,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          )
                           .animate(onPlay: (controller) => controller.repeat())
                           .shimmer(
                             duration: 1200.ms,
@@ -199,13 +221,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
             const SizedBox(height: 24),
             Container(
-              width: double.infinity,
-              height: 14,
-              decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(6),
-              ),
-            )
+                  width: double.infinity,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                )
                 .animate(onPlay: (controller) => controller.repeat())
                 .shimmer(
                   duration: 1200.ms,
@@ -213,13 +235,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
             const SizedBox(height: 10),
             Container(
-              width: double.infinity,
-              height: 14,
-              decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(6),
-              ),
-            )
+                  width: double.infinity,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                )
                 .animate(onPlay: (controller) => controller.repeat())
                 .shimmer(
                   duration: 1200.ms,
@@ -251,9 +273,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildDriverDetails(Map<String, dynamic> driver, dynamic app) {
-    final Map<String, String> additionalFields = _additionalDriverFields(driver);
-    final List<_DriverAttachment> attachments = _extractDriverAttachments(driver);
-    final Map<String, String> primaryImageHeaders = _primaryAttachmentHeaders(app);
+    final Map<String, String> additionalFields = _additionalDriverFields(
+      driver,
+    );
+    final List<_DriverAttachment> attachments = _extractDriverAttachments(
+      driver,
+    );
+    final Map<String, String> primaryImageHeaders = _primaryAttachmentHeaders(
+      app,
+    );
     final Map<String, String> fallbackImageHeaders = <String, String>{
       'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
       'Accept': 'image/*',
@@ -264,77 +292,103 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _detailSection(
-            title: 'Basic Details',
-            subtitle: 'Identity and contact snapshot',
-            leadingIcon: Icons.badge_outlined,
-            expanded: _expandBasicDetails,
-            onToggle: () {
-              setState(() => _expandBasicDetails = !_expandBasicDetails);
-            },
-            child: Column(
-              children: [
-                _kv('Full Name', _field(driver, 'full_name') ?? '-'),
-                _kv('Employee', _field(driver, 'employee') ?? '-'),
-                _kv('Cell Number', _field(driver, 'cell_number') ?? '-'),
-                _kv('Status', _field(driver, 'status') ?? '-'),
-                _kv('Address', _field(driver, 'address') ?? '-'),
-              ],
-            ),
-          ).animate(delay: 40.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+                title: 'Basic Details',
+                subtitle: 'Identity and contact snapshot',
+                leadingIcon: Icons.badge_outlined,
+                expanded: _expandBasicDetails,
+                onToggle: () {
+                  setState(() => _expandBasicDetails = !_expandBasicDetails);
+                },
+                child: Column(
+                  children: [
+                    _kv('Full Name', _field(driver, 'full_name') ?? '-'),
+                    _kv('Employee', _field(driver, 'employee') ?? '-'),
+                    _kv('Cell Number', _field(driver, 'cell_number') ?? '-'),
+                    _kv('Status', _field(driver, 'status') ?? '-'),
+                    _kv('Address', _field(driver, 'address') ?? '-'),
+                  ],
+                ),
+              )
+              .animate(delay: 40.ms)
+              .fadeIn(duration: 300.ms)
+              .slideY(begin: 0.08, end: 0),
           const SizedBox(height: 10),
           _detailSection(
-            title: 'License Details',
-            subtitle: 'Driving license and document info',
-            leadingIcon: Icons.assignment_ind_outlined,
-            expanded: _expandLicenseDetails,
-            onToggle: () {
-              setState(() => _expandLicenseDetails = !_expandLicenseDetails);
-            },
-            child: Column(
-              children: [
-                _kv('License Number', _field(driver, 'license_number') ?? '-'),
-                _kv('Issue Date', _field(driver, 'issuing_date') ?? '-'),
-                _kv('Expiry Date', _field(driver, 'expiry_date') ?? '-'),
-              ],
-            ),
-          ).animate(delay: 120.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+                title: 'License Details',
+                subtitle: 'Driving license and document info',
+                leadingIcon: Icons.assignment_ind_outlined,
+                expanded: _expandLicenseDetails,
+                onToggle: () {
+                  setState(
+                    () => _expandLicenseDetails = !_expandLicenseDetails,
+                  );
+                },
+                child: Column(
+                  children: [
+                    _kv(
+                      'License Number',
+                      _field(driver, 'license_number') ?? '-',
+                    ),
+                    _kv('Issue Date', _field(driver, 'issuing_date') ?? '-'),
+                    _kv('Expiry Date', _field(driver, 'expiry_date') ?? '-'),
+                  ],
+                ),
+              )
+              .animate(delay: 120.ms)
+              .fadeIn(duration: 300.ms)
+              .slideY(begin: 0.08, end: 0),
           const SizedBox(height: 10),
           _detailSection(
-            title: 'Driving License Category',
-            subtitle: 'Allowed vehicle classes',
-            leadingIcon: Icons.category_outlined,
-            expanded: _expandDrivingCategory,
-            onToggle: () {
-              setState(() => _expandDrivingCategory = !_expandDrivingCategory);
-            },
-            child: _licenseCategorySection(driver['driving_license_category']),
-          ).animate(delay: 180.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+                title: 'Driving License Category',
+                subtitle: 'Allowed vehicle classes',
+                leadingIcon: Icons.category_outlined,
+                expanded: _expandDrivingCategory,
+                onToggle: () {
+                  setState(
+                    () => _expandDrivingCategory = !_expandDrivingCategory,
+                  );
+                },
+                child: _licenseCategorySection(
+                  driver['driving_license_category'],
+                ),
+              )
+              .animate(delay: 180.ms)
+              .fadeIn(duration: 300.ms)
+              .slideY(begin: 0.08, end: 0),
           const SizedBox(height: 10),
           _detailSection(
-            title: 'Additional Driver Details',
-            subtitle: 'Extra fields from your Driver doctype',
-            leadingIcon: Icons.description_outlined,
-            expanded: _expandAdditionalDetails,
-            onToggle: () {
-              setState(() => _expandAdditionalDetails = !_expandAdditionalDetails);
-            },
-            child: _additionalDetailsSection(additionalFields),
-          ).animate(delay: 220.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+                title: 'Additional Driver Details',
+                subtitle: 'Extra fields from your Driver doctype',
+                leadingIcon: Icons.description_outlined,
+                expanded: _expandAdditionalDetails,
+                onToggle: () {
+                  setState(
+                    () => _expandAdditionalDetails = !_expandAdditionalDetails,
+                  );
+                },
+                child: _additionalDetailsSection(additionalFields),
+              )
+              .animate(delay: 220.ms)
+              .fadeIn(duration: 300.ms)
+              .slideY(begin: 0.08, end: 0),
           const SizedBox(height: 10),
           _detailSection(
-            title: 'KYC Documents',
-            subtitle: 'Read-only images from your URL data',
-            leadingIcon: Icons.attachment_rounded,
-            expanded: _expandAttachments,
-            onToggle: () {
-              setState(() => _expandAttachments = !_expandAttachments);
-            },
-            child: _attachmentSection(
-              attachments,
-              primaryHeaders: primaryImageHeaders,
-              fallbackHeaders: fallbackImageHeaders,
-            ),
-          ).animate(delay: 260.ms).fadeIn(duration: 300.ms).slideY(begin: 0.08, end: 0),
+                title: 'KYC Documents',
+                subtitle: 'Read-only images from your URL data',
+                leadingIcon: Icons.attachment_rounded,
+                expanded: _expandAttachments,
+                onToggle: () {
+                  setState(() => _expandAttachments = !_expandAttachments);
+                },
+                child: _attachmentSection(
+                  attachments,
+                  primaryHeaders: primaryImageHeaders,
+                  fallbackHeaders: fallbackImageHeaders,
+                ),
+              )
+              .animate(delay: 260.ms)
+              .fadeIn(duration: 300.ms)
+              .slideY(begin: 0.08, end: 0),
         ],
       ),
     );
@@ -553,7 +607,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       }
       return;
     }
-    final bool launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final bool launched = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
     if (!launched && mounted) {
       showInfoSnack(context, 'Unable to open document');
     }
@@ -614,18 +671,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return 'attachment.bin';
     }
     final String raw = parsed.pathSegments.last.trim();
-    final String decoded = raw.isEmpty ? 'attachment.bin' : Uri.decodeComponent(raw);
+    final String decoded = raw.isEmpty
+        ? 'attachment.bin'
+        : Uri.decodeComponent(raw);
     final String sanitized = decoded.replaceAll(RegExp(r'[^\w.\- ]'), '_');
     return sanitized.isEmpty ? 'attachment.bin' : sanitized;
   }
 
-  void _initBasicInfoFromState(dynamic app) {
-    if (_basicInfoInitialized) {
+  void _syncBasicInfoFromState(dynamic app, {bool force = false}) {
+    if (_basicInfoInitialized && !force) {
       return;
     }
-    _nameCtrl.text = app.profile?.fullName ?? '';
-    _mobileCtrl.text = app.profile?.mobile ?? '';
-    _emailCtrl.text = app.profile?.email ?? '';
+    final Map<String, dynamic>? driver = app.loggedProfileDetails?.driver;
+    _nameCtrl.text = app.profile?.fullName ?? _field(driver, 'full_name') ?? '';
+    _mobileCtrl.text =
+        app.profile?.mobile ?? _field(driver, 'cell_number') ?? '';
+    _emailCtrl.text =
+        app.profile?.email ??
+        _field(driver, 'user_id') ??
+        _field(driver, 'email') ??
+        '';
     _basicInfoInitialized = true;
   }
 
@@ -834,11 +899,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
-    await ref.read(appControllerProvider).setProfileImagePath(null);
+    showInfoSnack(context, 'Removing profile image...');
+    final String? error = await ref
+        .read(appControllerProvider)
+        .removeProfileImageAndSync();
     if (!mounted) {
       return;
     }
-    showInfoSnack(context, 'Profile image removed');
+    if (error != null) {
+      showInfoSnack(context, error);
+    } else {
+      showInfoSnack(context, 'Profile image removed');
+    }
   }
 
   Future<bool> _confirmProfileImageUpload(String imagePath) async {
@@ -882,9 +954,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _saveBasicInfo() async {
     setState(() => _savingBasicInfo = true);
 
-    await ref
+    final String? error = await ref
         .read(appControllerProvider)
-        .updateProfile(
+        .updateProfileAndSync(
           fullName: _nameCtrl.text.trim(),
           mobile: _mobileCtrl.text.trim(),
           email: _emailCtrl.text.trim(),
@@ -895,7 +967,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     setState(() => _savingBasicInfo = false);
-    showInfoSnack(context, 'Basic information updated');
+    if (error != null) {
+      showInfoSnack(context, error);
+    } else {
+      showInfoSnack(context, 'Basic information updated');
+    }
   }
 
   Widget _detailSection({
@@ -999,12 +1075,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   duration: const Duration(milliseconds: 160),
                   opacity: expanded ? 1 : 0,
                   child: expanded
-                      ? Column(
-                          children: [
-                            const SizedBox(height: 12),
-                            child,
-                          ],
-                        )
+                      ? Column(children: [const SizedBox(height: 12), child])
                       : const SizedBox.shrink(),
                 ),
               ),
@@ -1126,7 +1197,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return result;
   }
 
-  List<_DriverAttachment> _extractDriverAttachments(Map<String, dynamic> driver) {
+  List<_DriverAttachment> _extractDriverAttachments(
+    Map<String, dynamic> driver,
+  ) {
     final List<_DriverAttachment> attachments = <_DriverAttachment>[];
     final Set<String> seen = <String>{};
 
@@ -1225,10 +1298,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             return const ColoredBox(
               color: Color(0xFFF4F6F9),
               child: Center(
-                child: Icon(
-                  Icons.broken_image_outlined,
-                  color: Colors.black45,
-                ),
+                child: Icon(Icons.broken_image_outlined, color: Colors.black45),
               ),
             );
           },
@@ -1284,11 +1354,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return sanitized;
     }
     final String base = ApiConstants.erpBaseUrl.endsWith('/')
-        ? ApiConstants.erpBaseUrl.substring(0, ApiConstants.erpBaseUrl.length - 1)
+        ? ApiConstants.erpBaseUrl.substring(
+            0,
+            ApiConstants.erpBaseUrl.length - 1,
+          )
         : ApiConstants.erpBaseUrl;
-    return sanitized.startsWith('/')
-        ? '$base$sanitized'
-        : '$base/$sanitized';
+    return sanitized.startsWith('/') ? '$base$sanitized' : '$base/$sanitized';
   }
 
   bool _isImageAttachment(String url) {
