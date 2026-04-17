@@ -283,7 +283,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       app,
     );
     final Map<String, String> fallbackImageHeaders = <String, String>{
-      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+      'Authorization': 'token ${app.sessionToken}',
       'Accept': 'image/*',
     };
 
@@ -479,7 +479,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final app = ref.read(appControllerProvider);
     final Map<String, String> primaryHeaders = _primaryAttachmentHeaders(app);
     final Map<String, String> fallbackHeaders = <String, String>{
-      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+      'Authorization': 'token ${app.sessionToken}',
       'Accept': 'image/*',
     };
 
@@ -565,7 +565,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final app = ref.read(appControllerProvider);
     final Map<String, String> primaryHeaders = _primaryAttachmentHeaders(app);
     final Map<String, String> fallbackHeaders = <String, String>{
-      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+      'Authorization': 'token ${app.sessionToken}',
       'Accept': '*/*',
     };
 
@@ -1316,7 +1316,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       };
     }
     return <String, String>{
-      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
       'Accept': 'image/*',
     };
   }

@@ -9,7 +9,12 @@ class ApiService {
   static const String baseUrl = 'http://209.182.232.35:8004';
   static const String _prefAccessToken = 'access_token';
   static const String _prefTokenType = 'token_type';
+  static const String _prefRefreshToken = 'refresh_token';
+  static const String _prefClientId = 'client_id';
   static const String _prefSid = 'sid';
+  static final Uri _refreshTokenUri = Uri.parse(
+    '$baseUrl/api/method/frappe.integrations.oauth2.get_token',
+  );
   static const List<String> _deliveryFields = <String>[
     'name',
     'store_name',
@@ -154,11 +159,84 @@ class ApiService {
 
       final bool isLastCandidate = i == headerCandidates.length - 1;
       if (!_isAuthFailure(response.statusCode) || isLastCandidate) {
+        // Last candidate also failed with auth error — try refreshing.
+        if (_isAuthFailure(response.statusCode) && isLastCandidate) {
+          if (await _refreshSession()) {
+            final List<Map<String, String>> refreshedHeaders =
+                await _buildHeaderCandidates();
+            if (refreshedHeaders.isNotEmpty) {
+              try {
+                final http.Response retryResp = await request(
+                  refreshedHeaders.first,
+                ).timeout(const Duration(seconds: 30));
+                return retryResp;
+              } on TimeoutException {
+                // Fall through and return the original failed response.
+              }
+            }
+          }
+        }
         return response;
       }
     }
 
     return response;
+  }
+
+  /// Refreshes the session token using Frappe's OAuth2 get_token endpoint.
+  Future<bool> _refreshSession() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? refreshToken = prefs.getString(_prefRefreshToken);
+      final String? clientId = prefs.getString(_prefClientId);
+      if (refreshToken == null || refreshToken.trim().isEmpty) return false;
+      if (clientId == null || clientId.trim().isEmpty) return false;
+
+      debugPrint('[ApiService] Attempting token refresh');
+      final http.Response response = await http
+          .post(
+            _refreshTokenUri,
+            headers: const <String, String>{
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: <String, String>{
+              'grant_type': 'refresh_token',
+              'refresh_token': refreshToken,
+              'client_id': clientId,
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        debugPrint('[ApiService] Token refresh failed: ${response.statusCode}');
+        return false;
+      }
+
+      final Map<String, dynamic> data = _decodeJsonMap(response.body);
+
+      final String? newToken =
+          _nullIfBlank(data['access_token']?.toString());
+      if (newToken == null) return false;
+
+      _sessionToken = newToken;
+      final String? newType = _nullIfBlank(data['token_type']?.toString());
+      if (newType != null) _tokenType = newType;
+      final String? newRefresh =
+          _nullIfBlank(data['refresh_token']?.toString());
+
+      await Future.wait(<Future<bool>>[
+        prefs.setString(_prefAccessToken, newToken),
+        if (newType != null) prefs.setString(_prefTokenType, newType),
+        if (newRefresh != null)
+          prefs.setString(_prefRefreshToken, newRefresh),
+      ]);
+
+      debugPrint('[ApiService] Token refreshed successfully');
+      return true;
+    } catch (e) {
+      debugPrint('[ApiService] Token refresh error: $e');
+      return false;
+    }
   }
 
   Future<List<Map<String, String>>> _buildHeaderCandidates() async {

@@ -34,6 +34,9 @@ class AppController extends ChangeNotifier {
   static final Uri _uploadFileUri = Uri.parse(
     'http://209.182.232.35:8004/api/method/frappe.core.api.billing_auth_v4.upload_kyc_file',
   );
+  static final Uri _refreshTokenUri = Uri.parse(
+    'http://209.182.232.35:8004/api/method/frappe.integrations.oauth2.get_token',
+  );
   static const String _prefLanguageCode = 'language_code';
   static const String _prefAccessToken = 'access_token';
   static const String _prefRefreshToken = 'refresh_token';
@@ -55,6 +58,9 @@ class AppController extends ChangeNotifier {
   static const String _prefVehicleLicensePlate = 'vehicle_license_plate';
   static const String _prefBankDocName = 'bank_doc_name';
   static const String _prefBankAccountName = 'bank_account_name';
+  static const String _prefApiKey = 'api_key';
+  static const String _prefApiSecret = 'api_secret';
+  static const String _prefClientId = 'client_id';
   static const String _prefIsOnline = 'is_online';
   static const String _prefThemeMode = 'theme_mode';
   static const String _prefBackgroundColor = 'background_color';
@@ -102,8 +108,13 @@ class AppController extends ChangeNotifier {
   bool _kycCompleted = false;
   String? _sessionToken;
   String _tokenType = 'Bearer';
+  String? _refreshToken;
+  String? _clientId;
+  String? _apiKey;
+  String? _apiSecret;
   String? _configVersion;
   String? _driverName;
+  bool _isRefreshing = false;
 
   DateTime? _lastOtpRequestAt;
 
@@ -176,6 +187,8 @@ class AppController extends ChangeNotifier {
   bool get bootstrapped => _bootstrapped;
   bool get isLoggedIn => _isLoggedIn;
   String? get sessionToken => _sessionToken;
+  String? get apiKey => _apiKey;
+  String? get apiSecret => _apiSecret;
   bool get rememberMe => _rememberMe;
   bool get profileCompleted => _profileCompleted;
   bool get kycCompleted => _kycCompleted;
@@ -310,6 +323,10 @@ class AppController extends ChangeNotifier {
     _languageCode = prefs.getString(_prefLanguageCode) ?? '';
     _sessionToken = prefs.getString(_prefAccessToken);
     _tokenType = _nullIfBlank(prefs.getString(_prefTokenType)) ?? 'Bearer';
+    _refreshToken = _nullIfBlank(prefs.getString(_prefRefreshToken));
+    _clientId = _nullIfBlank(prefs.getString(_prefClientId));
+    _apiKey = _nullIfBlank(prefs.getString(_prefApiKey));
+    _apiSecret = _nullIfBlank(prefs.getString(_prefApiSecret));
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
@@ -1038,6 +1055,74 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// Attempts to refresh the session using the stored refresh token
+  /// via Frappe's standard OAuth2 `get_token` endpoint.
+  /// Returns `true` if the token was refreshed successfully.
+  Future<bool> refreshSession() async {
+    if (_isRefreshing) return false;
+    if (_refreshToken == null || _refreshToken!.trim().isEmpty) return false;
+    if (_clientId == null || _clientId!.trim().isEmpty) return false;
+
+    _isRefreshing = true;
+    try {
+      _logApi('refresh_token request', 'POST $_refreshTokenUri');
+      final http.Response response = await http
+          .post(
+            _refreshTokenUri,
+            headers: const <String, String>{
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: <String, String>{
+              'grant_type': 'refresh_token',
+              'refresh_token': _refreshToken!,
+              'client_id': _clientId!,
+            },
+          )
+          .timeout(_networkTimeout);
+
+      _logApi(
+        'refresh_token response',
+        'status=${response.statusCode} body=${response.body}',
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return false;
+      }
+
+      final Map<String, dynamic> data = _decodeJsonMap(response.body);
+
+      final String? newToken = _nullIfBlank(data['access_token']?.toString());
+      if (newToken == null) return false;
+
+      _sessionToken = newToken;
+      _tokenType =
+          _nullIfBlank(data['token_type']?.toString()) ?? _tokenType;
+      final String? newRefresh =
+          _nullIfBlank(data['refresh_token']?.toString());
+      if (newRefresh != null) {
+        _refreshToken = newRefresh;
+      }
+
+      // Persist new tokens
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await Future.wait(<Future<bool>>[
+        prefs.setString(_prefAccessToken, _sessionToken!),
+        if (_tokenType.isNotEmpty)
+          prefs.setString(_prefTokenType, _tokenType),
+        if (newRefresh != null)
+          prefs.setString(_prefRefreshToken, newRefresh),
+      ]);
+
+      _logApi('refresh_token', 'session refreshed successfully');
+      return true;
+    } catch (e) {
+      _logApi('refresh_token error', e.toString());
+      return false;
+    } finally {
+      _isRefreshing = false;
+    }
+  }
+
   Future<String?> registerNewPartner({
     required String fullName,
     String? email,
@@ -1142,6 +1227,11 @@ class AppController extends ChangeNotifier {
     _isLoggedIn = false;
     _sessionToken = null;
     _tokenType = 'Bearer';
+    _refreshToken = null;
+    _clientId = null;
+    _apiKey = null;
+    _apiSecret = null;
+    _isRefreshing = false;
     _isOnline = false;
     _isTracking = false;
     _incomingOrder = null;
@@ -1185,6 +1275,9 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefVehicleLicensePlate),
       prefs.remove(_prefBankDocName),
       prefs.remove(_prefBankAccountName),
+      prefs.remove(_prefApiKey),
+      prefs.remove(_prefApiSecret),
+      prefs.remove(_prefClientId),
       prefs.setBool(_prefRememberMe, false),
     ]);
     _rememberMe = false;
@@ -2714,6 +2807,9 @@ class AppController extends ChangeNotifier {
     final String? mobile = _nullIfBlank(message['mobile_no']?.toString());
     final String? email = _nullIfBlank(message['email']?.toString());
     final String? driverName = _nullIfBlank(message['driver_name']?.toString());
+    final String? clientId = _nullIfBlank(message['client_id']?.toString());
+    final String? apiKey = _nullIfBlank(message['api_key']?.toString());
+    final String? apiSecretVal = _nullIfBlank(message['api_secret']?.toString());
     final int? expiresIn = int.tryParse(
       message['expires_in']?.toString() ?? '',
     );
@@ -2725,6 +2821,15 @@ class AppController extends ChangeNotifier {
 
     if (driverName != null) {
       _driverName = driverName;
+    }
+    if (clientId != null) {
+      _clientId = clientId;
+    }
+    if (apiKey != null) {
+      _apiKey = apiKey;
+    }
+    if (apiSecretVal != null) {
+      _apiSecret = apiSecretVal;
     }
     if (backendProfileCompleted) {
       _profileCompleted = true;
@@ -2746,6 +2851,9 @@ class AppController extends ChangeNotifier {
       if (mobile != null) prefs.setString(_prefMobile, mobile),
       if (email != null) prefs.setString(_prefEmail, email),
       if (driverName != null) prefs.setString(_prefDriverName, driverName),
+      if (clientId != null) prefs.setString(_prefClientId, clientId),
+      if (apiKey != null) prefs.setString(_prefApiKey, apiKey),
+      if (apiSecretVal != null) prefs.setString(_prefApiSecret, apiSecretVal),
       prefs.setBool(_prefProfileCompleted, _profileCompleted),
       prefs.setBool(_prefKycCompleted, _kycCompleted),
     ]);
@@ -3147,6 +3255,20 @@ class AppController extends ChangeNotifier {
         throw Exception(message);
       }
     }
+
+    // All header candidates failed with 401/403 — try refreshing the token.
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final http.Response retryResp = await http
+          .get(uri, headers: refreshedHeaders)
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> retryPayload =
+          _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
+      }
+    }
     throw Exception(lastError ?? 'Authentication failed for GET $uri');
   }
 
@@ -3180,6 +3302,19 @@ class AppController extends ChangeNotifier {
       lastError = message;
       if (response.statusCode != 401 && response.statusCode != 403) {
         throw Exception(message);
+      }
+    }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders(contentType: 'application/json').first;
+      final http.Response retryResp = await http
+          .put(uri, headers: refreshedHeaders, body: encodedBody)
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> retryPayload =
+          _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
       }
     }
     throw Exception(lastError ?? 'Authentication failed for PUT $uri');
@@ -3224,6 +3359,19 @@ class AppController extends ChangeNotifier {
         throw Exception(message);
       }
     }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders(contentType: 'application/json').first;
+      final http.Response retryResp = await http
+          .post(uri, headers: refreshedHeaders, body: encodedBody)
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> retryPayload =
+          _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
+      }
+    }
     throw Exception(lastError ?? 'Authentication failed for POST $uri');
   }
 
@@ -3252,6 +3400,19 @@ class AppController extends ChangeNotifier {
       lastError = message;
       if (response.statusCode != 401 && response.statusCode != 403) {
         throw Exception(message);
+      }
+    }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final http.Response retryResp = await http
+          .get(uri, headers: refreshedHeaders)
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> retryPayload =
+          _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
       }
     }
     throw Exception(lastError ?? 'Authentication failed for GET $uri');
@@ -3285,6 +3446,19 @@ class AppController extends ChangeNotifier {
         throw Exception(message);
       }
     }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final http.Response retryResp = await http
+          .post(uri, headers: refreshedHeaders, body: body)
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> retryPayload =
+          _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
+      }
+    }
     throw Exception(lastError ?? 'Authentication failed for POST $uri');
   }
 
@@ -3316,6 +3490,22 @@ class AppController extends ChangeNotifier {
       lastError = message;
       if (response.statusCode != 401 && response.statusCode != 403) {
         throw Exception(message);
+      }
+    }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final retryRequest = http.MultipartRequest('POST', uri)
+        ..headers.addAll(refreshedHeaders)
+        ..fields.addAll(fields)
+        ..files.add(await http.MultipartFile.fromPath('file', filePath));
+      final retryStreamed =
+          await retryRequest.send().timeout(_networkTimeout);
+      final retryResp = await http.Response.fromStream(retryStreamed);
+      final retryPayload = _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
       }
     }
     throw Exception(lastError ?? 'Authentication failed for POST $uri');
@@ -3359,6 +3549,25 @@ class AppController extends ChangeNotifier {
         throw Exception(lastError);
       }
     }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final retryRequest = http.MultipartRequest('POST', uri)
+        ..headers.addAll(refreshedHeaders)
+        ..fields.addAll(fields)
+        ..files.add(
+          await http.MultipartFile.fromPath('file', filePath,
+              filename: fileName),
+        );
+      final retryStreamed =
+          await retryRequest.send().timeout(_networkTimeout);
+      final retryResp = await http.Response.fromStream(retryStreamed);
+      final retryPayload = _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
+      }
+    }
     throw Exception(lastError ?? 'Authentication failed');
   }
 
@@ -3387,6 +3596,18 @@ class AppController extends ChangeNotifier {
       // Only retry for auth errors
       if (response.statusCode != 401 && response.statusCode != 403) {
         throw Exception(lastError);
+      }
+    }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final http.Response retryResp = await http
+          .post(uri, headers: refreshedHeaders, body: body)
+          .timeout(_networkTimeout);
+      final retryPayload = _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
       }
     }
     throw Exception(lastError ?? 'Authentication failed');
@@ -3640,14 +3861,18 @@ class AppController extends ChangeNotifier {
       }
       authHeaders.add(bearerHeaders);
     }
-    final Map<String, String> tokenHeaders = <String, String>{
-      'Accept': 'application/json',
-      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
-    };
-    if (contentType != null) {
-      tokenHeaders['Content-Type'] = contentType;
+    if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
+      final String altType =
+          _tokenType.trim().toLowerCase() == 'token' ? 'Bearer' : 'token';
+      final Map<String, String> tokenHeaders = <String, String>{
+        'Accept': 'application/json',
+        'Authorization': '$altType ${_sessionToken!.trim()}',
+      };
+      if (contentType != null) {
+        tokenHeaders['Content-Type'] = contentType;
+      }
+      authHeaders.add(tokenHeaders);
     }
-    authHeaders.add(tokenHeaders);
     return authHeaders;
   }
 

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../model/external_delivery.dart';
@@ -26,13 +27,76 @@ class ReturnProcessResult {
 }
 
 class ExternalDeliveryRepository {
-  ExternalDeliveryRepository({
-    this.apiKey = ApiConstants.apiKey,
-    this.apiSecret = ApiConstants.apiSecret,
-  });
+  ExternalDeliveryRepository();
 
-  final String apiKey;
-  final String apiSecret;
+  static const String _prefAccessToken = 'access_token';
+  static const String _prefTokenType = 'token_type';
+  static const String _prefRefreshToken = 'refresh_token';
+  static const String _prefClientId = 'client_id';
+  static final Uri _refreshTokenUri = Uri.parse(
+    '${ApiConstants.erpBaseUrl}/api/method/frappe.integrations.oauth2.get_token',
+  );
+
+  Future<Map<String, String>> _authHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? token = prefs.getString(_prefAccessToken);
+    final String tokenType =
+        (prefs.getString(_prefTokenType) ?? 'token').trim();
+    if (token != null && token.isNotEmpty) {
+      return {
+        'Accept': 'application/json',
+        'Authorization': '$tokenType $token',
+      };
+    }
+    return {'Accept': 'application/json'};
+  }
+
+  /// Refreshes the session token using Frappe's OAuth2 get_token endpoint.
+  Future<bool> _refreshSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? refreshToken = prefs.getString(_prefRefreshToken);
+      final String? clientId = prefs.getString(_prefClientId);
+      if (refreshToken == null || refreshToken.trim().isEmpty) return false;
+      if (clientId == null || clientId.trim().isEmpty) return false;
+
+      _logApi('refresh_token', 'POST $_refreshTokenUri');
+      final resp = await http
+          .post(
+            _refreshTokenUri,
+            headers: const {
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: {
+              'grant_type': 'refresh_token',
+              'refresh_token': refreshToken,
+              'client_id': clientId,
+            },
+          )
+          .timeout(_networkTimeout);
+
+      if (resp.statusCode < 200 || resp.statusCode >= 300) return false;
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final String? newToken = data['access_token']?.toString();
+      if (newToken == null || newToken.trim().isEmpty) return false;
+
+      final String? newType = data['token_type']?.toString();
+      final String? newRefresh = data['refresh_token']?.toString();
+      await Future.wait(<Future<bool>>[
+        prefs.setString(_prefAccessToken, newToken),
+        if (newType != null && newType.isNotEmpty)
+          prefs.setString(_prefTokenType, newType),
+        if (newRefresh != null && newRefresh.isNotEmpty)
+          prefs.setString(_prefRefreshToken, newRefresh),
+      ]);
+      _logApi('refresh_token', 'session refreshed successfully');
+      return true;
+    } catch (e) {
+      _logApi('refresh_token error', e.toString());
+      return false;
+    }
+  }
 
   static const int pageSize = 20;
 
@@ -74,10 +138,7 @@ class ExternalDeliveryRepository {
     _logApi('fetch_store_names request', uri.toString());
     final resp = await _get(
       uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: await _authHeaders(),
     );
 
     _logApi('fetch_store_names response', '${resp.statusCode}');
@@ -120,10 +181,7 @@ class ExternalDeliveryRepository {
     _logApi('external_delivery_list request', uri.toString());
     final resp = await _get(
       uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: await _authHeaders(),
     );
 
     if (resp.statusCode == 401) {
@@ -150,10 +208,7 @@ class ExternalDeliveryRepository {
 
     final resp = await _get(
       uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: await _authHeaders(),
     );
 
     if (resp.statusCode == 401) {
@@ -187,9 +242,8 @@ class ExternalDeliveryRepository {
     final resp = await _put(
       uri,
       headers: {
-        'Accept': 'application/json',
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
       },
       body: jsonEncode({'status': status}),
     );
@@ -216,9 +270,8 @@ class ExternalDeliveryRepository {
     final createResp = await _post(
       Uri.parse(ApiConstants.externalDeliveryTripList),
       headers: {
-        'Accept': 'application/json',
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
       },
       body: jsonEncode(createPayload),
     );
@@ -240,9 +293,8 @@ class ExternalDeliveryRepository {
     final submitResp = await _post(
       Uri.parse(ApiConstants.frappeSubmitMethod),
       headers: {
-        'Accept': 'application/json',
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
       },
       body: jsonEncode({'doc': createdDoc}),
     );
@@ -275,10 +327,7 @@ class ExternalDeliveryRepository {
 
     final resp = await _get(
       uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: await _authHeaders(),
     );
 
     if (resp.statusCode == 401) {
@@ -307,10 +356,7 @@ class ExternalDeliveryRepository {
 
     final resp = await _get(
       Uri.parse(url),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: await _authHeaders(),
     );
 
     if (!_okCodes.contains(resp.statusCode)) {
@@ -334,10 +380,7 @@ class ExternalDeliveryRepository {
     try {
       final resp = await _get(
         uri,
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'token $apiKey:$apiSecret',
-        },
+        headers: await _authHeaders(),
       );
 
       if (resp.statusCode != 200) return null;
@@ -387,9 +430,8 @@ class ExternalDeliveryRepository {
     final statusResp = await _post(
       setValueUrl,
       headers: {
-        'Accept': 'application/json',
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
       },
       body: jsonEncode({
         'doctype': stopDocType,
@@ -407,9 +449,8 @@ class ExternalDeliveryRepository {
       // Best-effort: stamp delivered_at and increment completes_stops on parent trip.
       final parentTripName = (stop.rawFields['parent'] ?? '').toString().trim();
       final authHeaders = {
-        'Accept': 'application/json',
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
       };
 
       if (stop.deliveredAt.trim().isEmpty) {
@@ -491,8 +532,9 @@ class ExternalDeliveryRepository {
   }) async {
     try {
       final uri = Uri.parse('${ApiConstants.erpBaseUrl}/api/method/upload_file');
+      final headers = await _authHeaders();
       final req = http.MultipartRequest('POST', uri)
-        ..headers['Authorization'] = 'token $apiKey:$apiSecret'
+        ..headers.addAll(headers)
         ..fields['doctype'] = 'External Delivery'
         ..fields['docname'] = orderName
         ..fields['fieldname'] = 'proof_photo'
@@ -506,9 +548,29 @@ class ExternalDeliveryRepository {
         );
 
       _logApi('upload_proof_photo request', 'POST $uri order=$orderName');
-      final streamed = await req.send().timeout(_networkTimeout);
-      final resp = await http.Response.fromStream(streamed);
+      var streamed = await req.send().timeout(_networkTimeout);
+      var resp = await http.Response.fromStream(streamed);
       _logApi('upload_proof_photo response', '${resp.statusCode}');
+
+      // Retry with refreshed token on auth failure.
+      if (_isAuthFailure(resp.statusCode) && await _refreshSession()) {
+        final refreshedHeaders = await _authHeaders();
+        final retryReq = http.MultipartRequest('POST', uri)
+          ..headers.addAll(refreshedHeaders)
+          ..fields['doctype'] = 'External Delivery'
+          ..fields['docname'] = orderName
+          ..fields['fieldname'] = 'proof_photo'
+          ..fields['is_private'] = '0'
+          ..files.add(
+            await http.MultipartFile.fromPath(
+              'file',
+              filePath,
+              filename: 'proof_$orderName.jpg',
+            ),
+          );
+        streamed = await retryReq.send().timeout(_networkTimeout);
+        resp = await http.Response.fromStream(streamed);
+      }
 
       if (!_okCodes.contains(resp.statusCode)) {
         _logApi('upload_proof_photo_warn', _extractErrorMessage(resp));
@@ -628,9 +690,8 @@ class ExternalDeliveryRepository {
     final createResp = await _post(
       Uri.parse(ApiConstants.externalDeliveryTripList),
       headers: {
-        'Accept': 'application/json',
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
       },
       body: jsonEncode(createPayload),
     );
@@ -648,9 +709,8 @@ class ExternalDeliveryRepository {
     final submitResp = await _post(
       Uri.parse(ApiConstants.frappeSubmitMethod),
       headers: {
-        'Accept': 'application/json',
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
       },
       body: jsonEncode({'doc': createdDoc}),
     );
@@ -706,9 +766,8 @@ class ExternalDeliveryRepository {
     final resp = await _put(
       uri,
       headers: {
-        'Accept': 'application/json',
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
       },
       body: jsonEncode(body),
     );
@@ -791,9 +850,8 @@ class ExternalDeliveryRepository {
     final resp = await _post(
       setValueUrl,
       headers: {
-        'Accept': 'application/json',
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
       },
       body: jsonEncode({
         'doctype': doctype,
@@ -826,10 +884,7 @@ class ExternalDeliveryRepository {
     );
     final resp = await _get(
       uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: await _authHeaders(),
     );
     if (!_okCodes.contains(resp.statusCode)) {
       return null;
@@ -897,28 +952,51 @@ class ExternalDeliveryRepository {
     print(line);
   }
 
-  Future<http.Response> _get(Uri uri, {required Map<String, String> headers}) {
+  Future<http.Response> _get(Uri uri, {required Map<String, String> headers}) async {
     _logApi('http', 'GET $uri');
-    return http.get(uri, headers: headers).timeout(_networkTimeout);
+    final resp = await http.get(uri, headers: headers).timeout(_networkTimeout);
+    if (_isAuthFailure(resp.statusCode) && await _refreshSession()) {
+      final refreshedHeaders = await _authHeaders();
+      return http.get(uri, headers: refreshedHeaders).timeout(_networkTimeout);
+    }
+    return resp;
   }
 
   Future<http.Response> _post(
     Uri uri, {
     required Map<String, String> headers,
     Object? body,
-  }) {
+  }) async {
     _logApi('http', 'POST $uri');
-    return http
-        .post(uri, headers: headers, body: body)
-        .timeout(_networkTimeout);
+    final resp = await http.post(uri, headers: headers, body: body).timeout(_networkTimeout);
+    if (_isAuthFailure(resp.statusCode) && await _refreshSession()) {
+      final refreshedHeaders = {
+        ...await _authHeaders(),
+        if (headers.containsKey('Content-Type'))
+          'Content-Type': headers['Content-Type']!,
+      };
+      return http.post(uri, headers: refreshedHeaders, body: body).timeout(_networkTimeout);
+    }
+    return resp;
   }
 
   Future<http.Response> _put(
     Uri uri, {
     required Map<String, String> headers,
     Object? body,
-  }) {
+  }) async {
     _logApi('http', 'PUT $uri');
-    return http.put(uri, headers: headers, body: body).timeout(_networkTimeout);
+    final resp = await http.put(uri, headers: headers, body: body).timeout(_networkTimeout);
+    if (_isAuthFailure(resp.statusCode) && await _refreshSession()) {
+      final refreshedHeaders = {
+        ...await _authHeaders(),
+        if (headers.containsKey('Content-Type'))
+          'Content-Type': headers['Content-Type']!,
+      };
+      return http.put(uri, headers: refreshedHeaders, body: body).timeout(_networkTimeout);
+    }
+    return resp;
   }
+
+  bool _isAuthFailure(int statusCode) => statusCode == 401 || statusCode == 403;
 }

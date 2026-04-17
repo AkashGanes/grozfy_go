@@ -29,10 +29,4 @@ class ApiConstants {
       '$erpBaseUrl/api/method/frappe.client.submit';
   static const String defaultExternalDeliveryDriver = 'HR-DRI-2026-00001';
 
-  // ---------------------------------------------------------------------------
-  // API credentials
-  // ---------------------------------------------------------------------------
-
-  static const String apiKey = 'fcce513c95f7a5c';
-  static const String apiSecret = 'c46e6e790a765ee';
 }
