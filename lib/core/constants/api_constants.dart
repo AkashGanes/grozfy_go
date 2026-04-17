@@ -28,5 +28,4 @@ class ApiConstants {
   static const String frappeSubmitMethod =
       '$erpBaseUrl/api/method/frappe.client.submit';
   static const String defaultExternalDeliveryDriver = 'HR-DRI-2026-00001';
-
 }

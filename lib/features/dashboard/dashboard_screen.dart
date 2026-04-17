@@ -234,6 +234,83 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
+          const SectionLabel('Batch Pickup'),
+          FrostCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.playlist_add_check,
+                        color: AppTheme.oceanBlue,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Multi-Order Pickup',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Pick up multiple orders in one trip',
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Colors.grey),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(
+                            context,
+                          ).pushNamed(AppRoutes.ordersByLocation);
+                        },
+                        icon: const Icon(Icons.list_alt_rounded),
+                        label: const Text('Select Orders'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.of(
+                            context,
+                          ).pushNamed(AppRoutes.externalDeliveryTripList);
+                        },
+                        icon: const Icon(Icons.route_rounded),
+                        label: const Text('View Trips'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.mint,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -366,11 +443,13 @@ class DashboardScreen extends StatelessWidget {
                     final async = ref.watch(recentNotificationsProvider);
                     return async.when(
                       data: (items) {
-                        final overrides =
-                            ref.watch(notificationReadOverridesProvider);
+                        final overrides = ref.watch(
+                          notificationReadOverridesProvider,
+                        );
                         final List<Widget> rows = <Widget>[
                           ...items.take(2).map((notification) {
-                            final effectiveRead = notification.read ||
+                            final effectiveRead =
+                                notification.read ||
                                 overrides.contains(notification.name);
                             return _NotificationRow(
                               title: notification.subject,
@@ -563,17 +642,11 @@ class DashboardScreen extends StatelessWidget {
       '',
     );
     cleaned = cleaned.replaceAll(
-      RegExp(
-        r'dear team[\s,:.-]*',
-        caseSensitive: false,
-      ),
+      RegExp(r'dear team[\s,:.-]*', caseSensitive: false),
       '',
     );
     cleaned = cleaned.replaceAll(
-      RegExp(
-        r'assigned by[\s:.-]*[^\n\r]*',
-        caseSensitive: false,
-      ),
+      RegExp(r'assigned by[\s:.-]*[^\n\r]*', caseSensitive: false),
       '',
     );
 
@@ -581,8 +654,7 @@ class DashboardScreen extends StatelessWidget {
         .split(RegExp(r'\r?\n'))
         .map((line) => line.trim())
         .where(
-          (line) =>
-              line.isNotEmpty && !line.toLowerCase().startsWith('from:'),
+          (line) => line.isNotEmpty && !line.toLowerCase().startsWith('from:'),
         )
         .toList();
 
@@ -638,7 +710,8 @@ class _DashboardLocationCard extends StatelessWidget {
                         TileLayer(
                           urlTemplate:
                               'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'com.example.delivery_partner_app',
+                          userAgentPackageName:
+                              'com.example.delivery_partner_app',
                         ),
                         MarkerLayer(
                           markers: [
@@ -745,7 +818,8 @@ class _DashboardLocationCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          app.currentLocationLabel ?? 'Location not selected yet',
+                          app.currentLocationLabel ??
+                              'Location not selected yet',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -833,9 +907,10 @@ class _NotificationRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontWeight: showUnread ? FontWeight.w800 : FontWeight.w700,
-                        color:
-                            showUnread ? AppTheme.nightBlue : Colors.black87,
+                        fontWeight: showUnread
+                            ? FontWeight.w800
+                            : FontWeight.w700,
+                        color: showUnread ? AppTheme.nightBlue : Colors.black87,
                       ),
                     ),
                     const SizedBox(height: 2),
