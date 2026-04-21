@@ -37,6 +37,14 @@ class ExternalDeliveryRepository {
     '${ApiConstants.erpBaseUrl}/api/method/frappe.integrations.oauth2.get_token',
   );
 
+  static const String _prefDriverName = 'driver_name';
+
+  Future<String> _getLoggedInDriver() async {
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString(_prefDriverName)?.trim() ?? '';
+    return name.isNotEmpty ? name : ApiConstants.defaultExternalDeliveryDriver;
+  }
+
   Future<Map<String, String>> _authHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final String? token = prefs.getString(_prefAccessToken);
@@ -104,7 +112,6 @@ class ExternalDeliveryRepository {
     'name',
     'creation',
     'modified',
-    'store_url',
     'store_name',
     'customer_name',
     'status',
@@ -130,6 +137,9 @@ class ExternalDeliveryRepository {
     final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
       queryParameters: {
         'fields': jsonEncode(['store_name']),
+        'filters': jsonEncode([
+          ['External Delivery', 'status', '=', 'Pending'],
+        ]),
         'limit_page_length': '500',
         'order_by': 'store_name asc',
       },
@@ -159,17 +169,19 @@ class ExternalDeliveryRepository {
     int limitStart = 0,
     String? storeName,
   }) async {
+    final List<List<String>> filters = [
+      ['External Delivery', 'status', '=', 'Pending'],
+    ];
+    if (storeName != null && storeName.isNotEmpty) {
+      filters.add(['External Delivery', 'store_name', '=', storeName]);
+    }
     final params = <String, String>{
       'fields': jsonEncode(_fields),
       'limit_start': '$limitStart',
       'limit_page_length': '$pageSize',
       'order_by': 'store_name asc, modified desc',
+      'filters': jsonEncode(filters),
     };
-    if (storeName != null && storeName.isNotEmpty) {
-      params['filters'] = jsonEncode([
-        ['External Delivery', 'store_name', '=', storeName],
-      ]);
-    }
 
     final uri = Uri.parse(
       ApiConstants.externalDeliveryList,
@@ -249,7 +261,7 @@ class ExternalDeliveryRepository {
     }
 
     final createPayload = {
-      'driver': ApiConstants.defaultExternalDeliveryDriver,
+      'driver': await _getLoggedInDriver(),
       'status': 'Draft',
       'trip_date': DateTime.now().toIso8601String().split('T').first,
       'stops': orders.map((o) => {'external_delivery': o.name}).toList(),
@@ -298,9 +310,58 @@ class ExternalDeliveryRepository {
     return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
   }
 
+  Future<String> createAndSubmitTripForOrderName(String orderName) async {
+    final createPayload = {
+      'driver': await _getLoggedInDriver(),
+      'status': 'Draft',
+      'trip_date': DateTime.now().toIso8601String().split('T').first,
+      'stops': [
+        {'external_delivery': orderName},
+      ],
+    };
+    _logApi(
+      'external_delivery_trip_create request',
+      'POST ${ApiConstants.externalDeliveryTripList} body=$createPayload',
+    );
+
+    final createResp = await _post(
+      Uri.parse(ApiConstants.externalDeliveryTripList),
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode(createPayload),
+    );
+
+    if (!_okCodes.contains(createResp.statusCode)) {
+      throw Exception(_extractErrorMessage(createResp));
+    }
+
+    final createData = jsonDecode(createResp.body) as Map<String, dynamic>;
+    final createdDoc = createData['data'];
+    if (createdDoc is! Map<String, dynamic>) {
+      throw Exception('Trip create API returned unexpected response');
+    }
+
+    final submitResp = await _post(
+      Uri.parse(ApiConstants.frappeSubmitMethod),
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'doc': createdDoc}),
+    );
+
+    if (!_okCodes.contains(submitResp.statusCode)) {
+      throw Exception(_extractErrorMessage(submitResp));
+    }
+
+    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
+    final submittedDoc = submitData['message'] ?? submitData['data'];
+    if (submittedDoc is! Map<String, dynamic>) {
+      throw Exception('Trip submit API returned unexpected response');
+    }
+
+    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+  }
+
   Future<String> createAndSubmitTripForOrder(ExternalDelivery order) async {
     final createPayload = {
-      'driver': ApiConstants.defaultExternalDeliveryDriver,
+      'driver': await _getLoggedInDriver(),
       'status': 'Draft',
       'trip_date': DateTime.now().toIso8601String().split('T').first,
       'stops': [
@@ -354,12 +415,16 @@ class ExternalDeliveryRepository {
   Future<List<ExternalDeliveryTripSummary>> fetchTripPage({
     int limitStart = 0,
   }) async {
+    final driver = await _getLoggedInDriver();
     final uri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
       queryParameters: {
         'fields': jsonEncode(_tripFields),
+        'filters': jsonEncode([
+          ['External Delivery Trip', 'driver', '=', driver],
+        ]),
         'limit_start': '$limitStart',
         'limit_page_length': '$pageSize',
-        'order_by': 'driver asc, modified desc',
+        'order_by': 'modified desc',
       },
     );
     _logApi('external_delivery_trip_list request', uri.toString());
@@ -706,7 +771,7 @@ class ExternalDeliveryRepository {
     }
 
     final createPayload = {
-      'driver': ApiConstants.defaultExternalDeliveryDriver,
+      'driver': await _getLoggedInDriver(),
       'status': 'Draft',
       'trip_date': DateTime.now().toIso8601String().split('T').first,
       'trip_notes': 'Return Trip for $orderName',

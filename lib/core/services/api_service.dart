@@ -18,16 +18,8 @@ class ApiService {
   static const List<String> _deliveryFields = <String>[
     'name',
     'store_name',
-    'store_url',
     'customer_name',
     'status',
-    'pickup_lat',
-    'pickup_lng',
-    'drop_lat',
-    'drop_lng',
-    'pickup_address',
-    'drop_address',
-    'contact_number',
     'creation',
     'modified',
   ];
@@ -110,15 +102,29 @@ class ApiService {
     }
   }
 
+  Future<ExternalDeliveryOrder?> getExternalDelivery(String name) async {
+    try {
+      final uri = _resourceUri(doctype: 'External Delivery', name: name);
+      final response = await _sendWithAuthRetry(
+        (headers) => http.get(uri, headers: headers),
+      );
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = _decodeJsonMap(response.body);
+        final dynamic doc = data['data'] ?? data['message'];
+        if (doc is Map<String, dynamic>) {
+          return ExternalDeliveryOrder.fromJson(doc);
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[ApiService] Error fetching delivery $name: $e');
+      return null;
+    }
+  }
+
   Future<bool> updateDeliveryStatus(String deliveryName, String status) async {
     try {
-      final body = jsonEncode({
-        'doc': {
-          'doctype': 'External Delivery',
-          'name': deliveryName,
-          'status': status,
-        },
-      });
+      final body = jsonEncode({'status': status});
 
       final uri = _resourceUri(
         doctype: 'External Delivery',

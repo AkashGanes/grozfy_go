@@ -2,11 +2,121 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
+import '../../core/services/api_service.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
 
-class OrderStatusScreen extends StatelessWidget {
+class OrderStatusScreen extends StatefulWidget {
   const OrderStatusScreen({super.key});
+
+  @override
+  State<OrderStatusScreen> createState() => _OrderStatusScreenState();
+}
+
+class _OrderStatusScreenState extends State<OrderStatusScreen> {
+  final ApiService _apiService = ApiService();
+  bool _syncing = false;
+
+  static const List<OrderProgressStatus> _flow = <OrderProgressStatus>[
+    OrderStatus.accepted,
+    OrderStatus.reachedPickup,
+    OrderStatus.pickedUp,
+    OrderStatus.outForDelivery,
+    OrderStatus.delivered,
+  ];
+
+  Future<void> _advanceStatus(BuildContext context) async {
+    final app = AppScope.of(context);
+    final order = app.activeOrder;
+    if (order == null || _syncing) return;
+
+    final OrderProgressStatus next = _nextStatus(order.orderStatus);
+    if (next == order.orderStatus) return;
+
+    setState(() => _syncing = true);
+
+    final bool apiOk = await _apiService.updateDeliveryStatus(
+      order.orderId,
+      _statusApiLabel(next),
+    );
+
+    if (!mounted) return;
+
+    if (!apiOk) {
+      showInfoSnack(context, 'Server sync failed — status saved locally');
+    }
+
+    app.updateOrderStatus(next);
+
+    if (!mounted) return;
+    setState(() => _syncing = false);
+
+    if (next == OrderStatus.delivered) {
+      showInfoSnack(context, 'Order delivered and earnings updated');
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
+    }
+  }
+
+  OrderProgressStatus _nextStatus(OrderProgressStatus current) {
+    switch (current) {
+      case OrderStatus.pending:
+        return OrderStatus.accepted;
+      case OrderStatus.accepted:
+        return OrderStatus.reachedPickup;
+      case OrderStatus.rejected:
+        return OrderStatus.rejected;
+      case OrderStatus.reachedPickup:
+        return OrderStatus.pickedUp;
+      case OrderStatus.pickedUp:
+        return OrderStatus.outForDelivery;
+      case OrderStatus.outForDelivery:
+        return OrderStatus.delivered;
+      case OrderStatus.delivered:
+        return OrderStatus.delivered;
+      case OrderStatus.cancelled:
+        return OrderStatus.cancelled;
+    }
+  }
+
+  String _statusApiLabel(OrderProgressStatus status) {
+    switch (status) {
+      case OrderStatus.accepted:
+        return 'Accepted';
+      case OrderStatus.reachedPickup:
+        return 'Reached Pickup';
+      case OrderStatus.pickedUp:
+        return 'Picked Up';
+      case OrderStatus.outForDelivery:
+        return 'Out For Delivery';
+      case OrderStatus.delivered:
+        return 'Delivered';
+      default:
+        return status.label;
+    }
+  }
+
+  String _nextButtonLabel(OrderProgressStatus current) {
+    switch (current) {
+      case OrderStatus.pending:
+        return 'Accept Order';
+      case OrderStatus.accepted:
+        return 'Mark Reached Pickup';
+      case OrderStatus.rejected:
+        return 'Rejected';
+      case OrderStatus.reachedPickup:
+        return 'Mark Picked Up';
+      case OrderStatus.pickedUp:
+        return 'Start Out for Delivery';
+      case OrderStatus.outForDelivery:
+        return 'Mark Delivered';
+      case OrderStatus.delivered:
+        return 'Completed';
+      case OrderStatus.cancelled:
+        return 'Cancelled';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,15 +136,7 @@ class OrderStatusScreen extends StatelessWidget {
       );
     }
 
-    final List<OrderProgressStatus> flow = <OrderProgressStatus>[
-      OrderProgressStatus.accepted,
-      OrderProgressStatus.reachedPickup,
-      OrderProgressStatus.pickedUp,
-      OrderProgressStatus.outForDelivery,
-      OrderProgressStatus.delivered,
-    ];
-
-    final int currentIndex = flow.indexOf(order.orderStatus);
+    final int currentIndex = _flow.indexOf(order.orderStatus);
 
     return AppShell(
       title: 'Order Progress',
@@ -44,7 +146,7 @@ class OrderStatusScreen extends StatelessWidget {
         children: [
           FrostCard(
             child: Column(
-              children: flow.asMap().entries.map((entry) {
+              children: _flow.asMap().entries.map((entry) {
                 final int index = entry.key;
                 final OrderProgressStatus status = entry.value;
                 final bool done = index <= currentIndex;
@@ -77,66 +179,20 @@ class OrderStatusScreen extends StatelessWidget {
           const SizedBox(height: 14),
           if (order.orderStatus != OrderProgressStatus.delivered)
             ElevatedButton(
-              onPressed: () {
-                final OrderProgressStatus next = _nextStatus(order.orderStatus);
-                app.updateOrderStatus(next);
-                if (next == OrderProgressStatus.delivered) {
-                  showInfoSnack(
-                    context,
-                    'Order delivered and earnings updated',
-                  );
-                  Navigator.of(context).pushNamedAndRemoveUntil(
-                    AppRoutes.dashboard,
-                    (route) => false,
-                  );
-                }
-              },
-              child: Text(_nextButtonLabel(order.orderStatus)),
+              onPressed: _syncing ? null : () => _advanceStatus(context),
+              child: _syncing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(_nextButtonLabel(order.orderStatus)),
             ),
         ],
       ),
     );
-  }
-
-  OrderProgressStatus _nextStatus(OrderProgressStatus current) {
-    switch (current) {
-      case OrderStatus.pending:
-        return OrderStatus.accepted;
-      case OrderStatus.accepted:
-        return OrderStatus.reachedPickup;
-      case OrderStatus.rejected:
-        return OrderStatus.rejected;
-      case OrderStatus.reachedPickup:
-        return OrderStatus.pickedUp;
-      case OrderStatus.pickedUp:
-        return OrderStatus.outForDelivery;
-      case OrderStatus.outForDelivery:
-        return OrderStatus.delivered;
-      case OrderStatus.delivered:
-        return OrderStatus.delivered;
-      case OrderStatus.cancelled:
-        return OrderStatus.cancelled;
-    }
-  }
-
-  String _nextButtonLabel(OrderProgressStatus current) {
-    switch (current) {
-      case OrderStatus.pending:
-        return 'Accept Order';
-      case OrderStatus.accepted:
-        return 'Mark Reached Pickup';
-      case OrderStatus.rejected:
-        return 'Rejected';
-      case OrderStatus.reachedPickup:
-        return 'Mark Picked Up';
-      case OrderStatus.pickedUp:
-        return 'Start Out for Delivery';
-      case OrderStatus.outForDelivery:
-        return 'Mark Delivered';
-      case OrderStatus.delivered:
-        return 'Completed';
-      case OrderStatus.cancelled:
-        return 'Cancelled';
-    }
   }
 }

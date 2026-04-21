@@ -137,6 +137,7 @@ class AppController extends ChangeNotifier {
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
+  bool _availabilitySyncing = false;
   bool _isTracking = false;
   int _trackingInterval = 10;
   String _liveCoordinates = '28.6139, 77.2090';
@@ -216,6 +217,7 @@ class AppController extends ChangeNotifier {
       Set<String>.unmodifiable(_vehicleRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
+  bool get availabilitySyncing => _availabilitySyncing;
   bool get isTracking => _isTracking;
   int get trackingInterval => _trackingInterval;
   String get liveCoordinates => _liveCoordinates;
@@ -2208,7 +2210,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? setOnline(bool value) {
+  Future<String?> setOnline(bool value) async {
     if (value && !canGoOnline) {
       final List<String> missing = [];
       if (!_kycCompleted) missing.add('KYC submission');
@@ -2219,7 +2221,22 @@ class AppController extends ChangeNotifier {
       return 'Please complete: ${missing.join(', ')}';
     }
 
+    if (_availabilitySyncing) return null;
+    if (_isOnline == value) return null;
+
+    _availabilitySyncing = true;
+    final bool previous = _isOnline;
     _isOnline = value;
+    notifyListeners();
+
+    final String? syncError = await _syncAvailabilityToBackend(value);
+    if (syncError != null) {
+      _isOnline = previous;
+      _availabilitySyncing = false;
+      notifyListeners();
+      return syncError;
+    }
+
     _writePref((SharedPreferences prefs) {
       return prefs.setBool(_prefIsOnline, _isOnline);
     });
@@ -2243,8 +2260,27 @@ class AppController extends ChangeNotifier {
       activeOrder: _activeOrder,
     );
 
+    _availabilitySyncing = false;
     notifyListeners();
     return null;
+  }
+
+  Future<String?> _syncAvailabilityToBackend(bool value) async {
+    if (_driverName == null || _driverName!.trim().isEmpty) {
+      return null; // No driver record yet — skip backend sync silently
+    }
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Driver/${Uri.encodeComponent(_driverName!)}',
+      );
+      await authorizedPutJson(
+        uri,
+        <String, dynamic>{'custom_custom_is_online': value ? 1 : 0},
+      );
+      return null;
+    } catch (e) {
+      return 'Failed to sync availability: ${e.toString().replaceAll('Exception: ', '')}';
+    }
   }
 
   Future<String?> startTracking() async {
@@ -2472,13 +2508,59 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _fetchOrders() async {
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    if (_random.nextBool()) {
-      throw Exception('Network error');
-    }
+    final Uri uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}'
+      '?fields=${Uri.encodeComponent('["name","store_name","customer_name","status","pickup_lat","pickup_lng","drop_lat","drop_lng","pickup_address","drop_address","contact_number"]')}'
+      '&filters=${Uri.encodeComponent('[["External Delivery","status","=","Pending"]]')}'
+      '&order_by=${Uri.encodeComponent('modified desc')}'
+      '&limit_page_length=50',
+    );
+    final Map<String, dynamic> payload = await _authorizedGet(uri);
+    final dynamic raw = payload['data'];
     _availableOrders.clear();
-    _availableOrders.addAll(_generateMockAvailableOrders());
+    if (raw is List) {
+      for (final dynamic item in raw) {
+        if (item is Map<String, dynamic>) {
+          _availableOrders.add(_orderFromExternal(ExternalDeliveryOrder.fromJson(item)));
+        }
+      }
+    }
     notifyListeners();
+  }
+
+  DeliveryOrder _orderFromExternal(ExternalDeliveryOrder ext) {
+    double distanceKm = 0;
+    if (ext.pickupLat != null &&
+        ext.pickupLng != null &&
+        ext.dropLat != null &&
+        ext.dropLng != null) {
+      distanceKm = double.parse(
+        _calculateDistance(
+          ext.pickupLat!,
+          ext.pickupLng!,
+          ext.dropLat!,
+          ext.dropLng!,
+        ).toStringAsFixed(1),
+      );
+    }
+    return DeliveryOrder(
+      orderId: ext.name,
+      customerName: ext.customerName,
+      customerPhone: ext.contactNumber ?? '',
+      deliveryAddress: ext.dropAddress ?? '',
+      storeId: '',
+      storeName: ext.storeName,
+      storeContact: '',
+      storeAddress: ext.pickupAddress ?? '',
+      orderItems: const <OrderItem>[],
+      orderStatus: OrderStatus.pending,
+      latitude: ext.dropLat ?? 0,
+      longitude: ext.dropLng ?? 0,
+      pickup: ext.pickupAddress ?? ext.storeName,
+      drop: ext.dropAddress ?? '',
+      distanceKm: distanceKm,
+      assignmentStatus: OrderAssignmentStatus.unassigned,
+    );
   }
 
   List<DeliveryOrder> _generateMockAvailableOrders() {
@@ -2548,7 +2630,7 @@ class AppController extends ChangeNotifier {
     return orders;
   }
 
-  String? acceptOrder(String orderId) {
+  Future<String?> acceptOrder(String orderId) async {
     final int index = _availableOrders.indexWhere(
       (order) => order.orderId == orderId,
     );
@@ -2560,6 +2642,15 @@ class AppController extends ChangeNotifier {
 
     if (order.assignmentStatus == OrderAssignmentStatus.assigned) {
       return 'Order already assigned to another partner';
+    }
+
+    final Uri uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(orderId)}',
+    );
+    try {
+      await authorizedPutJson(uri, <String, dynamic>{'status': 'Accepted'});
+    } catch (e) {
+      return 'Failed to accept order: ${e.toString().replaceAll('Exception: ', '')}';
     }
 
     _availableOrders.removeAt(index);
@@ -3124,6 +3215,31 @@ class AppController extends ChangeNotifier {
         employee: employeeDoc,
         driver: driverDoc,
       );
+
+      if (driverDoc != null) {
+        final dynamic onlineRaw = driverDoc['custom_custom_is_online'];
+        if (onlineRaw != null) {
+          final bool backendOnline =
+              onlineRaw == 1 || onlineRaw == true || onlineRaw.toString() == '1';
+          if (_isOnline != backendOnline) {
+            _isOnline = backendOnline;
+            _writePref(
+              (SharedPreferences prefs) =>
+                  prefs.setBool(_prefIsOnline, _isOnline),
+            );
+          }
+        }
+        if (_driverName == null || _driverName!.isEmpty) {
+          final String? fetchedName = _nullIfBlank(driverDoc['name']?.toString());
+          if (fetchedName != null) {
+            _driverName = fetchedName;
+            _writePref(
+              (SharedPreferences prefs) =>
+                  prefs.setString(_prefDriverName, fetchedName),
+            );
+          }
+        }
+      }
 
       if (!(_loggedProfileDetails?.hasData ?? false)) {
         _profileDetailsError = 'No driver profile linked to this login account';

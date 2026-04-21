@@ -33,9 +33,10 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     _mapController.move(LatLng(order.latitude, order.longitude), 15.0);
   }
 
-  void _acceptOrder(DeliveryOrder order) {
+  Future<void> _acceptOrder(DeliveryOrder order) async {
     final app = AppScope.of(context);
-    final error = app.acceptOrder(order.orderId);
+    final String? error = await app.acceptOrder(order.orderId);
+    if (!mounted) return;
     if (error != null) {
       showInfoSnack(context, error);
       return;
