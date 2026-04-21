@@ -75,68 +75,12 @@ class OrderStatusScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          if (order.orderStatus != OrderProgressStatus.delivered)
-            ElevatedButton(
-              onPressed: () {
-                final OrderProgressStatus next = _nextStatus(order.orderStatus);
-                app.updateOrderStatus(next);
-                if (next == OrderProgressStatus.delivered) {
-                  showInfoSnack(
-                    context,
-                    'Order delivered and earnings updated',
-                  );
-                  Navigator.of(context).pushNamedAndRemoveUntil(
-                    AppRoutes.dashboard,
-                    (route) => false,
-                  );
-                }
-              },
-              child: Text(_nextButtonLabel(order.orderStatus)),
-            ),
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pushNamed(AppRoutes.dashboard),
+            child: const Text('Back to Dashboard'),
+          ),
         ],
       ),
     );
-  }
-
-  OrderProgressStatus _nextStatus(OrderProgressStatus current) {
-    switch (current) {
-      case OrderStatus.pending:
-        return OrderStatus.accepted;
-      case OrderStatus.accepted:
-        return OrderStatus.reachedPickup;
-      case OrderStatus.rejected:
-        return OrderStatus.rejected;
-      case OrderStatus.reachedPickup:
-        return OrderStatus.pickedUp;
-      case OrderStatus.pickedUp:
-        return OrderStatus.outForDelivery;
-      case OrderStatus.outForDelivery:
-        return OrderStatus.delivered;
-      case OrderStatus.delivered:
-        return OrderStatus.delivered;
-      case OrderStatus.cancelled:
-        return OrderStatus.cancelled;
-    }
-  }
-
-  String _nextButtonLabel(OrderProgressStatus current) {
-    switch (current) {
-      case OrderStatus.pending:
-        return 'Accept Order';
-      case OrderStatus.accepted:
-        return 'Mark Reached Pickup';
-      case OrderStatus.rejected:
-        return 'Rejected';
-      case OrderStatus.reachedPickup:
-        return 'Mark Picked Up';
-      case OrderStatus.pickedUp:
-        return 'Start Out for Delivery';
-      case OrderStatus.outForDelivery:
-        return 'Mark Delivered';
-      case OrderStatus.delivered:
-        return 'Completed';
-      case OrderStatus.cancelled:
-        return 'Cancelled';
-    }
   }
 }

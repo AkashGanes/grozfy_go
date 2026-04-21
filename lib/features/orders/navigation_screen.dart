@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
@@ -26,6 +28,8 @@ class NavigationScreen extends StatelessWidget {
       );
     }
 
+    final dropPoint = LatLng(order.latitude, order.longitude);
+
     return AppShell(
       title: 'Navigation',
       subtitle: 'Route guidance and ETA tracking',
@@ -36,16 +40,37 @@ class NavigationScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  height: 180,
-                  decoration: BoxDecoration(
+                SizedBox(
+                  height: 220,
+                  child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFDDEBFF), Color(0xFFEAFBEF)],
+                    child: FlutterMap(
+                      options: MapOptions(
+                        initialCenter: dropPoint,
+                        initialZoom: 14.0,
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate:
+                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.lyncspace.grozfy_go',
+                        ),
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: dropPoint,
+                              width: 40,
+                              height: 40,
+                              child: const Icon(
+                                Icons.location_on,
+                                color: Colors.red,
+                                size: 36,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.route_rounded, size: 52),
                   ),
                 ),
                 const SizedBox(height: 12),

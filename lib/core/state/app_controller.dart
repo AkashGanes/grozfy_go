@@ -14,6 +14,9 @@ import '../constants/api_constants.dart';
 import '../models/app_models.dart';
 import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
+import '../../features/orders_by_location/model/external_delivery.dart';
+import '../../features/orders_by_location/model/external_delivery_detail.dart';
+import '../../features/orders_by_location/repository/external_delivery_repository.dart';
 import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
@@ -162,11 +165,10 @@ class AppController extends ChangeNotifier {
   DeliveryOrder? _activeOrder;
   final List<DeliveryOrder> _availableOrders = <DeliveryOrder>[];
   final List<DeliveryOrder> _acceptedOrders = <DeliveryOrder>[];
+  final ExternalDeliveryRepository _orderRepository =
+      ExternalDeliveryRepository();
   bool _isLoadingOrders = false;
   String? _orderLoadingError;
-  int _retryCount = 0;
-  static const int _maxRetries = 3;
-  static const Duration _retryDelay = Duration(seconds: 2);
   Timer? _liveLocationTimer;
   GeoLocation? _partnerLiveLocation;
 
@@ -363,6 +365,12 @@ class AppController extends ChangeNotifier {
         mobile: mobile,
         email: email,
       );
+
+      try {
+        await fetchActiveOrder();
+      } catch (e) {
+        _logApi('bootstrap active_order_warn', e.toString());
+      }
     }
 
     _bootstrapped = true;
@@ -2384,43 +2392,76 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateOrderStatus(OrderProgressStatus status) {
+  Future<String?> updateOrderStatus(OrderProgressStatus status) async {
     if (_activeOrder == null) {
-      return;
+      return 'No active order found';
     }
 
-    _activeOrder = _activeOrder!.copyWith(orderStatus: status);
+    try {
+      // Frappe only supports "Delivered" among the intermediate app statuses.
+      // reachedPickup, pickedUp, outForDelivery are tracked locally only.
+      if (status == OrderStatus.delivered) {
+        await _orderRepository.updateStatus(_activeOrder!.orderId, 'Delivered');
+      }
 
-    if (status == OrderStatus.delivered) {
-      final double payout = _activeOrder!.estimatedEarnings;
-      _earnings = _earnings.copyWith(
-        today: _earnings.today + payout,
-        week: _earnings.week + payout,
-        total: _earnings.total + payout,
-        pendingPayout: _earnings.pendingPayout + payout,
+      _activeOrder = _activeOrder!.copyWith(
+        orderStatus: status,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+        reachedStoreAt: status == OrderStatus.reachedPickup
+            ? DateTime.now()
+            : _activeOrder!.reachedStoreAt,
+        deliveryPartnerLocation: status == OrderStatus.reachedPickup
+            ? _partnerLiveLocation ??
+                  GeoLocation(
+                    latitude: _currentLatitude ?? 28.6139,
+                    longitude: _currentLongitude ?? 77.2090,
+                  )
+            : _activeOrder!.deliveryPartnerLocation,
       );
-      _performance = _performance.copyWith(
-        completionRate: min(100, _performance.completionRate + 0.2),
-        totalDeliveries: _performance.totalDeliveries + 1,
+      _replaceAcceptedOrder(_activeOrder!);
+
+      if (status == OrderStatus.delivered) {
+        final double payout = _activeOrder!.estimatedEarnings;
+        _earnings = _earnings.copyWith(
+          today: _earnings.today + payout,
+          week: _earnings.week + payout,
+          total: _earnings.total + payout,
+          pendingPayout: _earnings.pendingPayout + payout,
+        );
+        _performance = _performance.copyWith(
+          completionRate: min(100, _performance.completionRate + 0.2),
+          totalDeliveries: _performance.totalDeliveries + 1,
+        );
+        _notices.insert(
+          0,
+          AppNotice(
+            title: 'Delivery completed',
+            message: 'Order ${_activeOrder!.orderId} delivered successfully.',
+            time: DateTime.now(),
+          ),
+        );
+        _activeOrder = null;
+      } else if (status == OrderStatus.reachedPickup) {
+        _notices.insert(
+          0,
+          AppNotice(
+            title: 'Store Notified',
+            message: 'Store has been informed that you have arrived.',
+            time: DateTime.now(),
+          ),
+        );
+      }
+
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
       );
-      _notices.insert(
-        0,
-        AppNotice(
-          title: 'Delivery completed',
-          message: 'Order ${_activeOrder!.orderId} delivered successfully.',
-          time: DateTime.now(),
-        ),
-      );
-      _activeOrder = null;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
     }
-
-    PartnerWidgetManager.updateWidget(
-      isOnline: _isOnline,
-      todayEarnings: _earnings.today,
-      activeOrder: _activeOrder,
-    );
-
-    notifyListeners();
   }
 
   void clearActiveOrder() {
@@ -2446,7 +2487,32 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _fetchOrdersWithRetry();
+      final List<ExternalDelivery> summaries = await _orderRepository
+          .fetchAllByStatus('Pending');
+      final List<DeliveryOrder> orders = <DeliveryOrder>[];
+
+      for (final ExternalDelivery summary in summaries) {
+        try {
+          final ExternalDeliveryDetail detail = await _orderRepository
+              .fetchDetail(summary.name);
+          orders.add(_deliveryOrderFromDetail(detail));
+        } catch (e) {
+          _logApi('fetch_available_order_detail_warn', e.toString());
+        }
+      }
+
+      orders.sort((DeliveryOrder a, DeliveryOrder b) {
+        final int compareDistance = a.distanceKm.compareTo(b.distanceKm);
+        if (compareDistance != 0) {
+          return compareDistance;
+        }
+        return a.orderId.compareTo(b.orderId);
+      });
+
+      _availableOrders
+        ..clear()
+        ..addAll(orders);
+      _orderLoadingError = null;
     } catch (e) {
       _orderLoadingError = 'Failed to fetch orders: $e';
     } finally {
@@ -2455,146 +2521,123 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> _fetchOrdersWithRetry() async {
-    _retryCount = 0;
-    while (_retryCount < _maxRetries) {
-      try {
-        await _fetchOrders();
+  Future<void> fetchActiveOrder() async {
+    try {
+      final List<ExternalDelivery> summaries = await _orderRepository
+          .fetchPage(limitStart: 0);
+      final List<ExternalDelivery> activeSummaries = summaries.where((
+        ExternalDelivery summary,
+      ) {
+        final OrderStatus status = _mapExternalStatus(summary.status);
+        return status == OrderStatus.accepted ||
+            status == OrderStatus.reachedPickup ||
+            status == OrderStatus.pickedUp ||
+            status == OrderStatus.outForDelivery;
+      }).toList();
+
+      if (activeSummaries.isEmpty) {
+        _activeOrder = null;
+        _acceptedOrders.clear();
+        notifyListeners();
         return;
-      } catch (e) {
-        _retryCount++;
-        if (_retryCount >= _maxRetries) {
-          rethrow;
-        }
-        await Future<void>.delayed(_retryDelay * _retryCount);
       }
-    }
-  }
 
-  Future<void> _fetchOrders() async {
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    if (_random.nextBool()) {
-      throw Exception('Network error');
-    }
-    _availableOrders.clear();
-    _availableOrders.addAll(_generateMockAvailableOrders());
-    notifyListeners();
-  }
+      final ExternalDelivery summary = _activeOrder != null
+          ? activeSummaries.firstWhere(
+              (item) => item.name == _activeOrder!.orderId,
+              orElse: () => activeSummaries.first,
+            )
+          : activeSummaries.first;
 
-  List<DeliveryOrder> _generateMockAvailableOrders() {
-    final List<DeliveryOrder> orders = <DeliveryOrder>[];
-    final List<String> customerNames = <String>[
-      'Riya Sharma',
-      'Amit Kumar',
-      'Priya Singh',
-      'Rahul Verma',
-      'Sneha Gupta',
-    ];
-    final List<String> storeNames = <String>[
-      'Fresh Bites Kitchen',
-      'Tasty Treats',
-      'Burger Barn',
-      'Pizza Palace',
-      'Sushi Station',
-    ];
-    final List<String> addresses = <String>[
-      'Connaught Place, New Delhi',
-      'Karol Bagh, New Delhi',
-      'Lajpat Nagar, New Delhi',
-      'Saket, New Delhi',
-      'Dwarka, New Delhi',
-    ];
-
-    for (int i = 0; i < 5; i++) {
-      orders.add(
-        DeliveryOrder(
-          orderId: '#OD${1000 + _random.nextInt(8999)}',
-          customerName: customerNames[i],
-          customerPhone: '98765${1000 + _random.nextInt(8999)}',
-          deliveryAddress: '${addresses[i]} - ${110001 + i * 10}',
-          storeId: 'STORE${100 + _random.nextInt(899)}',
-          storeName: storeNames[i],
-          storeContact: '98765${43210 + _random.nextInt(10000)}',
-          storeAddress: addresses[(i + 2) % addresses.length],
-          orderItems: <OrderItem>[
-            OrderItem(
-              name: 'Item ${i + 1}',
-              quantity: 1 + _random.nextInt(3),
-              price: (50 + _random.nextInt(200)).toDouble(),
-            ),
-            if (_random.nextBool())
-              OrderItem(
-                name: 'Drink ${i + 1}',
-                quantity: 1,
-                price: 30 + _random.nextInt(50).toDouble(),
-              ),
-          ],
-          orderStatus: OrderStatus.pending,
-          latitude: 28.6139 + (_random.nextDouble() - 0.5) * 0.2,
-          longitude: 77.2090 + (_random.nextDouble() - 0.5) * 0.2,
-          pickup: addresses[(i + 2) % addresses.length],
-          drop: addresses[i],
-          deliveryInstructions: _random.nextBool()
-              ? 'Call before arrival'
-              : 'Leave at door',
-          paymentMode: _random.nextBool() ? 'COD' : 'Online',
-          distanceKm: (3 + _random.nextDouble() * 7).roundToDouble(),
-          estimatedEarnings: (50 + _random.nextInt(100)).toDouble(),
-          assignmentStatus: OrderAssignmentStatus.unassigned,
-        ),
+      final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
+        summary.name,
       );
+      final OrderStatus status = _mapExternalStatus(detail.status);
+      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
+        orderStatus: status,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+        assignedDeliveryPartnerId: _profile?.mobile ??
+            _activeOrder?.assignedDeliveryPartnerId ??
+            'PARTNER001',
+        reachedStoreAt: status == OrderStatus.reachedPickup
+            ? DateTime.now()
+            : null,
+        deliveryPartnerLocation: _partnerLiveLocation,
+      );
+      _replaceAcceptedOrder(_activeOrder!);
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
+      );
+      notifyListeners();
+    } catch (e) {
+      _logApi('fetch_active_order_warn', e.toString());
+      _activeOrder = null;
+      notifyListeners();
     }
-    notifyListeners();
-    return orders;
   }
 
-  String? acceptOrder(String orderId) {
+  Future<String?> acceptOrder(String orderId) async {
     final int index = _availableOrders.indexWhere(
       (order) => order.orderId == orderId,
     );
-    if (index == -1) {
+    final DeliveryOrder? cachedOrder =
+        index >= 0 ? _availableOrders[index] : null;
+    if (cachedOrder == null) {
       return 'Order not found';
     }
 
-    final DeliveryOrder order = _availableOrders[index];
-
-    if (order.assignmentStatus == OrderAssignmentStatus.assigned) {
+    if (cachedOrder.assignmentStatus == OrderAssignmentStatus.assigned) {
       return 'Order already assigned to another partner';
     }
 
-    _availableOrders.removeAt(index);
-
-    _activeOrder = order.copyWith(
-      assignmentStatus: OrderAssignmentStatus.assigned,
-      assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
-      orderStatus: OrderStatus.accepted,
-    );
-
-    _acceptedOrders.add(_activeOrder!);
-
-    _performance = _performance.copyWith(
-      acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
-    );
-
-    _notices.insert(
-      0,
-      AppNotice(
-        title: 'Order Accepted',
-        message: 'Order $orderId has been accepted by you.',
-        time: DateTime.now(),
-      ),
-    );
-
-    notifyListeners();
-    return null;
+    try {
+      await _orderRepository.updateStatus(orderId, 'Added to Trip');
+      _availableOrders.removeWhere((order) => order.orderId == orderId);
+      final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
+        orderId,
+      );
+      final OrderStatus fetchedStatus = _mapExternalStatus(detail.status);
+      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
+        orderStatus:
+            fetchedStatus == OrderStatus.pending
+                ? OrderStatus.accepted
+                : fetchedStatus,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+        assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+      );
+      _replaceAcceptedOrder(_activeOrder!);
+      _performance = _performance.copyWith(
+        acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
+      );
+      _notices.insert(
+        0,
+        AppNotice(
+          title: 'Order Accepted',
+          message: 'Order $orderId has been accepted by you.',
+          time: DateTime.now(),
+        ),
+      );
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
+      );
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
-  void rejectOrder(String orderId) {
-    final int index = _availableOrders.indexWhere(
-      (order) => order.orderId == orderId,
-    );
-    if (index != -1) {
-      _availableOrders.removeAt(index);
+  Future<String?> rejectOrder(String orderId) async {
+    // "Rejected" is not a valid Frappe status — leave the order as Pending
+    // so another delivery partner can still pick it up.
+    _availableOrders.removeWhere((order) => order.orderId == orderId);
+    _acceptedOrders.removeWhere((order) => order.orderId == orderId);
+    if (_activeOrder?.orderId == orderId) {
+      _activeOrder = null;
     }
 
     _performance = _performance.copyWith(
@@ -2610,10 +2653,16 @@ class AppController extends ChangeNotifier {
       ),
     );
 
+    PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
     notifyListeners();
+    return null;
   }
 
-  String? reachedPickup(String orderId) {
+  Future<String?> reachedPickup(String orderId) async {
     if (_activeOrder == null || _activeOrder!.orderId != orderId) {
       return 'No active order found';
     }
@@ -2622,35 +2671,102 @@ class AppController extends ChangeNotifier {
       return 'Order must be accepted first';
     }
 
-    _activeOrder = _activeOrder!.copyWith(
-      orderStatus: OrderStatus.reachedPickup,
-      reachedStoreAt: DateTime.now(),
-      deliveryPartnerLocation:
-          _partnerLiveLocation ??
-          GeoLocation(
-            latitude: _currentLatitude ?? 28.6139,
-            longitude: _currentLongitude ?? 77.2090,
-          ),
-    );
+    return updateOrderStatus(OrderStatus.reachedPickup);
+  }
 
+  void _replaceAcceptedOrder(DeliveryOrder order) {
     final int acceptedIndex = _acceptedOrders.indexWhere(
-      (order) => order.orderId == orderId,
+      (item) => item.orderId == order.orderId,
     );
-    if (acceptedIndex != -1) {
-      _acceptedOrders[acceptedIndex] = _activeOrder!;
+    if (acceptedIndex == -1) {
+      _acceptedOrders.add(order);
+      return;
     }
+    _acceptedOrders[acceptedIndex] = order;
+  }
 
-    _notices.insert(
+  OrderStatus _mapExternalStatus(String status) {
+    switch (status.trim().toLowerCase()) {
+      case 'accepted':
+      case 'added to trip':
+        return OrderStatus.accepted;
+      case 'rejected':
+        return OrderStatus.rejected;
+      case 'reached pickup':
+      case 'reachedpickup':
+        return OrderStatus.reachedPickup;
+      case 'picked up':
+      case 'pickedup':
+        return OrderStatus.pickedUp;
+      case 'out for delivery':
+      case 'outfordelivery':
+        return OrderStatus.outForDelivery;
+      case 'delivered':
+        return OrderStatus.delivered;
+      case 'cancelled':
+      case 'canceled':
+        return OrderStatus.cancelled;
+      case 'pending':
+      default:
+        return OrderStatus.pending;
+    }
+  }
+
+  DeliveryOrder _deliveryOrderFromDetail(ExternalDeliveryDetail detail) {
+    final List<OrderItem> items = detail.items
+        .map(
+          (DeliveryItem item) => OrderItem(
+            name: item.itemName.isNotEmpty ? item.itemName : 'Item',
+            quantity: item.qty.isFinite && item.qty > 0 ? item.qty.round() : 1,
+            price: item.amount ?? item.rate ?? 0,
+          ),
+        )
+        .toList();
+
+    final double totalAmount = items.fold<double>(
       0,
-      AppNotice(
-        title: 'Store Notified',
-        message: 'Store has been informed that you have arrived.',
-        time: DateTime.now(),
-      ),
+      (double sum, OrderItem item) => sum + (item.price * item.quantity),
     );
 
-    notifyListeners();
-    return null;
+    final double latitude = detail.latitude ?? _currentLatitude ?? 28.6139;
+    final double longitude = detail.longitude ?? _currentLongitude ?? 77.2090;
+    final OrderStatus status = _mapExternalStatus(detail.status);
+
+    return DeliveryOrder(
+      id: detail.name,
+      orderId: detail.name,
+      customerName: detail.customerName,
+      customerPhone: detail.contactMobile ?? '',
+      deliveryAddress: detail.deliveryAddress ?? '',
+      storeId: detail.storeUrl.isNotEmpty ? detail.storeUrl : detail.storeName,
+      storeName: detail.storeName,
+      storeContact: detail.contactMobile ?? '',
+      storeAddress: detail.pickupAddress ?? detail.storeUrl,
+      orderItems: items,
+      orderStatus: status,
+      latitude: latitude,
+      longitude: longitude,
+      contactNumber: detail.contactMobile ?? '',
+      pickup: detail.pickupAddress ?? detail.storeUrl,
+      drop: detail.deliveryAddress ?? '',
+      deliveryInstructions: '',
+      paymentMode: detail.paymentMode ?? '',
+      distanceKm: _calculateDistance(
+        _currentLatitude ?? latitude,
+        _currentLongitude ?? longitude,
+        latitude,
+        longitude,
+      ),
+      estimatedEarnings: detail.grandTotal ?? totalAmount,
+      assignmentStatus: status == OrderStatus.pending
+          ? OrderAssignmentStatus.unassigned
+          : OrderAssignmentStatus.assigned,
+      assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+      reachedStoreAt: status == OrderStatus.reachedPickup
+          ? DateTime.now()
+          : null,
+      deliveryPartnerLocation: _partnerLiveLocation,
+    );
   }
 
   bool validateProximityToStore(
@@ -3043,14 +3159,6 @@ class AppController extends ChangeNotifier {
   void dispose() {
     _connectivitySubscription?.cancel();
     super.dispose();
-  }
-
-  void _updateLiveCoordinates() {
-    final double baseLat = 28.6139;
-    final double baseLng = 77.2090;
-    final double lat = baseLat + (_random.nextDouble() - 0.5) / 100;
-    final double lng = baseLng + (_random.nextDouble() - 0.5) / 100;
-    _liveCoordinates = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
   }
 
   Future<void> fetchLoggedInEmployeeDriverProfile({

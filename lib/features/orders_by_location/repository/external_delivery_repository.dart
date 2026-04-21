@@ -194,6 +194,42 @@ class ExternalDeliveryRepository {
         .toList();
   }
 
+  /// Fetches all External Delivery records with [status] using server-side
+  /// filtering so no records are missed due to pagination limits.
+  Future<List<ExternalDelivery>> fetchAllByStatus(String status) async {
+    final params = <String, String>{
+      'fields': jsonEncode(_fields),
+      'filters': jsonEncode([
+        ['External Delivery', 'status', '=', status],
+      ]),
+      'limit_page_length': '500',
+      'order_by': 'creation desc',
+    };
+
+    final uri = Uri.parse(
+      ApiConstants.externalDeliveryList,
+    ).replace(queryParameters: params);
+
+    _logApi('external_delivery_pending_list request', uri.toString());
+    final resp = await _get(uri, headers: await _authHeaders());
+
+    if (resp.statusCode == 401) {
+      throw Exception('401: Invalid API credentials.');
+    }
+    if (resp.statusCode == 403) {
+      throw Exception('403: Access denied. Check API permissions.');
+    }
+    if (resp.statusCode != 200) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+
+    final data = (jsonDecode(resp.body)['data']) as List;
+    _logApi('external_delivery_pending_list', 'fetched ${data.length} records with status=$status');
+    return data
+        .map((row) => ExternalDelivery.fromJson(row as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<ExternalDeliveryDetail> fetchDetail(String name) async {
     final uri = Uri.parse(
       '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
@@ -236,6 +272,74 @@ class ExternalDeliveryRepository {
       body: jsonEncode({'status': status}),
     );
 
+    if (!_okCodes.contains(resp.statusCode)) {
+      _logApi('external_delivery_status_update error', 'code=${resp.statusCode} body=${resp.body}');
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
+  Future<void> updateStatusViaSetValue(String name, String status) async {
+    _logApi('external_delivery_set_value request', 'name=$name status=$status');
+    final uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    final resp = await _post(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'doctype': 'External Delivery',
+        'name': name,
+        'fieldname': 'status',
+        'value': status,
+      }),
+    );
+    _logApi('external_delivery_set_value response', 'code=${resp.statusCode} body=${resp.body}');
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
+  Future<void> acceptOrderWithPartner(String name, String partnerMobile) async {
+    final uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
+    );
+    _logApi('accept_order_with_partner request', 'name=$name partner=$partnerMobile');
+    final resp = await _put(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'status': 'Accepted',
+        'delivery_partner': partnerMobile,
+        'driver': partnerMobile,
+        'assigned_to': partnerMobile,
+      }),
+    );
+    _logApi('accept_order_with_partner response', 'code=${resp.statusCode} body=${resp.body}');
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
+  Future<void> applyWorkflowAccept(String name) async {
+    final detailUri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
+    );
+    final detailResp = await _get(detailUri, headers: await _authHeaders());
+    if (!_okCodes.contains(detailResp.statusCode)) {
+      throw Exception(_extractErrorMessage(detailResp));
+    }
+    final docData = (jsonDecode(detailResp.body)['data']) as Map<String, dynamic>;
+
+    final uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.model.workflow.apply_workflow',
+    );
+    _logApi('apply_workflow_accept request', 'name=$name');
+    final resp = await _post(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'doc': docData, 'action': 'Accept'}),
+    );
+    _logApi('apply_workflow_accept response', 'code=${resp.statusCode} body=${resp.body}');
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));
     }

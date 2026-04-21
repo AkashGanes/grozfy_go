@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'core/models/app_models.dart';
 import 'core/services/fcm_initializer.dart';
 import 'core/navigation/app_routes.dart';
 import 'core/state/providers.dart';
@@ -223,8 +224,10 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
                 builder: (_) => const OrderRequestScreen(),
               );
             case AppRoutes.orderDetails:
+              final dynamic orderArgs = settings.arguments;
+              final order = orderArgs is DeliveryOrder ? orderArgs : null;
               return MaterialPageRoute<void>(
-                builder: (_) => const OrderDetailsScreen(),
+                builder: (_) => OrderDetailsScreen(order: order),
               );
             case AppRoutes.navigation:
               return MaterialPageRoute<void>(

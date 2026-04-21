@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../notifications/providers/notification_providers.dart';
 
 import '../../core/models/app_models.dart';
@@ -386,12 +387,11 @@ class DashboardScreen extends StatelessWidget {
                       const Expanded(child: Text('No active order right now.')),
                       TextButton(
                         onPressed: () {
-                          app.generateIncomingOrder();
                           Navigator.of(
                             context,
-                          ).pushNamed(AppRoutes.orderRequest);
+                          ).pushNamed(AppRoutes.orderListing);
                         },
-                        child: const Text('Get Request'),
+                        child: const Text('Browse Nearby Orders'),
                       ),
                     ],
                   )
@@ -405,31 +405,7 @@ class DashboardScreen extends StatelessWidget {
                       const SizedBox(height: 6),
                       Text(app.activeOrder!.drop),
                       const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(AppRoutes.orderDetails);
-                              },
-                              child: const Text('View Order'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(AppRoutes.navigation);
-                              },
-                              child: const Text('Quick Navigate'),
-                            ),
-                          ),
-                        ],
-                      ),
+                      _ActiveOrderActions(order: app.activeOrder!),
                     ],
                   ),
           ),
@@ -583,14 +559,6 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: () {
-              app.generateIncomingOrder();
-              Navigator.of(context).pushNamed(AppRoutes.orderRequest);
-            },
-            icon: const Icon(Icons.local_shipping_rounded),
-            label: const Text('Simulate Incoming Order'),
-          ),
         ],
       ),
     );
@@ -674,6 +642,140 @@ class DashboardScreen extends StatelessWidget {
   }
 }
 
+class _ActiveOrderActions extends StatelessWidget {
+  const _ActiveOrderActions({required this.order});
+
+  final DeliveryOrder order;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final List<Widget> rows = <Widget>[
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.of(
+                  context,
+                ).pushNamed(AppRoutes.orderDetails, arguments: order);
+              },
+              child: const Text('View Order'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pushNamed(AppRoutes.navigation);
+              },
+              child: const Text('Navigate'),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () async {
+                final Uri uri = Uri.parse(
+                  'https://www.google.com/maps/search/?api=1&query=${order.latitude},${order.longitude}',
+                );
+                final bool launched = await launchUrl(
+                  uri,
+                  mode: LaunchMode.externalApplication,
+                );
+                if (!context.mounted) {
+                  return;
+                }
+                if (!launched) {
+                  showInfoSnack(context, 'Unable to open Google Maps');
+                }
+              },
+              child: const Text('Open Maps'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.of(context).pushNamed(AppRoutes.orderTracking);
+              },
+              child: const Text('Track Order'),
+            ),
+          ),
+        ],
+      ),
+    ];
+
+    final ({String label, OrderProgressStatus next})? transition =
+        _nextTransition(order.orderStatus);
+    if (transition != null) {
+      rows.add(const SizedBox(height: 10));
+      rows.add(
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
+              final error = await app.updateOrderStatus(transition.next);
+              if (!context.mounted) {
+                return;
+              }
+              if (error != null) {
+                messenger.showSnackBar(SnackBar(content: Text(error)));
+                return;
+              }
+              if (transition.next == OrderProgressStatus.delivered) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Order delivered and earnings updated'),
+                  ),
+                );
+                navigator.pushNamedAndRemoveUntil(
+                  AppRoutes.dashboard,
+                  (route) => false,
+                );
+              } else {
+                navigator.pushNamed(AppRoutes.orderStatus);
+              }
+            },
+            child: Text(transition.label),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
+    );
+  }
+
+  ({String label, OrderProgressStatus next})? _nextTransition(
+    OrderProgressStatus current,
+  ) {
+    switch (current) {
+      case OrderStatus.accepted:
+        return (label: 'Mark Reached Pickup', next: OrderStatus.reachedPickup);
+      case OrderStatus.reachedPickup:
+        return (label: 'Mark Picked Up', next: OrderStatus.pickedUp);
+      case OrderStatus.pickedUp:
+        return (label: 'Start Delivery', next: OrderStatus.outForDelivery);
+      case OrderStatus.outForDelivery:
+        return (label: 'Mark Delivered', next: OrderStatus.delivered);
+      case OrderStatus.pending:
+      case OrderStatus.rejected:
+      case OrderStatus.delivered:
+      case OrderStatus.cancelled:
+        return null;
+    }
+  }
+}
+
 class _DashboardLocationCard extends StatelessWidget {
   const _DashboardLocationCard({required this.app});
 
@@ -710,8 +812,7 @@ class _DashboardLocationCard extends StatelessWidget {
                         TileLayer(
                           urlTemplate:
                               'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName:
-                              'com.lyncspace.grozfy_go',
+                          userAgentPackageName: 'com.lyncspace.grozfy_go',
                         ),
                         MarkerLayer(
                           markers: [
