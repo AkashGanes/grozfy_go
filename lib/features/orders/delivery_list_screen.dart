@@ -587,24 +587,6 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
                   ),
               ]),
 
-              const SizedBox(height: 16),
-
-              if (_delivery.creation != null || _delivery.modified != null)
-                _buildSection('Timeline', [
-                  if (_delivery.creation != null)
-                    _buildInfoRow(
-                      Icons.access_time,
-                      'Created',
-                      _formatDate(_delivery.creation!),
-                    ),
-                  if (_delivery.modified != null)
-                    _buildInfoRow(
-                      Icons.update,
-                      'Last Updated',
-                      _formatDate(_delivery.modified!),
-                    ),
-                ]),
-
               const SizedBox(height: 32),
 
               if (_delivery.status.toLowerCase() == 'pending')
@@ -717,15 +699,4 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-    if (diff.inHours < 24) return '${diff.inHours} hours ago';
-    if (diff.inDays < 7) return '${diff.inDays} days ago';
-
-    return '${date.day}/${date.month}/${date.year}';
-  }
 }
