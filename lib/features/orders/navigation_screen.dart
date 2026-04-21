@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
@@ -32,7 +35,7 @@ class NavigationScreen extends StatelessWidget {
 
     return AppShell(
       title: 'Navigation',
-      subtitle: 'Route guidance and ETA tracking',
+      subtitle: 'Route to delivery location',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -59,12 +62,12 @@ class NavigationScreen extends StatelessWidget {
                           markers: [
                             Marker(
                               point: dropPoint,
-                              width: 40,
-                              height: 40,
+                              width: 44,
+                              height: 44,
                               child: const Icon(
                                 Icons.location_on,
                                 color: Colors.red,
-                                size: 36,
+                                size: 40,
                               ),
                             ),
                           ],
@@ -76,17 +79,22 @@ class NavigationScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 _row('Pickup', order.pickup),
                 _row('Drop', order.drop),
-                _row('ETA', '18 mins'),
+                _row(
+                  'Coordinates',
+                  '${order.latitude.toStringAsFixed(5)}, ${order.longitude.toStringAsFixed(5)}',
+                ),
                 _row('Distance', '${order.distanceKm.toStringAsFixed(1)} km'),
               ],
             ),
           ),
           const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () {
-              showInfoSnack(context, 'Launching Google Maps route');
-            },
-            icon: const Icon(Icons.open_in_new_rounded),
+          ElevatedButton.icon(
+            onPressed: () => _launchGoogleMapsNavigation(
+              context,
+              order.latitude,
+              order.longitude,
+            ),
+            icon: const Icon(Icons.navigation_rounded),
             label: const Text('Open in Google Maps'),
           ),
           const SizedBox(height: 8),
@@ -114,13 +122,50 @@ class NavigationScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _launchGoogleMapsNavigation(
+    BuildContext context,
+    double lat,
+    double lng,
+  ) async {
+    // Native Google Maps turn-by-turn navigation
+    final Uri nativeUri = Platform.isAndroid
+        ? Uri.parse('google.navigation:q=$lat,$lng&mode=d')
+        : Uri.parse(
+            'comgooglemaps://?daddr=$lat,$lng&directionsmode=driving',
+          );
+
+    if (await canLaunchUrl(nativeUri)) {
+      await launchUrl(nativeUri);
+      return;
+    }
+
+    // Fallback: open in browser / OS map handler
+    final Uri webUri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&destination=$lat,$lng'
+      '&travelmode=driving',
+    );
+
+    if (await canLaunchUrl(webUri)) {
+      await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open Google Maps')),
+      );
+    }
+  }
+
   Widget _row(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 80,
+            width: 90,
             child: Text(label, style: const TextStyle(color: Colors.black54)),
           ),
           Expanded(
