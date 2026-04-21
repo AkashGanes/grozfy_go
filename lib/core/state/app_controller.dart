@@ -2780,7 +2780,7 @@ class AppController extends ChangeNotifier {
   String t(String key) {
     const Map<String, Map<String, String>> dictionary = {
       'en': {
-        'app_title': 'FlowFleet Partner',
+        'app_title': 'Grozfy GO',
         'login': 'Login',
         'register': 'Register',
         'dashboard': 'Dashboard',
