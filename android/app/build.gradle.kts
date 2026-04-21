@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.delivery_partner_app"
+    namespace = "com.lyncspace.grozfy_go"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -22,7 +22,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.delivery_partner_app"
+        applicationId = "com.lyncspace.grozfy_go"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

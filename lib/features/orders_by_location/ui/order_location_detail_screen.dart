@@ -469,7 +469,7 @@ class _MapLayer extends StatelessWidget {
       children: [
         TileLayer(
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.example.delivery_partner_app',
+          userAgentPackageName: 'com.lyncspace.grozfy_go',
         ),
         MarkerLayer(
           markers: [
