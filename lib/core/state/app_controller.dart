@@ -42,6 +42,9 @@ class AppController extends ChangeNotifier {
   static final Uri _revokeTokenUri = Uri.parse(
     'http://209.182.232.35:8004/api/method/frappe.integrations.oauth2.revoke_token',
   );
+  static final Uri _serverLogoutUri = Uri.parse(
+    'http://209.182.232.35:8004/api/method/logout',
+  );
   static const String _prefLanguageCode = 'language_code';
   static const String _prefMobile = 'partner_mobile';
   static const String _prefEmail = 'partner_email';
@@ -1261,11 +1264,34 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// Calls Frappe's /api/method/logout so LoginManager.logout_log() writes an
+  /// Activity Log entry for the session. `revoke_token` alone only kills the
+  /// OAuth bearer token; it does not create the audit row.
+  Future<void> _serverSideLogout(String bearerToken, String tokenType) async {
+    try {
+      _logApi('server logout request', 'POST $_serverLogoutUri');
+      final http.Response response = await http.post(
+        _serverLogoutUri,
+        headers: <String, String>{
+          'Authorization':
+              '${tokenType.isEmpty ? 'Bearer' : tokenType} $bearerToken',
+        },
+      ).timeout(_networkTimeout);
+      _logApi(
+        'server logout response',
+        'status=${response.statusCode}',
+      );
+    } catch (e) {
+      _logApi('server logout error', e.toString());
+    }
+  }
+
   Future<void> logout() async {
     // Snapshot credentials before we clear them — needed by the background
     // server-side cleanup below.
     final String? accessToRevoke = _sessionToken;
     final String? refreshToRevoke = _refreshToken;
+    final String tokenTypeSnapshot = _tokenType;
 
     // Clear in-memory state first. notifyListeners() runs synchronously so
     // any listener that routes on auth state (or the login route below)
@@ -1328,6 +1354,7 @@ class AppController extends ChangeNotifier {
     // Server-side cleanup — fire-and-forget so the caller's navigation
     // happens instantly instead of waiting on 2-3 sequential HTTP calls.
     if (accessToRevoke != null && accessToRevoke.isNotEmpty) {
+      unawaited(_serverSideLogout(accessToRevoke, tokenTypeSnapshot));
       unawaited(_revokeTokenOnServer(accessToRevoke));
       unawaited(
         FCMService().unsubscribeWithToken(bearerToken: accessToRevoke),
