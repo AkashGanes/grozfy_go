@@ -21,7 +21,6 @@ class _ExternalDeliveryTripListScreenState
   ExternalDeliveryRepository? _repository;
   PagingController<int, TripListItem>? _pagingController;
   final TextEditingController _searchController = TextEditingController();
-  String? _lastDriver;
   String _searchQuery = '';
 
   @override
@@ -43,14 +42,7 @@ class _ExternalDeliveryTripListScreenState
   Future<void> _fetchPage(int pageKey) async {
     try {
       final trips = await _repository!.fetchTripPage(limitStart: pageKey);
-      final items = <TripListItem>[];
-      for (final trip in trips) {
-        if (trip.driver != _lastDriver) {
-          items.add(DriverHeader(trip.driver));
-          _lastDriver = trip.driver;
-        }
-        items.add(TripRow(trip));
-      }
+      final items = trips.map((t) => TripRow(t) as TripListItem).toList();
       final isLast = trips.length < ExternalDeliveryRepository.pageSize;
       if (isLast) {
         _pagingController!.appendLastPage(items);
@@ -63,7 +55,6 @@ class _ExternalDeliveryTripListScreenState
   }
 
   Future<void> _refresh() async {
-    _lastDriver = null;
     _pagingController!.refresh();
   }
 
@@ -127,25 +118,6 @@ class _ExternalDeliveryTripListScreenState
       builderDelegate: PagedChildBuilderDelegate<TripListItem>(
         itemBuilder: (context, item, index) {
           final delay = (index * 45).clamp(0, 320);
-          if (item is DriverHeader) {
-            return Padding(
-                  padding: const EdgeInsets.only(top: 18, bottom: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.badge_outlined,
-                        size: 18,
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.9),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(child: SectionLabel(item.driver)),
-                    ],
-                  ),
-                )
-                .animate()
-                .fadeIn(delay: delay.ms, duration: 220.ms)
-                .slideX(begin: 0.03, end: 0);
-          }
           if (item is TripRow) {
             return _TripCard(
                   trip: item.trip,
@@ -239,7 +211,7 @@ class _ExternalDeliveryTripListScreenState
 
     return AppShell(
       title: 'External Delivery Trips',
-      subtitle: 'All trips grouped by driver',
+      subtitle: 'My trips',
       actions: const [
         Padding(
           padding: EdgeInsets.only(right: 10),

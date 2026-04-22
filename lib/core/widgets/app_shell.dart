@@ -13,6 +13,7 @@ class AppShell extends StatelessWidget {
     this.scrollable = true,
     this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 20),
     this.loading = false,
+    this.onRefresh,
   });
 
   final String title;
@@ -22,6 +23,7 @@ class AppShell extends StatelessWidget {
   final bool scrollable;
   final EdgeInsets padding;
   final bool loading;
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -76,10 +78,20 @@ class AppShell extends StatelessWidget {
                   const SizedBox(height: 12),
                   Expanded(
                     child: scrollable
-                        ? SingleChildScrollView(
-                            physics: const BouncingScrollPhysics(),
-                            child: body,
-                          )
+                        ? onRefresh != null
+                            ? RefreshIndicator(
+                                onRefresh: onRefresh!,
+                                child: SingleChildScrollView(
+                                  physics: const AlwaysScrollableScrollPhysics(
+                                    parent: BouncingScrollPhysics(),
+                                  ),
+                                  child: body,
+                                ),
+                              )
+                            : SingleChildScrollView(
+                                physics: const BouncingScrollPhysics(),
+                                child: body,
+                              )
                         : body,
                   ),
                 ],

@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../core/models/app_models.dart';
+import '../../core/navigation/app_routes.dart';
 import '../../core/services/api_service.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/skeleton_loader.dart';
+import '../orders_by_location/repository/external_delivery_repository.dart';
 
 class DeliveryListScreen extends StatefulWidget {
   const DeliveryListScreen({super.key});
@@ -12,6 +16,7 @@ class DeliveryListScreen extends StatefulWidget {
 
 class _DeliveryListScreenState extends State<DeliveryListScreen> {
   final ApiService _apiService = ApiService();
+  final ExternalDeliveryRepository _repository = ExternalDeliveryRepository();
 
   List<ExternalDeliveryOrder> _deliveries = [];
   bool _isLoading = true;
@@ -32,7 +37,11 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
 
     try {
       debugPrint('[DeliveryList] Fetching deliveries...');
-      final deliveries = await _apiService.getExternalDeliveries();
+      final deliveries = await _apiService.getExternalDeliveries(
+        filters: [
+          ['External Delivery', 'status', '=', 'Pending'],
+        ],
+      );
       debugPrint('[DeliveryList] Got ${deliveries.length} deliveries');
       if (mounted) {
         setState(() {
@@ -81,27 +90,6 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
     }
   }
 
-  IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'pending':
-        return Icons.schedule;
-      case 'accepted':
-        return Icons.check_circle_outline;
-      case 'picked up':
-      case 'pickedup':
-        return Icons.inventory_2;
-      case 'out for delivery':
-      case 'outfordelivery':
-        return Icons.local_shipping;
-      case 'delivered':
-        return Icons.done_all;
-      case 'cancelled':
-        return Icons.cancel;
-      default:
-        return Icons.help_outline;
-    }
-  }
-
   void _showDeliveryDetails(ExternalDeliveryOrder delivery) {
     showModalBottomSheet(
       context: context,
@@ -117,9 +105,8 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
         builder: (context, scrollController) => _DeliveryDetailsSheet(
           delivery: delivery,
           scrollController: scrollController,
-          onStatusUpdate: (name, status) async {
-            return await _apiService.updateDeliveryStatus(name, status);
-          },
+          apiService: _apiService,
+          onAccept: (name) => _repository.createAndSubmitTripForOrderName(name),
           onNavigateToDelivery: () {
             if (!delivery.hasDropLocation) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -158,55 +145,82 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
     return AppShell(
       title: 'Available Deliveries',
       subtitle: '${_deliveries.length} orders',
-      child: Column(children: [Expanded(child: _buildContent())]),
+      scrollable: false,
+      padding: EdgeInsets.zero,
+      child: _buildContent(),
     );
   }
 
   Widget _buildContent() {
     if (_isLoading && !_isRefreshing) {
-      return const Center(child: CircularProgressIndicator());
+      return const SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
+        child: SkeletonLoader(itemCount: 5, spacing: 12),
+      );
     }
 
     if (_errorMessage != null && _deliveries.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text(
-              _errorMessage!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: FrostCard(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  size: 48,
+                  color: AppTheme.mango.withValues(alpha: 0.8),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _errorMessage!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: _fetchDeliveries,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _fetchDeliveries,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
+          ),
         ),
       );
     }
 
     if (_deliveries.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'No deliveries available',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: FrostCard(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.inbox_outlined,
+                  size: 52,
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.4),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'No deliveries available',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.nightBlue,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Pull down to refresh',
+                  style: TextStyle(fontSize: 13, color: Colors.black45),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Pull down to refresh',
-              style: TextStyle(color: Colors.grey[500]),
-            ),
-          ],
+          ),
         ),
       );
     }
@@ -214,14 +228,13 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
     return RefreshIndicator(
       onRefresh: _refreshDeliveries,
       child: ListView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
         itemCount: _deliveries.length,
         itemBuilder: (context, index) {
           final delivery = _deliveries[index];
           return _DeliveryCard(
             delivery: delivery,
             statusColor: _getStatusColor(delivery.status),
-            statusIcon: _getStatusIcon(delivery.status),
             onTap: () => _showDeliveryDetails(delivery),
           );
         },
@@ -233,146 +246,124 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
 class _DeliveryCard extends StatelessWidget {
   final ExternalDeliveryOrder delivery;
   final Color statusColor;
-  final IconData statusIcon;
   final VoidCallback onTap;
 
   const _DeliveryCard({
     required this.delivery,
     required this.statusColor,
-    required this.statusIcon,
     required this.onTap,
   });
 
+  String _formatDate(DateTime? date) {
+    if (date == null) return '';
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GestureDetector(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        child: FrostCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+              Container(
+                width: 10,
+                height: 10,
+                margin: const EdgeInsets.only(right: 14, top: 2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: statusColor,
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      delivery.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: AppTheme.nightBlue,
+                      ),
                     ),
-                    child: Icon(statusIcon, color: statusColor, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 4),
+                    Row(
                       children: [
-                        Text(
-                          delivery.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+                        const Icon(
+                          Icons.store_outlined,
+                          size: 13,
+                          color: Colors.black45,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          delivery.storeName,
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 14,
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            delivery.storeName,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      delivery.status,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Icon(Icons.person, size: 16, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      delivery.customerName,
-                      style: TextStyle(color: Colors.grey[700]),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(
-                    Icons.location_on,
-                    size: 16,
-                    color: delivery.hasDropLocation
-                        ? Colors.green
-                        : Colors.grey,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      delivery.dropAddress ?? 'No drop address',
-                      style: TextStyle(
-                        color: delivery.hasDropLocation
-                            ? Colors.grey[700]
-                            : Colors.grey,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (delivery.hasDropLocation)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.navigation, size: 12, color: Colors.green),
-                          SizedBox(width: 2),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.person_outline,
+                          size: 13,
+                          color: Colors.black45,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          delivery.customerName,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black54,
+                          ),
+                        ),
+                        if (delivery.modified != null) ...[
+                          const SizedBox(width: 10),
+                          const Icon(
+                            Icons.schedule,
+                            size: 13,
+                            color: Colors.black45,
+                          ),
+                          const SizedBox(width: 4),
                           Text(
-                            'GPS',
-                            style: TextStyle(
-                              color: Colors.green,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                            _formatDate(delivery.modified),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black45,
                             ),
                           ),
                         ],
-                      ),
+                      ],
                     ),
-                ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.35)),
+                ),
+                child: Text(
+                  delivery.status,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
@@ -382,18 +373,47 @@ class _DeliveryCard extends StatelessWidget {
   }
 }
 
-class _DeliveryDetailsSheet extends StatelessWidget {
+class _DeliveryDetailsSheet extends StatefulWidget {
   final ExternalDeliveryOrder delivery;
   final ScrollController scrollController;
-  final Future<bool> Function(String name, String status) onStatusUpdate;
+  final Future<String> Function(String name) onAccept;
   final VoidCallback onNavigateToDelivery;
+  final ApiService apiService;
 
   const _DeliveryDetailsSheet({
     required this.delivery,
     required this.scrollController,
-    required this.onStatusUpdate,
+    required this.onAccept,
     required this.onNavigateToDelivery,
+    required this.apiService,
   });
+
+  @override
+  State<_DeliveryDetailsSheet> createState() => _DeliveryDetailsSheetState();
+}
+
+class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
+  late ExternalDeliveryOrder _delivery;
+  bool _loadingFull = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _delivery = widget.delivery;
+    _fetchFullDelivery();
+  }
+
+  Future<void> _fetchFullDelivery() async {
+    final full = await widget.apiService.getExternalDelivery(_delivery.name);
+    if (mounted && full != null) {
+      setState(() {
+        _delivery = full;
+        _loadingFull = false;
+      });
+    } else if (mounted) {
+      setState(() => _loadingFull = false);
+    }
+  }
 
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
@@ -418,7 +438,7 @@ class _DeliveryDetailsSheet extends StatelessWidget {
 
   void _navigateToDelivery(BuildContext context) {
     Navigator.pop(context);
-    onNavigateToDelivery();
+    widget.onNavigateToDelivery();
   }
 
   Future<void> _acceptDelivery(BuildContext context) async {
@@ -426,22 +446,22 @@ class _DeliveryDetailsSheet extends StatelessWidget {
     final navigator = Navigator.of(context);
 
     scaffoldMessenger.showSnackBar(
-      SnackBar(content: Text('Accepting delivery ${delivery.name}...')),
+      const SnackBar(content: Text('Creating trip...')),
     );
 
-    final success = await onStatusUpdate(delivery.name, 'Accepted');
-
-    if (!context.mounted) return;
-
-    if (success) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Delivery ${delivery.name} accepted!')),
+    try {
+      final tripName = await widget.onAccept(_delivery.name);
+      if (!context.mounted) return;
+      navigator.pop(); // close bottom sheet
+      navigator.pushNamed(
+        AppRoutes.externalDeliveryTripDetails,
+        arguments: tripName,
       );
-      navigator.pop();
-    } else {
+    } catch (e) {
+      if (!context.mounted) return;
       scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text('Failed to accept delivery. Please try again.'),
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
           backgroundColor: Colors.red,
         ),
       );
@@ -450,7 +470,7 @@ class _DeliveryDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor(delivery.status);
+    final statusColor = _getStatusColor(_delivery.status);
 
     return Container(
       decoration: const BoxDecoration(
@@ -458,7 +478,7 @@ class _DeliveryDetailsSheet extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SingleChildScrollView(
-        controller: scrollController,
+        controller: widget.scrollController,
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -483,7 +503,7 @@ class _DeliveryDetailsSheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          delivery.name,
+                          _delivery.name,
                           style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
@@ -500,7 +520,7 @@ class _DeliveryDetailsSheet extends StatelessWidget {
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            delivery.status,
+                            _delivery.status,
                             style: TextStyle(
                               color: statusColor,
                               fontWeight: FontWeight.w600,
@@ -510,24 +530,29 @@ class _DeliveryDetailsSheet extends StatelessWidget {
                       ],
                     ),
                   ),
-                  IconButton(onPressed: () {}, icon: const Icon(Icons.share)),
+                  if (_loadingFull)
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                 ],
               ),
 
               const SizedBox(height: 24),
 
               _buildSection('Store Details', [
-                _buildInfoRow(Icons.store, 'Store Name', delivery.storeName),
-                if (delivery.storeUrl.isNotEmpty)
-                  _buildInfoRow(Icons.link, 'URL', delivery.storeUrl),
+                _buildInfoRow(Icons.store, 'Store Name', _delivery.storeName),
+                if (_delivery.storeUrl.isNotEmpty)
+                  _buildInfoRow(Icons.link, 'URL', _delivery.storeUrl),
               ]),
 
               const SizedBox(height: 16),
 
               _buildSection('Customer Details', [
-                _buildInfoRow(Icons.person, 'Customer', delivery.customerName),
-                if (delivery.contactNumber != null)
-                  _buildInfoRow(Icons.phone, 'Phone', delivery.contactNumber!),
+                _buildInfoRow(Icons.person, 'Customer', _delivery.customerName),
+                if (_delivery.contactNumber != null)
+                  _buildInfoRow(Icons.phone, 'Phone', _delivery.contactNumber!),
               ]),
 
               const SizedBox(height: 16),
@@ -536,13 +561,13 @@ class _DeliveryDetailsSheet extends StatelessWidget {
                 _buildInfoRow(
                   Icons.trip_origin,
                   'Address',
-                  delivery.pickupAddress ?? 'Not available',
+                  _delivery.pickupAddress ?? 'Not available',
                 ),
-                if (delivery.hasPickupLocation)
+                if (_delivery.hasPickupLocation)
                   _buildInfoRow(
                     Icons.gps_fixed,
                     'Coordinates',
-                    '${delivery.pickupLat!.toStringAsFixed(6)}, ${delivery.pickupLng!.toStringAsFixed(6)}',
+                    '${_delivery.pickupLat!.toStringAsFixed(6)}, ${_delivery.pickupLng!.toStringAsFixed(6)}',
                   ),
               ]),
 
@@ -552,41 +577,32 @@ class _DeliveryDetailsSheet extends StatelessWidget {
                 _buildInfoRow(
                   Icons.location_on,
                   'Address',
-                  delivery.dropAddress ?? 'Not available',
+                  _delivery.dropAddress ?? 'Not available',
                 ),
-                if (delivery.hasDropLocation)
+                if (_delivery.hasDropLocation)
                   _buildInfoRow(
                     Icons.gps_fixed,
                     'Coordinates',
-                    '${delivery.dropLat!.toStringAsFixed(6)}, ${delivery.dropLng!.toStringAsFixed(6)}',
+                    '${_delivery.dropLat!.toStringAsFixed(6)}, ${_delivery.dropLng!.toStringAsFixed(6)}',
                   ),
               ]),
 
-              const SizedBox(height: 16),
-
-              if (delivery.creation != null || delivery.modified != null)
-                _buildSection('Timeline', [
-                  if (delivery.creation != null)
-                    _buildInfoRow(
-                      Icons.access_time,
-                      'Created',
-                      _formatDate(delivery.creation!),
-                    ),
-                  if (delivery.modified != null)
-                    _buildInfoRow(
-                      Icons.update,
-                      'Last Updated',
-                      _formatDate(delivery.modified!),
-                    ),
-                ]),
-
               const SizedBox(height: 32),
 
-              if (delivery.status.toLowerCase() == 'pending')
+              if (_delivery.status.toLowerCase() == 'pending')
                 SizedBox(
                   width: double.infinity,
-                  child: ElevatedButton(
+                  child: ElevatedButton.icon(
                     onPressed: () => _acceptDelivery(context),
+                    icon: const Icon(Icons.add_road, color: Colors.white),
+                    label: const Text(
+                      'Create Trip',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -594,18 +610,10 @@ class _DeliveryDetailsSheet extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text(
-                      'Accept Delivery',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
                   ),
                 ),
 
-              if (delivery.hasDropLocation)
+              if (_delivery.hasDropLocation)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
                   child: SizedBox(
@@ -691,15 +699,4 @@ class _DeliveryDetailsSheet extends StatelessWidget {
     );
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
-    if (diff.inHours < 24) return '${diff.inHours} hours ago';
-    if (diff.inDays < 7) return '${diff.inDays} days ago';
-
-    return '${date.day}/${date.month}/${date.year}';
-  }
 }

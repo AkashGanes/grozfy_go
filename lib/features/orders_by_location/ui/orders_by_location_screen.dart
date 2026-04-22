@@ -37,6 +37,9 @@ class _OrdersByLocationScreenState
   bool _creatingTrip = false;
   final List<ExternalDeliveryDetail> _orderDetailsCache = [];
 
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +58,7 @@ class _OrdersByLocationScreenState
   @override
   void dispose() {
     _pagingController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -254,6 +258,20 @@ class _OrdersByLocationScreenState
         .where((r) => _selectedOrderIds.contains(r.order.name))
         .map((r) => r.order)
         .toList();
+
+    final stale = selectedOrders
+        .where((o) => !_isEligibleForTrip(o))
+        .map((o) => o.name)
+        .toList();
+    if (stale.isNotEmpty) {
+      showInfoSnack(
+        context,
+        '${stale.length} order${stale.length == 1 ? ' is' : 's are'} no longer available. Refreshing list.',
+      );
+      _exitSelectionMode();
+      await _refresh();
+      return;
+    }
 
     await _showDistanceWarningDialog(selectedOrders);
   }
@@ -517,9 +535,13 @@ class _OrdersByLocationScreenState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildHeader(selectedStore),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
+                    if (!_selectionMode && selectedStore != null)
+                      _buildSearchBar(),
                     Expanded(
-                      child: RefreshIndicator(
+                      child: _searchQuery.isNotEmpty
+                          ? _buildSearchResults()
+                          : RefreshIndicator(
                         color: AppTheme.oceanBlue,
                         onRefresh: _refresh,
                         child: PagedListView<int, LocationListItem>(
@@ -617,6 +639,138 @@ class _OrdersByLocationScreenState
               ),
               if (_selectionMode) _buildSelectionBottomBar(),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<LocationListItem> _filteredItems() {
+    final query = _searchQuery.toLowerCase().trim();
+    if (query.isEmpty) return _pagingController.itemList ?? [];
+    final result = <LocationListItem>[];
+    StoreHeader? pendingHeader;
+    for (final item in _pagingController.itemList ?? <LocationListItem>[]) {
+      if (item is StoreHeader) {
+        pendingHeader = item;
+      } else if (item is OrderRow) {
+        final o = item.order;
+        final matches = o.name.toLowerCase().contains(query) ||
+            o.customerName.toLowerCase().contains(query) ||
+            o.storeName.toLowerCase().contains(query);
+        if (matches) {
+          if (pendingHeader != null) {
+            result.add(pendingHeader);
+            pendingHeader = null;
+          }
+          result.add(item);
+        }
+      }
+    }
+    return result;
+  }
+
+  Widget _buildSearchResults() {
+    final items = _filteredItems();
+    if (items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+        child: FrostCard(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.search_off_rounded,
+                size: 48,
+                color: AppTheme.mango.withValues(alpha: 0.7),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'No orders found',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.nightBlue,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'No results for "$_searchQuery"',
+                style: const TextStyle(fontSize: 13, color: Colors.black45),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(20, 4, 20, _selectionMode ? 100 : 20),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        if (item is StoreHeader) {
+          return _StoreHeaderTile(storeName: item.storeName);
+        }
+        if (item is OrderRow) {
+          return _OrderCard(
+            order: item.order,
+            busy: _submittingOrderIds.contains(item.order.name) || _creatingTrip,
+            selected: _selectedOrderIds.contains(item.order.name),
+            selectionMode: _selectionMode,
+            onTap: () => _handleOrderTap(item.order),
+            onLongPress: () => _handleOrderLongPress(item.order),
+          );
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Container(
+        height: 44,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.86),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A0A1D3A),
+              blurRadius: 10,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: TextField(
+          controller: _searchController,
+          onChanged: (v) => setState(() => _searchQuery = v),
+          style: const TextStyle(fontSize: 14, color: AppTheme.nightBlue),
+          decoration: InputDecoration(
+            hintText: 'Search by order ID or customer…',
+            hintStyle: const TextStyle(fontSize: 13, color: Colors.black38),
+            prefixIcon: const Icon(
+              Icons.search_rounded,
+              size: 20,
+              color: Colors.black38,
+            ),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: Colors.black38,
+                    ),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                  )
+                : null,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
           ),
         ),
       ),

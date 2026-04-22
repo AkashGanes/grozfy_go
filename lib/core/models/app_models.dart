@@ -94,7 +94,11 @@ class ExternalDeliveryOrder {
       dropLng: _parseDouble(json['drop_lng']),
       pickupAddress: json['pickup_address'],
       dropAddress: json['drop_address'],
-      contactNumber: json['contact_number'] ?? json['customer_phone'],
+      contactNumber: json['contact_mobile']
+          ?? json['customer_mobile']
+          ?? json['mobile_no']
+          ?? json['contact_number']
+          ?? json['customer_phone'],
       creation: json['creation'] != null
           ? DateTime.tryParse(json['creation'].toString())
           : null,

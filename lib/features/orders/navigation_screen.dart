@@ -79,8 +79,12 @@ class NavigationScreen extends StatelessWidget {
           const SizedBox(height: 12),
           ElevatedButton(
             onPressed: () {
-              app.updateOrderStatus(OrderProgressStatus.reachedPickup);
-              Navigator.of(context).pushNamed(AppRoutes.orderStatus);
+              final String? error = app.reachedPickup(order.orderId);
+              if (error != null) {
+                showInfoSnack(context, error);
+                return;
+              }
+              Navigator.of(context).pushReplacementNamed(AppRoutes.orderStatus);
             },
             child: const Text('Reached Pickup'),
           ),

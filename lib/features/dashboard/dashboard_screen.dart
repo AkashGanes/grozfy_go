@@ -22,6 +22,13 @@ class DashboardScreen extends StatelessWidget {
     return AppShell(
       title: app.t('dashboard'),
       subtitle: app.profile?.fullName ?? 'Delivery Partner',
+      onRefresh: () async {
+        await Future.wait([
+          app.fetchLoggedInEmployeeDriverProfile(forceRefresh: true),
+          app.hydrateVehicleFromBackend(forceRefresh: true),
+          app.hydrateBankFromBackend(forceRefresh: true),
+        ]);
+      },
       actions: [
         Consumer(
           builder: (context, ref, _) {
@@ -101,22 +108,34 @@ class DashboardScreen extends StatelessWidget {
                         style: TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
+                    if (app.availabilitySyncing)
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                    const SizedBox(width: 8),
                     Switch(
                       value: app.isOnline,
-                      onChanged: (bool value) {
-                        final String? error = app.setOnline(value);
-                        if (error != null) {
-                          showInfoSnack(context, error);
-                        }
-                      },
+                      onChanged: app.availabilitySyncing
+                          ? null
+                          : (bool value) async {
+                              final String? error = await app.setOnline(value);
+                              if (!context.mounted) return;
+                              if (error != null) {
+                                showInfoSnack(context, error);
+                              }
+                            },
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  app.isOnline
-                      ? 'Online and receiving order requests'
-                      : 'Offline, no new orders will be assigned',
+                  app.availabilitySyncing
+                      ? 'Syncing availability...'
+                      : app.isOnline
+                          ? 'Online and receiving order requests'
+                          : 'Offline, no new orders will be assigned',
                   style: const TextStyle(color: Colors.black54),
                 ),
                 if (!app.canGoOnline && !app.isKycComplete) ...[
@@ -693,7 +712,7 @@ class _DashboardLocationCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(22),
       child: SizedBox(
         width: double.infinity,
-        height: 136,
+        height: 184,
         child: Stack(
           children: [
             Positioned.fill(
@@ -765,7 +784,7 @@ class _DashboardLocationCard extends StatelessWidget {
                     Navigator.of(context).pushNamed(AppRoutes.currentLocation);
                   },
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -799,6 +818,13 @@ class _DashboardLocationCard extends StatelessWidget {
                                 },
                                 style: TextButton.styleFrom(
                                   foregroundColor: Colors.white,
+                                  minimumSize: const Size(0, 36),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                  ),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  visualDensity: VisualDensity.compact,
                                 ),
                                 child: Text(
                                   app.hasSelectedLocation ? 'Change' : 'Select',
@@ -807,24 +833,35 @@ class _DashboardLocationCard extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const Spacer(),
-                        const Text(
-                          'Current Location',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          app.currentLocationLabel ??
-                              'Location not selected yet',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.92),
-                            height: 1.35,
+                        const SizedBox(height: 14),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.bottomLeft,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Current Location',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 18,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  app.currentLocationLabel ??
+                                      'Location not selected yet',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.92),
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
