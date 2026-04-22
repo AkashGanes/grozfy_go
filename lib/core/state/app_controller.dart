@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
 import '../models/app_models.dart';
+import '../navigation/app_routes.dart';
 import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
 import '../widgets/partner_widget_manager.dart';
@@ -263,43 +264,43 @@ class AppController extends ChangeNotifier {
         name: 'Basic Profile',
         description: 'Name, mobile & email',
         isCompleted: _profile != null && _profile!.fullName.isNotEmpty,
-        route: null,
+        route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
         name: 'Profile Photo',
         description: 'Add a profile picture',
         isCompleted: _profileImagePath != null,
-        route: null,
+        route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
         name: 'KYC Documents',
         description: 'ID proof & driving license',
         isCompleted: _kycCompleted,
-        route: '/kyc-documents',
+        route: AppRoutes.kycDocuments,
       ),
       ProfileCompletenessItem(
         name: 'Vehicle Details',
         description: 'Register your vehicle',
         isCompleted: _vehicle != null,
-        route: '/vehicle-details',
+        route: AppRoutes.vehicleDetails,
       ),
       ProfileCompletenessItem(
         name: 'Bank Account',
         description: 'Add bank for payouts',
         isCompleted: _bank != null,
-        route: '/bank-setup',
+        route: AppRoutes.bankSetup,
       ),
       ProfileCompletenessItem(
         name: 'Delivery Zone',
         description: 'Select your working area',
         isCompleted: hasSelectedLocation,
-        route: '/current-location',
+        route: AppRoutes.currentLocation,
       ),
       ProfileCompletenessItem(
         name: 'Permissions',
         description: 'Location & notifications',
         isCompleted: _permissionState.allGranted,
-        route: '/permission',
+        route: AppRoutes.permission,
       ),
     ];
 
@@ -1616,57 +1617,12 @@ class AppController extends ChangeNotifier {
   }
 
   Future<List<String>> fetchVehicleEmployeeOptions({String query = ''}) async {
-    try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.search.search_link',
-      );
-      final Map<String, String> body = <String, String>{
-        'doctype': 'Employee',
-        'ignore_user_permissions': '0',
-        'reference_doctype': 'Vehicle',
-        'page_length': '10',
-        'start': '0',
-        'txt': query.trim(),
-      };
-      _logApi('vehicle.search_link', 'payload=$body');
-      final Map<String, dynamic> payload = await _authorizedPostForm(
-        uri: uri,
-        body: body,
-      );
-      final dynamic responseRows =
-          payload['message'] ?? payload['results'] ?? payload['data'];
-      if (responseRows is! List) {
-        return <String>[];
-      }
-
-      final List<String> values = <String>[];
-      for (final dynamic item in responseRows) {
-        if (item is Map<String, dynamic>) {
-          final String? value =
-              _nullIfBlank(item['value']?.toString()) ??
-              _nullIfBlank(item['name']?.toString()) ??
-              _nullIfBlank(item['description']?.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
-          }
-        } else if (item is List && item.isNotEmpty) {
-          final String? value = _nullIfBlank(item.first?.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
-          }
-        } else if (item != null) {
-          final String? value = _nullIfBlank(item.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
-          }
-        }
-      }
-      _logApi('vehicle.search_link', 'result_count=${values.length}');
-      return values;
-    } catch (e) {
-      _logApi('vehicle.search_link', 'error: $e');
-      return <String>[];
-    }
+    return _fetchDocListOptions(
+      doctype: 'Employee',
+      searchFields: const <String>['name', 'employee_name'],
+      query: query,
+      pageLength: 10,
+    );
   }
 
   Future<List<String>> fetchLinkOptions({
@@ -1676,60 +1632,90 @@ class AppController extends ChangeNotifier {
     int pageLength = 10,
     Map<String, dynamic>? filters,
   }) async {
+    // Convert {field: value} map to [[field, '=', value], ...] list format
+    // that frappe.client.get_list expects.
+    final List<List<dynamic>> filterList = <List<dynamic>>[];
+    if (filters != null) {
+      filters.forEach((String field, dynamic value) {
+        filterList.add(<dynamic>[field, '=', value]);
+      });
+    }
+    return _fetchDocListOptions(
+      doctype: doctype,
+      query: query,
+      pageLength: pageLength,
+      extraFilters: filterList,
+    );
+  }
+
+  /// Replaces `frappe.desk.search.search_link` (which requires Desk access)
+  /// with `frappe.client.get_list`, accessible to non-desk partner users.
+  Future<List<String>> _fetchDocListOptions({
+    required String doctype,
+    String query = '',
+    int pageLength = 10,
+    List<String> searchFields = const <String>['name'],
+    List<List<dynamic>> extraFilters = const <List<dynamic>>[],
+  }) async {
     try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.search.search_link',
-      );
-      final Map<String, String> body = <String, String>{
-        'doctype': doctype,
-        'ignore_user_permissions': '0',
-        'reference_doctype': referenceDoctype,
-        'page_length': '$pageLength',
-        'start': '0',
-        'txt': query.trim(),
-      };
-      if (filters != null && filters.isNotEmpty) {
-        body['filters'] = jsonEncode(filters);
+      // Build filters: name/search-field LIKE '%query%' + any extra filters.
+      final List<List<dynamic>> filterList = <List<dynamic>>[
+        ...extraFilters,
+      ];
+      final String trimmed = query.trim();
+      if (trimmed.isNotEmpty) {
+        // Search across all provided search fields (OR logic via OR operator).
+        // frappe.client.get_list only supports AND between top-level filters,
+        // so we search on 'name' which is the primary key and always works.
+        filterList.add(<dynamic>['name', 'like', '%$trimmed%']);
       }
-      _logApi('generic.search_link', 'payload=$body');
-      final Map<String, dynamic> payload = await _authorizedPostForm(
-        uri: uri,
-        body: body,
-      );
+
+      final Map<String, String> queryParams = <String, String>{
+        'doctype': doctype,
+        'fields': jsonEncode(searchFields),
+        'limit_page_length': '$pageLength',
+        'limit_start': '0',
+        'order_by': 'name asc',
+      };
+      if (filterList.isNotEmpty) {
+        queryParams['filters'] = jsonEncode(filterList);
+      }
+
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.get_list',
+      ).replace(queryParameters: queryParams);
+
+      _logApi('get_list', 'doctype=$doctype query=$trimmed');
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+
       final dynamic responseRows =
-          payload['message'] ?? payload['results'] ?? payload['data'];
+          payload['message'] ?? payload['data'] ?? payload['results'];
       if (responseRows is! List) {
         return <String>[];
       }
 
       final List<String> values = <String>[];
       for (final dynamic item in responseRows) {
+        String? value;
         if (item is Map<String, dynamic>) {
-          final String? value =
-              _nullIfBlank(item['value']?.toString()) ??
-              _nullIfBlank(item['name']?.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
+          // Prefer the first search field, fall back to 'name'.
+          for (final String field in searchFields) {
+            value = _nullIfBlank(item[field]?.toString());
+            if (value != null) break;
           }
-        } else if (item is List && item.isNotEmpty) {
-          final String? value = _nullIfBlank(item.first?.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
-          }
-        } else if (item != null) {
-          final String? value = _nullIfBlank(item.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
-          }
+          value ??= _nullIfBlank(item['name']?.toString());
+        } else if (item is String) {
+          value = _nullIfBlank(item);
+        }
+        if (value != null && !values.contains(value)) {
+          values.add(value);
         }
       }
-      _logApi(
-        'generic.search_link',
-        'doctype=$doctype result_count=${values.length}',
-      );
+
+      _logApi('get_list', 'doctype=$doctype result_count=${values.length}');
       return values;
     } catch (e) {
-      _logApi('generic.search_link', 'error: $e');
+      _logApi('get_list', 'error doctype=$doctype: $e');
       return <String>[];
     }
   }
@@ -3045,14 +3031,6 @@ class AppController extends ChangeNotifier {
     super.dispose();
   }
 
-  void _updateLiveCoordinates() {
-    final double baseLat = 28.6139;
-    final double baseLng = 77.2090;
-    final double lat = baseLat + (_random.nextDouble() - 0.5) / 100;
-    final double lng = baseLng + (_random.nextDouble() - 0.5) / 100;
-    _liveCoordinates = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
-  }
-
   Future<void> fetchLoggedInEmployeeDriverProfile({
     bool forceRefresh = false,
   }) async {
@@ -3416,50 +3394,6 @@ class AppController extends ChangeNotifier {
       }
     }
     throw Exception(lastError ?? 'Authentication failed for GET $uri');
-  }
-
-  Future<Map<String, dynamic>> _authorizedPostForm({
-    required Uri uri,
-    required Map<String, String> body,
-  }) async {
-    final List<Map<String, String>> authHeaders = _authorizationHeaders();
-    String? lastError;
-    for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'POST $uri form=$body');
-      final http.Response response = await http
-          .post(uri, headers: headers, body: body)
-          .timeout(_networkTimeout);
-      _logApi(
-        'http',
-        'POST $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
-      );
-      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return payload;
-      }
-
-      final String message =
-          _extractServerError(payload) ??
-          'Request failed (${response.statusCode})';
-      lastError = message;
-      if (response.statusCode != 401 && response.statusCode != 403) {
-        throw Exception(message);
-      }
-    }
-
-    if (await refreshSession()) {
-      final Map<String, String> refreshedHeaders =
-          _authorizationHeaders().first;
-      final http.Response retryResp = await http
-          .post(uri, headers: refreshedHeaders, body: body)
-          .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
-      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
-        return retryPayload;
-      }
-    }
-    throw Exception(lastError ?? 'Authentication failed for POST $uri');
   }
 
   Future<Map<String, dynamic>> _authorizedUploadFile({

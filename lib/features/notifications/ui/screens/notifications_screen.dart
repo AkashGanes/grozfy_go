@@ -84,23 +84,25 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 
   Future<void> _markAllAsReadAction(BuildContext context) async {
-    final currentOverrides = ref.read(notificationReadOverridesProvider);
     final overrideNotifier = ref.read(notificationReadOverridesProvider.notifier);
+    final currentOverrides = Set<String>.from(overrideNotifier.state);
     final loaded = _pagingController.itemList ?? const <NotificationLog>[];
-    final optimistic = loaded
-        .where((n) => !n.read)
+    final toAdd = loaded
+        .where((n) => !n.read && !currentOverrides.contains(n.name))
         .map((n) => n.name)
         .where((name) => name.isNotEmpty)
         .toSet();
 
-    if (optimistic.isNotEmpty) {
-      overrideNotifier.state = {...overrideNotifier.state, ...optimistic};
+    if (toAdd.isNotEmpty) {
+      overrideNotifier.state = {...currentOverrides, ...toAdd};
     }
 
     final repo = ref.read(notificationRepositoryProvider);
     final ok = await repo.markAllAsRead();
     if (!ok) {
-      final next = Set<String>.from(currentOverrides)..removeAll(optimistic);
+      // Roll back only the items we optimistically added, preserving any
+      // other overrides that may have been added during the API call.
+      final next = Set<String>.from(overrideNotifier.state)..removeAll(toAdd);
       overrideNotifier.state = next;
       if (context.mounted) {
         showInfoSnack(context, 'Failed to mark all notifications as read');
@@ -121,6 +123,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   Widget build(BuildContext context) {
     final filter = ref.watch(notificationListFilterProvider);
     final countsAsync = ref.watch(notificationCountsProvider);
+    // Keep the overrides provider alive during paging controller loading state
+    // so optimistic read state is not auto-disposed when tiles are removed.
+    ref.watch(notificationReadOverridesProvider);
 
     final counts = countsAsync.valueOrNull;
     final int allCount = counts?.all ?? 0;
@@ -339,40 +344,6 @@ class _InboxSummaryBar extends ConsumerWidget {
 }
 
 enum _NotificationsMenuAction { markAllRead }
-
-Future<void> _markAllAsReadAction(
-  BuildContext context,
-  WidgetRef ref,
-  List<NotificationLog> notifications,
-) async {
-  final overrides = ref.read(notificationReadOverridesProvider);
-  final unread = notifications
-      .where((n) => !(n.read || overrides.contains(n.name)))
-      .toList();
-  if (unread.isEmpty) return;
-
-  final overrideNotifier = ref.read(notificationReadOverridesProvider.notifier);
-  final unreadIds = unread.map((n) => n.name).toSet();
-  overrideNotifier.state = {...overrideNotifier.state, ...unreadIds};
-
-  final repo = ref.read(notificationRepositoryProvider);
-  final ok = await repo.markAllAsRead();
-  if (!ok) {
-    final next = Set<String>.from(overrideNotifier.state)..removeAll(unreadIds);
-    overrideNotifier.state = next;
-    ref.invalidate(notificationsProvider);
-    ref.invalidate(notificationCountsProvider);
-    await ref.read(notificationsProvider.future);
-    if (context.mounted) {
-      showInfoSnack(context, 'Failed to mark all notifications as read');
-    }
-    return;
-  }
-
-  ref.invalidate(notificationsProvider);
-  ref.invalidate(notificationCountsProvider);
-  await ref.read(notificationsProvider.future);
-}
 
 class _NotificationFilterPill extends StatelessWidget {
   const _NotificationFilterPill({

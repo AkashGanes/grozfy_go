@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/skeleton_loader.dart';
 
 class VehicleDetailsScreen extends StatefulWidget {
   const VehicleDetailsScreen({super.key});
@@ -237,6 +238,33 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     final List<String> employeeOptions = _employeeOptions.isEmpty
         ? <String>['No employees found']
         : _employeeOptions;
+
+    if (!_initialized) {
+      return AppShell(
+        title: 'Vehicle Registration',
+        subtitle: 'Loading vehicle details…',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SectionLabel('Required Details'),
+            FrostCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: List.generate(6, (_) => const SkeletonFormField()),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const SectionLabel('Additional Details'),
+            FrostCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: List.generate(6, (_) => const SkeletonFormField()),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return AppShell(
       title: 'Vehicle Registration',

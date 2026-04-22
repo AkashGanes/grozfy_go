@@ -33,9 +33,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   String? _selectedPartyType;
   String? _selectedParty;
 
-  bool _disabled = false;
-  bool _isDefault = false;
-  bool _isCompanyAccount = false;
   bool _busy = false;
   bool _ready = false;
   bool _editMode = false;
@@ -93,9 +90,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
         _bankAccountNoCtrl.text = bankData['bank_account_no']?.toString() ?? '';
         _lastIntegrationDateCtrl.text =
             bankData['last_integration_date']?.toString() ?? '';
-        _disabled = bankData['disabled']?.toString() == '1';
-        _isDefault = bankData['is_default']?.toString() == '1';
-        _isCompanyAccount = bankData['is_company_account']?.toString() == '1';
       }
       _ready = true;
     });
@@ -169,9 +163,9 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       account: _selectedCompanyAccount,
       accountType: _selectedAccountType,
       accountSubtype: _selectedAccountSubtype,
-      disabled: _disabled,
-      isDefault: _isDefault,
-      isCompanyAccount: _isCompanyAccount,
+      disabled: false,
+      isDefault: false,
+      isCompanyAccount: false,
       company: _selectedCompany,
       partyType: _selectedPartyType,
       party: _selectedParty,
@@ -197,6 +191,19 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_ready) {
+      return AppShell(
+        title: 'Bank Account Setup',
+        subtitle: 'Loading bank details…',
+        child: FrostCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: List.generate(8, (_) => const SkeletonFormField()),
+          ),
+        ),
+      );
+    }
+
     final dynamic args = ModalRoute.of(context)?.settings.arguments;
     final bool forceEdit =
         args is Map<String, dynamic> && args['force_edit'] == true;
@@ -345,7 +352,9 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
             TextField(
               controller: _partyCtrl,
               onChanged: (String value) {
-                setState(() => _selectedParty = value.trim().isEmpty ? null : value);
+                setState(
+                  () => _selectedParty = value.trim().isEmpty ? null : value,
+                );
               },
               decoration: const InputDecoration(
                 labelText: 'Party',
@@ -403,24 +412,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Disabled'),
-              value: _disabled,
-              onChanged: (value) => setState(() => _disabled = value),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Is Default'),
-              value: _isDefault,
-              onChanged: (value) => setState(() => _isDefault = value),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Is Company Account'),
-              value: _isCompanyAccount,
-              onChanged: (value) => setState(() => _isCompanyAccount = value),
-            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _canSubmit ? _submit : null,
@@ -442,7 +433,8 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     Map<String, dynamic>? filters,
     int pageLength = 10,
   }) {
-    final bool canOpen = enabled && doctype != null && doctype.trim().isNotEmpty;
+    final bool canOpen =
+        enabled && doctype != null && doctype.trim().isNotEmpty;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: !canOpen
@@ -552,6 +544,50 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
     super.dispose();
   }
 
+  Widget _buildResults(BuildContext context) {
+    final String typed = _queryCtrl.text.trim();
+    if (_results.isNotEmpty) {
+      return ListView.builder(
+        itemCount: _results.length,
+        itemBuilder: (BuildContext context, int index) {
+          final String item = _results[index];
+          return ListTile(
+            dense: true,
+            title: Text(item, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () => Navigator.of(context).pop(item),
+          );
+        },
+      );
+    }
+    // No results from API (possibly 403 or genuinely empty).
+    // Let the user confirm whatever they've typed as a free-text value.
+    if (typed.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.check_circle_outline),
+            title: Text(
+              'Use "$typed"',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () => Navigator.of(context).pop(typed),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'No matching records found. You can use the typed value above.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ),
+        ],
+      );
+    }
+    return const Center(child: Text('No results found'));
+  }
+
   Future<void> _load(String query, {bool showLoading = true}) async {
     if (showLoading) {
       setState(() => _loading = true);
@@ -582,7 +618,10 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                widget.title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: _queryCtrl,
@@ -602,23 +641,7 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
               Expanded(
                 child: _loading
                     ? const _BankSearchLoading()
-                    : _results.isEmpty
-                    ? const Center(child: Text('No results found'))
-                    : ListView.builder(
-                        itemCount: _results.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final String item = _results[index];
-                          return ListTile(
-                            dense: true,
-                            title: Text(
-                              item,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onTap: () => Navigator.of(context).pop(item),
-                          );
-                        },
-                      ),
+                    : _buildResults(context),
               ),
             ],
           ),
@@ -633,9 +656,8 @@ class _BankSearchLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SkeletonLoader(
-      itemCount: 5,
-      spacing: 4,
+    return SingleChildScrollView(
+      child: SkeletonLoader(itemCount: 5, spacing: 4),
     );
   }
 }
