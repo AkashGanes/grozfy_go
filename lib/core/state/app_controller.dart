@@ -15,6 +15,7 @@ import '../models/app_models.dart';
 import '../navigation/app_routes.dart';
 import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
+import '../services/secure_token_storage.dart';
 import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
@@ -38,11 +39,10 @@ class AppController extends ChangeNotifier {
   static final Uri _refreshTokenUri = Uri.parse(
     'http://209.182.232.35:8004/api/method/frappe.integrations.oauth2.get_token',
   );
+  static final Uri _revokeTokenUri = Uri.parse(
+    'http://209.182.232.35:8004/api/method/frappe.integrations.oauth2.revoke_token',
+  );
   static const String _prefLanguageCode = 'language_code';
-  static const String _prefAccessToken = 'access_token';
-  static const String _prefRefreshToken = 'refresh_token';
-  static const String _prefTokenType = 'token_type';
-  static const String _prefExpiresIn = 'expires_in';
   static const String _prefMobile = 'partner_mobile';
   static const String _prefEmail = 'partner_email';
   static const String _prefFullName = 'partner_full_name';
@@ -59,9 +59,6 @@ class AppController extends ChangeNotifier {
   static const String _prefVehicleLicensePlate = 'vehicle_license_plate';
   static const String _prefBankDocName = 'bank_doc_name';
   static const String _prefBankAccountName = 'bank_account_name';
-  static const String _prefApiKey = 'api_key';
-  static const String _prefApiSecret = 'api_secret';
-  static const String _prefClientId = 'client_id';
   static const String _prefIsOnline = 'is_online';
   static const String _prefThemeMode = 'theme_mode';
   static const String _prefBackgroundColor = 'background_color';
@@ -323,13 +320,19 @@ class AppController extends ChangeNotifier {
     _configVersion = 'cfg_2026_02_16';
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await SecureTokenStorage.migrateFromPreferences(prefs);
     _languageCode = prefs.getString(_prefLanguageCode) ?? '';
-    _sessionToken = prefs.getString(_prefAccessToken);
-    _tokenType = _nullIfBlank(prefs.getString(_prefTokenType)) ?? 'Bearer';
-    _refreshToken = _nullIfBlank(prefs.getString(_prefRefreshToken));
-    _clientId = _nullIfBlank(prefs.getString(_prefClientId));
-    _apiKey = _nullIfBlank(prefs.getString(_prefApiKey));
-    _apiSecret = _nullIfBlank(prefs.getString(_prefApiSecret));
+    _sessionToken = await SecureTokenStorage.read(SecureTokenStorage.accessToken);
+    _tokenType =
+        _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.tokenType)) ??
+        'Bearer';
+    _refreshToken =
+        _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.refreshToken));
+    _clientId =
+        _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.clientId));
+    _apiKey = _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.apiKey));
+    _apiSecret =
+        _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.apiSecret));
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
@@ -1106,15 +1109,23 @@ class AppController extends ChangeNotifier {
         _refreshToken = newRefresh;
       }
 
-      // Persist new tokens
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      await Future.wait(<Future<bool>>[
-        prefs.setString(_prefAccessToken, _sessionToken!),
-        if (_tokenType.isNotEmpty)
-          prefs.setString(_prefTokenType, _tokenType),
-        if (newRefresh != null)
-          prefs.setString(_prefRefreshToken, newRefresh),
-      ]);
+      // Persist new tokens to secure storage
+      await SecureTokenStorage.write(
+        SecureTokenStorage.accessToken,
+        _sessionToken!,
+      );
+      if (_tokenType.isNotEmpty) {
+        await SecureTokenStorage.write(
+          SecureTokenStorage.tokenType,
+          _tokenType,
+        );
+      }
+      if (newRefresh != null) {
+        await SecureTokenStorage.write(
+          SecureTokenStorage.refreshToken,
+          newRefresh,
+        );
+      }
 
       _logApi('refresh_token', 'session refreshed successfully');
       return true;
@@ -1225,8 +1236,53 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<void> _revokeTokenOnServer(String token) async {
+    try {
+      _logApi('revoke_token request', 'POST $_revokeTokenUri');
+      final http.Response response = await http
+          .post(
+            _revokeTokenUri,
+            headers: const <String, String>{
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: <String, String>{
+              'token': token,
+              if (_clientId != null && _clientId!.isNotEmpty)
+                'client_id': _clientId!,
+            },
+          )
+          .timeout(_networkTimeout);
+      _logApi(
+        'revoke_token response',
+        'status=${response.statusCode}',
+      );
+    } catch (e) {
+      _logApi('revoke_token error', e.toString());
+    }
+  }
+
   Future<void> logout() async {
-    unawaited(FCMService().unsubscribe(this));
+    // Revoke tokens on the server before clearing them locally. Best-effort:
+    // if the network is down we still proceed with local cleanup so the user
+    // can complete logout offline.
+    final String? accessToRevoke = _sessionToken;
+    final String? refreshToRevoke = _refreshToken;
+    if (accessToRevoke != null && accessToRevoke.isNotEmpty) {
+      await _revokeTokenOnServer(accessToRevoke);
+    }
+    if (refreshToRevoke != null &&
+        refreshToRevoke.isNotEmpty &&
+        refreshToRevoke != accessToRevoke) {
+      await _revokeTokenOnServer(refreshToRevoke);
+    }
+
+    // Unsubscribe FCM while sessionToken is still populated (it needs it).
+    try {
+      await FCMService().unsubscribe(this);
+    } catch (e) {
+      _logApi('fcm unsubscribe error', e.toString());
+    }
+
     _isLoggedIn = false;
     _sessionToken = null;
     _tokenType = 'Bearer';
@@ -1258,13 +1314,10 @@ class AppController extends ChangeNotifier {
     _vehicleRequiredFields = <String>{};
 
     await PartnerWidgetManager.clearWidget();
+    await SecureTokenStorage.deleteAll();
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await Future.wait(<Future<bool>>[
-      prefs.remove(_prefAccessToken),
-      prefs.remove(_prefRefreshToken),
-      prefs.remove(_prefTokenType),
-      prefs.remove(_prefExpiresIn),
       prefs.remove(_prefFullName),
       prefs.remove(_prefEmail),
       prefs.remove(_prefMobile),
@@ -1278,9 +1331,6 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefVehicleLicensePlate),
       prefs.remove(_prefBankDocName),
       prefs.remove(_prefBankAccountName),
-      prefs.remove(_prefApiKey),
-      prefs.remove(_prefApiSecret),
-      prefs.remove(_prefClientId),
       prefs.setBool(_prefRememberMe, false),
     ]);
     _rememberMe = false;
@@ -2914,23 +2964,47 @@ class AppController extends ChangeNotifier {
     _kycCompleted = backendKycCompleted;
     _tokenType = tokenType ?? _tokenType;
 
+    await SecureTokenStorage.write(
+      SecureTokenStorage.accessToken,
+      _sessionToken!,
+    );
+    if (refreshToken != null) {
+      await SecureTokenStorage.write(
+        SecureTokenStorage.refreshToken,
+        refreshToken,
+      );
+    }
+    if (tokenType != null) {
+      await SecureTokenStorage.write(SecureTokenStorage.tokenType, tokenType);
+    }
+    if (expiresIn != null) {
+      await SecureTokenStorage.write(
+        SecureTokenStorage.expiresIn,
+        expiresIn.toString(),
+      );
+    }
+    if (clientId != null) {
+      await SecureTokenStorage.write(SecureTokenStorage.clientId, clientId);
+    }
+    if (apiKey != null) {
+      await SecureTokenStorage.write(SecureTokenStorage.apiKey, apiKey);
+    }
+    if (apiSecretVal != null) {
+      await SecureTokenStorage.write(
+        SecureTokenStorage.apiSecret,
+        apiSecretVal,
+      );
+    }
+
     await Future.wait(<Future<bool>>[
-      prefs.setString(_prefAccessToken, _sessionToken!),
       prefs.setBool(_prefRememberMe, _rememberMe),
       prefs.remove(_prefCurrentLat),
       prefs.remove(_prefCurrentLng),
       prefs.remove(_prefCurrentLocationLabel),
-      if (refreshToken != null)
-        prefs.setString(_prefRefreshToken, refreshToken),
-      if (tokenType != null) prefs.setString(_prefTokenType, tokenType),
-      if (expiresIn != null) prefs.setInt(_prefExpiresIn, expiresIn),
       if (fullName != null) prefs.setString(_prefFullName, fullName),
       if (mobile != null) prefs.setString(_prefMobile, mobile),
       if (email != null) prefs.setString(_prefEmail, email),
       if (driverName != null) prefs.setString(_prefDriverName, driverName),
-      if (clientId != null) prefs.setString(_prefClientId, clientId),
-      if (apiKey != null) prefs.setString(_prefApiKey, apiKey),
-      if (apiSecretVal != null) prefs.setString(_prefApiSecret, apiSecretVal),
       prefs.setBool(_prefProfileCompleted, _profileCompleted),
       prefs.setBool(_prefKycCompleted, _kycCompleted),
     ]);

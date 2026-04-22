@@ -4,13 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_models.dart';
+import 'secure_token_storage.dart';
 
 class ApiService {
   static const String baseUrl = 'http://209.182.232.35:8004';
-  static const String _prefAccessToken = 'access_token';
-  static const String _prefTokenType = 'token_type';
-  static const String _prefRefreshToken = 'refresh_token';
-  static const String _prefClientId = 'client_id';
   static const String _prefSid = 'sid';
   static final Uri _refreshTokenUri = Uri.parse(
     '$baseUrl/api/method/frappe.integrations.oauth2.get_token',
@@ -192,9 +189,10 @@ class ApiService {
   /// Refreshes the session token using Frappe's OAuth2 get_token endpoint.
   Future<bool> _refreshSession() async {
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? refreshToken = prefs.getString(_prefRefreshToken);
-      final String? clientId = prefs.getString(_prefClientId);
+      final String? refreshToken =
+          await SecureTokenStorage.read(SecureTokenStorage.refreshToken);
+      final String? clientId =
+          await SecureTokenStorage.read(SecureTokenStorage.clientId);
       if (refreshToken == null || refreshToken.trim().isEmpty) return false;
       if (clientId == null || clientId.trim().isEmpty) return false;
 
@@ -230,12 +228,19 @@ class ApiService {
       final String? newRefresh =
           _nullIfBlank(data['refresh_token']?.toString());
 
-      await Future.wait(<Future<bool>>[
-        prefs.setString(_prefAccessToken, newToken),
-        if (newType != null) prefs.setString(_prefTokenType, newType),
-        if (newRefresh != null)
-          prefs.setString(_prefRefreshToken, newRefresh),
-      ]);
+      await SecureTokenStorage.write(
+        SecureTokenStorage.accessToken,
+        newToken,
+      );
+      if (newType != null) {
+        await SecureTokenStorage.write(SecureTokenStorage.tokenType, newType);
+      }
+      if (newRefresh != null) {
+        await SecureTokenStorage.write(
+          SecureTokenStorage.refreshToken,
+          newRefresh,
+        );
+      }
 
       debugPrint('[ApiService] Token refreshed successfully');
       return true;
@@ -248,10 +253,13 @@ class ApiService {
   Future<List<Map<String, String>>> _buildHeaderCandidates() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    final String? token = _sessionToken ?? prefs.getString(_prefAccessToken);
+    final String? token = _sessionToken ??
+        await SecureTokenStorage.read(SecureTokenStorage.accessToken);
     final String? sid = _sid ?? prefs.getString(_prefSid);
-    final String tokenType =
-        (_tokenType ?? prefs.getString(_prefTokenType) ?? '').trim();
+    final String tokenType = (_tokenType ??
+            await SecureTokenStorage.read(SecureTokenStorage.tokenType) ??
+            '')
+        .trim();
 
     final Map<String, String> baseHeaders = <String, String>{
       'Content-Type': 'application/json',

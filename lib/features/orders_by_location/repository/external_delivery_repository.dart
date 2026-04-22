@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/services/secure_token_storage.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 
@@ -29,10 +30,6 @@ class ReturnProcessResult {
 class ExternalDeliveryRepository {
   ExternalDeliveryRepository();
 
-  static const String _prefAccessToken = 'access_token';
-  static const String _prefTokenType = 'token_type';
-  static const String _prefRefreshToken = 'refresh_token';
-  static const String _prefClientId = 'client_id';
   static final Uri _refreshTokenUri = Uri.parse(
     '${ApiConstants.erpBaseUrl}/api/method/frappe.integrations.oauth2.get_token',
   );
@@ -46,10 +43,11 @@ class ExternalDeliveryRepository {
   }
 
   Future<Map<String, String>> _authHeaders() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? token = prefs.getString(_prefAccessToken);
-    final String tokenType = (prefs.getString(_prefTokenType) ?? 'token')
-        .trim();
+    final String? token =
+        await SecureTokenStorage.read(SecureTokenStorage.accessToken);
+    final String tokenType =
+        (await SecureTokenStorage.read(SecureTokenStorage.tokenType) ?? 'token')
+            .trim();
     if (token != null && token.isNotEmpty) {
       return {
         'Accept': 'application/json',
@@ -62,9 +60,10 @@ class ExternalDeliveryRepository {
   /// Refreshes the session token using Frappe's OAuth2 get_token endpoint.
   Future<bool> _refreshSession() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? refreshToken = prefs.getString(_prefRefreshToken);
-      final String? clientId = prefs.getString(_prefClientId);
+      final String? refreshToken =
+          await SecureTokenStorage.read(SecureTokenStorage.refreshToken);
+      final String? clientId =
+          await SecureTokenStorage.read(SecureTokenStorage.clientId);
       if (refreshToken == null || refreshToken.trim().isEmpty) return false;
       if (clientId == null || clientId.trim().isEmpty) return false;
 
@@ -91,13 +90,19 @@ class ExternalDeliveryRepository {
 
       final String? newType = data['token_type']?.toString();
       final String? newRefresh = data['refresh_token']?.toString();
-      await Future.wait(<Future<bool>>[
-        prefs.setString(_prefAccessToken, newToken),
-        if (newType != null && newType.isNotEmpty)
-          prefs.setString(_prefTokenType, newType),
-        if (newRefresh != null && newRefresh.isNotEmpty)
-          prefs.setString(_prefRefreshToken, newRefresh),
-      ]);
+      await SecureTokenStorage.write(
+        SecureTokenStorage.accessToken,
+        newToken,
+      );
+      if (newType != null && newType.isNotEmpty) {
+        await SecureTokenStorage.write(SecureTokenStorage.tokenType, newType);
+      }
+      if (newRefresh != null && newRefresh.isNotEmpty) {
+        await SecureTokenStorage.write(
+          SecureTokenStorage.refreshToken,
+          newRefresh,
+        );
+      }
       _logApi('refresh_token', 'session refreshed successfully');
       return true;
     } catch (e) {
