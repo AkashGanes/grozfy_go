@@ -14,6 +14,7 @@ import '../constants/api_constants.dart';
 import '../models/app_models.dart';
 import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
+import '../utils/validators.dart' as app_validators;
 import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
@@ -899,10 +900,7 @@ class AppController extends ChangeNotifier {
   }
 
   String? validateMobile(String mobile) {
-    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(mobile.trim())) {
-      return 'Enter a valid 10-digit mobile number';
-    }
-    return null;
+    return app_validators.validateMobile(mobile);
   }
 
   Future<String> sendOtp(String mobile) async {
@@ -2214,15 +2212,13 @@ class AppController extends ChangeNotifier {
       return 'Branch code is required';
     }
     if (!RegExp(
-      r'^[A-Z0-9-]{2,20}$',
+      r'^[A-Z]{4}0[A-Z0-9]{6}$',
     ).hasMatch(normalizedBranchCode.toUpperCase())) {
-      return 'Branch code should be 2-20 characters (A-Z, 0-9, -)';
+      return 'Enter a valid IFSC code (e.g. SBIN0001234)';
     }
     if (normalizedBankAccountNo != null &&
-        !RegExp(
-          r'^[A-Z0-9-]{6,34}$',
-        ).hasMatch(normalizedBankAccountNo.toUpperCase())) {
-      return 'Bank account no should be 6-34 characters (A-Z, 0-9, -)';
+        !RegExp(r'^\d{9,18}$').hasMatch(normalizedBankAccountNo)) {
+      return 'Enter a valid account number (9–18 digits)';
     }
 
     String? normalizedIban = _nullIfBlank(iban);

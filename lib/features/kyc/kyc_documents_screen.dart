@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
 
 class KycDocumentsScreen extends ConsumerStatefulWidget {
@@ -18,6 +21,8 @@ class KycDocumentsScreen extends ConsumerStatefulWidget {
 }
 
 class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
+  final _formKey = GlobalKey<FormState>();
+
   final TextEditingController _licenseNumberCtrl = TextEditingController();
   final TextEditingController _aadharNoCtrl = TextEditingController();
   final TextEditingController _panNoCtrl = TextEditingController();
@@ -68,12 +73,78 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     }
   }
 
+  static const int _maxFileSizeBytes = 5 * 1024 * 1024;
+  static const List<String> _allowedExtensions = ['jpg', 'jpeg', 'png'];
+
+  static const Map<String, String> _fieldLabel = {
+    'license': 'Driving License',
+    'aadhar': 'Aadhaar Card',
+    'pan': 'PAN Card',
+  };
+
   Future<void> _pickFile(String field) async {
-    final XFile? file = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 80,
+    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      showDragHandle: true,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Upload ${_fieldLabel[field]}',
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.camera_alt_rounded)),
+                title: const Text('Take Photo'),
+                subtitle: const Text('Use camera to capture document'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.photo_library_rounded)),
+                title: const Text('Choose from Gallery'),
+                subtitle: const Text('Pick an existing image'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    if (file == null) return;
+
+    if (source == null || !mounted) return;
+
+    final XFile? file = await _picker.pickImage(
+      source: source,
+      imageQuality: 85,
+      maxWidth: 1500,
+      maxHeight: 1500,
+    );
+    if (file == null || !mounted) return;
+
+    // File type check
+    final String ext = file.name.split('.').last.toLowerCase();
+    if (!_allowedExtensions.contains(ext)) {
+      showInfoSnack(context, 'Only JPG and PNG images are accepted');
+      return;
+    }
+
+    // File size check
+    final int sizeBytes = await File(file.path).length();
+    if (!mounted) return;
+    if (sizeBytes > _maxFileSizeBytes) {
+      showInfoSnack(context, 'Image must be smaller than 5 MB');
+      return;
+    }
+
     setState(() {
       switch (field) {
         case 'license':
@@ -93,6 +164,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
   Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
     final app = ref.read(appControllerProvider);
 
     setState(() => _busy = true);
@@ -217,7 +289,10 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
           ? 'Update your driving license details'
           : 'Upload identity & license details',
       loading: _busy,
-      child: Column(
+      child: Form(
+        key: _formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // ---- Warning banner (reupload mode only) ----
@@ -253,12 +328,14 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
+                TextFormField(
                   controller: _licenseNumberCtrl,
                   textCapitalization: TextCapitalization.characters,
+                  validator: (v) => validateLicenseNumber(v, required: reupload),
                   decoration: const InputDecoration(
                     labelText: 'License Number',
                     prefixIcon: Icon(Icons.badge_outlined),
+                    helperText: ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -299,16 +376,18 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
+                TextFormField(
                   controller: _aadharNoCtrl,
                   keyboardType: TextInputType.number,
                   maxLength: 12,
                   onChanged: (_) => setState(() {}),
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  validator: validateAadhar,
                   decoration: const InputDecoration(
                     labelText: 'Aadhar Number',
                     prefixIcon: Icon(Icons.credit_card_rounded),
                     counterText: '',
+                    helperText: ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -329,14 +408,16 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
+                TextFormField(
                   controller: _panNoCtrl,
                   textCapitalization: TextCapitalization.characters,
                   maxLength: 10,
+                  validator: validatePAN,
                   decoration: const InputDecoration(
                     labelText: 'PAN Number',
                     prefixIcon: Icon(Icons.account_balance_wallet_outlined),
                     counterText: '',
+                    helperText: ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -367,6 +448,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
           ),
           const SizedBox(height: 20),
         ],
+      ),
       ),
     );
   }
@@ -440,6 +522,7 @@ class _AttachTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool hasFile = fileName != null;
+
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onPick,

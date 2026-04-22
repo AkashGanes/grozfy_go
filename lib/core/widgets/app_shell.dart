@@ -13,6 +13,7 @@ class AppShell extends StatelessWidget {
     this.scrollable = true,
     this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 20),
     this.loading = false,
+    this.loadingMessage = 'Please wait...',
     this.onRefresh,
   });
 
@@ -23,6 +24,7 @@ class AppShell extends StatelessWidget {
   final bool scrollable;
   final EdgeInsets padding;
   final bool loading;
+  final String loadingMessage;
   final Future<void> Function()? onRefresh;
 
   @override
@@ -111,7 +113,7 @@ class AppShell extends StatelessWidget {
                             const _ShellLoadingIndicator(),
                             const SizedBox(height: 16),
                             Text(
-                              'Please wait...',
+                              loadingMessage,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ],

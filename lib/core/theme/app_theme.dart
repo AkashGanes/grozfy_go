@@ -81,6 +81,24 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: primary, width: 1.2),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFDC2626), width: 1.2),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFDC2626), width: 1.6),
+        ),
+        helperStyle: const TextStyle(
+          color: Colors.transparent,
+          fontSize: 11.5,
+        ),
+        errorStyle: const TextStyle(
+          color: Color(0xFFDC2626),
+          fontSize: 11.5,
+          fontWeight: FontWeight.w500,
+        ),
+        errorMaxLines: 2,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -169,6 +187,24 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: primary, width: 1.2),
         ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFFF6B6B), width: 1.2),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFFF6B6B), width: 1.6),
+        ),
+        helperStyle: const TextStyle(
+          color: Colors.transparent,
+          fontSize: 11.5,
+        ),
+        errorStyle: const TextStyle(
+          color: Color(0xFFFF6B6B),
+          fontSize: 11.5,
+          fontWeight: FontWeight.w500,
+        ),
+        errorMaxLines: 2,
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
