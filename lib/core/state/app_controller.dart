@@ -106,6 +106,7 @@ class AppController extends ChangeNotifier {
   bool _rememberMe = false;
   bool _profileCompleted = false;
   bool _kycCompleted = false;
+  bool _licenseRequiresReupload = false;
   String? _sessionToken;
   String _tokenType = 'Bearer';
   String? _refreshToken;
@@ -251,6 +252,7 @@ class AppController extends ChangeNotifier {
   );
 
   bool get isKycComplete => _kycCompleted;
+  bool get licenseRequiresReupload => _licenseRequiresReupload;
 
   bool get canGoOnline =>
       _kycCompleted &&
@@ -1386,6 +1388,7 @@ class AppController extends ChangeNotifier {
           await prefs.setString(_prefDriverName, newDriverName);
         }
         _kycCompleted = true;
+        _licenseRequiresReupload = false;
         final SharedPreferences prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_prefKycCompleted, true);
         notifyListeners();
@@ -1415,6 +1418,60 @@ class AppController extends ChangeNotifier {
 
     _kycStatus[key] = VerificationStatus.pending;
     notifyListeners();
+  }
+
+  void _checkLicenseStatus(Map<String, dynamic> driverDoc) {
+    if (!_kycCompleted) return;
+    final licenseNumber = _nullIfBlank(driverDoc['license_number']?.toString());
+    final licenseAttachment = _nullIfBlank(
+      driverDoc['custom_license_attachment']?.toString(),
+    );
+    final removed = licenseNumber == null && licenseAttachment == null;
+    if (_licenseRequiresReupload != removed) {
+      _licenseRequiresReupload = removed;
+      notifyListeners();
+    }
+  }
+
+  void clearLicenseReuploadFlag() {
+    if (_licenseRequiresReupload) {
+      _licenseRequiresReupload = false;
+      notifyListeners();
+    }
+  }
+
+  Future<String?> resubmitLicense({
+    required String licenseNumber,
+    required String licenseAttachmentUrl,
+    String? issuingDate,
+    String? expiryDate,
+  }) async {
+    if (_sessionToken == null) return 'Not authenticated';
+
+    final String? driverName = _driverName;
+    if (driverName == null || driverName.isEmpty) {
+      return 'Driver profile not found. Please try again.';
+    }
+
+    try {
+      final Map<String, dynamic> fields = <String, dynamic>{
+        'license_number': licenseNumber,
+        'custom_license_attachment': licenseAttachmentUrl,
+      };
+      if (issuingDate != null) fields['issuing_date'] = issuingDate;
+      if (expiryDate != null) fields['expiry_date'] = expiryDate;
+
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Driver/${Uri.encodeComponent(driverName)}',
+      );
+
+      await authorizedPutJson(uri, fields);
+      _licenseRequiresReupload = false;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
   void simulateKycApproval() {
@@ -3217,6 +3274,7 @@ class AppController extends ChangeNotifier {
       );
 
       if (driverDoc != null) {
+        _checkLicenseStatus(driverDoc);
         final dynamic onlineRaw = driverDoc['custom_custom_is_online'];
         if (onlineRaw != null) {
           final bool backendOnline =

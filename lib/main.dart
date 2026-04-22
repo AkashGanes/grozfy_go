@@ -135,8 +135,14 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
                 builder: (_) => const RegisterScreen(),
               );
             case AppRoutes.kycDocuments:
+              final dynamic kycArgs = settings.arguments;
+              final bool licenseReupload =
+                  kycArgs is Map<String, dynamic> &&
+                  kycArgs['license_reupload'] == true;
               return MaterialPageRoute<void>(
-                builder: (_) => const KycDocumentsScreen(),
+                builder: (_) => KycDocumentsScreen(
+                  licenseReuploadMode: licenseReupload,
+                ),
               );
             case AppRoutes.vehicleDetails:
               final dynamic vehicleArgs = settings.arguments;

@@ -9,7 +9,9 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
 
 class KycDocumentsScreen extends ConsumerStatefulWidget {
-  const KycDocumentsScreen({super.key});
+  const KycDocumentsScreen({super.key, this.licenseReuploadMode = false});
+
+  final bool licenseReuploadMode;
 
   @override
   ConsumerState<KycDocumentsScreen> createState() => _KycDocumentsScreenState();
@@ -43,8 +45,9 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     super.dispose();
   }
 
-  bool get _isFormValid =>
-      _aadharNoCtrl.text.trim().isNotEmpty && _aadharFilePath != null;
+  bool get _isFormValid => widget.licenseReuploadMode
+      ? _licenseNumberCtrl.text.trim().isNotEmpty && _licenseFilePath != null
+      : _aadharNoCtrl.text.trim().isNotEmpty && _aadharFilePath != null;
 
   Future<void> _pickDate({required bool isIssuing}) async {
     final DateTime now = DateTime.now();
@@ -94,7 +97,41 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
 
     setState(() => _busy = true);
 
-    // Upload files first (driver_name may be null for new users — that's OK)
+    // ── License reupload mode: only upload license and resubmit ──
+    if (widget.licenseReuploadMode) {
+      final String? licenseUrl = await app.uploadFile(
+        filePath: _licenseFilePath!,
+        fileName: _licenseFileName ?? 'license.jpg',
+        doctype: 'Driver',
+        docname: app.driverName,
+        fieldname: 'custom_license_attachment',
+      );
+      if (!mounted) return;
+      if (licenseUrl == null) {
+        setState(() => _busy = false);
+        showInfoSnack(context, 'Failed to upload license attachment');
+        return;
+      }
+
+      final String? error = await app.resubmitLicense(
+        licenseNumber: _licenseNumberCtrl.text.trim(),
+        licenseAttachmentUrl: licenseUrl,
+        issuingDate: _issuingDate != null ? _formatDate(_issuingDate!) : null,
+        expiryDate: _expiryDate != null ? _formatDate(_expiryDate!) : null,
+      );
+      if (!mounted) return;
+      setState(() => _busy = false);
+      if (error != null) {
+        showInfoSnack(context, error);
+        return;
+      }
+      showInfoSnack(context, 'License uploaded successfully');
+      Navigator.of(context)
+          .pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
+      return;
+    }
+
+    // ── Normal KYC mode ──
     String? licenseUrl;
     String? aadharUrl;
     String? panUrl;
@@ -144,7 +181,6 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
       }
     }
 
-    // Submit KYC — creates Driver if it doesn't exist
     final String? error = await app.submitDriverKyc(
       aadharNo: _aadharNoCtrl.text.trim(),
       aadharAttachmentUrl: aadharUrl ?? '',
@@ -173,13 +209,44 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool reupload = widget.licenseReuploadMode;
+
     return AppShell(
-      title: 'KYC Verification',
-      subtitle: 'Upload identity & license details',
+      title: reupload ? 'Re-upload License' : 'KYC Verification',
+      subtitle: reupload
+          ? 'Update your driving license details'
+          : 'Upload identity & license details',
       loading: _busy,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ---- Warning banner (reupload mode only) ----
+          if (reupload) ...[
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.mango.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppTheme.mango.withValues(alpha: 0.30),
+                ),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: AppTheme.mango),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Your driving license is missing or expired. Please upload to continue.',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+
           // ---- License Section ----
           const SectionLabel('Driving License'),
           FrostCard(
@@ -225,7 +292,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
           ),
           const SizedBox(height: 20),
 
-          // ---- Aadhar Section ----
+          // ---- Aadhar & PAN (normal KYC mode only) ----
+          if (!reupload) ...[
           const SectionLabel('Aadhar (Required)'),
           FrostCard(
             child: Column(
@@ -280,6 +348,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
               ],
             ),
           ),
+          ], // end if (!reupload)
           const SizedBox(height: 24),
 
           // ---- Submit ----
@@ -287,7 +356,13 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
             width: double.infinity,
             child: ElevatedButton(
               onPressed: _isFormValid && !_busy ? _submit : null,
-              child: Text(_busy ? 'Submitting...' : 'Submit KYC & Continue'),
+              child: Text(
+                _busy
+                    ? 'Submitting...'
+                    : reupload
+                        ? 'Submit License'
+                        : 'Submit KYC & Continue',
+              ),
             ),
           ),
           const SizedBox(height: 20),

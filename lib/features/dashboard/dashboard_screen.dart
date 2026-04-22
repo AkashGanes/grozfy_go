@@ -12,8 +12,103 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/profile_completeness_indicator.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+
+  static String _timeAgo(DateTime time) {
+    final Duration diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  static bool _shouldHideDashboardNotificationMessage(
+    String title,
+    String message,
+  ) {
+    final combined = '${title.trim()} ${message.trim()}'.toLowerCase();
+    return combined.contains('assigned') && combined.contains('task');
+  }
+}
+
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
+  bool _licenseDialogShowing = false;
+  late AppController _app;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _app = AppScope.of(context);
+    if (_app.licenseRequiresReupload && !_licenseDialogShowing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_licenseDialogShowing &&
+            ModalRoute.of(context)?.isCurrent == true) {
+          _showLicenseRemovedDialog();
+        }
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _app.fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _showLicenseRemovedDialog() {
+    _licenseDialogShowing = true;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          icon: const Icon(
+            Icons.warning_amber_rounded,
+            color: AppTheme.mango,
+            size: 36,
+          ),
+          title: const Text('License Details Required'),
+          content: const Text(
+            'Your driving license is missing or expired. Please upload to continue.',
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _licenseDialogShowing = false;
+                Navigator.of(context).pushNamed(
+                  AppRoutes.kycDocuments,
+                  arguments: {'license_reupload': true},
+                );
+              },
+              child: const Text('Upload License'),
+            ),
+          ],
+        ),
+      ),
+    ).then((_) {
+      _licenseDialogShowing = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -637,20 +732,6 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  static String _timeAgo(DateTime time) {
-    final Duration diff = DateTime.now().difference(time);
-    if (diff.inMinutes < 1) {
-      return 'just now';
-    }
-    if (diff.inHours < 1) {
-      return '${diff.inMinutes}m ago';
-    }
-    if (diff.inDays < 1) {
-      return '${diff.inHours}h ago';
-    }
-    return '${diff.inDays}d ago';
-  }
-
   static String _dashboardNotificationMessage(String message) {
     String cleaned = message.trim();
     cleaned = cleaned.replaceAll(
@@ -684,13 +765,6 @@ class DashboardScreen extends StatelessWidget {
     return lines.join('\n');
   }
 
-  static bool _shouldHideDashboardNotificationMessage(
-    String title,
-    String message,
-  ) {
-    final combined = '${title.trim()} ${message.trim()}'.toLowerCase();
-    return combined.contains('assigned') && combined.contains('task');
-  }
 }
 
 class _DashboardLocationCard extends StatelessWidget {
