@@ -22,6 +22,7 @@ class DashboardScreen extends StatelessWidget {
     return AppShell(
       title: app.t('dashboard'),
       subtitle: app.profile?.fullName ?? 'Delivery Partner',
+      showOrdersFooter: true,
       actions: [
         Consumer(
           builder: (context, ref, _) {
@@ -33,7 +34,7 @@ class DashboardScreen extends StatelessWidget {
                 IconButton(
                   icon: const Icon(Icons.notifications_none_rounded),
                   onPressed: () {
-                    Navigator.of(context).pushNamed(AppRoutes.notifications);
+                    _showNotificationsPopup(context, ref);
                   },
                 ),
                 if (unreadCount > 0)
@@ -433,155 +434,6 @@ class DashboardScreen extends StatelessWidget {
                     ],
                   ),
           ),
-          const SizedBox(height: 14),
-          const SectionLabel('Notifications'),
-          FrostCard(
-            child: Column(
-              children: [
-                Consumer(
-                  builder: (context, ref, _) {
-                    final async = ref.watch(recentNotificationsProvider);
-                    return async.when(
-                      data: (items) {
-                        final overrides = ref.watch(
-                          notificationReadOverridesProvider,
-                        );
-                        final List<Widget> rows = <Widget>[
-                          ...items.take(2).map((notification) {
-                            final effectiveRead =
-                                notification.read ||
-                                overrides.contains(notification.name);
-                            return _NotificationRow(
-                              title: notification.subject,
-                              message: _dashboardNotificationMessage(
-                                notification.message,
-                              ),
-                              time: notification.creation,
-                              isUnread: !effectiveRead,
-                              onTap: () {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(AppRoutes.notifications);
-                              },
-                            );
-                          }),
-                          ...app.notices.take(4).map((notice) {
-                            return _NotificationRow(
-                              title: notice.title,
-                              message: notice.message,
-                              time: notice.time,
-                            );
-                          }),
-                        ];
-
-                        if (rows.isEmpty) {
-                          return const Padding(
-                            padding: EdgeInsets.only(top: 2),
-                            child: Text(
-                              'No notifications yet.',
-                              style: TextStyle(color: Colors.black54),
-                            ),
-                          );
-                        }
-
-                        return Column(children: rows);
-                      },
-                      loading: () => const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Center(
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2.4),
-                          ),
-                        ),
-                      ),
-                      error: (err, _) => Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Unable to load notifications.',
-                              style: TextStyle(color: Colors.black54),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              ref.invalidate(recentNotificationsProvider);
-                            },
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          const SectionLabel('Quick Access'),
-          FrostCard(
-            child: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _quickButton(
-                  context,
-                  'My Profile',
-                  Icons.person_outline_rounded,
-                  route: AppRoutes.profile,
-                ),
-                _quickButton(
-                  context,
-                  'Earnings History',
-                  Icons.receipt_long_rounded,
-                ),
-                _quickButton(
-                  context,
-                  'Documents',
-                  Icons.file_copy_outlined,
-                  route: AppRoutes.kycDocuments,
-                ),
-                _quickButton(
-                  context,
-                  'Vehicle',
-                  Icons.two_wheeler_rounded,
-                  route: AppRoutes.vehicleDetails,
-                ),
-                _quickButton(
-                  context,
-                  'Bank Details',
-                  Icons.account_balance_outlined,
-                  route: AppRoutes.bankSetup,
-                ),
-                _quickButton(
-                  context,
-                  'Orders by Location',
-                  Icons.list_alt_rounded,
-                  route: AppRoutes.ordersByLocation,
-                ),
-                _quickButton(
-                  context,
-                  'Available Orders',
-                  Icons.local_shipping_outlined,
-                  route: AppRoutes.orderListing,
-                ),
-                _quickButton(
-                  context,
-                  'External Trips',
-                  Icons.local_shipping_outlined,
-                  route: AppRoutes.externalDeliveryTripList,
-                ),
-                _quickButton(context, 'Support', Icons.support_agent_rounded),
-                _quickButton(
-                  context,
-                  'Settings',
-                  Icons.settings_outlined,
-                  route: AppRoutes.settings,
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: () {
@@ -592,28 +444,6 @@ class DashboardScreen extends StatelessWidget {
             label: const Text('Simulate Incoming Order'),
           ),
         ],
-      ),
-    );
-  }
-
-  static Widget _quickButton(
-    BuildContext context,
-    String label,
-    IconData icon, {
-    String? route,
-  }) {
-    return SizedBox(
-      width: 150,
-      child: OutlinedButton.icon(
-        onPressed: () {
-          if (route != null) {
-            Navigator.of(context).pushNamed(route);
-            return;
-          }
-          showInfoSnack(context, '$label module can be expanded next');
-        },
-        icon: Icon(icon),
-        label: Text(label),
       ),
     );
   }
@@ -630,6 +460,98 @@ class DashboardScreen extends StatelessWidget {
       return '${diff.inHours}h ago';
     }
     return '${diff.inDays}d ago';
+  }
+
+  void _showNotificationsPopup(BuildContext context, WidgetRef ref) {
+    final app = AppScope.of(context);
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            title: const Text('Notifications'),
+            backgroundColor: AppTheme.oceanBlue,
+            foregroundColor: Colors.white,
+          ),
+          body: Consumer(
+            builder: (context, ref, _) {
+              final async = ref.watch(recentNotificationsProvider);
+              return async.when(
+                data: (notifications) {
+                  final overrides = ref.watch(
+                    notificationReadOverridesProvider,
+                  );
+                  final List<Widget> rows = <Widget>[];
+
+                  rows.addAll(
+                    notifications.take(10).map((notification) {
+                      final effectiveRead =
+                          notification.read ||
+                          overrides.contains(notification.name);
+                      return _NotificationRow(
+                        title: notification.subject,
+                        message: _dashboardNotificationMessage(
+                          notification.message,
+                        ),
+                        time: notification.creation,
+                        isUnread: !effectiveRead,
+                        onTap: () {
+                          Navigator.of(
+                            context,
+                          ).pushNamed(AppRoutes.notifications);
+                        },
+                      );
+                    }),
+                  );
+
+                  rows.addAll(
+                    app.notices.take(10).map((notice) {
+                      return _NotificationRow(
+                        title: notice.title,
+                        message: notice.message,
+                        time: notice.time,
+                      );
+                    }),
+                  );
+
+                  if (rows.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        'No notifications yet.',
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                    );
+                  }
+
+                  return ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    children: rows,
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (err, _) => Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        'Unable to load notifications.',
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          ref.invalidate(recentNotificationsProvider);
+                        },
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
   }
 
   static String _dashboardNotificationMessage(String message) {

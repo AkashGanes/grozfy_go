@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../theme/app_theme.dart';
+import 'orders_footer.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -13,6 +14,7 @@ class AppShell extends StatelessWidget {
     this.scrollable = true,
     this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 20),
     this.loading = false,
+    this.showOrdersFooter = true,
   });
 
   final String title;
@@ -22,6 +24,7 @@ class AppShell extends StatelessWidget {
   final bool scrollable;
   final EdgeInsets padding;
   final bool loading;
+  final bool showOrdersFooter;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +85,7 @@ class AppShell extends StatelessWidget {
                           )
                         : body,
                   ),
+                  if (showOrdersFooter) const OrdersFooter(),
                 ],
               ),
             ),
@@ -278,26 +282,26 @@ class _ShellLoadingIndicator extends StatelessWidget {
         alignment: Alignment.center,
         children: [
           Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-          )
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+              )
               .animate(onPlay: (controller) => controller.repeat())
               .shimmer(
                 duration: 1000.ms,
                 color: AppTheme.oceanBlue.withValues(alpha: 0.25),
               ),
           Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-          )
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+              )
               .animate(onPlay: (controller) => controller.repeat())
               .shimmer(
                 duration: 800.ms,

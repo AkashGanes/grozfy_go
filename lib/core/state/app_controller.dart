@@ -367,9 +367,86 @@ class AppController extends ChangeNotifier {
 
     _bootstrapped = true;
 
+    // Initialize demo accepted orders for testing
+    _initializeDemoAcceptedOrders();
+
     // Initialize Notifications
     unawaited(FCMService().subscribe(this));
 
+    notifyListeners();
+  }
+
+  void _initializeDemoAcceptedOrders() {
+    final List<DeliveryOrder> demoOrders = <DeliveryOrder>[
+      DeliveryOrder(
+        orderId: '#OD2001',
+        customerName: 'Riya Sharma',
+        customerPhone: '9876512345',
+        deliveryAddress: 'Connaught Place, New Delhi - 110001',
+        storeId: 'STORE-25-0259',
+        storeName: 'Fresh Bites Kitchen',
+        storeContact: '9876543210',
+        storeAddress: 'Nehru Place, New Delhi',
+        orderItems: <OrderItem>[
+          OrderItem(name: 'Veggie Burger', quantity: 2, price: 150),
+          OrderItem(name: 'Cola', quantity: 2, price: 40),
+        ],
+        orderStatus: OrderStatus.outForDelivery,
+        latitude: 28.6139,
+        longitude: 77.2090,
+        drop: 'Connaught Place, New Delhi',
+        paymentMode: 'Online',
+        distanceKm: 4.5,
+        estimatedEarnings: 75,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+      ),
+      DeliveryOrder(
+        orderId: '#OD2002',
+        customerName: 'Amit Kumar',
+        customerPhone: '9876598765',
+        deliveryAddress: 'Karol Bagh, New Delhi - 110005',
+        storeId: 'STORE-25-0259',
+        storeName: 'Pizza Palace',
+        storeContact: '9876598765',
+        storeAddress: 'Rajouri Garden, New Delhi',
+        orderItems: <OrderItem>[
+          OrderItem(name: 'Pepperoni Pizza', quantity: 1, price: 350),
+        ],
+        orderStatus: OrderStatus.delivered,
+        latitude: 28.65,
+        longitude: 77.19,
+        drop: 'Karol Bagh, New Delhi',
+        paymentMode: 'COD',
+        distanceKm: 5.2,
+        estimatedEarnings: 80,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+      ),
+      DeliveryOrder(
+        orderId: '#OD2003',
+        customerName: 'Priya Singh',
+        customerPhone: '9876511111',
+        deliveryAddress: 'Lajpat Nagar, New Delhi - 110065',
+        storeId: 'STORE-25-0259',
+        storeName: 'Sushi Station',
+        storeContact: '9876522222',
+        storeAddress: 'Saket, New Delhi',
+        orderItems: <OrderItem>[
+          OrderItem(name: 'Salmon Roll', quantity: 2, price: 250),
+          OrderItem(name: 'Miso Soup', quantity: 1, price: 80),
+        ],
+        orderStatus: OrderStatus.cancelled,
+        latitude: 28.57,
+        longitude: 77.24,
+        drop: 'Lajpat Nagar, New Delhi',
+        paymentMode: 'Online',
+        distanceKm: 6.8,
+        estimatedEarnings: 90,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+      ),
+    ];
+
+    _acceptedOrders.addAll(demoOrders);
+    _activeOrder = demoOrders[0];
     notifyListeners();
   }
 
@@ -1041,6 +1118,11 @@ class AppController extends ChangeNotifier {
       );
       await _persistSession(responseData);
 
+      // Initialize demo orders on login
+      if (_acceptedOrders.isEmpty) {
+        _initializeDemoAcceptedOrders();
+      }
+
       // Update FCM token on login
       unawaited(FCMService().subscribe(this));
 
@@ -1095,10 +1177,10 @@ class AppController extends ChangeNotifier {
       if (newToken == null) return false;
 
       _sessionToken = newToken;
-      _tokenType =
-          _nullIfBlank(data['token_type']?.toString()) ?? _tokenType;
-      final String? newRefresh =
-          _nullIfBlank(data['refresh_token']?.toString());
+      _tokenType = _nullIfBlank(data['token_type']?.toString()) ?? _tokenType;
+      final String? newRefresh = _nullIfBlank(
+        data['refresh_token']?.toString(),
+      );
       if (newRefresh != null) {
         _refreshToken = newRefresh;
       }
@@ -1107,10 +1189,8 @@ class AppController extends ChangeNotifier {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await Future.wait(<Future<bool>>[
         prefs.setString(_prefAccessToken, _sessionToken!),
-        if (_tokenType.isNotEmpty)
-          prefs.setString(_prefTokenType, _tokenType),
-        if (newRefresh != null)
-          prefs.setString(_prefRefreshToken, newRefresh),
+        if (_tokenType.isNotEmpty) prefs.setString(_prefTokenType, _tokenType),
+        if (newRefresh != null) prefs.setString(_prefRefreshToken, newRefresh),
       ]);
 
       _logApi('refresh_token', 'session refreshed successfully');
@@ -1214,6 +1294,12 @@ class AppController extends ChangeNotifier {
       _pendingRegistrationMobile = null;
 
       await _persistSession(responseData);
+
+      // Initialize demo orders on registration
+      if (_acceptedOrders.isEmpty) {
+        _initializeDemoAcceptedOrders();
+      }
+
       notifyListeners();
       return null;
     } catch (e) {
@@ -2434,6 +2520,46 @@ class AppController extends ChangeNotifier {
   List<DeliveryOrder> get acceptedOrders =>
       List<DeliveryOrder>.unmodifiable(_acceptedOrders);
 
+  List<DeliveryOrder> get currentOrders {
+    if (_acceptedOrders.isEmpty && _activeOrder == null) {
+      _initializeDemoAcceptedOrders();
+    }
+    final List<DeliveryOrder> current = <DeliveryOrder>[];
+    if (_activeOrder != null) {
+      final activeId = _activeOrder!.orderId;
+      current.add(_activeOrder!);
+      for (final order in _acceptedOrders) {
+        if (order.orderStatus != OrderStatus.delivered &&
+            order.orderStatus != OrderStatus.cancelled &&
+            order.orderId != activeId) {
+          current.add(order);
+        }
+      }
+      return current;
+    }
+    for (final order in _acceptedOrders) {
+      if (order.orderStatus != OrderStatus.delivered &&
+          order.orderStatus != OrderStatus.cancelled) {
+        current.add(order);
+      }
+    }
+    return current;
+  }
+
+  List<DeliveryOrder> get pastOrders {
+    if (_acceptedOrders.isEmpty) {
+      _initializeDemoAcceptedOrders();
+    }
+    final List<DeliveryOrder> past = <DeliveryOrder>[];
+    for (final order in _acceptedOrders) {
+      if (order.orderStatus == OrderStatus.delivered ||
+          order.orderStatus == OrderStatus.cancelled) {
+        past.add(order);
+      }
+    }
+    return past;
+  }
+
   bool get isLoadingOrders => _isLoadingOrders;
 
   String? get orderLoadingError => _orderLoadingError;
@@ -2809,7 +2935,9 @@ class AppController extends ChangeNotifier {
     final String? driverName = _nullIfBlank(message['driver_name']?.toString());
     final String? clientId = _nullIfBlank(message['client_id']?.toString());
     final String? apiKey = _nullIfBlank(message['api_key']?.toString());
-    final String? apiSecretVal = _nullIfBlank(message['api_secret']?.toString());
+    final String? apiSecretVal = _nullIfBlank(
+      message['api_secret']?.toString(),
+    );
     final int? expiresIn = int.tryParse(
       message['expires_in']?.toString() ?? '',
     );
@@ -3263,8 +3391,7 @@ class AppController extends ChangeNotifier {
       final http.Response retryResp = await http
           .get(uri, headers: refreshedHeaders)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3306,13 +3433,13 @@ class AppController extends ChangeNotifier {
     }
 
     if (await refreshSession()) {
-      final Map<String, String> refreshedHeaders =
-          _authorizationHeaders(contentType: 'application/json').first;
+      final Map<String, String> refreshedHeaders = _authorizationHeaders(
+        contentType: 'application/json',
+      ).first;
       final http.Response retryResp = await http
           .put(uri, headers: refreshedHeaders, body: encodedBody)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3361,13 +3488,13 @@ class AppController extends ChangeNotifier {
     }
 
     if (await refreshSession()) {
-      final Map<String, String> refreshedHeaders =
-          _authorizationHeaders(contentType: 'application/json').first;
+      final Map<String, String> refreshedHeaders = _authorizationHeaders(
+        contentType: 'application/json',
+      ).first;
       final http.Response retryResp = await http
           .post(uri, headers: refreshedHeaders, body: encodedBody)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3409,8 +3536,7 @@ class AppController extends ChangeNotifier {
       final http.Response retryResp = await http
           .get(uri, headers: refreshedHeaders)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3453,8 +3579,7 @@ class AppController extends ChangeNotifier {
       final http.Response retryResp = await http
           .post(uri, headers: refreshedHeaders, body: body)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3500,8 +3625,7 @@ class AppController extends ChangeNotifier {
         ..headers.addAll(refreshedHeaders)
         ..fields.addAll(fields)
         ..files.add(await http.MultipartFile.fromPath('file', filePath));
-      final retryStreamed =
-          await retryRequest.send().timeout(_networkTimeout);
+      final retryStreamed = await retryRequest.send().timeout(_networkTimeout);
       final retryResp = await http.Response.fromStream(retryStreamed);
       final retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
@@ -3557,11 +3681,13 @@ class AppController extends ChangeNotifier {
         ..headers.addAll(refreshedHeaders)
         ..fields.addAll(fields)
         ..files.add(
-          await http.MultipartFile.fromPath('file', filePath,
-              filename: fileName),
+          await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            filename: fileName,
+          ),
         );
-      final retryStreamed =
-          await retryRequest.send().timeout(_networkTimeout);
+      final retryStreamed = await retryRequest.send().timeout(_networkTimeout);
       final retryResp = await http.Response.fromStream(retryStreamed);
       final retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
@@ -3862,8 +3988,9 @@ class AppController extends ChangeNotifier {
       authHeaders.add(bearerHeaders);
     }
     if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
-      final String altType =
-          _tokenType.trim().toLowerCase() == 'token' ? 'Bearer' : 'token';
+      final String altType = _tokenType.trim().toLowerCase() == 'token'
+          ? 'Bearer'
+          : 'token';
       final Map<String, String> tokenHeaders = <String, String>{
         'Accept': 'application/json',
         'Authorization': '$altType ${_sessionToken!.trim()}',
