@@ -74,6 +74,30 @@ class DashboardScreen extends StatelessWidget {
         IconButton(
           icon: const Icon(Icons.logout_rounded),
           onPressed: () async {
+            final bool? confirmed = await showDialog<bool>(
+              context: context,
+              builder: (dialogContext) {
+                return AlertDialog(
+                  title: const Text('Log out?'),
+                  content: const Text(
+                    'You will need to sign in again to continue.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      child: const Text('Log out'),
+                    ),
+                  ],
+                );
+              },
+            );
+            if (confirmed != true) {
+              return;
+            }
             await app.logout();
             if (!context.mounted) {
               return;
