@@ -65,8 +65,10 @@ class AppController extends ChangeNotifier {
   static const String _prefKycPanUrl = 'kyc_pan_url';
   static const String _prefVehicleName = 'vehicle_name';
   static const String _prefVehicleLicensePlate = 'vehicle_license_plate';
+  static const String _prefVehicleRawJson = 'vehicle_raw_json';
   static const String _prefBankDocName = 'bank_doc_name';
   static const String _prefBankAccountName = 'bank_account_name';
+  static const String _prefBankRawJson = 'bank_raw_json';
   static const String _prefApiKey = 'api_key';
   static const String _prefApiSecret = 'api_secret';
   static const String _prefClientId = 'client_id';
@@ -358,6 +360,22 @@ class AppController extends ChangeNotifier {
     _existingLicenseUrl = _nullIfBlank(prefs.getString(_prefKycLicenseUrl));
     _existingAadharUrl = _nullIfBlank(prefs.getString(_prefKycAadharUrl));
     _existingPanUrl = _nullIfBlank(prefs.getString(_prefKycPanUrl));
+    final String? bankRawJson = _nullIfBlank(prefs.getString(_prefBankRawJson));
+    if (bankRawJson != null) {
+      final Map<String, dynamic> decoded = _decodeJsonMap(bankRawJson);
+      if (decoded.isNotEmpty) {
+        _submittedBankRaw = decoded;
+        _bank = _bankFromApiData(decoded);
+      }
+    }
+    final String? vehicleRawJson = _nullIfBlank(prefs.getString(_prefVehicleRawJson));
+    if (vehicleRawJson != null) {
+      final Map<String, dynamic> decoded = _decodeJsonMap(vehicleRawJson);
+      if (decoded.isNotEmpty) {
+        _submittedVehicleRaw = decoded;
+        _vehicle = _vehicleFromApiData(decoded);
+      }
+    }
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
     final String? persistedActiveOrderId = _nullIfBlank(
       prefs.getString(_prefActiveOrderId),
@@ -1310,8 +1328,10 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefDriverName),
       prefs.remove(_prefVehicleName),
       prefs.remove(_prefVehicleLicensePlate),
+      prefs.remove(_prefVehicleRawJson),
       prefs.remove(_prefBankDocName),
       prefs.remove(_prefBankAccountName),
+      prefs.remove(_prefBankRawJson),
       prefs.remove(_prefApiKey),
       prefs.remove(_prefApiSecret),
       prefs.remove(_prefClientId),
@@ -1660,6 +1680,8 @@ class AppController extends ChangeNotifier {
         'vehicle.hydrate',
         'loaded vehicle name=${_vehicle?.name} plate=${_vehicle?.licensePlate}',
       );
+      final SharedPreferences vehicleHydratePrefs = await SharedPreferences.getInstance();
+      await vehicleHydratePrefs.setString(_prefVehicleRawJson, jsonEncode(data));
       notifyListeners();
     } catch (e) {
       _logApi('vehicle.hydrate', 'error: $e');
@@ -1873,6 +1895,8 @@ class AppController extends ChangeNotifier {
         'bank.hydrate',
         'loaded bank account=${_submittedBankRaw?['name']} holder=${_bank?.accountHolder}',
       );
+      final SharedPreferences hydratePrefs = await SharedPreferences.getInstance();
+      await hydratePrefs.setString(_prefBankRawJson, jsonEncode(data));
       notifyListeners();
     } catch (e) {
       _logApi('bank.hydrate', 'error: $e');
@@ -2052,6 +2076,8 @@ class AppController extends ChangeNotifier {
         vehicleName: _nullIfBlank(finalData['name']?.toString()) ?? finalName,
         licensePlate: plate,
       );
+      final SharedPreferences vehicleSubmitPrefs = await SharedPreferences.getInstance();
+      await vehicleSubmitPrefs.setString(_prefVehicleRawJson, jsonEncode(finalData));
       notifyListeners();
       _logApi(
         'vehicle.submit',
@@ -2230,6 +2256,10 @@ class AppController extends ChangeNotifier {
             _nullIfBlank(_submittedBankRaw?['name']?.toString()) ?? bankName,
         accountName: normalizedAccountName,
       );
+      if (_submittedBankRaw != null) {
+        final SharedPreferences submitPrefs = await SharedPreferences.getInstance();
+        await submitPrefs.setString(_prefBankRawJson, jsonEncode(_submittedBankRaw));
+      }
       notifyListeners();
       _logApi(
         'bank.submit',

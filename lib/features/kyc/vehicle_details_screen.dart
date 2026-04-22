@@ -70,6 +70,19 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     final dynamic args = ModalRoute.of(context)?.settings.arguments;
     final bool forceEdit =
         args is Map<String, dynamic> && args['force_edit'] == true;
+
+    // Fast path: vehicle data already in memory from persisted cache —
+    // navigate straight to details without any network calls.
+    final Map<String, dynamic>? cached = app.submittedVehicleRaw;
+    if (!forceEdit && cached != null && cached.isNotEmpty && mounted) {
+      _initialized = true;
+      Navigator.of(context).pushReplacementNamed(
+        AppRoutes.vehicleSubmittedDetails,
+        arguments: cached,
+      );
+      return;
+    }
+
     if (app.loggedProfileDetails?.driver == null) {
       await app.fetchLoggedInEmployeeDriverProfile();
     }

@@ -7,6 +7,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/skeleton_loader.dart';
+import 'bank_submitted_details_screen.dart';
 
 class BankSetupScreen extends StatefulWidget {
   const BankSetupScreen({super.key});
@@ -38,7 +39,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   bool _isCompanyAccount = false;
   bool _busy = false;
   bool _ready = false;
-  bool _editMode = false;
 
   bool get _canSubmit =>
       _ready &&
@@ -202,56 +202,21 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
         args is Map<String, dynamic> && args['force_edit'] == true;
     final app = AppScope.of(context);
     final Map<String, dynamic>? bankData = app.submittedBankRaw;
-    final bool showSubmittedDetails =
-        !_editMode && !forceEdit && bankData != null && bankData.isNotEmpty;
-    if (showSubmittedDetails) {
-      final Map<String, String> displayData = _buildDisplayData(bankData);
-      final String title =
-          bankData['account_name']?.toString().trim().isNotEmpty == true
-          ? bankData['account_name']!.toString().trim()
-          : 'Bank Account Details';
+
+    // Bank already submitted — show read-only details screen immediately.
+    // bankData is populated from SharedPreferences on boot, so this works
+    // without any network call after the first submission.
+    if (!forceEdit && bankData != null && bankData.isNotEmpty) {
+      return BankSubmittedDetailsScreen(bankData: bankData);
+    }
+
+    // No persisted data yet — show loading while fetching from backend
+    if (!_ready) {
       return AppShell(
-        title: title,
-        subtitle: 'Submitted bank account details',
-        child: FrostCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final entry in displayData.entries) ...[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 150,
-                      child: Text(
-                        entry.key,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        entry.value,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-              ],
-              const SizedBox(height: 8),
-              ElevatedButton.icon(
-                onPressed: () {
-                  setState(() => _editMode = true);
-                },
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Edit Bank Details'),
-              ),
-            ],
-          ),
-        ),
+        title: 'Bank Account',
+        subtitle: 'Loading details...',
+        loading: true,
+        child: const SizedBox.shrink(),
       );
     }
 
@@ -484,37 +449,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     );
   }
 
-  Map<String, String> _buildDisplayData(Map<String, dynamic> raw) {
-    final Map<String, String> data = <String, String>{};
-
-    void put(String label, String key) {
-      final String value = (raw[key]?.toString() ?? '').trim();
-      if (value.isNotEmpty) {
-        data[label] = value;
-      }
-    }
-
-    put('Account Name', 'account_name');
-    put('Bank', 'bank');
-    put('Company Account', 'account');
-    put('Account Type', 'account_type');
-    put('Account Subtype', 'account_subtype');
-    put('Company', 'company');
-    put('Party Type', 'party_type');
-    put('Party', 'party');
-    put('IBAN', 'iban');
-    put('Branch Code', 'branch_code');
-    put('Bank Account No', 'bank_account_no');
-    put('Last Integration Date', 'last_integration_date');
-
-    data['Disabled'] = raw['disabled']?.toString() == '1' ? 'Yes' : 'No';
-    data['Is Default'] = raw['is_default']?.toString() == '1' ? 'Yes' : 'No';
-    data['Is Company Account'] = raw['is_company_account']?.toString() == '1'
-        ? 'Yes'
-        : 'No';
-
-    return data;
-  }
 }
 
 class _LinkSearchBottomSheet extends StatefulWidget {
