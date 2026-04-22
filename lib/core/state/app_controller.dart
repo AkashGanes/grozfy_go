@@ -1353,17 +1353,37 @@ class AppController extends ChangeNotifier {
 
     // Server-side cleanup — fire-and-forget so the caller's navigation
     // happens instantly instead of waiting on 2-3 sequential HTTP calls.
+    // IMPORTANT: /api/method/logout must run before revoke_token. Otherwise
+    // the bearer token is already invalidated on the server and logout
+    // responds 401 (no activity-log entry + noisy exception).
     if (accessToRevoke != null && accessToRevoke.isNotEmpty) {
-      unawaited(_serverSideLogout(accessToRevoke, tokenTypeSnapshot));
-      unawaited(_revokeTokenOnServer(accessToRevoke));
+      unawaited(
+        _serverCleanupAfterLogout(
+          accessToken: accessToRevoke,
+          refreshToken: refreshToRevoke,
+          tokenType: tokenTypeSnapshot,
+        ),
+      );
       unawaited(
         FCMService().unsubscribeWithToken(bearerToken: accessToRevoke),
       );
     }
-    if (refreshToRevoke != null &&
-        refreshToRevoke.isNotEmpty &&
-        refreshToRevoke != accessToRevoke) {
-      unawaited(_revokeTokenOnServer(refreshToRevoke));
+  }
+
+  /// Sequenced HTTP calls that must happen in order: write the activity-log
+  /// entry via /api/method/logout while the bearer is still valid, then
+  /// revoke the access and refresh tokens.
+  Future<void> _serverCleanupAfterLogout({
+    required String accessToken,
+    required String? refreshToken,
+    required String tokenType,
+  }) async {
+    await _serverSideLogout(accessToken, tokenType);
+    await _revokeTokenOnServer(accessToken);
+    if (refreshToken != null &&
+        refreshToken.isNotEmpty &&
+        refreshToken != accessToken) {
+      await _revokeTokenOnServer(refreshToken);
     }
   }
 
