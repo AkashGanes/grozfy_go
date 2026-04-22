@@ -57,6 +57,12 @@ class AppController extends ChangeNotifier {
   static const String _prefProfileCompleted = 'profile_completed';
   static const String _prefDriverName = 'driver_name';
   static const String _prefKycCompleted = 'kyc_completed';
+  static const String _prefKycLicenseNo = 'kyc_license_no';
+  static const String _prefKycAadharNo = 'kyc_aadhar_no';
+  static const String _prefKycPanNo = 'kyc_pan_no';
+  static const String _prefKycLicenseUrl = 'kyc_license_url';
+  static const String _prefKycAadharUrl = 'kyc_aadhar_url';
+  static const String _prefKycPanUrl = 'kyc_pan_url';
   static const String _prefVehicleName = 'vehicle_name';
   static const String _prefVehicleLicensePlate = 'vehicle_license_plate';
   static const String _prefBankDocName = 'bank_doc_name';
@@ -118,6 +124,12 @@ class AppController extends ChangeNotifier {
   String? _apiSecret;
   String? _configVersion;
   String? _driverName;
+  String? _existingLicenseNo;
+  String? _existingAadharNo;
+  String? _existingPanNo;
+  String? _existingLicenseUrl;
+  String? _existingAadharUrl;
+  String? _existingPanUrl;
   bool _isRefreshing = false;
 
   DateTime? _lastOtpRequestAt;
@@ -245,6 +257,12 @@ class AppController extends ChangeNotifier {
   bool get isInitialized => _isInitialized;
 
   String? get driverName => _driverName;
+  String? get existingLicenseNo => _existingLicenseNo;
+  String? get existingAadharNo => _existingAadharNo;
+  String? get existingPanNo => _existingPanNo;
+  String? get existingLicenseUrl => _existingLicenseUrl;
+  String? get existingAadharUrl => _existingAadharUrl;
+  String? get existingPanUrl => _existingPanUrl;
   String? get registrationToken => _registrationToken;
   String? get pendingRegistrationMobile => _pendingRegistrationMobile;
 
@@ -334,6 +352,12 @@ class AppController extends ChangeNotifier {
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
+    _existingLicenseNo = _nullIfBlank(prefs.getString(_prefKycLicenseNo));
+    _existingAadharNo = _nullIfBlank(prefs.getString(_prefKycAadharNo));
+    _existingPanNo = _nullIfBlank(prefs.getString(_prefKycPanNo));
+    _existingLicenseUrl = _nullIfBlank(prefs.getString(_prefKycLicenseUrl));
+    _existingAadharUrl = _nullIfBlank(prefs.getString(_prefKycAadharUrl));
+    _existingPanUrl = _nullIfBlank(prefs.getString(_prefKycPanUrl));
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
     final String? persistedActiveOrderId = _nullIfBlank(
       prefs.getString(_prefActiveOrderId),
@@ -1398,8 +1422,22 @@ class AppController extends ChangeNotifier {
           await prefs.setString(_prefDriverName, newDriverName);
         }
         _kycCompleted = true;
+        _existingAadharNo = aadharNo;
+        _existingAadharUrl = aadharAttachmentUrl.isNotEmpty ? aadharAttachmentUrl : _existingAadharUrl;
+        _existingLicenseNo = licenseNumber ?? _existingLicenseNo;
+        _existingLicenseUrl = licenseAttachmentUrl ?? _existingLicenseUrl;
+        _existingPanNo = panNo ?? _existingPanNo;
+        _existingPanUrl = panAttachmentUrl ?? _existingPanUrl;
         final SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setBool(_prefKycCompleted, true);
+        await Future.wait(<Future<bool>>[
+          prefs.setBool(_prefKycCompleted, true),
+          if (_existingLicenseNo != null) prefs.setString(_prefKycLicenseNo, _existingLicenseNo!),
+          if (_existingAadharNo != null) prefs.setString(_prefKycAadharNo, _existingAadharNo!),
+          if (_existingPanNo != null) prefs.setString(_prefKycPanNo, _existingPanNo!),
+          if (_existingLicenseUrl != null) prefs.setString(_prefKycLicenseUrl, _existingLicenseUrl!),
+          if (_existingAadharUrl != null) prefs.setString(_prefKycAadharUrl, _existingAadharUrl!),
+          if (_existingPanUrl != null) prefs.setString(_prefKycPanUrl, _existingPanUrl!),
+        ]);
         notifyListeners();
         return null;
       }
@@ -3367,6 +3405,12 @@ class AppController extends ChangeNotifier {
       if (driverName != null) {
         driverDoc = await _fetchResourceDoc('Driver', driverName);
         employeeName ??= _nullIfBlank(driverDoc?['employee']?.toString());
+        _existingLicenseNo = _nullIfBlank(driverDoc?['license_number']?.toString());
+        _existingAadharNo = _nullIfBlank(driverDoc?['custom_aadhar_no']?.toString());
+        _existingPanNo = _nullIfBlank(driverDoc?['custom_pan_no']?.toString());
+        _existingLicenseUrl = _nullIfBlank(driverDoc?['custom_license_attachment']?.toString());
+        _existingAadharUrl = _nullIfBlank(driverDoc?['custom_aadhar_attachment']?.toString());
+        _existingPanUrl = _nullIfBlank(driverDoc?['custom_pan_attachment']?.toString());
       }
       if (employeeName != null) {
         employeeDoc = await _fetchResourceDoc('Employee', employeeName);

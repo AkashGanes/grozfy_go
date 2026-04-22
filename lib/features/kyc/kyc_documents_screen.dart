@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/navigation/app_routes.dart';
+import '../../core/state/app_controller.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
@@ -33,7 +34,48 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
   String? _panFilePath;
   String? _panFileName;
 
+  // Existing server-side URLs from a previous submission
+  String? _existingLicenseUrl;
+  String? _existingAadharUrl;
+  String? _existingPanUrl;
+
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _applyExistingValues(ref.read(appControllerProvider));
+
+    // If KYC is done but values aren't in memory yet (e.g. submitted before
+    // this version was deployed), fetch the driver doc from the server.
+    final app = ref.read(appControllerProvider);
+    if (app.kycCompleted && app.existingAadharNo == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await ref
+            .read(appControllerProvider)
+            .fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+        if (!mounted) return;
+        setState(() {
+          _applyExistingValues(ref.read(appControllerProvider));
+        });
+      });
+    }
+  }
+
+  void _applyExistingValues(AppController app) {
+    if (_licenseNumberCtrl.text.isEmpty && app.existingLicenseNo != null) {
+      _licenseNumberCtrl.text = app.existingLicenseNo!;
+    }
+    if (_aadharNoCtrl.text.isEmpty && app.existingAadharNo != null) {
+      _aadharNoCtrl.text = app.existingAadharNo!;
+    }
+    if (_panNoCtrl.text.isEmpty && app.existingPanNo != null) {
+      _panNoCtrl.text = app.existingPanNo!;
+    }
+    _existingLicenseUrl ??= app.existingLicenseUrl;
+    _existingAadharUrl ??= app.existingAadharUrl;
+    _existingPanUrl ??= app.existingPanUrl;
+  }
 
   @override
   void dispose() {
@@ -44,7 +86,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
   }
 
   bool get _isFormValid =>
-      _aadharNoCtrl.text.trim().isNotEmpty && _aadharFilePath != null;
+      _aadharNoCtrl.text.trim().isNotEmpty &&
+      (_aadharFilePath != null || _existingAadharUrl != null);
 
   Future<void> _pickDate({required bool isIssuing}) async {
     final DateTime now = DateTime.now();
@@ -147,15 +190,15 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     // Submit KYC — creates Driver if it doesn't exist
     final String? error = await app.submitDriverKyc(
       aadharNo: _aadharNoCtrl.text.trim(),
-      aadharAttachmentUrl: aadharUrl ?? '',
+      aadharAttachmentUrl: aadharUrl ?? _existingAadharUrl ?? '',
       licenseNumber: _licenseNumberCtrl.text.trim().isEmpty
           ? null
           : _licenseNumberCtrl.text.trim(),
-      licenseAttachmentUrl: licenseUrl,
+      licenseAttachmentUrl: licenseUrl ?? _existingLicenseUrl,
       issuingDate: _issuingDate != null ? _formatDate(_issuingDate!) : null,
       expiryDate: _expiryDate != null ? _formatDate(_expiryDate!) : null,
       panNo: _panNoCtrl.text.trim().isEmpty ? null : _panNoCtrl.text.trim(),
-      panAttachmentUrl: panUrl,
+      panAttachmentUrl: panUrl ?? _existingPanUrl,
     );
 
     if (!mounted) return;
@@ -173,6 +216,9 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final app = ref.watch(appControllerProvider);
+    final bool kycDone = app.kycCompleted;
+
     return AppShell(
       title: 'KYC Verification',
       subtitle: 'Upload identity & license details',
@@ -189,6 +235,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                 TextField(
                   controller: _licenseNumberCtrl,
                   textCapitalization: TextCapitalization.characters,
+                  enabled: !kycDone,
+                  onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(
                     labelText: 'License Number',
                     prefixIcon: Icon(Icons.badge_outlined),
@@ -199,6 +247,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   label: 'License Attachment',
                   fileName: _licenseFileName,
                   onPick: () => _pickFile('license'),
+                  existingUrl: _existingLicenseUrl,
+                  enabled: !kycDone,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -207,7 +257,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                       child: _DateTile(
                         label: 'Issuing Date',
                         value: _issuingDate,
-                        onTap: () => _pickDate(isIssuing: true),
+                        onTap: kycDone ? () {} : () => _pickDate(isIssuing: true),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -215,7 +265,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                       child: _DateTile(
                         label: 'Expiry Date',
                         value: _expiryDate,
-                        onTap: () => _pickDate(isIssuing: false),
+                        onTap: kycDone ? () {} : () => _pickDate(isIssuing: false),
                       ),
                     ),
                   ],
@@ -235,6 +285,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   controller: _aadharNoCtrl,
                   keyboardType: TextInputType.number,
                   maxLength: 12,
+                  enabled: !kycDone,
                   onChanged: (_) => setState(() {}),
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: const InputDecoration(
@@ -249,6 +300,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   fileName: _aadharFileName,
                   onPick: () => _pickFile('aadhar'),
                   required: true,
+                  existingUrl: _existingAadharUrl,
+                  enabled: !kycDone,
                 ),
               ],
             ),
@@ -265,6 +318,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   controller: _panNoCtrl,
                   textCapitalization: TextCapitalization.characters,
                   maxLength: 10,
+                  enabled: !kycDone,
                   decoration: const InputDecoration(
                     labelText: 'PAN Number',
                     prefixIcon: Icon(Icons.account_balance_wallet_outlined),
@@ -276,20 +330,22 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   label: 'PAN Attachment',
                   fileName: _panFileName,
                   onPick: () => _pickFile('pan'),
+                  existingUrl: _existingPanUrl,
+                  enabled: !kycDone,
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
-
-          // ---- Submit ----
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isFormValid && !_busy ? _submit : null,
-              child: Text(_busy ? 'Submitting...' : 'Submit KYC & Continue'),
+          if (!kycDone) ...[
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isFormValid && !_busy ? _submit : null,
+                child: Text(_busy ? 'Submitting...' : 'Submit KYC & Continue'),
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 20),
         ],
       ),
@@ -355,19 +411,25 @@ class _AttachTile extends StatelessWidget {
     required this.fileName,
     required this.onPick,
     this.required = false,
+    this.existingUrl,
+    this.enabled = true,
   });
 
   final String label;
   final String? fileName;
   final VoidCallback onPick;
   final bool required;
+  final String? existingUrl;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    final bool hasFile = fileName != null;
+    final bool hasNewFile = fileName != null;
+    final bool hasExisting = existingUrl != null && !hasNewFile;
+    final bool hasFile = hasNewFile || hasExisting;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: onPick,
+      onTap: enabled ? onPick : null,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
         decoration: BoxDecoration(
@@ -399,7 +461,7 @@ class _AttachTile extends StatelessWidget {
                       fontSize: 13,
                     ),
                   ),
-                  if (hasFile)
+                  if (hasNewFile)
                     Text(
                       fileName!,
                       style: const TextStyle(
@@ -407,6 +469,17 @@ class _AttachTile extends StatelessWidget {
                         color: Colors.black54,
                       ),
                       overflow: TextOverflow.ellipsis,
+                    )
+                  else if (hasExisting)
+                    const Row(
+                      children: [
+                        Icon(Icons.cloud_done_outlined, size: 13, color: Colors.green),
+                        SizedBox(width: 4),
+                        Text(
+                          'Already uploaded',
+                          style: TextStyle(fontSize: 11, color: Colors.green),
+                        ),
+                      ],
                     )
                   else
                     const Text(
@@ -416,7 +489,7 @@ class _AttachTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (hasFile)
+            if (hasFile && enabled)
               const Icon(Icons.edit, size: 16, color: Colors.black38),
           ],
         ),
