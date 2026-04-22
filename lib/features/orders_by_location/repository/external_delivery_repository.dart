@@ -161,6 +161,7 @@ class ExternalDeliveryRepository {
     String? storeName,
     String orderBy = 'store_name asc, modified desc',
     List<List<dynamic>>? filters,
+    List<List<dynamic>>? orFilters,
   }) async {
     final params = <String, String>{
       'fields': jsonEncode(_fields),
@@ -175,6 +176,9 @@ class ExternalDeliveryRepository {
     ];
     if (effectiveFilters.isNotEmpty) {
       params['filters'] = jsonEncode(effectiveFilters);
+    }
+    if (orFilters != null && orFilters.isNotEmpty) {
+      params['or_filters'] = jsonEncode(orFilters);
     }
 
     final uri = Uri.parse(
