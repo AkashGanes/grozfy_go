@@ -106,7 +106,7 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
       child: MaterialApp(
         navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
-        title: 'FlowFleet Partner',
+        title: 'Grozfy GO',
         theme: AppTheme.getTheme(
           mode: controller.themeMode,
           scaffoldBackgroundColor: controller.backgroundColor,

@@ -121,16 +121,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       color: Colors.white.withValues(alpha: 0.3),
                     ),
                   ),
-                  child: const Icon(
-                    Icons.local_shipping_rounded,
-                    size: 56,
-                    color: Colors.white,
+                  child: const Image(
+                    image: AssetImage('assets/images/logo.png'),
+                    width: 56,
+                    height: 56,
                   ),
                 ),
               ),
               const SizedBox(height: 24),
               Text(
-                'FlowFleet Partner',
+                'Grozfy GO',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,

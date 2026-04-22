@@ -1,4 +1,4 @@
-import 'package:delivery_partner_app/core/utils/html_utils.dart';
+import 'package:grozfy_go/core/utils/html_utils.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

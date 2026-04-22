@@ -1,4 +1,4 @@
-import 'package:delivery_partner_app/core/models/app_models.dart';
+import 'package:grozfy_go/core/models/app_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -227,7 +227,7 @@ class _DeliveryLocationPickerScreenState
                                 urlTemplate:
                                     'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                                 userAgentPackageName:
-                                    'com.example.delivery_partner_app',
+                                    'com.grozfy_go',
                               ),
                               MarkerLayer(
                                 markers: [
