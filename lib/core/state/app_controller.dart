@@ -2393,10 +2393,20 @@ class AppController extends ChangeNotifier {
     }
 
     try {
-      // Frappe only supports "Delivered" among the intermediate app statuses.
-      // reachedPickup, pickedUp, outForDelivery are tracked locally only.
-      if (status == OrderStatus.delivered) {
-        await _orderRepository.updateStatus(_activeOrder!.orderId, 'Delivered');
+      final String? frappeStatus = _toFrappeStatus(status);
+      if (frappeStatus != null) {
+        try {
+          await _orderRepository.updateStatus(
+            _activeOrder!.orderId,
+            frappeStatus,
+          );
+          _logApi(
+            'update_order_status',
+            'synced ${_activeOrder!.orderId} → $frappeStatus',
+          );
+        } catch (e) {
+          _logApi('update_order_status_warn', 'Frappe sync failed: $e');
+        }
       }
 
       _activeOrder = _activeOrder!.copyWith(
@@ -2615,6 +2625,17 @@ class AppController extends ChangeNotifier {
 
     try {
       await _orderRepository.updateStatus(orderId, 'Added to Trip');
+
+      // Create and submit an External Delivery Trip in Frappe so the web
+      // dashboard reflects the accepted order immediately.
+      try {
+        final String tripName = await _orderRepository
+            .createTripByOrderName(orderId);
+        _logApi('accept_order_trip', 'trip $tripName created for order $orderId');
+      } catch (e) {
+        _logApi('accept_order_trip_warn', 'trip creation failed (non-fatal): $e');
+      }
+
       _availableOrders.removeWhere((order) => order.orderId == orderId);
       final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
         orderId,
@@ -2703,6 +2724,21 @@ class AppController extends ChangeNotifier {
       return;
     }
     _acceptedOrders[acceptedIndex] = order;
+  }
+
+  String? _toFrappeStatus(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.reachedPickup:
+        return 'Reached Pickup';
+      case OrderStatus.pickedUp:
+        return 'Picked Up';
+      case OrderStatus.outForDelivery:
+        return 'Out for Delivery';
+      case OrderStatus.delivered:
+        return 'Delivered';
+      default:
+        return null;
+    }
   }
 
   OrderStatus _mapExternalStatus(String status) {

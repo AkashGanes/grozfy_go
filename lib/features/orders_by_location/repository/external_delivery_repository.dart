@@ -503,6 +503,69 @@ class ExternalDeliveryRepository {
     return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
   }
 
+  /// Creates and submits a single-stop trip using only the order name string.
+  /// Used by the order acceptance flow in [AppController].
+  Future<String> createTripByOrderName(String orderName) async {
+    final createPayload = <String, dynamic>{
+      'driver': ApiConstants.defaultExternalDeliveryDriver,
+      'status': 'Draft',
+      'trip_date': DateTime.now().toIso8601String().split('T').first,
+      'stops': <Map<String, String>>[
+        {'external_delivery': orderName},
+      ],
+    };
+
+    _logApi(
+      'external_delivery_trip_create request',
+      'POST ${ApiConstants.externalDeliveryTripList} order=$orderName',
+    );
+
+    final createResp = await _post(
+      Uri.parse(ApiConstants.externalDeliveryTripList),
+      headers: <String, String>{
+        ...await _authHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(createPayload),
+    );
+
+    if (!_okCodes.contains(createResp.statusCode)) {
+      throw Exception(_extractErrorMessage(createResp));
+    }
+
+    final createData = jsonDecode(createResp.body) as Map<String, dynamic>;
+    final createdDoc = createData['data'];
+    if (createdDoc is! Map<String, dynamic>) {
+      throw Exception('Trip create API returned unexpected response');
+    }
+
+    _logApi(
+      'external_delivery_trip_submit request',
+      'POST ${ApiConstants.frappeSubmitMethod} docname=${createdDoc['name']}',
+    );
+
+    final submitResp = await _post(
+      Uri.parse(ApiConstants.frappeSubmitMethod),
+      headers: <String, String>{
+        ...await _authHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'doc': createdDoc}),
+    );
+
+    if (!_okCodes.contains(submitResp.statusCode)) {
+      throw Exception(_extractErrorMessage(submitResp));
+    }
+
+    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
+    final submittedDoc = submitData['message'] ?? submitData['data'];
+    if (submittedDoc is! Map<String, dynamic>) {
+      throw Exception('Trip submit API returned unexpected response');
+    }
+
+    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+  }
+
   Future<List<ExternalDeliveryTripSummary>> fetchTripPage({
     int limitStart = 0,
   }) async {
