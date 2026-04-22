@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/services/api_service.dart';
+import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/utils/call_utils.dart';
 
@@ -739,13 +740,24 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final app = AppScope.of(context);
     final navigator = Navigator.of(context);
+    final String deliveryName = _resolveDeliveryName(app);
+
+    if (deliveryName.isEmpty) {
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('No active order found to cancel'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     scaffoldMessenger.showSnackBar(
-      SnackBar(content: Text('Cancelling delivery $_deliveryName...')),
+      SnackBar(content: Text('Cancelling delivery $deliveryName...')),
     );
 
     final success = await _apiService.updateDeliveryStatus(
-      _deliveryName,
+      deliveryName,
       'Cancelled',
     );
 
@@ -772,13 +784,24 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final app = AppScope.of(context);
     final navigator = Navigator.of(context);
+    final String deliveryName = _resolveDeliveryName(app);
+
+    if (deliveryName.isEmpty) {
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('No active order found to deliver'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     scaffoldMessenger.showSnackBar(
-      SnackBar(content: Text('Confirming delivery $_deliveryName...')),
+      SnackBar(content: Text('Confirming delivery $deliveryName...')),
     );
 
     final success = await _apiService.updateDeliveryStatus(
-      _deliveryName,
+      deliveryName,
       'Delivered',
     );
 
@@ -820,6 +843,20 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         ],
       ),
     );
+  }
+
+  String _resolveDeliveryName(AppController app) {
+    final String widgetName = widget.deliveryName?.trim() ?? '';
+    if (widgetName.isNotEmpty) {
+      return widgetName;
+    }
+
+    final String activeOrderId = app.activeOrder?.orderId.trim() ?? '';
+    if (activeOrderId.isNotEmpty) {
+      return activeOrderId;
+    }
+
+    return _deliveryName.trim();
   }
 
   void _showDemoLocationPicker() {

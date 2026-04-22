@@ -68,6 +68,7 @@ class AppController extends ChangeNotifier {
   static const String _prefThemeMode = 'theme_mode';
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
+  static const String _prefActiveOrderId = 'active_order_id';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 200;
   static const int _profileImageMaxDimension = 4096;
@@ -334,13 +335,11 @@ class AppController extends ChangeNotifier {
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
+    final String? persistedActiveOrderId = _nullIfBlank(
+      prefs.getString(_prefActiveOrderId),
+    );
 
     await PartnerWidgetManager.initialize();
-    await PartnerWidgetManager.updateWidget(
-      isOnline: _isOnline,
-      todayEarnings: _earnings.today,
-      activeOrder: _activeOrder,
-    );
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
     _currentLongitude = prefs.getDouble(_prefCurrentLng);
     _currentLocationLabel = _nullIfBlank(
@@ -366,9 +365,20 @@ class AppController extends ChangeNotifier {
         mobile: mobile,
         email: email,
       );
-
-      unawaited(fetchActiveOrder());
     }
+
+    if (persistedActiveOrderId != null) {
+      unawaited(_restoreActiveOrder(persistedActiveOrderId));
+    } else {
+      _activeOrder = null;
+      _acceptedOrders.clear();
+    }
+
+    await PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
 
     _bootstrapped = true;
 
@@ -1281,6 +1291,7 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefApiKey),
       prefs.remove(_prefApiSecret),
       prefs.remove(_prefClientId),
+      prefs.remove(_prefActiveOrderId),
       prefs.setBool(_prefRememberMe, false),
     ]);
     _rememberMe = false;
@@ -2360,6 +2371,7 @@ class AppController extends ChangeNotifier {
 
     if (accept) {
       _activeOrder = _incomingOrder;
+      unawaited(_persistActiveOrderId(_activeOrder?.orderId));
       _performance = _performance.copyWith(
         acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
       );
@@ -2423,9 +2435,10 @@ class AppController extends ChangeNotifier {
                   )
             : _activeOrder!.deliveryPartnerLocation,
       );
-      _replaceAcceptedOrder(_activeOrder!);
+    _replaceAcceptedOrder(_activeOrder!);
 
       if (status == OrderStatus.delivered) {
+        final String deliveredOrderId = _activeOrder!.orderId;
         final double payout = _activeOrder!.estimatedEarnings;
         _earnings = _earnings.copyWith(
           today: _earnings.today + payout,
@@ -2441,11 +2454,13 @@ class AppController extends ChangeNotifier {
           0,
           AppNotice(
             title: 'Delivery completed',
-            message: 'Order ${_activeOrder!.orderId} delivered successfully.',
+            message: 'Order $deliveredOrderId delivered successfully.',
             time: DateTime.now(),
           ),
         );
+        _acceptedOrders.removeWhere((order) => order.orderId == deliveredOrderId);
         _activeOrder = null;
+        unawaited(_persistActiveOrderId(null));
       } else if (status == OrderStatus.reachedPickup) {
         _notices.insert(
           0,
@@ -2471,6 +2486,14 @@ class AppController extends ChangeNotifier {
 
   void clearActiveOrder() {
     _activeOrder = null;
+    unawaited(_persistActiveOrderId(null));
+    unawaited(
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
+      ),
+    );
     notifyListeners();
   }
 
@@ -2543,36 +2566,43 @@ class AppController extends ChangeNotifier {
     _isFetchingActiveOrder = true;
     notifyListeners();
     try {
-      final List<ExternalDelivery> summaries = await _orderRepository
-          .fetchActiveSummaries();
-      final List<ExternalDelivery> activeSummaries = summaries.where((
-        ExternalDelivery summary,
-      ) {
-        final OrderStatus status = _mapExternalStatus(summary.status);
-        return status == OrderStatus.accepted ||
-            status == OrderStatus.reachedPickup ||
-            status == OrderStatus.pickedUp ||
-            status == OrderStatus.outForDelivery;
-      }).toList();
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? activeOrderId = _nullIfBlank(
+        prefs.getString(_prefActiveOrderId),
+      );
 
-      if (activeSummaries.isEmpty) {
+      if (activeOrderId == null) {
         _activeOrder = null;
         _acceptedOrders.clear();
+        await _persistActiveOrderId(null);
+        PartnerWidgetManager.updateWidget(
+          isOnline: _isOnline,
+          todayEarnings: _earnings.today,
+          activeOrder: _activeOrder,
+        );
         notifyListeners();
         return;
       }
 
-      final ExternalDelivery summary = _activeOrder != null
-          ? activeSummaries.firstWhere(
-              (item) => item.name == _activeOrder!.orderId,
-              orElse: () => activeSummaries.first,
-            )
-          : activeSummaries.first;
-
       final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
-        summary.name,
+        activeOrderId,
       );
       final OrderStatus status = _mapExternalStatus(detail.status);
+      if (status == OrderStatus.delivered ||
+          status == OrderStatus.cancelled ||
+          status == OrderStatus.rejected ||
+          status == OrderStatus.pending) {
+        _activeOrder = null;
+        _acceptedOrders.removeWhere((order) => order.orderId == activeOrderId);
+        await _persistActiveOrderId(null);
+        PartnerWidgetManager.updateWidget(
+          isOnline: _isOnline,
+          todayEarnings: _earnings.today,
+          activeOrder: _activeOrder,
+        );
+        notifyListeners();
+        return;
+      }
       _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
         orderStatus: status,
         assignmentStatus: OrderAssignmentStatus.assigned,
@@ -2586,6 +2616,7 @@ class AppController extends ChangeNotifier {
         deliveryPartnerLocation: _partnerLiveLocation,
       );
       _replaceAcceptedOrder(_activeOrder!);
+      await _persistActiveOrderId(_activeOrder!.orderId);
       PartnerWidgetManager.updateWidget(
         isOnline: _isOnline,
         todayEarnings: _earnings.today,
@@ -2649,6 +2680,7 @@ class AppController extends ChangeNotifier {
         assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
       );
       _replaceAcceptedOrder(_activeOrder!);
+      unawaited(_persistActiveOrderId(_activeOrder!.orderId));
       _performance = _performance.copyWith(
         acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
       );
@@ -2679,6 +2711,7 @@ class AppController extends ChangeNotifier {
     _acceptedOrders.removeWhere((order) => order.orderId == orderId);
     if (_activeOrder?.orderId == orderId) {
       _activeOrder = null;
+      unawaited(_persistActiveOrderId(null));
     }
 
     _performance = _performance.copyWith(
@@ -2724,6 +2757,58 @@ class AppController extends ChangeNotifier {
       return;
     }
     _acceptedOrders[acceptedIndex] = order;
+  }
+
+  Future<void> _persistActiveOrderId(String? orderId) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String normalized = _nullIfBlank(orderId) ?? '';
+    if (normalized.isEmpty) {
+      await prefs.remove(_prefActiveOrderId);
+    } else {
+      await prefs.setString(_prefActiveOrderId, normalized);
+    }
+  }
+
+  Future<void> _restoreActiveOrder(String orderId) async {
+    try {
+      final ExternalDeliveryDetail detail =
+          await _orderRepository.fetchDetail(orderId);
+      final OrderStatus status = _mapExternalStatus(detail.status);
+      if (status == OrderStatus.delivered ||
+          status == OrderStatus.cancelled ||
+          status == OrderStatus.rejected ||
+          status == OrderStatus.pending) {
+        _activeOrder = null;
+        _acceptedOrders.clear();
+        await _persistActiveOrderId(null);
+        notifyListeners();
+        return;
+      }
+
+      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
+        orderStatus: status,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+        assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+        reachedStoreAt: status == OrderStatus.reachedPickup
+            ? DateTime.now()
+            : null,
+        deliveryPartnerLocation: _partnerLiveLocation,
+      );
+      _replaceAcceptedOrder(_activeOrder!);
+      await _persistActiveOrderId(_activeOrder!.orderId);
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
+      );
+      notifyListeners();
+    } catch (e) {
+      _logApi('restore_active_order_warn', e.toString());
+      _activeOrder = null;
+      _acceptedOrders.clear();
+      await _persistActiveOrderId(null);
+      notifyListeners();
+    }
   }
 
   String? _toFrappeStatus(OrderStatus status) {
