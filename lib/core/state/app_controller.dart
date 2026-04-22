@@ -62,6 +62,10 @@ class AppController extends ChangeNotifier {
   static const String _prefApiSecret = 'api_secret';
   static const String _prefClientId = 'client_id';
   static const String _prefIsOnline = 'is_online';
+  static const String _prefPermForeground = 'perm_foreground_location';
+  static const String _prefPermBackground = 'perm_background_location';
+  static const String _prefPermNotification = 'perm_notification';
+  static const String _prefLicenseRequiresReupload = 'license_requires_reupload';
   static const String _prefThemeMode = 'theme_mode';
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
@@ -356,6 +360,13 @@ class AppController extends ChangeNotifier {
         ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)];
     _backgroundColorValue = prefs.getInt(_prefBackgroundColor) ?? 0xFFF0F4FA;
     _accentColorValue = prefs.getInt(_prefAccentColor) ?? 0xFF1C4E80;
+    _permissionState = PermissionState(
+      foregroundLocation: prefs.getBool(_prefPermForeground) ?? false,
+      backgroundLocation: prefs.getBool(_prefPermBackground) ?? false,
+      notification: prefs.getBool(_prefPermNotification) ?? false,
+    );
+    _licenseRequiresReupload =
+        prefs.getBool(_prefLicenseRequiresReupload) ?? false;
     _isLoggedIn = _sessionToken != null;
     if (_isLoggedIn) {
       final String fullName =
@@ -375,6 +386,22 @@ class AppController extends ChangeNotifier {
     unawaited(FCMService().subscribe(this));
 
     notifyListeners();
+
+    // Background-fetch backend data so profile completeness is correct on open
+    if (_isLoggedIn) {
+      unawaited(_backgroundSync());
+    }
+  }
+
+  /// Fetches profile first (so _driverName is set), then hydrates vehicle
+  /// and bank in parallel. Used on bootstrap, login, and registration so the
+  /// profile completeness section is correct without a manual refresh.
+  Future<void> _backgroundSync() async {
+    await fetchLoggedInEmployeeDriverProfile();
+    await Future.wait(<Future<void>>[
+      hydrateVehicleFromBackend(),
+      hydrateBankFromBackend(),
+    ]);
   }
 
   Future<void> initializeConnectivity() async {
@@ -1049,6 +1076,8 @@ class AppController extends ChangeNotifier {
       unawaited(FCMService().subscribe(this));
 
       notifyListeners();
+      unawaited(_backgroundSync());
+
       return null;
     } catch (e) {
       _logApi('verify_whatsapp_otp error', e.toString());
@@ -1219,6 +1248,8 @@ class AppController extends ChangeNotifier {
 
       await _persistSession(responseData);
       notifyListeners();
+      unawaited(_backgroundSync());
+
       return null;
     } catch (e) {
       _logApi('register_delivery_partner error', e.toString());
@@ -1283,6 +1314,10 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefApiSecret),
       prefs.remove(_prefClientId),
       prefs.setBool(_prefRememberMe, false),
+      prefs.remove(_prefPermForeground),
+      prefs.remove(_prefPermBackground),
+      prefs.remove(_prefPermNotification),
+      prefs.remove(_prefLicenseRequiresReupload),
     ]);
     _rememberMe = false;
     notifyListeners();
@@ -1429,6 +1464,10 @@ class AppController extends ChangeNotifier {
     final removed = licenseNumber == null && licenseAttachment == null;
     if (_licenseRequiresReupload != removed) {
       _licenseRequiresReupload = removed;
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.setBool(_prefLicenseRequiresReupload, removed),
+      );
       notifyListeners();
     }
   }
@@ -1436,6 +1475,10 @@ class AppController extends ChangeNotifier {
   void clearLicenseReuploadFlag() {
     if (_licenseRequiresReupload) {
       _licenseRequiresReupload = false;
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.remove(_prefLicenseRequiresReupload),
+      );
       notifyListeners();
     }
   }
@@ -1654,8 +1697,32 @@ class AppController extends ChangeNotifier {
       }
       if (data == null && licensePlate != null) {
         _logApi('vehicle.hydrate', 'fetch by license_plate=$licensePlate');
+        data = await fetchVehicleByLicensePlate(licensePlate);
       }
-      data ??= await fetchVehicleByLicensePlate(licensePlate ?? '');
+      // Fallback: vehicle linked directly in driver profile doc
+      if (data == null) {
+        final String? vehicleFromDriver = _nullIfBlank(
+          _loggedProfileDetails?.driver?['vehicle']?.toString(),
+        );
+        if (vehicleFromDriver != null) {
+          _logApi('vehicle.hydrate', 'fetch by driver.vehicle=$vehicleFromDriver');
+          data = await fetchVehicleByName(vehicleFromDriver);
+        }
+      }
+      // Fallback: search by driver name
+      if (data == null && _driverName != null) {
+        _logApi('vehicle.hydrate', 'search by driver=$_driverName');
+        final String? name = await _findResourceName(
+          doctype: 'Vehicle',
+          filters: <List<String>>[
+            <String>['Vehicle', 'driver', '=', _driverName!],
+          ],
+          fields: <String>['name'],
+        );
+        if (name != null) {
+          data = await _fetchResourceDoc('Vehicle', name);
+        }
+      }
       if (data == null) {
         _logApi('vehicle.hydrate', 'no vehicle found');
         return;
@@ -1862,6 +1929,21 @@ class AppController extends ChangeNotifier {
           doctype: 'Bank Account',
           filters: <List<String>>[
             <String>['Bank Account', 'account_name', '=', accountName],
+          ],
+          fields: <String>['name'],
+        );
+        if (name != null) {
+          data = await _fetchResourceDoc('Bank Account', name);
+        }
+      }
+      // Fallback: search by driver as party
+      if (data == null && _driverName != null) {
+        _logApi('bank.hydrate', 'search by party=Driver/$_driverName');
+        final String? name = await _findResourceName(
+          doctype: 'Bank Account',
+          filters: <List<String>>[
+            <String>['Bank Account', 'party_type', '=', 'Driver'],
+            <String>['Bank Account', 'party', '=', _driverName!],
           ],
           fields: <String>['name'],
         );
@@ -2259,6 +2341,15 @@ class AppController extends ChangeNotifier {
       backgroundLocation: background,
       notification: notification,
     );
+    if (foreground != null) {
+      _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermForeground, foreground));
+    }
+    if (background != null) {
+      _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermBackground, background));
+    }
+    if (notification != null) {
+      _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermNotification, notification));
+    }
     notifyListeners();
   }
 
