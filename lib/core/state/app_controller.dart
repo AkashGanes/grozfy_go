@@ -169,6 +169,7 @@ class AppController extends ChangeNotifier {
       ExternalDeliveryRepository();
   bool _isLoadingOrders = false;
   String? _orderLoadingError;
+  bool _isFetchingActiveOrder = false;
   Timer? _liveLocationTimer;
   GeoLocation? _partnerLiveLocation;
 
@@ -366,11 +367,7 @@ class AppController extends ChangeNotifier {
         email: email,
       );
 
-      try {
-        await fetchActiveOrder();
-      } catch (e) {
-        _logApi('bootstrap active_order_warn', e.toString());
-      }
+      unawaited(fetchActiveOrder());
     }
 
     _bootstrapped = true;
@@ -1103,10 +1100,10 @@ class AppController extends ChangeNotifier {
       if (newToken == null) return false;
 
       _sessionToken = newToken;
-      _tokenType =
-          _nullIfBlank(data['token_type']?.toString()) ?? _tokenType;
-      final String? newRefresh =
-          _nullIfBlank(data['refresh_token']?.toString());
+      _tokenType = _nullIfBlank(data['token_type']?.toString()) ?? _tokenType;
+      final String? newRefresh = _nullIfBlank(
+        data['refresh_token']?.toString(),
+      );
       if (newRefresh != null) {
         _refreshToken = newRefresh;
       }
@@ -1115,10 +1112,8 @@ class AppController extends ChangeNotifier {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await Future.wait(<Future<bool>>[
         prefs.setString(_prefAccessToken, _sessionToken!),
-        if (_tokenType.isNotEmpty)
-          prefs.setString(_prefTokenType, _tokenType),
-        if (newRefresh != null)
-          prefs.setString(_prefRefreshToken, newRefresh),
+        if (_tokenType.isNotEmpty) prefs.setString(_prefTokenType, _tokenType),
+        if (newRefresh != null) prefs.setString(_prefRefreshToken, newRefresh),
       ]);
 
       _logApi('refresh_token', 'session refreshed successfully');
@@ -2479,6 +2474,8 @@ class AppController extends ChangeNotifier {
 
   String? get orderLoadingError => _orderLoadingError;
 
+  bool get isFetchingActiveOrder => _isFetchingActiveOrder;
+
   GeoLocation? get partnerLiveLocation => _partnerLiveLocation;
 
   Future<void> fetchAvailableOrders() async {
@@ -2491,14 +2488,25 @@ class AppController extends ChangeNotifier {
           .fetchAllByStatus('Pending');
       final List<DeliveryOrder> orders = <DeliveryOrder>[];
 
-      for (final ExternalDelivery summary in summaries) {
-        try {
-          final ExternalDeliveryDetail detail = await _orderRepository
-              .fetchDetail(summary.name);
-          orders.add(_deliveryOrderFromDetail(detail));
-        } catch (e) {
-          _logApi('fetch_available_order_detail_warn', e.toString());
-        }
+      const int batchSize = 6;
+      for (int index = 0; index < summaries.length; index += batchSize) {
+        final List<ExternalDelivery> batch = summaries
+            .skip(index)
+            .take(batchSize)
+            .toList();
+        final List<DeliveryOrder?> batchOrders = await Future.wait(
+          batch.map((ExternalDelivery summary) async {
+            try {
+              final ExternalDeliveryDetail detail = await _orderRepository
+                  .fetchDetail(summary.name);
+              return _deliveryOrderFromDetail(detail);
+            } catch (e) {
+              _logApi('fetch_available_order_detail_warn', e.toString());
+              return null;
+            }
+          }),
+        );
+        orders.addAll(batchOrders.whereType<DeliveryOrder>());
       }
 
       orders.sort((DeliveryOrder a, DeliveryOrder b) {
@@ -2522,9 +2530,11 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> fetchActiveOrder() async {
+    _isFetchingActiveOrder = true;
+    notifyListeners();
     try {
       final List<ExternalDelivery> summaries = await _orderRepository
-          .fetchPage(limitStart: 0);
+          .fetchActiveSummaries();
       final List<ExternalDelivery> activeSummaries = summaries.where((
         ExternalDelivery summary,
       ) {
@@ -2556,7 +2566,8 @@ class AppController extends ChangeNotifier {
       _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
         orderStatus: status,
         assignmentStatus: OrderAssignmentStatus.assigned,
-        assignedDeliveryPartnerId: _profile?.mobile ??
+        assignedDeliveryPartnerId:
+            _profile?.mobile ??
             _activeOrder?.assignedDeliveryPartnerId ??
             'PARTNER001',
         reachedStoreAt: status == OrderStatus.reachedPickup
@@ -2575,6 +2586,9 @@ class AppController extends ChangeNotifier {
       _logApi('fetch_active_order_warn', e.toString());
       _activeOrder = null;
       notifyListeners();
+    } finally {
+      _isFetchingActiveOrder = false;
+      notifyListeners();
     }
   }
 
@@ -2582,10 +2596,17 @@ class AppController extends ChangeNotifier {
     final int index = _availableOrders.indexWhere(
       (order) => order.orderId == orderId,
     );
-    final DeliveryOrder? cachedOrder =
-        index >= 0 ? _availableOrders[index] : null;
+    DeliveryOrder? cachedOrder = index >= 0 ? _availableOrders[index] : null;
+
     if (cachedOrder == null) {
-      return 'Order not found';
+      try {
+        final ExternalDeliveryDetail detail = await _orderRepository
+            .fetchDetail(orderId);
+        cachedOrder = _deliveryOrderFromDetail(detail);
+      } catch (e) {
+        _logApi('accept_order_lookup_warn', e.toString());
+        return 'Order not found';
+      }
     }
 
     if (cachedOrder.assignmentStatus == OrderAssignmentStatus.assigned) {
@@ -2600,10 +2621,9 @@ class AppController extends ChangeNotifier {
       );
       final OrderStatus fetchedStatus = _mapExternalStatus(detail.status);
       _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
-        orderStatus:
-            fetchedStatus == OrderStatus.pending
-                ? OrderStatus.accepted
-                : fetchedStatus,
+        orderStatus: fetchedStatus == OrderStatus.pending
+            ? OrderStatus.accepted
+            : fetchedStatus,
         assignmentStatus: OrderAssignmentStatus.assigned,
         assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
       );
@@ -2769,6 +2789,10 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  DeliveryOrder buildDeliveryOrderFromDetail(ExternalDeliveryDetail detail) {
+    return _deliveryOrderFromDetail(detail);
+  }
+
   bool validateProximityToStore(
     double storeLat,
     double storeLng,
@@ -2878,14 +2902,12 @@ class AppController extends ChangeNotifier {
   }
 
   void _updateLiveLocation() {
-    final double baseLat = _currentLatitude ?? 28.6139;
-    final double baseLng = _currentLongitude ?? 77.2090;
+    if (_currentLatitude == null || _currentLongitude == null) return;
     _partnerLiveLocation = GeoLocation(
-      latitude: baseLat + (_random.nextDouble() - 0.5) / 100,
-      longitude: baseLng + (_random.nextDouble() - 0.5) / 100,
+      latitude: _currentLatitude!,
+      longitude: _currentLongitude!,
     );
-    if (_activeOrder != null &&
-        _activeOrder!.orderStatus == OrderStatus.reachedPickup) {
+    if (_activeOrder != null) {
       _activeOrder = _activeOrder!.copyWith(
         deliveryPartnerLocation: _partnerLiveLocation,
       );
@@ -2925,7 +2947,9 @@ class AppController extends ChangeNotifier {
     final String? driverName = _nullIfBlank(message['driver_name']?.toString());
     final String? clientId = _nullIfBlank(message['client_id']?.toString());
     final String? apiKey = _nullIfBlank(message['api_key']?.toString());
-    final String? apiSecretVal = _nullIfBlank(message['api_secret']?.toString());
+    final String? apiSecretVal = _nullIfBlank(
+      message['api_secret']?.toString(),
+    );
     final int? expiresIn = int.tryParse(
       message['expires_in']?.toString() ?? '',
     );
@@ -3371,8 +3395,7 @@ class AppController extends ChangeNotifier {
       final http.Response retryResp = await http
           .get(uri, headers: refreshedHeaders)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3414,13 +3437,13 @@ class AppController extends ChangeNotifier {
     }
 
     if (await refreshSession()) {
-      final Map<String, String> refreshedHeaders =
-          _authorizationHeaders(contentType: 'application/json').first;
+      final Map<String, String> refreshedHeaders = _authorizationHeaders(
+        contentType: 'application/json',
+      ).first;
       final http.Response retryResp = await http
           .put(uri, headers: refreshedHeaders, body: encodedBody)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3469,13 +3492,13 @@ class AppController extends ChangeNotifier {
     }
 
     if (await refreshSession()) {
-      final Map<String, String> refreshedHeaders =
-          _authorizationHeaders(contentType: 'application/json').first;
+      final Map<String, String> refreshedHeaders = _authorizationHeaders(
+        contentType: 'application/json',
+      ).first;
       final http.Response retryResp = await http
           .post(uri, headers: refreshedHeaders, body: encodedBody)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3517,8 +3540,7 @@ class AppController extends ChangeNotifier {
       final http.Response retryResp = await http
           .get(uri, headers: refreshedHeaders)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3561,8 +3583,7 @@ class AppController extends ChangeNotifier {
       final http.Response retryResp = await http
           .post(uri, headers: refreshedHeaders, body: body)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3608,8 +3629,7 @@ class AppController extends ChangeNotifier {
         ..headers.addAll(refreshedHeaders)
         ..fields.addAll(fields)
         ..files.add(await http.MultipartFile.fromPath('file', filePath));
-      final retryStreamed =
-          await retryRequest.send().timeout(_networkTimeout);
+      final retryStreamed = await retryRequest.send().timeout(_networkTimeout);
       final retryResp = await http.Response.fromStream(retryStreamed);
       final retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
@@ -3665,11 +3685,13 @@ class AppController extends ChangeNotifier {
         ..headers.addAll(refreshedHeaders)
         ..fields.addAll(fields)
         ..files.add(
-          await http.MultipartFile.fromPath('file', filePath,
-              filename: fileName),
+          await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            filename: fileName,
+          ),
         );
-      final retryStreamed =
-          await retryRequest.send().timeout(_networkTimeout);
+      final retryStreamed = await retryRequest.send().timeout(_networkTimeout);
       final retryResp = await http.Response.fromStream(retryStreamed);
       final retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
@@ -3970,8 +3992,9 @@ class AppController extends ChangeNotifier {
       authHeaders.add(bearerHeaders);
     }
     if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
-      final String altType =
-          _tokenType.trim().toLowerCase() == 'token' ? 'Bearer' : 'token';
+      final String altType = _tokenType.trim().toLowerCase() == 'token'
+          ? 'Bearer'
+          : 'token';
       final Map<String, String> tokenHeaders = <String, String>{
         'Accept': 'application/json',
         'Authorization': '$altType ${_sessionToken!.trim()}',

@@ -381,7 +381,22 @@ class DashboardScreen extends StatelessWidget {
           const SizedBox(height: 14),
           const SectionLabel('Active Order'),
           FrostCard(
-            child: app.activeOrder == null
+            child: app.isFetchingActiveOrder
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(width: 12),
+                        Text('Loading active order...'),
+                      ],
+                    ),
+                  )
+                : app.activeOrder == null
                 ? Row(
                     children: [
                       const Expanded(child: Text('No active order right now.')),

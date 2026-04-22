@@ -1,8 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/app_models.dart';
@@ -31,11 +29,9 @@ class NavigationScreen extends StatelessWidget {
       );
     }
 
-    final dropPoint = LatLng(order.latitude, order.longitude);
-
     return AppShell(
       title: 'Navigation',
-      subtitle: 'Route to delivery location',
+      subtitle: 'Route summary',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -43,47 +39,74 @@ class NavigationScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  height: 220,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: FlutterMap(
-                      options: MapOptions(
-                        initialCenter: dropPoint,
-                        initialZoom: 14.0,
+                const Row(
+                  children: [
+                    Icon(Icons.route_rounded, color: Colors.deepOrange),
+                    SizedBox(width: 8),
+                    Text(
+                      'Delivery Route',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
                       ),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'com.lyncspace.grozfy_go',
-                        ),
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: dropPoint,
-                              width: 44,
-                              height: 44,
-                              child: const Icon(
-                                Icons.location_on,
-                                color: Colors.red,
-                                size: 40,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
                     ),
-                  ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _StepTile(
+                  icon: Icons.store_rounded,
+                  iconColor: Colors.blue,
+                  title: 'Pickup store',
+                  subtitle: order.pickup,
                 ),
                 const SizedBox(height: 12),
-                _row('Pickup', order.pickup),
-                _row('Drop', order.drop),
-                _row(
-                  'Coordinates',
-                  '${order.latitude.toStringAsFixed(5)}, ${order.longitude.toStringAsFixed(5)}',
+                const Padding(
+                  padding: EdgeInsets.only(left: 16),
+                  child: Icon(Icons.arrow_downward_rounded, color: Colors.grey),
                 ),
-                _row('Distance', '${order.distanceKm.toStringAsFixed(1)} km'),
+                const SizedBox(height: 12),
+                _StepTile(
+                  icon: Icons.location_on_rounded,
+                  iconColor: Colors.red,
+                  title: 'Delivery drop',
+                  subtitle: order.drop.isNotEmpty
+                      ? order.drop
+                      : order.deliveryAddress,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _StatChip(
+                        icon: Icons.straighten_rounded,
+                        label: 'Distance',
+                        value: '${order.distanceKm.toStringAsFixed(1)} km',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _StatChip(
+                        icon: Icons.sell_rounded,
+                        label: 'Earnings',
+                        value:
+                            'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _InfoLine(
+                  icon: Icons.pin_drop_rounded,
+                  label: 'Coordinates',
+                  value:
+                      '${order.latitude.toStringAsFixed(5)}, ${order.longitude.toStringAsFixed(5)}',
+                ),
+                const SizedBox(height: 8),
+                _InfoLine(
+                  icon: Icons.receipt_long_rounded,
+                  label: 'Order',
+                  value: order.orderId,
+                ),
               ],
             ),
           ),
@@ -127,19 +150,15 @@ class NavigationScreen extends StatelessWidget {
     double lat,
     double lng,
   ) async {
-    // Native Google Maps turn-by-turn navigation
     final Uri nativeUri = Platform.isAndroid
         ? Uri.parse('google.navigation:q=$lat,$lng&mode=d')
-        : Uri.parse(
-            'comgooglemaps://?daddr=$lat,$lng&directionsmode=driving',
-          );
+        : Uri.parse('comgooglemaps://?daddr=$lat,$lng&directionsmode=driving');
 
     if (await canLaunchUrl(nativeUri)) {
       await launchUrl(nativeUri);
       return;
     }
 
-    // Fallback: open in browser / OS map handler
     final Uri webUri = Uri.parse(
       'https://www.google.com/maps/dir/?api=1'
       '&destination=$lat,$lng'
@@ -157,25 +176,137 @@ class NavigationScreen extends StatelessWidget {
       );
     }
   }
+}
 
-  Widget _row(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+class _StepTile extends StatelessWidget {
+  const _StepTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: iconColor),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Colors.black54, height: 1.3),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  const _StatChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black12),
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 90,
-            child: Text(label, style: const TextStyle(color: Colors.black54)),
+          Row(
+            children: [
+              Icon(icon, size: 16, color: Colors.deepOrange),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.black54,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
+          const SizedBox(height: 6),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
         ],
       ),
+    );
+  }
+}
+
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: Colors.grey),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 86,
+          child: Text(
+            label,
+            style: const TextStyle(color: Colors.black54, fontSize: 12),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
     );
   }
 }

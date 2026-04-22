@@ -157,18 +157,24 @@ class ExternalDeliveryRepository {
 
   Future<List<ExternalDelivery>> fetchPage({
     int limitStart = 0,
+    int limitPageLength = pageSize,
     String? storeName,
+    String orderBy = 'store_name asc, modified desc',
+    List<List<dynamic>>? filters,
   }) async {
     final params = <String, String>{
       'fields': jsonEncode(_fields),
       'limit_start': '$limitStart',
-      'limit_page_length': '$pageSize',
-      'order_by': 'store_name asc, modified desc',
+      'limit_page_length': '$limitPageLength',
+      'order_by': orderBy,
     };
-    if (storeName != null && storeName.isNotEmpty) {
-      params['filters'] = jsonEncode([
-        ['External Delivery', 'store_name', '=', storeName],
-      ]);
+    final List<List<dynamic>> effectiveFilters = <List<dynamic>>[
+      if (filters != null) ...filters,
+      if (storeName != null && storeName.isNotEmpty)
+        <dynamic>['External Delivery', 'store_name', '=', storeName],
+    ];
+    if (effectiveFilters.isNotEmpty) {
+      params['filters'] = jsonEncode(effectiveFilters);
     }
 
     final uri = Uri.parse(
@@ -192,6 +198,29 @@ class ExternalDeliveryRepository {
     return data
         .map((row) => ExternalDelivery.fromJson(row as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<List<ExternalDelivery>> fetchActiveSummaries({
+    int limitPageLength = 5,
+  }) async {
+    return fetchPage(
+      limitStart: 0,
+      limitPageLength: limitPageLength,
+      orderBy: 'modified desc',
+      filters: <List<dynamic>>[
+        <dynamic>[
+          'External Delivery',
+          'status',
+          'in',
+          <String>[
+            'Accepted',
+            'Added to Trip',
+            'Picked Up',
+            'Out for Delivery',
+          ],
+        ],
+      ],
+    );
   }
 
   /// Fetches all External Delivery records with [status] using server-side
@@ -224,7 +253,10 @@ class ExternalDeliveryRepository {
     }
 
     final data = (jsonDecode(resp.body)['data']) as List;
-    _logApi('external_delivery_pending_list', 'fetched ${data.length} records with status=$status');
+    _logApi(
+      'external_delivery_pending_list',
+      'fetched ${data.length} records with status=$status',
+    );
     return data
         .map((row) => ExternalDelivery.fromJson(row as Map<String, dynamic>))
         .toList();
@@ -273,7 +305,10 @@ class ExternalDeliveryRepository {
     );
 
     if (!_okCodes.contains(resp.statusCode)) {
-      _logApi('external_delivery_status_update error', 'code=${resp.statusCode} body=${resp.body}');
+      _logApi(
+        'external_delivery_status_update error',
+        'code=${resp.statusCode} body=${resp.body}',
+      );
       throw Exception(_extractErrorMessage(resp));
     }
   }
@@ -293,7 +328,10 @@ class ExternalDeliveryRepository {
         'value': status,
       }),
     );
-    _logApi('external_delivery_set_value response', 'code=${resp.statusCode} body=${resp.body}');
+    _logApi(
+      'external_delivery_set_value response',
+      'code=${resp.statusCode} body=${resp.body}',
+    );
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));
     }
@@ -303,7 +341,10 @@ class ExternalDeliveryRepository {
     final uri = Uri.parse(
       '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
     );
-    _logApi('accept_order_with_partner request', 'name=$name partner=$partnerMobile');
+    _logApi(
+      'accept_order_with_partner request',
+      'name=$name partner=$partnerMobile',
+    );
     final resp = await _put(
       uri,
       headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
@@ -314,7 +355,10 @@ class ExternalDeliveryRepository {
         'assigned_to': partnerMobile,
       }),
     );
-    _logApi('accept_order_with_partner response', 'code=${resp.statusCode} body=${resp.body}');
+    _logApi(
+      'accept_order_with_partner response',
+      'code=${resp.statusCode} body=${resp.body}',
+    );
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));
     }
@@ -328,7 +372,8 @@ class ExternalDeliveryRepository {
     if (!_okCodes.contains(detailResp.statusCode)) {
       throw Exception(_extractErrorMessage(detailResp));
     }
-    final docData = (jsonDecode(detailResp.body)['data']) as Map<String, dynamic>;
+    final docData =
+        (jsonDecode(detailResp.body)['data']) as Map<String, dynamic>;
 
     final uri = Uri.parse(
       '${ApiConstants.erpBaseUrl}/api/method/frappe.model.workflow.apply_workflow',
@@ -339,7 +384,10 @@ class ExternalDeliveryRepository {
       headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
       body: jsonEncode({'doc': docData, 'action': 'Accept'}),
     );
-    _logApi('apply_workflow_accept response', 'code=${resp.statusCode} body=${resp.body}');
+    _logApi(
+      'apply_workflow_accept response',
+      'code=${resp.statusCode} body=${resp.body}',
+    );
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));
     }

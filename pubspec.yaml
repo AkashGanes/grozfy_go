@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.5.0
   shared_preferences: ^2.5.3
+  google_maps_flutter: ^2.12.3
   flutter_map: ^8.2.2
   flutter_map_animations: ^0.9.0
   latlong2: ^0.9.1
