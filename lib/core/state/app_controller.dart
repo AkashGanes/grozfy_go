@@ -1262,27 +1262,14 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    // Revoke tokens on the server before clearing them locally. Best-effort:
-    // if the network is down we still proceed with local cleanup so the user
-    // can complete logout offline.
+    // Snapshot credentials before we clear them — needed by the background
+    // server-side cleanup below.
     final String? accessToRevoke = _sessionToken;
     final String? refreshToRevoke = _refreshToken;
-    if (accessToRevoke != null && accessToRevoke.isNotEmpty) {
-      await _revokeTokenOnServer(accessToRevoke);
-    }
-    if (refreshToRevoke != null &&
-        refreshToRevoke.isNotEmpty &&
-        refreshToRevoke != accessToRevoke) {
-      await _revokeTokenOnServer(refreshToRevoke);
-    }
 
-    // Unsubscribe FCM while sessionToken is still populated (it needs it).
-    try {
-      await FCMService().unsubscribe(this);
-    } catch (e) {
-      _logApi('fcm unsubscribe error', e.toString());
-    }
-
+    // Clear in-memory state first. notifyListeners() runs synchronously so
+    // any listener that routes on auth state (or the login route below)
+    // sees the logged-out state immediately.
     _isLoggedIn = false;
     _sessionToken = null;
     _tokenType = 'Bearer';
@@ -1312,7 +1299,11 @@ class AppController extends ChangeNotifier {
     _uomOptions = <String>[];
     _vehicleFuelOptions = <String>[];
     _vehicleRequiredFields = <String>{};
+    _rememberMe = false;
+    notifyListeners();
 
+    // Local persistence — Keystore and SharedPreferences writes are fast
+    // (<100ms), keep them awaited so the next login doesn't race them.
     await PartnerWidgetManager.clearWidget();
     await SecureTokenStorage.deleteAll();
 
@@ -1333,8 +1324,20 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefBankAccountName),
       prefs.setBool(_prefRememberMe, false),
     ]);
-    _rememberMe = false;
-    notifyListeners();
+
+    // Server-side cleanup — fire-and-forget so the caller's navigation
+    // happens instantly instead of waiting on 2-3 sequential HTTP calls.
+    if (accessToRevoke != null && accessToRevoke.isNotEmpty) {
+      unawaited(_revokeTokenOnServer(accessToRevoke));
+      unawaited(
+        FCMService().unsubscribeWithToken(bearerToken: accessToRevoke),
+      );
+    }
+    if (refreshToRevoke != null &&
+        refreshToRevoke.isNotEmpty &&
+        refreshToRevoke != accessToRevoke) {
+      unawaited(_revokeTokenOnServer(refreshToRevoke));
+    }
   }
 
   /// Upload a file to the Driver record via custom upload_kyc_file API.

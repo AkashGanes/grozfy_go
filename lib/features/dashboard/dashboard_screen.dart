@@ -82,14 +82,30 @@ class DashboardScreen extends StatelessWidget {
                   content: const Text(
                     'You will need to sign in again to continue.',
                   ),
+                  actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(false),
-                      child: const Text('Cancel'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(true),
-                      child: const Text('Log out'),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(false),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(true),
+                            child: const Text('Log out'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 );

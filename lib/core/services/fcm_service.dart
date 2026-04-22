@@ -103,6 +103,36 @@ class FCMService {
     }
   }
 
+  /// Fire-and-forget variant used during logout where the session token is
+  /// about to be cleared from AppController. The caller snapshots the bearer
+  /// token and passes it explicitly so this keeps working after logout.
+  Future<void> unsubscribeWithToken({required String bearerToken}) async {
+    try {
+      final String? fcmToken = await getToken();
+      if (fcmToken == null) return;
+
+      final String projectId = Firebase.apps.isNotEmpty
+          ? Firebase.app().options.projectId
+          : '';
+      if (projectId.isEmpty) return;
+
+      final bool unsubscribed = await _unsubscribeDeviceFromErpNext(
+        baseUrl: ApiConstants.erpBaseUrl,
+        fcmToken: fcmToken,
+        projectName: projectId,
+        bearerToken: bearerToken,
+      );
+
+      await _tokenRefreshSub?.cancel();
+      _tokenRefreshSub = null;
+      debugPrint(
+        "FCM unsubscribe (explicit token): ${unsubscribed ? 'success' : 'failed'}",
+      );
+    } catch (e) {
+      debugPrint("FCM unsubscribe (explicit token) error: $e");
+    }
+  }
+
   void _bindTokenRefresh(AppController appController) {
     _tokenRefreshSub?.cancel();
     _tokenRefreshSub = _fcm.onTokenRefresh.listen((String token) async {
