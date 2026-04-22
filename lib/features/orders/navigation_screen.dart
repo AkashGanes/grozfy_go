@@ -151,7 +151,11 @@ class NavigationScreen extends StatelessWidget {
     double lng,
   ) async {
     final Uri nativeUri = Platform.isAndroid
-        ? Uri.parse('google.navigation:q=$lat,$lng&mode=d')
+        ? Uri.parse(
+            'https://www.google.com/maps/dir/?api=1'
+            '&destination=$lat,$lng'
+            '&travelmode=driving',
+          )
         : Uri.parse('comgooglemaps://?daddr=$lat,$lng&directionsmode=driving');
 
     if (await canLaunchUrl(nativeUri)) {
