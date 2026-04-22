@@ -2863,7 +2863,7 @@ class AppController extends ChangeNotifier {
         'dashboard': 'Dashboard',
       },
       'hi': {
-        'app_title': 'FlowFleet पार्टनर',
+        'app_title': 'Grozfy Go',
         'login': 'लॉगिन',
         'register': 'रजिस्टर',
         'dashboard': 'डैशबोर्ड',

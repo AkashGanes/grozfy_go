@@ -11,4 +11,4 @@ PRODUCT_NAME = grozfy_go
 PRODUCT_BUNDLE_IDENTIFIER = com.lyncspace.grozfygo
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Lyncspace. All rights reserved.

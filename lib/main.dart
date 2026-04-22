@@ -54,19 +54,19 @@ void main() async {
   runApp(
     UncontrolledProviderScope(
       container: container,
-      child: const DeliveryPartnerApp(),
+      child: const GrozfyGoApp(),
     ),
   );
 }
 
-class DeliveryPartnerApp extends ConsumerStatefulWidget {
-  const DeliveryPartnerApp({super.key});
+class GrozfyGoApp extends ConsumerStatefulWidget {
+  const GrozfyGoApp({super.key});
 
   @override
-  ConsumerState<DeliveryPartnerApp> createState() => _DeliveryPartnerAppState();
+  ConsumerState<GrozfyGoApp> createState() => _GrozfyGoAppState();
 }
 
-class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
+class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
     with WidgetsBindingObserver {
   @override
   void initState() {

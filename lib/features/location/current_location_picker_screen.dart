@@ -239,7 +239,7 @@ class _CurrentLocationPickerScreenState
       
       final response = await http.get(
         uri,
-        headers: {'User-Agent': 'FlowFleetPartner/1.0'}
+        headers: {'User-Agent': 'GrozfyGo/1.0'}
       );
       
       if (!mounted || _selectedPoint.latitude != currentLat || _selectedPoint.longitude != currentLng) {
@@ -315,7 +315,7 @@ class _CurrentLocationPickerScreenState
       );
       final response = await http.get(
         uri,
-        headers: {'User-Agent': 'FlowFleetPartner/1.0'}
+        headers: {'User-Agent': 'GrozfyGo/1.0'}
       );
       
       if (response.statusCode == 200) {
