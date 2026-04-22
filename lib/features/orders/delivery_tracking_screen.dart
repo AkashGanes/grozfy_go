@@ -976,7 +976,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.grozfy_go',
+                userAgentPackageName: 'com.lyncspace.grozfygo',
               ),
               if (_polylineCoordinates.isNotEmpty)
                 PolylineLayer(

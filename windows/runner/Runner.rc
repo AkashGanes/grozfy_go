@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "Grozfy GO" "\0"
+            VALUE "CompanyName", "Lyncspace" "\0"
+            VALUE "FileDescription", "Grozfy Go" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "Grozfy GO" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.grozfy_go. All rights reserved." "\0"
-            VALUE "OriginalFilename", "Grozfy GO.exe" "\0"
-            VALUE "ProductName", "Grozfy GO" "\0"
+            VALUE "InternalName", "grozfy_go" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Lyncspace. All rights reserved." "\0"
+            VALUE "OriginalFilename", "grozfy_go.exe" "\0"
+            VALUE "ProductName", "Grozfy Go" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -419,7 +419,7 @@ class _CurrentLocationPickerScreenState
             children: [
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.grozfy_go',
+                userAgentPackageName: 'com.lyncspace.grozfygo',
               ),
               MarkerLayer(
                 markers: [

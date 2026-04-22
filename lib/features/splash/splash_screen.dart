@@ -130,7 +130,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               ),
               const SizedBox(height: 24),
               Text(
-                'Grozfy GO',
+                'Grozfy Go',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,

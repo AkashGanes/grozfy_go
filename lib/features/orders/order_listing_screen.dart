@@ -89,7 +89,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                           urlTemplate:
                               'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                           userAgentPackageName:
-                              'com.grozfy_go',
+                              'com.lyncspace.grozfygo',
                         ),
                         MarkerLayer(
                           markers: app.availableOrders.map((order) {

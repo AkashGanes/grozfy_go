@@ -1,4 +1,4 @@
-package com.grozfy_go;
+package com.lyncspace.grozfygo;
 
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;

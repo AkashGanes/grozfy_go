@@ -1,4 +1,4 @@
-package com.grozfy_go;
+package com.lyncspace.grozfygo;
 
 import io.flutter.embedding.android.FlutterActivity;
 
