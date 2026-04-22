@@ -266,45 +266,85 @@ void showInfoSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
 
-class _ShellLoadingIndicator extends StatelessWidget {
+class _ShellLoadingIndicator extends StatefulWidget {
   const _ShellLoadingIndicator();
+
+  @override
+  State<_ShellLoadingIndicator> createState() => _ShellLoadingIndicatorState();
+}
+
+class _ShellLoadingIndicatorState extends State<_ShellLoadingIndicator>
+    with TickerProviderStateMixin {
+  late List<AnimationController> _controllers;
+  late List<Animation<double>> _animations;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = List.generate(
+      3,
+      (index) => AnimationController(
+        duration: const Duration(milliseconds: 600),
+        vsync: this,
+      ),
+    );
+
+    _animations = _controllers.map((controller) {
+      return Tween<double>(begin: 0, end: -12).animate(
+        CurvedAnimation(parent: controller, curve: Curves.easeInOut),
+      );
+    }).toList();
+
+    _startAnimation();
+  }
+
+  void _startAnimation() async {
+    while (mounted) {
+      for (int i = 0; i < 3; i++) {
+        if (!mounted) return;
+        _controllers[i].forward().then((_) {
+          if (mounted) _controllers[i].reverse();
+        });
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 32,
-      height: 32,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-          )
-              .animate(onPlay: (controller) => controller.repeat())
-              .shimmer(
-                duration: 1000.ms,
-                color: AppTheme.oceanBlue.withValues(alpha: 0.25),
-              ),
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-          )
-              .animate(onPlay: (controller) => controller.repeat())
-              .shimmer(
-                duration: 800.ms,
-                delay: 200.ms,
-                color: AppTheme.oceanBlue.withValues(alpha: 0.3),
-              ),
-        ],
+      width: 60,
+      height: 40,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(3, (index) {
+          return AnimatedBuilder(
+            animation: _animations[index],
+            builder: (context, child) {
+              return Transform.translate(
+                offset: Offset(0, _animations[index].value),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: AppTheme.oceanBlue.withValues(alpha: 0.3 + (index * 0.2)),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              );
+            },
+          );
+        }),
       ),
     );
   }
