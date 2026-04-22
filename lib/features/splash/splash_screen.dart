@@ -112,19 +112,19 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   end: 1.05,
                 ).animate(_controller),
                 child: Container(
-                  width: 112,
-                  height: 112,
+                  width: 160,
+                  height: 160,
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(28),
+                    borderRadius: BorderRadius.circular(36),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.3),
                     ),
                   ),
                   child: const Image(
                     image: AssetImage('assets/images/logo.png'),
-                    width: 56,
-                    height: 56,
+                    fit: BoxFit.contain,
                   ),
                 ),
               ),
