@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -17,7 +19,8 @@ class DeliveryLocationPickerScreen extends StatefulWidget {
 }
 
 class _DeliveryLocationPickerScreenState
-    extends State<DeliveryLocationPickerScreen> {
+    extends State<DeliveryLocationPickerScreen>
+    with WidgetsBindingObserver {
   final MapController _mapController = MapController();
   final TextEditingController _latController = TextEditingController();
   final TextEditingController _lngController = TextEditingController();
@@ -28,10 +31,22 @@ class _DeliveryLocationPickerScreenState
   bool _saving = false;
   String? _error;
   bool _isUpdatingFromText = false;
+  StreamSubscription<ServiceStatus>? _serviceStatusSubscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _serviceStatusSubscription = Geolocator.getServiceStatusStream().listen(
+      (ServiceStatus status) {
+        if (!mounted) return;
+        if (status == ServiceStatus.enabled) {
+          if (_error != null) _loadCurrentLocation();
+        } else {
+          setState(() => _error = 'Location service is disabled. Please enable GPS.');
+        }
+      },
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final app = AppScope.of(context);
       if (app.hasSelectedLocation &&
@@ -51,9 +66,18 @@ class _DeliveryLocationPickerScreenState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _serviceStatusSubscription?.cancel();
     _latController.dispose();
     _lngController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _error != null) {
+      _loadCurrentLocation();
+    }
   }
 
   Future<void> _loadCurrentLocation() async {
