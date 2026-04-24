@@ -412,7 +412,7 @@ class DashboardScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${app.activeOrder!.orderId} · ${app.activeOrder!.orderStatus.label}',
+                        '${app.activeOrder!.orderId} · ${app.orderStatusLabel(app.activeOrder!.orderStatus)}',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),

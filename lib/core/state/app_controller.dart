@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
 import '../localization/app_strings.dart';
+import '../localization/localized_text.dart';
 import '../models/app_models.dart';
 import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
@@ -285,44 +286,44 @@ class AppController extends ChangeNotifier {
   ProfileCompleteness get profileCompleteness {
     final List<ProfileCompletenessItem> items = <ProfileCompletenessItem>[
       ProfileCompletenessItem(
-        name: 'Basic Profile',
-        description: 'Name, mobile & email',
+        name: 'profile_basic_profile',
+        description: 'profile_basic_profile_desc',
         isCompleted: _profile != null && _profile!.fullName.isNotEmpty,
         route: null,
       ),
       ProfileCompletenessItem(
-        name: 'Profile Photo',
-        description: 'Add a profile picture',
+        name: 'profile_photo',
+        description: 'profile_photo_desc',
         isCompleted: _profileImagePath != null,
         route: null,
       ),
       ProfileCompletenessItem(
-        name: 'KYC Documents',
-        description: 'ID proof & driving license',
+        name: 'kyc_documents',
+        description: 'kyc_documents_desc',
         isCompleted: _kycCompleted,
         route: '/kyc-documents',
       ),
       ProfileCompletenessItem(
-        name: 'Vehicle Details',
-        description: 'Register your vehicle',
+        name: 'vehicle_details',
+        description: 'vehicle_details_desc',
         isCompleted: _vehicle != null,
         route: '/vehicle-details',
       ),
       ProfileCompletenessItem(
-        name: 'Bank Account',
-        description: 'Add bank for payouts',
+        name: 'bank_account',
+        description: 'bank_account_desc',
         isCompleted: _bank != null,
         route: '/bank-setup',
       ),
       ProfileCompletenessItem(
-        name: 'Delivery Zone',
-        description: 'Select your working area',
+        name: 'delivery_zone',
+        description: 'delivery_zone_desc',
         isCompleted: hasSelectedLocation,
         route: '/current-location',
       ),
       ProfileCompletenessItem(
-        name: 'Permissions',
-        description: 'Location & notifications',
+        name: 'permissions',
+        description: 'permissions_desc',
         isCompleted: _permissionState.allGranted,
         route: '/permission',
       ),
@@ -483,9 +484,12 @@ class AppController extends ChangeNotifier {
   }
 
   void setLanguage(String code) {
-    _languageCode = code;
+    final String normalized = AppStrings.isSupportedLanguageCode(code)
+        ? code
+        : 'en';
+    _languageCode = normalized;
     _writePref((SharedPreferences prefs) {
-      return prefs.setString(_prefLanguageCode, code);
+      return prefs.setString(_prefLanguageCode, normalized);
     });
     notifyListeners();
   }
@@ -958,7 +962,7 @@ class AppController extends ChangeNotifier {
       final http.Response response = await http
           .post(
             _sendOtpUri,
-            headers: const <String, String>{'Accept': 'application/json'},
+            headers: _requestHeaders(),
             body: <String, String>{
               'mobile_no': mobile.trim(),
               'store_id': _storeId,
@@ -1028,7 +1032,7 @@ class AppController extends ChangeNotifier {
       final http.Response response = await http
           .post(
             _verifyOtpUri,
-            headers: const <String, String>{'Accept': 'application/json'},
+            headers: _requestHeaders(),
             body: <String, String>{
               'mobile_no': mobile.trim(),
               'otp': otp.trim(),
@@ -1127,9 +1131,9 @@ class AppController extends ChangeNotifier {
       final http.Response response = await http
           .post(
             _refreshTokenUri,
-            headers: const <String, String>{
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
+            headers: _requestHeaders(
+              contentType: 'application/x-www-form-urlencoded',
+            ),
             body: <String, String>{
               'grant_type': 'refresh_token',
               'refresh_token': _refreshToken!,
@@ -1204,7 +1208,7 @@ class AppController extends ChangeNotifier {
       _logApi('register_delivery_partner request', body.toString());
       final http.Response response = await http.post(
         _registerPartnerUri,
-        headers: const <String, String>{'Accept': 'application/json'},
+        headers: _requestHeaders(),
         body: body,
       );
       _logApi(
@@ -3105,8 +3109,43 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String t(String key) {
-    return AppStrings.get(_languageCode.isEmpty ? 'en' : _languageCode, key);
+  String t(
+    String key, [
+    Map<String, String> params = const <String, String>{},
+  ]) {
+    return AppStrings.format(
+      _languageCode.isEmpty ? 'en' : _languageCode,
+      key,
+      params,
+    );
+  }
+
+  String orderStatusLabel(OrderProgressStatus status) {
+    return LocalizedText.orderStatus(
+      _languageCode.isEmpty ? 'en' : _languageCode,
+      status,
+    );
+  }
+
+  String verificationStatusLabel(VerificationStatus status) {
+    return LocalizedText.verificationStatus(
+      _languageCode.isEmpty ? 'en' : _languageCode,
+      status,
+    );
+  }
+
+  String externalDeliveryStatusLabel(ExternalDeliveryStatus status) {
+    return LocalizedText.externalDeliveryStatus(
+      _languageCode.isEmpty ? 'en' : _languageCode,
+      status,
+    );
+  }
+
+  String aiMessage(dynamic value) {
+    return LocalizedText.resolveAiMessage(
+      _languageCode.isEmpty ? 'en' : _languageCode,
+      value,
+    );
   }
 
   Future<void> _persistSession(Map<String, dynamic> message) async {
@@ -4164,6 +4203,7 @@ class AppController extends ChangeNotifier {
     if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
       final Map<String, String> bearerHeaders = <String, String>{
         'Accept': 'application/json',
+        'Accept-Language': _languageHeaderValue(),
         'Authorization': '${_tokenType.trim()} ${_sessionToken!.trim()}',
       };
       if (contentType != null) {
@@ -4177,6 +4217,7 @@ class AppController extends ChangeNotifier {
           : 'token';
       final Map<String, String> tokenHeaders = <String, String>{
         'Accept': 'application/json',
+        'Accept-Language': _languageHeaderValue(),
         'Authorization': '$altType ${_sessionToken!.trim()}',
       };
       if (contentType != null) {
@@ -4185,6 +4226,22 @@ class AppController extends ChangeNotifier {
       authHeaders.add(tokenHeaders);
     }
     return authHeaders;
+  }
+
+  Map<String, String> _requestHeaders({String? contentType}) {
+    final Map<String, String> headers = <String, String>{
+      'Accept': 'application/json',
+      'Accept-Language': _languageHeaderValue(),
+    };
+    if (contentType != null) {
+      headers['Content-Type'] = contentType;
+    }
+    return headers;
+  }
+
+  String _languageHeaderValue() {
+    final String language = _languageCode.isEmpty ? 'en' : _languageCode;
+    return AppStrings.isSupportedLanguageCode(language) ? language : 'en';
   }
 
   String? _normalizedMobileForSearch(String? raw) {

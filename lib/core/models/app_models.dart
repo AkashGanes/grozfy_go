@@ -1,4 +1,5 @@
 // ignore_for_file: constant_identifier_names
+import '../localization/app_strings.dart';
 import '../utils/html_utils.dart';
 
 enum VerificationStatus { notSubmitted, pending, approved, rejected }
@@ -30,21 +31,29 @@ enum ExternalDeliveryStatus {
 }
 
 extension ExternalDeliveryStatusExtension on ExternalDeliveryStatus {
-  String get label {
+  String get localizationKey {
     switch (this) {
       case ExternalDeliveryStatus.Pending:
-        return 'Pending';
+        return 'pending';
       case ExternalDeliveryStatus.Accepted:
-        return 'Accepted';
+        return 'accepted';
       case ExternalDeliveryStatus.PickedUp:
-        return 'Picked Up';
+        return 'picked_up';
       case ExternalDeliveryStatus.OutForDelivery:
-        return 'Out for Delivery';
+        return 'out_for_delivery';
       case ExternalDeliveryStatus.Delivered:
-        return 'Delivered';
+        return 'delivered';
       case ExternalDeliveryStatus.Cancelled:
-        return 'Cancelled';
+        return 'cancelled';
     }
+  }
+
+  String get label {
+    return AppStrings.get('en', localizationKey);
+  }
+
+  String localizedLabel(String languageCode) {
+    return AppStrings.get(languageCode, localizationKey);
   }
 }
 
@@ -135,6 +144,8 @@ class ExternalDeliveryOrder {
         return ExternalDeliveryStatus.Pending;
     }
   }
+
+  String get deliveryStatusKey => deliveryStatus.localizationKey;
 }
 
 class PartnerProfile {
@@ -511,40 +522,56 @@ class PermissionState {
 }
 
 extension VerificationStatusLabel on VerificationStatus {
-  String get label {
+  String get localizationKey {
     switch (this) {
       case VerificationStatus.notSubmitted:
-        return 'Not Submitted';
+        return 'not_submitted';
       case VerificationStatus.pending:
-        return 'Pending';
+        return 'pending';
       case VerificationStatus.approved:
-        return 'Approved';
+        return 'approved';
       case VerificationStatus.rejected:
-        return 'Rejected';
+        return 'rejected';
     }
+  }
+
+  String get label {
+    return AppStrings.get('en', localizationKey);
+  }
+
+  String localizedLabel(String languageCode) {
+    return AppStrings.get(languageCode, localizationKey);
   }
 }
 
 extension OrderStatusLabel on OrderProgressStatus {
-  String get label {
+  String get localizationKey {
     switch (this) {
       case OrderStatus.pending:
-        return 'Pending';
+        return 'pending';
       case OrderStatus.accepted:
-        return 'Accepted';
+        return 'accepted';
       case OrderStatus.rejected:
-        return 'Rejected';
+        return 'rejected';
       case OrderStatus.reachedPickup:
-        return 'Reached Pickup';
+        return 'reached_pickup';
       case OrderStatus.pickedUp:
-        return 'Picked Up';
+        return 'picked_up';
       case OrderStatus.outForDelivery:
-        return 'Out for Delivery';
+        return 'out_for_delivery';
       case OrderStatus.delivered:
-        return 'Delivered';
+        return 'delivered';
       case OrderStatus.cancelled:
-        return 'Cancelled';
+        return 'cancelled';
     }
+  }
+
+  String get label {
+    return AppStrings.get('en', localizationKey);
+  }
+
+  String localizedLabel(String languageCode) {
+    return AppStrings.get(languageCode, localizationKey);
   }
 }
 
@@ -575,16 +602,28 @@ class ProfileCompleteness {
   final int completedCount;
   final int totalCount;
 
-  String get message {
-    if (percentage == 100) {
-      return 'Your profile is complete! You\'re ready to go online.';
-    } else if (percentage >= 70) {
-      return 'Almost there! Complete your profile to unlock all features.';
-    } else if (percentage >= 40) {
-      return 'Your profile is $completedCount/$totalCount complete. Keep going!';
+  String get messageKey {
+    if (percentage >= 1) {
+      return 'profile_complete_message';
+    } else if (percentage >= 0.7) {
+      return 'profile_almost_complete_message';
+    } else if (percentage >= 0.4) {
+      return 'profile_progress_message';
     } else {
-      return 'Complete your profile to start delivering.';
+      return 'profile_incomplete_message';
     }
+  }
+
+  String get message {
+    return AppStrings.get('en', messageKey)
+        .replaceAll('{completed}', '$completedCount')
+        .replaceAll('{total}', '$totalCount');
+  }
+
+  String localizedMessage(String languageCode) {
+    return AppStrings.get(languageCode, messageKey)
+        .replaceAll('{completed}', '$completedCount')
+        .replaceAll('{total}', '$totalCount');
   }
 
   ProfileCompletenessItem? get nextIncompleteItem {

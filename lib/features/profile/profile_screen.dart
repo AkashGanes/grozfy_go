@@ -37,6 +37,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _expandAdditionalDetails = false;
   bool _expandAttachments = false;
 
+  String t(String key) => ref.read(appControllerProvider).t(key);
+
   @override
   void initState() {
     super.initState();
@@ -60,7 +62,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     final Map<String, dynamic>? driver = app.loggedProfileDetails?.driver;
     final String displayName =
-        app.profile?.fullName ?? _field(driver, 'full_name') ?? 'Driver';
+        app.profile?.fullName ?? _field(driver, 'full_name') ?? t('driver');
     final bool hasDriver = driver != null && driver.isNotEmpty;
 
     final Widget detailsSection;
@@ -73,8 +75,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       detailsSection = _buildErrorState(app.profileDetailsError!, app);
     } else if (!hasDriver) {
       detailsStateKey = 'empty';
-      detailsSection = const FrostCard(
-        child: Text('No driver details found for this login account.'),
+      detailsSection = FrostCard(
+        child: Text(t('no_driver_details_found')),
       );
     } else {
       detailsStateKey = 'data';
@@ -82,8 +84,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
 
     return AppShell(
-      title: 'My Profile',
-      subtitle: 'Driver account',
+      title: t('my_profile'),
+      subtitle: t('driver_account'),
       scrollable: false,
       child: RefreshIndicator(
         onRefresh: _refreshProfile,
@@ -265,7 +267,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               app.fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
             },
             icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Retry'),
+            label: Text(t('retry')),
           ),
         ],
       ),
@@ -292,8 +294,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _detailSection(
-                title: 'Basic Details',
-                subtitle: 'Identity and contact snapshot',
+                title: t('basic_details'),
+                subtitle: t('identity_and_contact_snapshot'),
                 leadingIcon: Icons.badge_outlined,
                 expanded: _expandBasicDetails,
                 onToggle: () {
@@ -301,11 +303,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 },
                 child: Column(
                   children: [
-                    _kv('Full Name', _field(driver, 'full_name') ?? '-'),
-                    _kv('Employee', _field(driver, 'employee') ?? '-'),
-                    _kv('Cell Number', _field(driver, 'cell_number') ?? '-'),
-                    _kv('Status', _field(driver, 'status') ?? '-'),
-                    _kv('Address', _field(driver, 'address') ?? '-'),
+                    _kv(t('full_name'), _field(driver, 'full_name') ?? '-'),
+                    _kv(t('employee'), _field(driver, 'employee') ?? '-'),
+                    _kv(t('cell_number'), _field(driver, 'cell_number') ?? '-'),
+                    _kv(t('status'), _field(driver, 'status') ?? '-'),
+                    _kv(t('address'), _field(driver, 'address') ?? '-'),
                   ],
                 ),
               )
@@ -314,8 +316,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               .slideY(begin: 0.08, end: 0),
           const SizedBox(height: 10),
           _detailSection(
-                title: 'License Details',
-                subtitle: 'Driving license and document info',
+                title: t('license_details'),
+                subtitle: t('driving_license_and_document_info'),
                 leadingIcon: Icons.assignment_ind_outlined,
                 expanded: _expandLicenseDetails,
                 onToggle: () {
@@ -326,11 +328,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 child: Column(
                   children: [
                     _kv(
-                      'License Number',
+                      t('license_number'),
                       _field(driver, 'license_number') ?? '-',
                     ),
-                    _kv('Issue Date', _field(driver, 'issuing_date') ?? '-'),
-                    _kv('Expiry Date', _field(driver, 'expiry_date') ?? '-'),
+                    _kv(t('issue_date'), _field(driver, 'issuing_date') ?? '-'),
+                    _kv(t('expiry_date'), _field(driver, 'expiry_date') ?? '-'),
                   ],
                 ),
               )
@@ -339,8 +341,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               .slideY(begin: 0.08, end: 0),
           const SizedBox(height: 10),
           _detailSection(
-                title: 'Driving License Category',
-                subtitle: 'Allowed vehicle classes',
+                title: t('driving_license_category'),
+                subtitle: t('allowed_vehicle_classes'),
                 leadingIcon: Icons.category_outlined,
                 expanded: _expandDrivingCategory,
                 onToggle: () {
@@ -357,8 +359,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               .slideY(begin: 0.08, end: 0),
           const SizedBox(height: 10),
           _detailSection(
-                title: 'Additional Driver Details',
-                subtitle: 'Extra fields from your Driver doctype',
+                title: t('additional_driver_details'),
+                subtitle: t('extra_fields_from_your_driver_doctype'),
                 leadingIcon: Icons.description_outlined,
                 expanded: _expandAdditionalDetails,
                 onToggle: () {
@@ -373,8 +375,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               .slideY(begin: 0.08, end: 0),
           const SizedBox(height: 10),
           _detailSection(
-                title: 'KYC Documents',
-                subtitle: 'Read-only images from your URL data',
+                title: t('kyc_documents'),
+                subtitle: t('read_only_images_from_your_url_data'),
                 leadingIcon: Icons.attachment_rounded,
                 expanded: _expandAttachments,
                 onToggle: () {
@@ -396,7 +398,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Widget _additionalDetailsSection(Map<String, String> fields) {
     if (fields.isEmpty) {
-      return const Text('No additional details');
+      return Text(t('no_additional_details'));
     }
     return Column(
       children: fields.entries
@@ -411,7 +413,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     required Map<String, String> fallbackHeaders,
   }) {
     if (attachments.isEmpty) {
-      return const Text('No attachments found');
+      return Text(t('no_attachments_found'));
     }
 
     return Wrap(
@@ -492,7 +494,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             appBar: AppBar(
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
-              title: Text(_labelFromKey(item.fieldKey)),
+                  title: Text(_labelFromKey(item.fieldKey)),
             ),
             body: Center(
               child: InteractiveViewer(
@@ -532,13 +534,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               if (item.isImage)
                 ListTile(
                   leading: const Icon(Icons.visibility_outlined),
-                  title: const Text('Preview'),
+                title: Text(t('preview')),
                   onTap: () => Navigator.of(context).pop('preview'),
                 )
               else
                 ListTile(
                   leading: const Icon(Icons.open_in_new_rounded),
-                  title: const Text('Open'),
+                title: Text(t('open')),
                   onTap: () => Navigator.of(context).pop('open'),
                 ),
             ],
@@ -593,7 +595,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         return;
       }
       if (launched) {
-        showInfoSnack(context, 'Opened document');
+        showInfoSnack(context, t('opened_document'));
         return;
       }
     } catch (_) {
@@ -603,7 +605,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final Uri? uri = Uri.tryParse(item.url);
     if (uri == null) {
       if (mounted) {
-        showInfoSnack(context, 'Invalid attachment URL');
+        showInfoSnack(context, t('invalid_attachment_url'));
       }
       return;
     }
@@ -612,7 +614,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       mode: LaunchMode.externalApplication,
     );
     if (!launched && mounted) {
-      showInfoSnack(context, 'Unable to open document');
+      showInfoSnack(context, t('unable_to_open_document'));
     }
   }
 
@@ -770,9 +772,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   child: const Icon(Icons.check, size: 12, color: Colors.white),
                 ),
                 const SizedBox(width: 6),
-                const Text(
-                  'Verified Account',
-                  style: TextStyle(color: Colors.black54),
+                Text(
+                  t('verified_account'),
+                  style: const TextStyle(color: Colors.black54),
                 ),
               ],
             ),
@@ -787,20 +789,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'Basic Information',
+          Text(
+            t('basic_information'),
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Edit name, phone number, email and profile picture',
-            style: TextStyle(color: Colors.black54),
+          Text(
+            t('edit_name_phone_number_email_and_profile_picture'),
+            style: const TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _nameCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Name',
+            decoration: InputDecoration(
+              labelText: t('name'),
               prefixIcon: Icon(Icons.person_outline_rounded),
             ),
           ),
@@ -808,8 +810,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           TextField(
             controller: _mobileCtrl,
             keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(
-              labelText: 'Phone Number',
+            decoration: InputDecoration(
+              labelText: t('phone_number'),
               prefixIcon: Icon(Icons.phone_outlined),
             ),
           ),
@@ -817,8 +819,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           TextField(
             controller: _emailCtrl,
             keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'Email',
+            decoration: InputDecoration(
+              labelText: t('email'),
               prefixIcon: Icon(Icons.email_outlined),
             ),
           ),
@@ -827,7 +829,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             onPressed: _savingBasicInfo ? null : _saveBasicInfo,
             icon: const Icon(Icons.save_outlined),
             label: Text(
-              _savingBasicInfo ? 'Saving...' : 'Save Basic Information',
+              _savingBasicInfo ? t('saving') : t('save_basic_information'),
             ),
           ),
         ],
@@ -852,7 +854,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
-    showInfoSnack(context, 'Uploading profile image...');
+    showInfoSnack(context, t('uploading_profile_image'));
     final String? error = await ref
         .read(appControllerProvider)
         .updateProfileImageAndSync(pickedPath: file.path);
@@ -862,7 +864,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (error != null) {
       showInfoSnack(context, error);
     } else {
-      showInfoSnack(context, 'Profile image updated');
+      showInfoSnack(context, t('profile_image_updated'));
     }
   }
 
@@ -876,12 +878,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             children: [
               ListTile(
                 leading: const Icon(Icons.photo_camera_outlined),
-                title: const Text('Update Profile Image'),
+                title: Text(t('update_profile_image')),
                 onTap: () => Navigator.of(context).pop('update'),
               ),
               ListTile(
                 leading: const Icon(Icons.delete_outline_rounded),
-                title: const Text('Remove Profile Image'),
+                title: Text(t('remove_profile_image')),
                 onTap: () => Navigator.of(context).pop('remove'),
               ),
             ],
@@ -899,7 +901,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return;
     }
 
-    showInfoSnack(context, 'Removing profile image...');
+    showInfoSnack(context, t('removing_profile_image'));
     final String? error = await ref
         .read(appControllerProvider)
         .removeProfileImageAndSync();
@@ -909,7 +911,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (error != null) {
       showInfoSnack(context, error);
     } else {
-      showInfoSnack(context, 'Profile image removed');
+      showInfoSnack(context, t('profile_image_removed'));
     }
   }
 
@@ -918,7 +920,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Upload Profile Image'),
+          title: Text(t('upload_profile_image')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -932,17 +934,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text('Do you want to upload this image?'),
+              Text(t('do_you_want_to_upload_this_image')),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+              child: Text(t('cancel')),
             ),
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Upload'),
+              child: Text(t('upload')),
             ),
           ],
         );
@@ -970,7 +972,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (error != null) {
       showInfoSnack(context, error);
     } else {
-      showInfoSnack(context, 'Basic information updated');
+      showInfoSnack(context, t('basic_information_updated'));
     }
   }
 
@@ -1057,7 +1059,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     curve: Curves.easeInOutCubic,
                     child: const Icon(Icons.chevron_right_rounded),
                   ),
-                  tooltip: expanded ? 'Collapse' : 'Expand',
+                  tooltip: expanded ? t('collapse') : t('expand'),
                 ),
               ),
             ],
@@ -1089,7 +1091,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Widget _licenseCategorySection(dynamic raw) {
     final List<Map<String, dynamic>> categories = _toCategoryList(raw);
     if (categories.isEmpty) {
-      return const Text('No category data');
+      return Text(t('no_category_data'));
     }
 
     return Column(
@@ -1112,8 +1114,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 6),
-                _kv('Issue Date', _field(item, 'issuing_date') ?? '-'),
-                _kv('Expiry Date', _field(item, 'expiry_date') ?? '-'),
+                _kv(t('issue_date'), _field(item, 'issuing_date') ?? '-'),
+                _kv(t('expiry_date'), _field(item, 'expiry_date') ?? '-'),
               ],
             ),
           ),
@@ -1141,7 +1143,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (description.isNotEmpty) {
       return description;
     }
-    return 'Category';
+    return t('category');
   }
 
   Map<String, String> _additionalDriverFields(Map<String, dynamic> driver) {

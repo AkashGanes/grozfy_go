@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/localization/localized_text.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 
@@ -33,6 +34,7 @@ class ExternalDeliveryRepository {
   static const String _prefTokenType = 'token_type';
   static const String _prefRefreshToken = 'refresh_token';
   static const String _prefClientId = 'client_id';
+  static const String _prefLanguageCode = 'language_code';
   static final Uri _refreshTokenUri = Uri.parse(
     '${ApiConstants.erpBaseUrl}/api/method/frappe.integrations.oauth2.get_token',
   );
@@ -42,13 +44,18 @@ class ExternalDeliveryRepository {
     final String? token = prefs.getString(_prefAccessToken);
     final String tokenType = (prefs.getString(_prefTokenType) ?? 'token')
         .trim();
+    final String language =
+        prefs.getString(_prefLanguageCode)?.trim().isNotEmpty == true
+            ? prefs.getString(_prefLanguageCode)!.trim()
+            : 'en';
     if (token != null && token.isNotEmpty) {
       return {
         'Accept': 'application/json',
+        'Accept-Language': language,
         'Authorization': '$tokenType $token',
       };
     }
-    return {'Accept': 'application/json'};
+    return {'Accept': 'application/json', 'Accept-Language': language};
   }
 
   /// Refreshes the session token using Frappe's OAuth2 get_token endpoint.
@@ -64,7 +71,9 @@ class ExternalDeliveryRepository {
       final resp = await http
           .post(
             _refreshTokenUri,
-            headers: const {
+            headers: {
+              'Accept': 'application/json',
+              'Accept-Language': await _languageHeader(),
               'Content-Type': 'application/x-www-form-urlencoded',
             },
             body: {
@@ -864,6 +873,8 @@ class ExternalDeliveryRepository {
     String? photoPath,
     bool shouldCreateReturnTrip = true,
   }) async {
+    final String languageCode = await _languageCode();
+
     await updateTripStopStatus(stop: stop, newStatus: 'Failed');
     await _tryMarkParentTripFailed(stop);
     await _tryWriteStopNotes(stop: stop, reason: reason);
@@ -879,13 +890,13 @@ class ExternalDeliveryRepository {
     }
 
     if (!shouldCreateReturnTrip) {
-      return const ReturnProcessResult(
+      return ReturnProcessResult(
         success: true,
         orderUpdated: true,
         tripCreated: false,
         tripSubmitted: false,
         tripName: null,
-        message: 'Delivery marked as failed.',
+        message: LocalizedText.t(languageCode, 'delivery_failed'),
       );
     }
 
@@ -897,7 +908,8 @@ class ExternalDeliveryRepository {
         tripCreated: false,
         tripSubmitted: false,
         tripName: existingTripName,
-        message: 'Return trip already exists: $existingTripName',
+        message:
+            '${LocalizedText.t(languageCode, 'return_trip')} already exists: $existingTripName',
       );
     }
 
@@ -908,7 +920,8 @@ class ExternalDeliveryRepository {
       tripCreated: true,
       tripSubmitted: true,
       tripName: tripName,
-      message: 'Return trip created: $tripName',
+      message:
+          '${LocalizedText.t(languageCode, 'return_trip')} created: $tripName',
     );
   }
 
@@ -928,7 +941,7 @@ class ExternalDeliveryRepository {
       'driver': ApiConstants.defaultExternalDeliveryDriver,
       'status': 'Draft',
       'trip_date': DateTime.now().toIso8601String().split('T').first,
-      'trip_notes': 'Return Trip for $orderName',
+      'trip_notes': LocalizedText.returnTripMarker(orderName),
       'stops': [
         {'external_delivery': orderName},
       ],
@@ -971,6 +984,12 @@ class ExternalDeliveryRepository {
     }
 
     return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+  }
+
+  Future<String> _languageCode() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String code = (prefs.getString(_prefLanguageCode) ?? 'en').trim();
+    return code.isEmpty ? 'en' : code;
   }
 
   Future<void> _completeTrip(ExternalDeliveryTrip trip) async {
@@ -1113,7 +1132,7 @@ class ExternalDeliveryRepository {
             'External Delivery Trip',
             'trip_notes',
             '=',
-            'Return Trip for $orderName',
+            LocalizedText.returnTripMarker(orderName),
           ],
           [
             'External Delivery Trip',
@@ -1248,6 +1267,12 @@ class ExternalDeliveryRepository {
           .timeout(_networkTimeout);
     }
     return resp;
+  }
+
+  Future<String> _languageHeader() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String language = (prefs.getString(_prefLanguageCode) ?? 'en').trim();
+    return language.isEmpty ? 'en' : language;
   }
 
   bool _isAuthFailure(int statusCode) => statusCode == 401 || statusCode == 403;

@@ -79,7 +79,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 _info('Phone', order.customerPhone),
                 _info('Address', order.deliveryAddress),
                 _info('Order ID', order.orderId),
-                _info('Status', order.orderStatus.label),
+                _info('Status', app.orderStatusLabel(order.orderStatus)),
                 if (order.deliveryInstructions.isNotEmpty)
                   _info('Instructions', order.deliveryInstructions),
               ],

@@ -13,7 +13,7 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(controller.t('settings')),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
@@ -70,7 +70,7 @@ class SettingsScreen extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  _getLanguageName(currentLang),
+                  _getLanguageName(controller, currentLang),
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -88,8 +88,8 @@ class SettingsScreen extends ConsumerWidget {
                   _buildLanguageTile(
                     context: context,
                     code: 'en',
-                    label: 'English',
-                    sample: 'Ready for delivery shifts',
+                    label: controller.t('english'),
+                    sample: controller.t('sample_english_ready'),
                     selected: currentLang == 'en',
                     onTap: () => controller.setLanguage('en'),
                   ),
@@ -97,8 +97,8 @@ class SettingsScreen extends ConsumerWidget {
                   _buildLanguageTile(
                     context: context,
                     code: 'hi',
-                    label: 'Hindi',
-                    sample: 'डिलीवरी शिफ्ट के लिए तैयार',
+                    label: controller.t('hindi'),
+                    sample: controller.t('sample_hindi_ready'),
                     selected: currentLang == 'hi',
                     onTap: () => controller.setLanguage('hi'),
                   ),
@@ -106,8 +106,8 @@ class SettingsScreen extends ConsumerWidget {
                   _buildLanguageTile(
                     context: context,
                     code: 'ta',
-                    label: 'Tamil',
-                    sample: 'டெலிவரி ஷிப்ட் தயார்',
+                    label: controller.t('tamil'),
+                    sample: controller.t('sample_tamil_ready'),
                     selected: currentLang == 'ta',
                     onTap: () => controller.setLanguage('ta'),
                   ),
@@ -115,8 +115,8 @@ class SettingsScreen extends ConsumerWidget {
                   _buildLanguageTile(
                     context: context,
                     code: 'te',
-                    label: 'Telugu',
-                    sample: 'డెలివరీ షిఫ్ట్ సిద్ధం',
+                    label: controller.t('telugu'),
+                    sample: controller.t('sample_telugu_ready'),
                     selected: currentLang == 'te',
                     onTap: () => controller.setLanguage('te'),
                   ),
@@ -124,8 +124,8 @@ class SettingsScreen extends ConsumerWidget {
                   _buildLanguageTile(
                     context: context,
                     code: 'kn',
-                    label: 'Kannada',
-                    sample: 'ಡೆಲಿವರಿ ಶಿಫ್ಟ್ ಸಿದ್ಧ',
+                    label: controller.t('kannada'),
+                    sample: controller.t('sample_kannada_ready'),
                     selected: currentLang == 'kn',
                     onTap: () => controller.setLanguage('kn'),
                   ),
@@ -133,8 +133,8 @@ class SettingsScreen extends ConsumerWidget {
                   _buildLanguageTile(
                     context: context,
                     code: 'ml',
-                    label: 'Malayalam',
-                    sample: 'ഡെലിവറി ഷിഫ്റ്റ് തയാറാണ്',
+                    label: controller.t('malayalam'),
+                    sample: controller.t('sample_malayalam_ready'),
                     selected: currentLang == 'ml',
                     onTap: () => controller.setLanguage('ml'),
                   ),
@@ -142,8 +142,8 @@ class SettingsScreen extends ConsumerWidget {
                   _buildLanguageTile(
                     context: context,
                     code: 'bn',
-                    label: 'Bengali',
-                    sample: 'ডেলিভারি শিফটের জন্য প্রস্তুত',
+                    label: controller.t('bengali'),
+                    sample: controller.t('sample_bengali_ready'),
                     selected: currentLang == 'bn',
                     onTap: () => controller.setLanguage('bn'),
                   ),
@@ -238,22 +238,22 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  String _getLanguageName(String code) {
+  String _getLanguageName(dynamic controller, String code) {
     switch (code) {
       case 'hi':
-        return 'हिंदी';
+        return controller.t('hindi');
       case 'ta':
-        return 'தமிழ்';
+        return controller.t('tamil');
       case 'te':
-        return 'తెలుగు';
+        return controller.t('telugu');
       case 'kn':
-        return 'ಕನ್ನಡ';
+        return controller.t('kannada');
       case 'ml':
-        return 'മലയാളം';
+        return controller.t('malayalam');
       case 'bn':
-        return 'বাংলা';
+        return controller.t('bengali');
       default:
-        return 'English';
+        return controller.t('english');
     }
   }
 

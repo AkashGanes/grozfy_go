@@ -43,7 +43,7 @@ class OrderStatusScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           FrostCard(
-            child: Column(
+      child: Column(
               children: flow.asMap().entries.map((entry) {
                 final int index = entry.key;
                 final OrderProgressStatus status = entry.value;
@@ -61,7 +61,7 @@ class OrderStatusScreen extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          status.label,
+                          app.orderStatusLabel(status),
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             color: done ? Colors.black87 : Colors.black45,
