@@ -10,6 +10,7 @@ import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/notifications/ui/screens/notifications_screen.dart';
+import 'features/orders/my_orders_screen.dart';
 import 'features/kyc/bank_setup_screen.dart';
 import 'features/kyc/bank_submitted_details_screen.dart';
 import 'features/kyc/kyc_documents_screen.dart';
@@ -52,10 +53,7 @@ void main() async {
   }
 
   runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const GrozfyGoApp(),
-    ),
+    UncontrolledProviderScope(container: container, child: const GrozfyGoApp()),
   );
 }
 
@@ -89,11 +87,12 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    
+
     if (state == AppLifecycleState.resumed) {
       ref.read(appControllerProvider.notifier).setAppResumed(true);
       ref.read(appControllerProvider.notifier).checkConnectivity();
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       ref.read(appControllerProvider.notifier).setAppResumed(false);
     }
   }
@@ -298,6 +297,18 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
               return MaterialPageRoute<void>(
                 builder: (_) => const NotificationsScreen(),
               );
+            case AppRoutes.myOrders:
+              return MaterialPageRoute<void>(
+                builder: (_) => const MyOrdersScreen(),
+              );
+            case AppRoutes.more:
+              return MaterialPageRoute<void>(
+                builder: (_) => const MoreScreen(),
+              );
+            case AppRoutes.earnings:
+              return MaterialPageRoute<void>(
+                builder: (_) => const MoreScreen(),
+              );
             default:
               return MaterialPageRoute<void>(
                 builder: (_) => const SplashScreen(),
@@ -356,8 +367,7 @@ class NoInternetOverlayWithRetry extends StatefulWidget {
       _NoInternetOverlayWithRetryState();
 }
 
-class _NoInternetOverlayWithRetryState
-    extends State<NoInternetOverlayWithRetry>
+class _NoInternetOverlayWithRetryState extends State<NoInternetOverlayWithRetry>
     with TickerProviderStateMixin {
   bool _isRetrying = false;
   late AnimationController _retryScaleController;
@@ -566,11 +576,7 @@ class _NoInternetOverlayWithRetryState
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.refresh_rounded,
-              color: AppTheme.oceanBlue,
-              size: 18,
-            ),
+            Icon(Icons.refresh_rounded, color: AppTheme.oceanBlue, size: 18),
             SizedBox(width: 8),
             Text(
               'Retry',
@@ -588,5 +594,4 @@ class _NoInternetOverlayWithRetryState
       ),
     );
   }
-
 }
