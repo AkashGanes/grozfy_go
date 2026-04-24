@@ -22,16 +22,13 @@ class _LanguageSelectionScreenState
     final app = ref.watch(appControllerProvider);
 
     return AppShell(
-      title: 'Choose Language',
-      subtitle: 'Select preferred app language for daily use',
+      title: app.t('choose_language'),
+      subtitle: app.t('choose_language_subtitle'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const FrostCard(
-            child: Text(
-              'This app supports multilingual flows. You can change language '
-              'again anytime from settings.',
-            ),
+          FrostCard(
+            child: Text(app.t('language_info')),
           ),
           const SizedBox(height: 16),
           _LanguageTile(
@@ -43,11 +40,11 @@ class _LanguageSelectionScreenState
           ),
           const SizedBox(height: 12),
           _LanguageTile(
-            code: 'tn',
+            code: 'ta',
             label: 'Tamil',
             sample: 'டெலிவரி ஷிப்ட் தயார்',
-            selected: _selectedCode == 'tn',
-            onTap: () => setState(() => _selectedCode = 'tn'),
+            selected: _selectedCode == 'ta',
+            onTap: () => setState(() => _selectedCode = 'ta'),
           ),
           const SizedBox(height: 12),
           _LanguageTile(
@@ -77,7 +74,7 @@ class _LanguageSelectionScreenState
                     : AppRoutes.login,
               );
             },
-            child: const Text('Continue'),
+            child: Text(app.t('continue')),
           ),
         ],
       ),

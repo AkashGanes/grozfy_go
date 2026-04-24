@@ -220,10 +220,17 @@ class AppTheme {
           primaryColor: primaryColor,
         );
       case ThemeMode.system:
-        return getLightTheme(
-          scaffoldBackgroundColor: scaffoldBackgroundColor,
-          primaryColor: primaryColor,
-        );
+        final brightness =
+            WidgetsBinding.instance.platformDispatcher.platformBrightness;
+        return brightness == Brightness.dark
+            ? getDarkTheme(
+                scaffoldBackgroundColor: scaffoldBackgroundColor,
+                primaryColor: primaryColor,
+              )
+            : getLightTheme(
+                scaffoldBackgroundColor: scaffoldBackgroundColor,
+                primaryColor: primaryColor,
+              );
     }
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'core/models/app_models.dart';
@@ -108,11 +109,32 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
         navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
         title: 'FlowFleet Partner',
-        theme: AppTheme.getTheme(
-          mode: controller.themeMode,
+        theme: AppTheme.getLightTheme(
           scaffoldBackgroundColor: controller.backgroundColor,
           primaryColor: controller.accentColor,
         ),
+        darkTheme: AppTheme.getDarkTheme(
+          scaffoldBackgroundColor: controller.backgroundColor,
+          primaryColor: controller.accentColor,
+        ),
+        themeMode: controller.themeMode,
+        locale: controller.languageCode.isNotEmpty
+            ? Locale(controller.languageCode)
+            : null,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('en'),
+          Locale('hi'),
+          Locale('ta'),
+          Locale('te'),
+          Locale('kn'),
+          Locale('ml'),
+          Locale('bn'),
+        ],
         initialRoute: AppRoutes.splash,
         builder: (context, child) {
           return NoInternetWrapper(child: child ?? const SizedBox.shrink());

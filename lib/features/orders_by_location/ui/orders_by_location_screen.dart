@@ -13,6 +13,7 @@ import '../../../core/widgets/skeleton_loader.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
+import '../../orders/delivery_tracking_screen.dart';
 import 'order_location_detail_screen.dart';
 
 const double _maxDistanceWarningKm = 3.0;
@@ -308,11 +309,36 @@ class _OrdersByLocationScreenState
     if (_isEligibleForTrip(order)) {
       setState(() => _submittingOrderIds.add(order.name));
       try {
-        final tripName = await _repository.createAndSubmitTripForOrder(order);
+        final app = ref.read(appControllerProvider);
+        // acceptOrder: updates Frappe status → 'Added to Trip', creates the
+        // External Delivery Trip document, and sets app.activeOrder so the
+        // full tracking + cancel/confirm/earnings flow works correctly.
+        final error = await app.acceptOrder(order.name);
         if (!mounted) return;
-        await Navigator.of(
-          context,
-        ).pushNamed(AppRoutes.externalDeliveryTripDetails, arguments: tripName);
+
+        if (error != null) {
+          showInfoSnack(context, error);
+          return;
+        }
+
+        final active = app.activeOrder;
+        if (active == null || !mounted) return;
+
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => DeliveryTrackingScreen(
+              deliveryName: active.orderId,
+              customerName: active.customerName,
+              storeName: active.storeName,
+              contactNumber: active.customerPhone.isNotEmpty
+                  ? active.customerPhone
+                  : active.contactNumber,
+              dropAddress: active.deliveryAddress,
+              dropLat: active.latitude,
+              dropLng: active.longitude,
+            ),
+          ),
+        );
         if (!mounted) return;
         await _refresh();
       } catch (e) {

@@ -96,10 +96,10 @@ class DashboardScreen extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Availability',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+                        app.t('availability'),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
                     Switch(
@@ -116,8 +116,8 @@ class DashboardScreen extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   app.isOnline
-                      ? 'Online and receiving order requests'
-                      : 'Offline, no new orders will be assigned',
+                      ? app.t('online_status')
+                      : app.t('offline_status'),
                   style: const TextStyle(color: Colors.black54),
                 ),
                 if (!app.canGoOnline && !app.isKycComplete) ...[
@@ -132,10 +132,8 @@ class DashboardScreen extends StatelessWidget {
                       children: [
                         const Icon(Icons.warning_amber_rounded),
                         const SizedBox(width: 10),
-                        const Expanded(
-                          child: Text(
-                            'Complete KYC + bank + permissions before going online.',
-                          ),
+                        Expanded(
+                          child: Text(app.t('kyc_warning')),
                         ),
                         TextButton(
                           onPressed: () {
@@ -143,7 +141,7 @@ class DashboardScreen extends StatelessWidget {
                               context,
                             ).pushNamed(AppRoutes.kycDocuments);
                           },
-                          child: const Text('Complete'),
+                          child: Text(app.t('complete')),
                         ),
                       ],
                     ),
@@ -155,19 +153,19 @@ class DashboardScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _DashboardLocationCard(app: app),
           const SizedBox(height: 14),
-          const SectionLabel('Earnings Summary'),
+          SectionLabel(app.t('earnings_summary')),
           FrostCard(
             child: Column(
               children: [
                 Row(
                   children: [
                     StatTile(
-                      label: 'Today',
+                      label: app.t('today'),
                       value: 'Rs. ${app.earnings.today.toStringAsFixed(0)}',
                     ),
                     const SizedBox(width: 10),
                     StatTile(
-                      label: 'This Week',
+                      label: app.t('this_week'),
                       value: 'Rs. ${app.earnings.week.toStringAsFixed(0)}',
                       color: AppTheme.mint,
                     ),
@@ -177,13 +175,13 @@ class DashboardScreen extends StatelessWidget {
                 Row(
                   children: [
                     StatTile(
-                      label: 'Total',
+                      label: app.t('total'),
                       value: 'Rs. ${app.earnings.total.toStringAsFixed(0)}',
                       color: AppTheme.nightBlue,
                     ),
                     const SizedBox(width: 10),
                     StatTile(
-                      label: 'Pending Payout',
+                      label: app.t('pending_payout'),
                       value:
                           'Rs. ${app.earnings.pendingPayout.toStringAsFixed(0)}',
                       color: AppTheme.mango,
@@ -194,20 +192,20 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          const SectionLabel('Performance Metrics'),
+          SectionLabel(app.t('performance_metrics')),
           FrostCard(
             child: Column(
               children: [
                 Row(
                   children: [
                     StatTile(
-                      label: 'Rating',
+                      label: app.t('rating'),
                       value:
                           '${app.performance.rating.toStringAsFixed(1)} star',
                     ),
                     const SizedBox(width: 10),
                     StatTile(
-                      label: 'Acceptance',
+                      label: app.t('acceptance'),
                       value:
                           '${app.performance.acceptanceRate.toStringAsFixed(1)}%',
                       color: AppTheme.nightBlue,
@@ -218,14 +216,14 @@ class DashboardScreen extends StatelessWidget {
                 Row(
                   children: [
                     StatTile(
-                      label: 'Completion',
+                      label: app.t('completion'),
                       value:
                           '${app.performance.completionRate.toStringAsFixed(1)}%',
                       color: AppTheme.mint,
                     ),
                     const SizedBox(width: 10),
                     StatTile(
-                      label: 'Total Deliveries',
+                      label: app.t('total_deliveries'),
                       value: '${app.performance.totalDeliveries}',
                       color: AppTheme.mango,
                     ),
@@ -235,7 +233,7 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          const SectionLabel('Batch Pickup'),
+          SectionLabel(app.t('batch_pickup')),
           FrostCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -255,21 +253,21 @@ class DashboardScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 14),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Multi-Order Pickup',
-                            style: TextStyle(
+                            app.t('multi_order_pickup'),
+                            style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
                           ),
-                          SizedBox(height: 2),
+                          const SizedBox(height: 2),
                           Text(
-                            'Pick up multiple orders in one trip',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                            app.t('pick_up_multiple'),
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
                           ),
                         ],
                       ),
@@ -288,7 +286,7 @@ class DashboardScreen extends StatelessWidget {
                           ).pushNamed(AppRoutes.ordersByLocation);
                         },
                         icon: const Icon(Icons.list_alt_rounded),
-                        label: const Text('Select Orders'),
+                        label: Text(app.t('select_orders')),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -300,7 +298,7 @@ class DashboardScreen extends StatelessWidget {
                           ).pushNamed(AppRoutes.externalDeliveryTripList);
                         },
                         icon: const Icon(Icons.route_rounded),
-                        label: const Text('View Trips'),
+                        label: Text(app.t('view_trips')),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.mint,
                         ),
@@ -315,12 +313,12 @@ class DashboardScreen extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const SectionLabel('Available Deliveries'),
+              SectionLabel(app.t('available_deliveries')),
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pushNamed(AppRoutes.deliveryList);
                 },
-                child: const Text('View All'),
+                child: Text(app.t('view_all')),
               ),
             ],
           ),
@@ -342,17 +340,17 @@ class DashboardScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'External Deliveries',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                            app.t('external_deliveries'),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           Text(
-                            'View and manage deliveries from ERPNext',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                            app.t('external_deliveries_desc'),
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
                           ),
                         ],
                       ),
@@ -368,7 +366,7 @@ class DashboardScreen extends StatelessWidget {
                       Navigator.of(context).pushNamed(AppRoutes.deliveryList);
                     },
                     icon: const Icon(Icons.list_alt),
-                    label: const Text('View Deliveries'),
+                    label: Text(app.t('view_deliveries')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -379,34 +377,34 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          const SectionLabel('Active Order'),
+          SectionLabel(app.t('active_order')),
           FrostCard(
             child: app.isFetchingActiveOrder
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Row(
                       children: [
-                        SizedBox(
+                        const SizedBox(
                           width: 18,
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
-                        SizedBox(width: 12),
-                        Text('Loading active order...'),
+                        const SizedBox(width: 12),
+                        Text(app.t('loading_active_order')),
                       ],
                     ),
                   )
                 : app.activeOrder == null
                 ? Row(
                     children: [
-                      const Expanded(child: Text('No active order right now.')),
+                      Expanded(child: Text(app.t('no_active_order'))),
                       TextButton(
                         onPressed: () {
                           Navigator.of(
                             context,
                           ).pushNamed(AppRoutes.orderListing);
                         },
-                        child: const Text('Browse Nearby Orders'),
+                        child: Text(app.t('browse_nearby')),
                       ),
                     ],
                   )
@@ -425,7 +423,7 @@ class DashboardScreen extends StatelessWidget {
                   ),
           ),
           const SizedBox(height: 14),
-          const SectionLabel('Notifications'),
+          SectionLabel(app.t('notifications')),
           FrostCard(
             child: Column(
               children: [
@@ -510,7 +508,7 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          const SectionLabel('Quick Access'),
+          SectionLabel(app.t('quick_access')),
           FrostCard(
             child: Wrap(
               spacing: 10,
@@ -518,55 +516,55 @@ class DashboardScreen extends StatelessWidget {
               children: [
                 _quickButton(
                   context,
-                  'My Profile',
+                  app.t('my_profile'),
                   Icons.person_outline_rounded,
                   route: AppRoutes.profile,
                 ),
                 _quickButton(
                   context,
-                  'Earnings History',
+                  app.t('earnings_history'),
                   Icons.receipt_long_rounded,
                 ),
                 _quickButton(
                   context,
-                  'Documents',
+                  app.t('documents'),
                   Icons.file_copy_outlined,
                   route: AppRoutes.kycDocuments,
                 ),
                 _quickButton(
                   context,
-                  'Vehicle',
+                  app.t('vehicle'),
                   Icons.two_wheeler_rounded,
                   route: AppRoutes.vehicleDetails,
                 ),
                 _quickButton(
                   context,
-                  'Bank Details',
+                  app.t('bank_details'),
                   Icons.account_balance_outlined,
                   route: AppRoutes.bankSetup,
                 ),
                 _quickButton(
                   context,
-                  'Orders by Location',
+                  app.t('orders_by_location'),
                   Icons.list_alt_rounded,
                   route: AppRoutes.ordersByLocation,
                 ),
                 _quickButton(
                   context,
-                  'Available Orders',
+                  app.t('available_orders'),
                   Icons.local_shipping_outlined,
                   route: AppRoutes.orderListing,
                 ),
                 _quickButton(
                   context,
-                  'External Trips',
+                  app.t('external_trips'),
                   Icons.local_shipping_outlined,
                   route: AppRoutes.externalDeliveryTripList,
                 ),
-                _quickButton(context, 'Support', Icons.support_agent_rounded),
+                _quickButton(context, app.t('support'), Icons.support_agent_rounded),
                 _quickButton(
                   context,
-                  'Settings',
+                  app.t('settings'),
                   Icons.settings_outlined,
                   route: AppRoutes.settings,
                 ),
@@ -675,7 +673,7 @@ class _ActiveOrderActions extends StatelessWidget {
                   context,
                 ).pushNamed(AppRoutes.orderDetails, arguments: order);
               },
-              child: const Text('View Order'),
+              child: Text(app.t('view_order')),
             ),
           ),
           const SizedBox(width: 10),
@@ -684,7 +682,7 @@ class _ActiveOrderActions extends StatelessWidget {
               onPressed: () {
                 Navigator.of(context).pushNamed(AppRoutes.navigation);
               },
-              child: const Text('Navigate'),
+              child: Text(app.t('navigate')),
             ),
           ),
         ],
@@ -696,7 +694,7 @@ class _ActiveOrderActions extends StatelessWidget {
             child: OutlinedButton(
               onPressed: () async {
                 final Uri uri = Uri.parse(
-                  'https://www.google.com/maps/search/?api=1&query=${order.latitude},${order.longitude}',
+                  'https://www.google.com/maps/dir/?api=1&destination=${order.latitude},${order.longitude}&travelmode=driving',
                 );
                 final bool launched = await launchUrl(
                   uri,
@@ -706,10 +704,10 @@ class _ActiveOrderActions extends StatelessWidget {
                   return;
                 }
                 if (!launched) {
-                  showInfoSnack(context, 'Unable to open Google Maps');
+                  showInfoSnack(context, app.t('unable_open_maps'));
                 }
               },
-              child: const Text('Open Maps'),
+              child: Text(app.t('open_maps')),
             ),
           ),
           const SizedBox(width: 10),
@@ -718,7 +716,7 @@ class _ActiveOrderActions extends StatelessWidget {
               onPressed: () {
                 Navigator.of(context).pushNamed(AppRoutes.orderTracking);
               },
-              child: const Text('Track Order'),
+              child: Text(app.t('track_order')),
             ),
           ),
         ],
@@ -726,7 +724,7 @@ class _ActiveOrderActions extends StatelessWidget {
     ];
 
     final ({String label, OrderProgressStatus next})? transition =
-        _nextTransition(order.orderStatus);
+        _nextTransition(order.orderStatus, app);
     if (transition != null) {
       rows.add(const SizedBox(height: 10));
       rows.add(
@@ -746,8 +744,8 @@ class _ActiveOrderActions extends StatelessWidget {
               }
               if (transition.next == OrderProgressStatus.delivered) {
                 messenger.showSnackBar(
-                  const SnackBar(
-                    content: Text('Order delivered and earnings updated'),
+                  SnackBar(
+                    content: Text(app.t('order_delivered')),
                   ),
                 );
                 navigator.pushNamedAndRemoveUntil(
@@ -772,16 +770,17 @@ class _ActiveOrderActions extends StatelessWidget {
 
   ({String label, OrderProgressStatus next})? _nextTransition(
     OrderProgressStatus current,
+    AppController app,
   ) {
     switch (current) {
       case OrderStatus.accepted:
-        return (label: 'Mark Reached Pickup', next: OrderStatus.reachedPickup);
+        return (label: app.t('mark_reached_pickup'), next: OrderStatus.reachedPickup);
       case OrderStatus.reachedPickup:
-        return (label: 'Mark Picked Up', next: OrderStatus.pickedUp);
+        return (label: app.t('mark_picked_up'), next: OrderStatus.pickedUp);
       case OrderStatus.pickedUp:
-        return (label: 'Start Delivery', next: OrderStatus.outForDelivery);
+        return (label: app.t('start_delivery'), next: OrderStatus.outForDelivery);
       case OrderStatus.outForDelivery:
-        return (label: 'Mark Delivered', next: OrderStatus.delivered);
+        return (label: app.t('mark_delivered'), next: OrderStatus.delivered);
       case OrderStatus.pending:
       case OrderStatus.rejected:
       case OrderStatus.delivered:
@@ -924,9 +923,9 @@ class _DashboardLocationCard extends StatelessWidget {
                           ],
                         ),
                         const Spacer(),
-                        const Text(
-                          'Current Location',
-                          style: TextStyle(
+                        Text(
+                          app.t('current_location'),
+                          style: const TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 18,
                             color: Colors.white,
@@ -935,7 +934,7 @@ class _DashboardLocationCard extends StatelessWidget {
                         const SizedBox(height: 6),
                         Text(
                           app.currentLocationLabel ??
-                              'Location not selected yet',
+                              app.t('location_not_selected'),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

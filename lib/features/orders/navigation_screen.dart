@@ -19,19 +19,19 @@ class NavigationScreen extends StatelessWidget {
 
     if (order == null) {
       return AppShell(
-        title: 'Navigation',
-        subtitle: 'No active route',
+        title: app.t('navigation'),
+        subtitle: app.t('no_active_route'),
         child: ElevatedButton(
           onPressed: () =>
               Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard),
-          child: const Text('Back to Dashboard'),
+          child: Text(app.t('back_to_dashboard')),
         ),
       );
     }
 
     return AppShell(
-      title: 'Navigation',
-      subtitle: 'Route summary',
+      title: app.t('navigation'),
+      subtitle: app.t('route_summary'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -39,13 +39,13 @@ class NavigationScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.route_rounded, color: Colors.deepOrange),
-                    SizedBox(width: 8),
+                    const Icon(Icons.route_rounded, color: Colors.deepOrange),
+                    const SizedBox(width: 8),
                     Text(
-                      'Delivery Route',
-                      style: TextStyle(
+                      app.t('delivery_route'),
+                      style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 16,
                       ),
@@ -56,7 +56,7 @@ class NavigationScreen extends StatelessWidget {
                 _StepTile(
                   icon: Icons.store_rounded,
                   iconColor: Colors.blue,
-                  title: 'Pickup store',
+                  title: app.t('pickup_store'),
                   subtitle: order.pickup,
                 ),
                 const SizedBox(height: 12),
@@ -68,7 +68,7 @@ class NavigationScreen extends StatelessWidget {
                 _StepTile(
                   icon: Icons.location_on_rounded,
                   iconColor: Colors.red,
-                  title: 'Delivery drop',
+                  title: app.t('delivery_drop'),
                   subtitle: order.drop.isNotEmpty
                       ? order.drop
                       : order.deliveryAddress,
@@ -118,27 +118,46 @@ class NavigationScreen extends StatelessWidget {
               order.longitude,
             ),
             icon: const Icon(Icons.navigation_rounded),
-            label: const Text('Open in Google Maps'),
+            label: Text(app.t('open_google_maps')),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const DeliveryTrackingScreen(),
+                MaterialPageRoute<void>(
+                  builder: (_) => DeliveryTrackingScreen(
+                    deliveryName: order.orderId,
+                    customerName: order.customerName,
+                    storeName: order.storeName,
+                    contactNumber: order.customerPhone.isNotEmpty
+                        ? order.customerPhone
+                        : order.contactNumber,
+                    dropAddress: order.deliveryAddress,
+                    dropLat: order.latitude,
+                    dropLng: order.longitude,
+                  ),
                 ),
               );
             },
             icon: const Icon(Icons.map_rounded),
-            label: const Text('Use In-app Navigation'),
+            label: Text(app.t('use_inapp_nav')),
           ),
           const SizedBox(height: 12),
           ElevatedButton(
-            onPressed: () {
-              app.updateOrderStatus(OrderProgressStatus.reachedPickup);
+            onPressed: () async {
+              final error = await app.updateOrderStatus(
+                OrderProgressStatus.reachedPickup,
+              );
+              if (!context.mounted) return;
+              if (error != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(error)),
+                );
+                return;
+              }
               Navigator.of(context).pushNamed(AppRoutes.orderStatus);
             },
-            child: const Text('Reached Pickup'),
+            child: Text(app.t('reached_pickup')),
           ),
         ],
       ),
@@ -150,17 +169,27 @@ class NavigationScreen extends StatelessWidget {
     double lat,
     double lng,
   ) async {
-    final Uri nativeUri = Platform.isAndroid
-        ? Uri.parse(
-            'https://www.google.com/maps/dir/?api=1'
-            '&destination=$lat,$lng'
-            '&travelmode=driving',
-          )
-        : Uri.parse('comgooglemaps://?daddr=$lat,$lng&directionsmode=driving');
+    if (Platform.isAndroid) {
+      final Uri androidUri = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
+      if (await canLaunchUrl(androidUri)) {
+        await launchUrl(androidUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    }
 
-    if (await canLaunchUrl(nativeUri)) {
-      await launchUrl(nativeUri);
-      return;
+    if (Platform.isIOS) {
+      final Uri googleMapsIos = Uri.parse(
+        'comgooglemaps://?daddr=$lat,$lng&directionsmode=driving',
+      );
+      if (await canLaunchUrl(googleMapsIos)) {
+        await launchUrl(googleMapsIos);
+        return;
+      }
+      final Uri appleMaps = Uri.parse('maps:?daddr=$lat,$lng');
+      if (await canLaunchUrl(appleMaps)) {
+        await launchUrl(appleMaps);
+        return;
+      }
     }
 
     final Uri webUri = Uri.parse(
@@ -168,7 +197,6 @@ class NavigationScreen extends StatelessWidget {
       '&destination=$lat,$lng'
       '&travelmode=driving',
     );
-
     if (await canLaunchUrl(webUri)) {
       await launchUrl(webUri, mode: LaunchMode.externalApplication);
       return;
@@ -176,7 +204,7 @@ class NavigationScreen extends StatelessWidget {
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open Google Maps')),
+        const SnackBar(content: Text('Could not open maps')),
       );
     }
   }

@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
+import '../localization/app_strings.dart';
 import '../models/app_models.dart';
 import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
@@ -3105,23 +3106,7 @@ class AppController extends ChangeNotifier {
   }
 
   String t(String key) {
-    const Map<String, Map<String, String>> dictionary = {
-      'en': {
-        'app_title': 'FlowFleet Partner',
-        'login': 'Login',
-        'register': 'Register',
-        'dashboard': 'Dashboard',
-      },
-      'hi': {
-        'app_title': 'FlowFleet पार्टनर',
-        'login': 'लॉगिन',
-        'register': 'रजिस्टर',
-        'dashboard': 'डैशबोर्ड',
-      },
-    };
-
-    final String selected = _languageCode.isEmpty ? 'en' : _languageCode;
-    return dictionary[selected]?[key] ?? dictionary['en']![key] ?? key;
+    return AppStrings.get(_languageCode.isEmpty ? 'en' : _languageCode, key);
   }
 
   Future<void> _persistSession(Map<String, dynamic> message) async {
