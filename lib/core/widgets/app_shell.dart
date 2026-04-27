@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-import '../theme/app_theme.dart';
-
 class AppShell extends StatelessWidget {
   const AppShell({
     super.key,
@@ -25,13 +23,25 @@ class AppShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bgColor = theme.scaffoldBackgroundColor;
     final Widget body = Padding(padding: padding, child: child);
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFFF1F7FF), Color(0xFFE8F5F0), Color(0xFFFFF5E6)],
+            colors: [
+              bgColor,
+              Color.alphaBlend(
+                theme.colorScheme.secondary.withValues(alpha: 0.08),
+                bgColor,
+              ),
+              Color.alphaBlend(
+                theme.colorScheme.tertiary.withValues(alpha: 0.06),
+                bgColor,
+              ),
+            ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -58,13 +68,15 @@ class AppShell extends StatelessWidget {
                             children: [
                               Text(
                                 title,
-                                style: Theme.of(context).textTheme.titleLarge,
+                                style: theme.textTheme.titleLarge,
                               ),
                               if (subtitle != null)
                                 Text(
                                   subtitle!,
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(color: Colors.black54),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.6),
+                                  ),
                                 ),
                             ],
                           ),
@@ -128,17 +140,27 @@ class FrostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.86),
+        color: isDark
+            ? theme.colorScheme.surface.withValues(alpha: 0.9)
+            : Colors.white.withValues(alpha: 0.86),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
-        boxShadow: const [
+        border: Border.all(
+          color: isDark
+              ? theme.colorScheme.outline.withValues(alpha: 0.2)
+              : Colors.white.withValues(alpha: 0.7),
+        ),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x140A1D3A),
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.2)
+                : const Color(0x140A1D3A),
             blurRadius: 18,
-            offset: Offset(0, 10),
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -160,7 +182,6 @@ class SectionLabel extends StatelessWidget {
         text,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.w700,
-          color: AppTheme.nightBlue,
         ),
       ),
     );
@@ -172,32 +193,39 @@ class StatTile extends StatelessWidget {
     super.key,
     required this.label,
     required this.value,
-    this.color = AppTheme.oceanBlue,
+    this.color,
   });
 
   final String label;
   final String value;
-  final Color color;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveColor =
+        color ?? Theme.of(context).colorScheme.primary;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
+          color: effectiveColor.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.22)),
+          border: Border.all(color: effectiveColor.withValues(alpha: 0.22)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(color: Colors.black54)),
+            Text(
+              label,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
             const SizedBox(height: 6),
             Text(
               value,
               style: TextStyle(
-                color: color,
+                color: effectiveColor,
                 fontWeight: FontWeight.w700,
                 fontSize: 18,
               ),
@@ -214,6 +242,7 @@ class _BackdropShapes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return IgnorePointer(
       child: Stack(
         children: [
@@ -224,7 +253,7 @@ class _BackdropShapes extends StatelessWidget {
               width: 180,
               height: 180,
               decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.16),
+                color: colorScheme.primary.withValues(alpha: 0.16),
                 shape: BoxShape.circle,
               ),
             ),
@@ -238,7 +267,7 @@ class _BackdropShapes extends StatelessWidget {
                 width: 120,
                 height: 120,
                 decoration: BoxDecoration(
-                  color: AppTheme.mango.withValues(alpha: 0.18),
+                  color: colorScheme.tertiary.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
@@ -251,7 +280,7 @@ class _BackdropShapes extends StatelessWidget {
               width: 210,
               height: 210,
               decoration: BoxDecoration(
-                color: AppTheme.mint.withValues(alpha: 0.1),
+                color: colorScheme.secondary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
             ),
@@ -271,6 +300,7 @@ class _ShellLoadingIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
     return SizedBox(
       width: 32,
       height: 32,
@@ -281,20 +311,20 @@ class _ShellLoadingIndicator extends StatelessWidget {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+              color: primary.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
           )
               .animate(onPlay: (controller) => controller.repeat())
               .shimmer(
                 duration: 1000.ms,
-                color: AppTheme.oceanBlue.withValues(alpha: 0.25),
+                color: primary.withValues(alpha: 0.25),
               ),
           Container(
             width: 12,
             height: 12,
             decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.15),
+              color: primary.withValues(alpha: 0.15),
               shape: BoxShape.circle,
             ),
           )
@@ -302,7 +332,7 @@ class _ShellLoadingIndicator extends StatelessWidget {
               .shimmer(
                 duration: 800.ms,
                 delay: 200.ms,
-                color: AppTheme.oceanBlue.withValues(alpha: 0.3),
+                color: primary.withValues(alpha: 0.3),
               ),
         ],
       ),

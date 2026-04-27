@@ -115,7 +115,6 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
           primaryColor: controller.accentColor,
         ),
         darkTheme: AppTheme.getDarkTheme(
-          scaffoldBackgroundColor: controller.backgroundColor,
           primaryColor: controller.accentColor,
         ),
         themeMode: controller.themeMode,
