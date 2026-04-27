@@ -517,7 +517,18 @@ class _OrdersByLocationScreenState
 
   @override
   Widget build(BuildContext context) {
-    final selectedStore = ref.watch(appControllerProvider).selectedStoreName;
+    final app = ref.watch(appControllerProvider);
+    final selectedStore = app.selectedStoreName;
+
+    ref.listen(
+      appControllerProvider.select((c) => c.languageCode),
+      (previous, next) {
+        if (previous != null && previous != next) {
+          _lastStoreName = null;
+          _pagingController.refresh();
+        }
+      },
+    );
 
     return PopScope(
       canPop: !_selectionMode,
@@ -527,10 +538,24 @@ class _OrdersByLocationScreenState
         }
       },
       child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
+        body: Builder(
+          builder: (context) {
+            final theme = Theme.of(context);
+            final bgColor = theme.scaffoldBackgroundColor;
+            return Container(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFFF1F7FF), Color(0xFFE8F5F0), Color(0xFFFFF5E6)],
+              colors: [
+                bgColor,
+                Color.alphaBlend(
+                  theme.colorScheme.secondary.withValues(alpha: 0.08),
+                  bgColor,
+                ),
+                Color.alphaBlend(
+                  theme.colorScheme.tertiary.withValues(alpha: 0.06),
+                  bgColor,
+                ),
+              ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -644,6 +669,8 @@ class _OrdersByLocationScreenState
               if (_selectionMode) _buildSelectionBottomBar(),
             ],
           ),
+        );
+          },
         ),
       ),
     );

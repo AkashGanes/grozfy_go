@@ -11,6 +11,16 @@ class AppStrings {
     Locale('bn'),
   ];
 
+  static const Map<String, String> nativeLanguageNames = {
+    'en': 'English',
+    'hi': 'हिंदी',
+    'ta': 'தமிழ்',
+    'te': 'తెలుగు',
+    'kn': 'ಕನ್ನಡ',
+    'ml': 'മലയാളം',
+    'bn': 'বাংলা',
+  };
+
   static const Map<String, Map<String, String>> _dict = {
     'en': {
       // common
@@ -235,6 +245,9 @@ class AppStrings {
           'Your profile is {completed}/{total} complete. Keep going!',
       'profile_incomplete_message':
           'Complete your profile to start delivering.',
+      'submitted': 'Submitted',
+      'unknown': 'Unknown',
+      'trips_grouped_by_driver': 'Trips grouped by driver',
       'external_delivery_trip': 'External Delivery Trip',
       'external_delivery_trips': 'External Delivery Trips',
       'delivery_failed': 'Delivery Failed',
@@ -427,6 +440,9 @@ class AppStrings {
       'profile_almost_complete_message': 'लगभग हो गया! सभी सुविधाएं खोलने के लिए अपनी प्रोफ़ाइल पूरी करें।',
       'profile_progress_message': 'आपकी प्रोफ़ाइल {completed}/{total} पूरी है। जारी रखें!',
       'profile_incomplete_message': 'डिलीवरी शुरू करने के लिए अपनी प्रोफ़ाइल पूरी करें।',
+      'submitted': 'प्रस्तुत',
+      'unknown': 'अज्ञात',
+      'trips_grouped_by_driver': 'ड्राइवर अनुसार ट्रिप्स',
       'external_delivery_trip': 'बाहरी डिलीवरी ट्रिप',
       'external_delivery_trips': 'बाहरी डिलीवरी ट्रिप्स',
       'delivery_failed': 'डिलीवरी विफल',
@@ -618,6 +634,9 @@ class AppStrings {
       'profile_almost_complete_message': 'கிட்டத்தட்ட முடிந்தது! அனைத்து அம்சங்களையும் திறக்க உங்கள் சுயவிவரத்தை முடிக்கவும்.',
       'profile_progress_message': 'உங்கள் சுயவிவரம் {completed}/{total} முடிந்துள்ளது. தொடரவும்!',
       'profile_incomplete_message': 'டெலிவரி தொடங்க உங்கள் சுயவிவரத்தை முடிக்கவும்.',
+      'submitted': 'சமர்ப்பிக்கப்பட்டது',
+      'unknown': 'தெரியவில்லை',
+      'trips_grouped_by_driver': 'டிரைவர் வாரியான பயணங்கள்',
       'external_delivery_trip': 'வெளிப்புற டெலிவரி பயணம்',
       'external_delivery_trips': 'வெளிப்புற டெலிவரி பயணங்கள்',
       'delivery_failed': 'டெலிவரி தோல்வி',
@@ -809,6 +828,9 @@ class AppStrings {
       'profile_almost_complete_message': 'దాదాపు పూర్తైంది! అన్ని ఫీచర్లను అన్‌లాక్ చేయడానికి మీ ప్రొఫైల్‌ని పూర్తి చేయండి.',
       'profile_progress_message': 'మీ ప్రొఫైల్ {completed}/{total} పూర్తైంది. కొనసాగించండి!',
       'profile_incomplete_message': 'డెలివరీ ప్రారంభించడానికి మీ ప్రొఫైల్‌ని పూర్తి చేయండి.',
+      'submitted': 'సమర్పించబడింది',
+      'unknown': 'తెలియదు',
+      'trips_grouped_by_driver': 'డ్రైవర్ వారీగా ట్రిప్‌లు',
       'external_delivery_trip': 'బాహ్య డెలివరీ ట్రిప్',
       'external_delivery_trips': 'బాహ్య డెలివరీ ట్రిప్స్',
       'delivery_failed': 'డెలివరీ విఫలమైంది',
@@ -1000,6 +1022,9 @@ class AppStrings {
       'profile_almost_complete_message': 'ಬಹುತೇಕ ಮುಗಿದಿದೆ! ಎಲ್ಲ ವೈಶಿಷ್ಟ್ಯಗಳನ್ನು ತೆರೆದುಕೊಳ್ಳಲು ನಿಮ್ಮ ಪ್ರೊಫೈಲ್ ಅನ್ನು ಪೂರ್ಣಗೊಳಿಸಿ.',
       'profile_progress_message': 'ನಿಮ್ಮ ಪ್ರೊಫೈಲ್ {completed}/{total} ಪೂರ್ಣವಾಗಿದೆ. ಮುಂದುವರಿಸಿ!',
       'profile_incomplete_message': 'ಡೆಲಿವರಿ ಆರಂಭಿಸಲು ನಿಮ್ಮ ಪ್ರೊಫೈಲ್ ಅನ್ನು ಪೂರ್ಣಗೊಳಿಸಿ.',
+      'submitted': 'ಸಲ್ಲಿಸಲಾಗಿದೆ',
+      'unknown': 'ಅಜ್ಞಾತ',
+      'trips_grouped_by_driver': 'ಡ್ರೈವರ್ ವಾರು ಟ್ರಿಪ್‌ಗಳು',
       'external_delivery_trip': 'ಬಾಹ್ಯ ಡೆಲಿವರಿ ಟ್ರಿಪ್',
       'external_delivery_trips': 'ಬಾಹ್ಯ ಡೆಲಿವರಿ ಟ್ರಿಪ್ಸ್',
       'delivery_failed': 'ಡೆಲಿವರಿ ವಿಫಲವಾಗಿದೆ',
@@ -1191,6 +1216,9 @@ class AppStrings {
       'profile_almost_complete_message': 'ഇനി കുറച്ചു മാത്രം! എല്ലാം തുറക്കാൻ പ്രൊഫൈൽ പൂർത്തിയാക്കുക.',
       'profile_progress_message': 'നിങ്ങളുടെ പ്രൊഫൈൽ {completed}/{total} പൂർത്തിയായി. തുടരുക!',
       'profile_incomplete_message': 'ഡെലിവറി തുടങ്ങാൻ പ്രൊഫൈൽ പൂർത്തിയാക്കുക.',
+      'submitted': 'സമർപ്പിച്ചു',
+      'unknown': 'അജ്ഞാതം',
+      'trips_grouped_by_driver': 'ഡ്രൈവർ തിരിച്ചുള്ള ട്രിപ്പുകൾ',
       'external_delivery_trip': 'ബാഹ്യ ഡെലിവറി ട്രിപ്പ്',
       'external_delivery_trips': 'ബാഹ്യ ഡെലിവറി ട്രിപ്പുകൾ',
       'delivery_failed': 'ഡെലിവറി പരാജയപ്പെട്ടു',
@@ -1383,6 +1411,9 @@ class AppStrings {
       'profile_almost_complete_message': 'আরও একটু! সব বৈশিষ্ট্য আনলক করতে প্রোফাইল সম্পূর্ণ করুন।',
       'profile_progress_message': 'আপনার প্রোফাইল {completed}/{total} সম্পূর্ণ। এগিয়ে যান!',
       'profile_incomplete_message': 'ডেলিভারি শুরু করতে আপনার প্রোফাইল সম্পূর্ণ করুন।',
+      'submitted': 'জমা দেওয়া হয়েছে',
+      'unknown': 'অজানা',
+      'trips_grouped_by_driver': 'ড্রাইভার অনুযায়ী ট্রিপ',
       'external_delivery_trip': 'বাহ্যিক ডেলিভারি ট্রিপ',
       'external_delivery_trips': 'বাহ্যিক ডেলিভারি ট্রিপসমূহ',
       'delivery_failed': 'ডেলিভারি ব্যর্থ',

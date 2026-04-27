@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/widgets/app_shell.dart';
@@ -26,6 +27,33 @@ class _LanguageSelectionScreenState
     }
   }
 
+  static const _languages = [
+    ('en', 'sample_english_ready'),
+    ('hi', 'sample_hindi_ready'),
+    ('ta', 'sample_tamil_ready'),
+    ('te', 'sample_telugu_ready'),
+    ('kn', 'sample_kannada_ready'),
+    ('ml', 'sample_malayalam_ready'),
+    ('bn', 'sample_bengali_ready'),
+  ];
+
+  List<Widget> _buildLanguageTiles(dynamic app) {
+    final tiles = <Widget>[];
+    for (final (code, sampleKey) in _languages) {
+      if (tiles.isNotEmpty) tiles.add(const SizedBox(height: 12));
+      tiles.add(
+        _LanguageTile(
+          code: code,
+          label: AppStrings.nativeLanguageNames[code] ?? code,
+          sample: app.t(sampleKey),
+          selected: _selectedCode == code,
+          onTap: () => setState(() => _selectedCode = code),
+        ),
+      );
+    }
+    return tiles;
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = ref.watch(appControllerProvider);
@@ -40,61 +68,7 @@ class _LanguageSelectionScreenState
             child: Text(app.t('language_info')),
           ),
           const SizedBox(height: 16),
-          _LanguageTile(
-            code: 'en',
-            label: app.t('english'),
-            sample: app.t('sample_english_ready'),
-            selected: _selectedCode == 'en',
-            onTap: () => setState(() => _selectedCode = 'en'),
-          ),
-          const SizedBox(height: 12),
-          _LanguageTile(
-            code: 'ta',
-            label: app.t('tamil'),
-            sample: app.t('sample_tamil_ready'),
-            selected: _selectedCode == 'ta',
-            onTap: () => setState(() => _selectedCode = 'ta'),
-          ),
-          const SizedBox(height: 12),
-          _LanguageTile(
-            code: 'hi',
-            label: app.t('hindi'),
-            sample: app.t('sample_hindi_ready'),
-            selected: _selectedCode == 'hi',
-            onTap: () => setState(() => _selectedCode = 'hi'),
-          ),
-          const SizedBox(height: 12),
-          _LanguageTile(
-            code: 'te',
-            label: app.t('telugu'),
-            sample: app.t('sample_telugu_ready'),
-            selected: _selectedCode == 'te',
-            onTap: () => setState(() => _selectedCode = 'te'),
-          ),
-          const SizedBox(height: 12),
-          _LanguageTile(
-            code: 'kn',
-            label: app.t('kannada'),
-            sample: app.t('sample_kannada_ready'),
-            selected: _selectedCode == 'kn',
-            onTap: () => setState(() => _selectedCode = 'kn'),
-          ),
-          const SizedBox(height: 12),
-          _LanguageTile(
-            code: 'ml',
-            label: app.t('malayalam'),
-            sample: app.t('sample_malayalam_ready'),
-            selected: _selectedCode == 'ml',
-            onTap: () => setState(() => _selectedCode = 'ml'),
-          ),
-          const SizedBox(height: 12),
-          _LanguageTile(
-            code: 'bn',
-            label: app.t('bengali'),
-            sample: app.t('sample_bengali_ready'),
-            selected: _selectedCode == 'bn',
-            onTap: () => setState(() => _selectedCode = 'bn'),
-          ),
+          ..._buildLanguageTiles(app),
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: () {

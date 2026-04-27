@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -85,68 +86,29 @@ class SettingsScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Column(
                 children: [
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'en',
-                    label: controller.t('english'),
-                    sample: controller.t('sample_english_ready'),
-                    selected: currentLang == 'en',
-                    onTap: () => controller.setLanguage('en'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'hi',
-                    label: controller.t('hindi'),
-                    sample: controller.t('sample_hindi_ready'),
-                    selected: currentLang == 'hi',
-                    onTap: () => controller.setLanguage('hi'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'ta',
-                    label: controller.t('tamil'),
-                    sample: controller.t('sample_tamil_ready'),
-                    selected: currentLang == 'ta',
-                    onTap: () => controller.setLanguage('ta'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'te',
-                    label: controller.t('telugu'),
-                    sample: controller.t('sample_telugu_ready'),
-                    selected: currentLang == 'te',
-                    onTap: () => controller.setLanguage('te'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'kn',
-                    label: controller.t('kannada'),
-                    sample: controller.t('sample_kannada_ready'),
-                    selected: currentLang == 'kn',
-                    onTap: () => controller.setLanguage('kn'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'ml',
-                    label: controller.t('malayalam'),
-                    sample: controller.t('sample_malayalam_ready'),
-                    selected: currentLang == 'ml',
-                    onTap: () => controller.setLanguage('ml'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'bn',
-                    label: controller.t('bengali'),
-                    sample: controller.t('sample_bengali_ready'),
-                    selected: currentLang == 'bn',
-                    onTap: () => controller.setLanguage('bn'),
-                  ),
+                  ...[
+                    ('en', 'sample_english_ready'),
+                    ('hi', 'sample_hindi_ready'),
+                    ('ta', 'sample_tamil_ready'),
+                    ('te', 'sample_telugu_ready'),
+                    ('kn', 'sample_kannada_ready'),
+                    ('ml', 'sample_malayalam_ready'),
+                    ('bn', 'sample_bengali_ready'),
+                  ].expand((entry) {
+                    final code = entry.$1;
+                    final sampleKey = entry.$2;
+                    return [
+                      if (code != 'en') const SizedBox(height: 8),
+                      _buildLanguageTile(
+                        context: context,
+                        code: code,
+                        label: AppStrings.nativeLanguageNames[code] ?? code,
+                        sample: controller.t(sampleKey),
+                        selected: currentLang == code,
+                        onTap: () => controller.setLanguage(code),
+                      ),
+                    ];
+                  }),
                 ],
               ),
             ),
@@ -239,22 +201,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   String _getLanguageName(dynamic controller, String code) {
-    switch (code) {
-      case 'hi':
-        return controller.t('hindi');
-      case 'ta':
-        return controller.t('tamil');
-      case 'te':
-        return controller.t('telugu');
-      case 'kn':
-        return controller.t('kannada');
-      case 'ml':
-        return controller.t('malayalam');
-      case 'bn':
-        return controller.t('bengali');
-      default:
-        return controller.t('english');
-    }
+    return AppStrings.nativeLanguageNames[code] ?? code.toUpperCase();
   }
 
   Widget _buildThemeCustomizationSection(
