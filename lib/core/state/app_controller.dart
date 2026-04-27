@@ -51,6 +51,7 @@ class AppController extends ChangeNotifier {
   static const String _prefEmail = 'partner_email';
   static const String _prefFullName = 'partner_full_name';
   static const String _prefProfileImagePath = 'partner_profile_image_path';
+  static const String _prefServerProfileImageUrl = 'server_profile_image_url';
   static const String _prefRememberMe = 'remember_me';
   static const String _prefCurrentLat = 'current_lat';
   static const String _prefCurrentLng = 'current_lng';
@@ -165,6 +166,7 @@ class AppController extends ChangeNotifier {
   String? _currentLocationLabel;
   String? _selectedStoreName;
   String? _profileImagePath;
+  String? _serverProfileImageUrl;
   StreamSubscription<Position>? _positionStream;
 
   ThemeMode _themeMode = ThemeMode.system;
@@ -244,6 +246,7 @@ class AppController extends ChangeNotifier {
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
+  String? get serverProfileImageUrl => _serverProfileImageUrl;
   ThemeMode get themeMode => _themeMode;
   Color get backgroundColor => Color(_backgroundColorValue);
   Color get accentColor => Color(_accentColorValue);
@@ -392,6 +395,7 @@ class AppController extends ChangeNotifier {
     _selectedStoreName = _nullIfBlank(prefs.getString(_prefSelectedStore));
     _driverName = _nullIfBlank(prefs.getString(_prefDriverName));
     _profileImagePath = _nullIfBlank(prefs.getString(_prefProfileImagePath));
+    _serverProfileImageUrl = _nullIfBlank(prefs.getString(_prefServerProfileImageUrl));
     final int themeModeIndex =
         prefs.getInt(_prefThemeMode) ?? ThemeMode.system.index;
     _themeMode =
@@ -693,27 +697,33 @@ class AppController extends ChangeNotifier {
       await setProfileImagePath(null);
 
       final String? employeeName = await _resolveEmployeeNameForProfileSync();
-      if (employeeName == null) {
-        _profileImageSyncError =
-            'Profile image removed on this device. Employee link missing for web sync.';
-        return _profileImageSyncError;
+      if (employeeName != null) {
+        final Uri employeeUri = Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
+        );
+        final Map<String, dynamic> payload = await authorizedPutJson(
+          employeeUri,
+          <String, dynamic>{'image': ''},
+        );
+        final Map<String, dynamic>? refreshedEmployee = _extractResourceData(
+          payload,
+        );
+        _loggedProfileDetails = LoggedPartnerProfileDetails(
+          loggedUser: _loggedProfileDetails?.loggedUser,
+          employee: refreshedEmployee ?? _loggedProfileDetails?.employee,
+          driver: _loggedProfileDetails?.driver,
+        );
       }
 
-      final Uri employeeUri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
-      );
-      final Map<String, dynamic> payload = await authorizedPutJson(
-        employeeUri,
-        <String, dynamic>{'image': ''},
-      );
-      final Map<String, dynamic>? refreshedEmployee = _extractResourceData(
-        payload,
-      );
-      _loggedProfileDetails = LoggedPartnerProfileDetails(
-        loggedUser: _loggedProfileDetails?.loggedUser,
-        employee: refreshedEmployee ?? _loggedProfileDetails?.employee,
-        driver: _loggedProfileDetails?.driver,
-      );
+      await _persistServerProfileImageUrl(null);
+
+      String? userName = _resolveUserNameForProfileSync();
+      if (userName == null) {
+        try {
+          userName = await _fetchLoggedUser();
+        } catch (_) {}
+      }
+      await _syncUserImageField(userName: userName, imageUrl: null);
       _profileImageSyncError = null;
       return null;
     } catch (e) {
@@ -751,37 +761,75 @@ class AppController extends ChangeNotifier {
       final String localPath = await _copyProfileImageToAppStorage(sourcePath);
       await setProfileImagePath(localPath);
 
+      // Resolve identifiers (force-fetches profile if not yet loaded).
       final String? employeeName = await _resolveEmployeeNameForProfileSync();
-      if (employeeName == null) {
-        _profileImageSyncError =
-            'Image saved on this device. Employee link missing for web sync.';
-        return _profileImageSyncError;
+      String? userName = _resolveUserNameForProfileSync();
+      if (userName == null) {
+        try {
+          userName = await _fetchLoggedUser();
+        } catch (_) {}
       }
 
       final Uri uploadUri = Uri.parse(
         '${ApiConstants.erpBaseUrl}/api/method/upload_file',
       );
-      final Map<String, dynamic> uploadPayload = await _authorizedUploadFile(
-        uri: uploadUri,
-        filePath: localPath,
-        fields: <String, String>{
-          'is_private': '0',
-          'doctype': 'Employee',
-          'docname': employeeName,
-          'fieldname': 'image',
-        },
-      );
 
-      final String? fileUrl = _extractUploadedFileUrl(uploadPayload);
-      if (fileUrl == null) {
-        throw Exception(
-          'Image uploaded but file URL missing in server response',
+      String? fileUrl;
+
+      if (employeeName != null) {
+        final Map<String, dynamic> uploadPayload = await _authorizedUploadFile(
+          uri: uploadUri,
+          filePath: localPath,
+          fields: <String, String>{
+            'is_private': '0',
+            'doctype': 'Employee',
+            'docname': employeeName,
+            'fieldname': 'image',
+            'attached_to_doctype': 'Employee',
+            'attached_to_name': employeeName,
+            'attached_to_field': 'image',
+          },
         );
+        fileUrl = _extractUploadedFileUrl(uploadPayload);
+        if (fileUrl == null) {
+          throw Exception('Image uploaded but file URL missing in server response');
+        }
+        await _updateEmployeeImage(employeeName: employeeName, imageUrl: fileUrl);
+      } else if (userName != null) {
+        final Map<String, dynamic> uploadPayload = await _authorizedUploadFile(
+          uri: uploadUri,
+          filePath: localPath,
+          fields: <String, String>{
+            'is_private': '0',
+            'doctype': 'User',
+            'docname': userName,
+            'fieldname': 'user_image',
+            'attached_to_doctype': 'User',
+            'attached_to_name': userName,
+            'attached_to_field': 'user_image',
+          },
+        );
+        fileUrl = _extractUploadedFileUrl(uploadPayload);
+        if (fileUrl == null) {
+          throw Exception('Image uploaded but file URL missing in server response');
+        }
+      } else {
+        throw Exception('No employee or user account linked — cannot sync image to web');
       }
 
-      await _updateEmployeeImage(employeeName: employeeName, imageUrl: fileUrl);
-      _profileImageSyncError = null;
-      return null;
+      // Always cache the server URL locally so the avatar can fall back to it
+      // even if the web-sync call below fails.
+      await _persistServerProfileImageUrl(fileUrl);
+
+      // Sync to User.user_image — errors here are non-fatal (local image works).
+      final String? syncError = await _syncUserImageField(
+        userName: userName,
+        imageUrl: fileUrl,
+      );
+      _profileImageSyncError = syncError;
+      // Return the sync error so the UI snack bar shows it.
+      // The local image is already saved — only web sync may have failed.
+      return syncError;
     } catch (e) {
       _profileImageSyncError = e.toString().replaceFirst('Exception: ', '');
       return _profileImageSyncError;
@@ -3479,6 +3527,8 @@ class AppController extends ChangeNotifier {
       if (!(_loggedProfileDetails?.hasData ?? false)) {
         _profileDetailsError = 'No driver profile linked to this login account';
       }
+
+      await _syncServerProfileImageFromEmployee(employeeDoc);
     } catch (e) {
       _profileDetailsError = e.toString().replaceFirst('Exception: ', '');
     } finally {
@@ -3493,6 +3543,39 @@ class AppController extends ChangeNotifier {
     );
     final Map<String, dynamic> payload = await _authorizedGet(uri);
     return _nullIfBlank(payload['message']?.toString());
+  }
+
+  Future<void> _syncServerProfileImageFromEmployee(
+    Map<String, dynamic>? employeeDoc,
+  ) async {
+    if (employeeDoc == null) {
+      // No employee record — we can't infer server state from Employee.
+      // Leave local cache and _serverProfileImageUrl untouched.
+      return;
+    }
+
+    final String? serverUrl = _nullIfBlank(
+      employeeDoc['image']?.toString(),
+    );
+    _serverProfileImageUrl = serverUrl;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (serverUrl != null) {
+      await prefs.setString(_prefServerProfileImageUrl, serverUrl);
+    } else {
+      await prefs.remove(_prefServerProfileImageUrl);
+      // Employee exists but its image field is empty → deleted from web.
+      // Clear the stale local file to reflect that.
+      if (_profileImagePath != null) {
+        final File localFile = File(_profileImagePath!);
+        if (localFile.existsSync()) {
+          try {
+            localFile.deleteSync();
+          } catch (_) {}
+        }
+        _profileImagePath = null;
+        await prefs.remove(_prefProfileImagePath);
+      }
+    }
   }
 
   Future<String?> _findDriverByMobile() async {
@@ -4009,6 +4092,95 @@ class AppController extends ChangeNotifier {
     );
   }
 
+  Future<void> _persistServerProfileImageUrl(String? url) async {
+    _serverProfileImageUrl = _nullIfBlank(url);
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (_serverProfileImageUrl != null) {
+      await prefs.setString(_prefServerProfileImageUrl, _serverProfileImageUrl!);
+    } else {
+      await prefs.remove(_prefServerProfileImageUrl);
+    }
+  }
+
+  /// Tries three approaches to set User.user_image.
+  /// Returns null on success, or the last error string if all fail.
+  Future<String?> _syncUserImageField({
+    required String? userName,
+    required String? imageUrl,
+  }) async {
+    final String? effectiveUser = _nullIfBlank(userName);
+    if (effectiveUser == null ||
+        effectiveUser.toLowerCase() == 'administrator') {
+      return 'Could not resolve Frappe user name — web sync skipped';
+    }
+
+    final String value = imageUrl ?? '';
+
+    // Approach 1: PUT /api/resource/User/{name}
+    try {
+      final Uri userUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/User/${Uri.encodeComponent(effectiveUser)}',
+      );
+      await authorizedPutJson(userUri, <String, dynamic>{'user_image': value});
+      _logApi('profile', 'user_image set via PUT for $effectiveUser');
+      return null;
+    } catch (e) {
+      _logApi('profile', 'PUT user_image failed: $e');
+    }
+
+    // Approach 2: frappe.client.set_value with JSON body
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+      );
+      await authorizedPostJson(uri, <String, dynamic>{
+        'doctype': 'User',
+        'name': effectiveUser,
+        'fieldname': 'user_image',
+        'value': value,
+      });
+      _logApi('profile', 'user_image set via set_value (JSON) for $effectiveUser');
+      return null;
+    } catch (e) {
+      _logApi('profile', 'set_value JSON failed: $e');
+    }
+
+    // Approach 3: frappe.client.set_value with form-encoded body
+    // Some Frappe versions require multipart/form-data for whitelisted methods.
+    try {
+      final List<Map<String, String>> authHeaders = _authorizationHeaders();
+      final Map<String, String> headers =
+          authHeaders.isNotEmpty ? authHeaders.first : <String, String>{};
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+      );
+      final http.Response response = await http
+          .post(
+            uri,
+            headers: headers,
+            body: <String, String>{
+              'doctype': 'User',
+              'name': effectiveUser,
+              'fieldname': 'user_image',
+              'value': value,
+            },
+          )
+          .timeout(_networkTimeout);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        _logApi('profile', 'user_image set via set_value (form) for $effectiveUser');
+        return null;
+      }
+      final String formErr =
+          _extractServerError(_decodeJsonMap(response.body)) ??
+          'set_value form failed (${response.statusCode})';
+      _logApi('profile', formErr);
+      return 'user_image web sync failed: $formErr\n(User: $effectiveUser, URL: $value)';
+    } catch (e) {
+      final String msg = e.toString().replaceFirst('Exception: ', '');
+      return 'user_image web sync failed: $msg\n(User: $effectiveUser, URL: $value)';
+    }
+  }
+
   Map<String, dynamic>? _extractResourceData(Map<String, dynamic> payload) {
     final dynamic data = payload['data'];
     if (data is Map<String, dynamic>) {
@@ -4196,6 +4368,12 @@ class AppController extends ChangeNotifier {
     } catch (_) {
       return <String, String>{};
     }
+  }
+
+  /// Returns the primary auth header for use outside AppController (e.g. image loading).
+  Map<String, String> buildAuthHeaders() {
+    final headers = _authorizationHeaders();
+    return headers.isNotEmpty ? headers.first : <String, String>{};
   }
 
   List<Map<String, String>> _authorizationHeaders({String? contentType}) {
