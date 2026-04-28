@@ -255,16 +255,43 @@ class _TripCard extends StatelessWidget {
     return '${parts[2]}/${parts[1]}/${parts[0]}';
   }
 
-  String _docstatusLabel(int docstatus) {
-    switch (docstatus) {
-      case 0:
+  String _statusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'draft':
         return 'Draft';
-      case 1:
-        return 'Submitted';
-      case 2:
+      case 'scheduled':
+        return 'Scheduled';
+      case 'in progress':
+      case 'in_transit':
+        return 'In Progress';
+      case 'completed':
+        return 'Completed';
+      case 'failed':
+        return 'Failed';
+      case 'cancelled':
         return 'Cancelled';
       default:
-        return 'Unknown';
+        return status.isEmpty ? 'Unknown' : status;
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'draft':
+        return Colors.grey;
+      case 'scheduled':
+        return Colors.blue;
+      case 'in progress':
+      case 'in_transit':
+        return Colors.orange;
+      case 'completed':
+        return Colors.green;
+      case 'failed':
+        return Colors.red;
+      case 'cancelled':
+        return Colors.grey;
+      default:
+        return Colors.grey;
     }
   }
 
@@ -307,26 +334,31 @@ class _TripCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.35),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _statusColor(trip.status).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _statusColor(trip.status).withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Text(
+                      _statusLabel(trip.status),
+                      style: TextStyle(
+                        color: _statusColor(trip.status),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                ),
-                child: Text(
-                  _docstatusLabel(trip.docstatus),
-                  style: const TextStyle(
-                    color: AppTheme.oceanBlue,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                ],
               ),
             ],
           ),
