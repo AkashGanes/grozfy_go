@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
@@ -34,7 +36,48 @@ class _ExternalDeliveryTripDetailsScreenState
   @override
   void initState() {
     super.initState();
-    _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+    _future = _loadTrip();
+  }
+
+  /// Cache-aware trip fetch. Online → fetch + cache; Offline → cache only;
+  /// Network error mid-call → flip connectivity flag and serve cache. Only
+  /// throws when both network and cache fail.
+  Future<ExternalDeliveryTrip> _loadTrip() async {
+    if (!ConnectivityService().isConnected) {
+      final cached = OfflineTripManager().getCachedTrip(widget.tripName);
+      if (cached != null) return cached;
+      throw Exception(
+        'No internet and no cached copy of this trip. '
+        'Open it once online to enable offline access.',
+      );
+    }
+    try {
+      final trip =
+          await ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+      ConnectivityService().reportNetworkSuccess();
+      // Cache the fresh trip so subsequent offline opens succeed.
+      await OfflineTripManager().cacheTrip(trip);
+      return trip;
+    } catch (e) {
+      if (_isNetworkError(e)) {
+        ConnectivityService().reportNetworkFailure();
+        final cached = OfflineTripManager().getCachedTrip(widget.tripName);
+        if (cached != null) return cached;
+      }
+      rethrow;
+    }
+  }
+
+  bool _isNetworkError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('socketexception') ||
+        s.contains('network is unreachable') ||
+        s.contains('failed host lookup') ||
+        s.contains('connection failed') ||
+        s.contains('connection refused') ||
+        s.contains('connection closed') ||
+        s.contains('timed out') ||
+        s.contains('clientexception');
   }
 
   String _valueOrDash(String value) => value.trim().isEmpty ? '-' : value;
@@ -139,9 +182,7 @@ class _ExternalDeliveryTripDetailsScreenState
                     ElevatedButton(
                       onPressed: () {
                         setState(() {
-                          _future = ExternalDeliveryRepository().fetchTripDetails(
-                            widget.tripName,
-                          );
+                          _future = _loadTrip();
                         });
                       },
                       child: const Text('Retry'),
@@ -550,13 +591,25 @@ class _ExternalDeliveryTripDetailsScreenState
 
     if (confirmed != true || !mounted) return;
 
+    // markReturnedToStore is a multi-step flow that mutates several docs
+    // (stop status, parent trip status, completes_stops counter, completed_at
+    // stamp). It can't run offline cleanly — gate it.
+    if (!ConnectivityService().isConnected) {
+      showInfoSnack(
+        context,
+        'You are offline. Mark each stop Returned individually, '
+        'or try again when back online.',
+      );
+      return;
+    }
+
     setState(() => _returningToStore = true);
     try {
       await ExternalDeliveryRepository().markReturnedToStore(trip: trip);
       if (!mounted) return;
       showInfoSnack(context, 'Order marked Returned. Trip completed.');
       setState(() {
-        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+        _future = _loadTrip();
       });
     } catch (e) {
       if (!mounted) return;
@@ -737,14 +790,30 @@ class _ExternalDeliveryTripDetailsScreenState
     final stopKey = _stopKey(stop);
     setState(() => _updatingStops.add(stopKey));
     try {
-      await ExternalDeliveryRepository().updateTripStopStatus(
-        stop: stop,
+      final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
+      final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+      final parentTripName =
+          (stop.rawFields['parent'] ?? '').toString().trim();
+      // Always go through the offline-aware path: it queues + flushes
+      // when online, and queues + updates the local cache when offline.
+      // The user gets immediate visual feedback either way.
+      await OfflineTripManager().updateStopStatusOffline(
+        stopDocType: stopDocType,
+        stopName: stopName,
+        parentTripName: parentTripName,
+        orderName: stop.externalDelivery.trim(),
         newStatus: newStatus,
       );
       if (!mounted) return;
-      showInfoSnack(context, 'Stop status updated to $newStatus');
+      final isConnected = ConnectivityService().isConnected;
+      showInfoSnack(
+        context,
+        isConnected
+            ? 'Stop status updated to $newStatus'
+            : 'Saved offline. Will sync when reconnected.',
+      );
       setState(() {
-        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+        _future = _loadTrip();
       });
     } catch (e) {
       if (!mounted) return;
@@ -809,6 +878,44 @@ class _ExternalDeliveryTripDetailsScreenState
     );
     if (!mounted) return;
 
+    // The full failed-delivery flow uploads a photo, mutates the order,
+    // and (optionally) creates a server-side return trip. None of that
+    // can run offline. If we're offline, fall back to a queued stop
+    // status update so the driver can still mark Failed locally; the
+    // photo + return-trip steps will need to be redone online.
+    if (!ConnectivityService().isConnected) {
+      setState(() => _updatingStops.add(stopKey));
+      try {
+        final stopDocType =
+            (stop.rawFields['doctype'] ?? '').toString().trim();
+        final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+        final parentTripName =
+            (stop.rawFields['parent'] ?? '').toString().trim();
+        await OfflineTripManager().updateStopStatusOffline(
+          stopDocType: stopDocType,
+          stopName: stopName,
+          parentTripName: parentTripName,
+          orderName: orderName,
+          newStatus: 'Failed',
+        );
+        if (!mounted) return;
+        showInfoSnack(
+          context,
+          'Marked Failed offline. Photo upload and return trip will need '
+          'to be done when back online.',
+        );
+        setState(() {
+          _future = _loadTrip();
+        });
+      } catch (e) {
+        if (!mounted) return;
+        showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+      } finally {
+        if (mounted) setState(() => _updatingStops.remove(stopKey));
+      }
+      return;
+    }
+
     setState(() => _updatingStops.add(stopKey));
     try {
       final processResult = await ExternalDeliveryRepository()
@@ -822,7 +929,7 @@ class _ExternalDeliveryTripDetailsScreenState
       if (!mounted) return;
       showInfoSnack(context, processResult.message);
       setState(() {
-        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+        _future = _loadTrip();
       });
       if (processResult.tripName != null && createReturn == true) {
         Navigator.of(context).push(

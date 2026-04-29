@@ -4,7 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'core/models/app_models.dart';
 import 'core/localization/app_localizations.dart';
+import 'core/services/connectivity_service.dart';
 import 'core/services/fcm_initializer.dart';
+import 'core/services/offline_storage_service.dart';
+import 'core/services/offline_trip_manager.dart';
+import 'core/services/sync_manager.dart';
 import 'core/navigation/app_routes.dart';
 import 'core/state/providers.dart';
 import 'core/state/app_scope.dart';
@@ -43,6 +47,16 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final container = ProviderContainer();
+
+  // Offline stack: storage first (opens Hive boxes), then connectivity
+  // monitoring, then sync manager (drains queues on reconnect), then trip
+  // manager (prefetch helper). Order matters — sync manager subscribes to
+  // connectivity, so connectivity must be running first.
+  await OfflineStorageService().initialize();
+  await ConnectivityService().initialize();
+  ConnectivityService().startMonitoring();
+  await SyncManager().initialize();
+  await OfflineTripManager().initialize();
 
   // Initialize Firebase
   try {

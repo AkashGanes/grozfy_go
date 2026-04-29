@@ -321,6 +321,36 @@ class ExternalDeliveryRepository {
     return ExternalDeliveryDetail.fromJson(data);
   }
 
+  /// Sends a driver location ping. The [recordedAt] timestamp is the moment
+  /// the ping was *captured* on device, not when it was flushed — the server
+  /// uses it as the idempotency key so retries from the offline queue don't
+  /// double-write.
+  Future<void> sendLocationPing({
+    required double latitude,
+    required double longitude,
+    required DateTime recordedAt,
+  }) async {
+    final driver = await _getLoggedInDriver();
+    final uri = Uri.parse(ApiConstants.driverLocationPing);
+    _logApi(
+      'driver_location_ping request',
+      'POST $uri driver=$driver lat=$latitude lng=$longitude at=$recordedAt',
+    );
+    final resp = await _post(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'driver': driver,
+        'latitude': latitude,
+        'longitude': longitude,
+        'recorded_at': recordedAt.toUtc().toIso8601String(),
+      }),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
   Future<void> updateStatus(String name, String status) async {
     final uri = Uri.parse(
       '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
@@ -734,6 +764,43 @@ class ExternalDeliveryRepository {
     if (input == null) return null;
     final text = input.toString().trim();
     return text.isEmpty ? null : text;
+  }
+
+  /// Variant of [updateTripStopStatus] that doesn't need an in-memory
+  /// stop object — used by the offline sync queue, which only persists
+  /// raw doctype + name + parent + status. Skips the side-effects
+  /// (delivered_at stamp, completes_stops increment) — those are best
+  /// left to the live update path; the eventual cache refresh from
+  /// fetchTripDetails will pick up the server's authoritative values.
+  Future<void> setStopStatusRaw({
+    required String stopDocType,
+    required String stopName,
+    required String parentTripName,
+    required String newStatus,
+  }) async {
+    if (stopDocType.isEmpty || stopName.isEmpty) {
+      throw Exception('Missing stop doctype/name for status sync');
+    }
+    final setValueUrl = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    _logApi(
+      'queued_stop_status_flush',
+      'doctype=$stopDocType name=$stopName status=$newStatus',
+    );
+    final resp = await _post(
+      setValueUrl,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'doctype': stopDocType,
+        'name': stopName,
+        'fieldname': 'status',
+        'value': newStatus,
+      }),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
   }
 
   Future<void> updateTripStopStatus({

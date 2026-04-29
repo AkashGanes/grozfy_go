@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'app_bottom_nav.dart';
+import 'offline_status_indicator.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -72,6 +73,8 @@ class AppShell extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const OfflineStatusIndicator(),
+                  const SyncStatusBanner(),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
                     child: Row(

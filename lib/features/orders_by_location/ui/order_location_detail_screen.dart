@@ -3,6 +3,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/call_utils.dart';
 import '../model/external_delivery.dart';
@@ -51,13 +53,42 @@ class _OrderLocationDetailScreenState
       _loading = true;
       _error = null;
     });
+    // Cache-aware: offline → use cached order; online → fetch fresh and
+    // cache; network error → fall back to cache.
+    if (!ConnectivityService().isConnected) {
+      final cached = OfflineTripManager().getCachedOrder(widget.order.name);
+      setState(() {
+        _detail = cached;
+        _loading = false;
+        _error = cached == null
+            ? 'No internet and no cached copy of this order. '
+                'Open it once online to enable offline access.'
+            : null;
+      });
+      return;
+    }
     try {
-      final detail = await widget.repository.fetchDetail(widget.order.name);
+      final detail =
+          await OfflineTripManager().fetchOrder(widget.order.name);
+      ConnectivityService().reportNetworkSuccess();
       setState(() {
         _detail = detail;
         _loading = false;
+        _error =
+            detail == null ? 'Order not found.' : null;
       });
     } catch (e) {
+      if (_isNetworkError(e)) {
+        ConnectivityService().reportNetworkFailure();
+        final cached =
+            OfflineTripManager().getCachedOrder(widget.order.name);
+        setState(() {
+          _detail = cached;
+          _loading = false;
+          _error = cached == null ? e.toString() : null;
+        });
+        return;
+      }
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -68,7 +99,24 @@ class _OrderLocationDetailScreenState
   Future<void> _updateStatus(String newStatus) async {
     setState(() => _updating = true);
     try {
-      await widget.repository.updateStatus(widget.order.name, newStatus);
+      // Always go through the offline-aware path. It queues + flushes
+      // immediately when online, queues + updates the local cache when
+      // offline. Either way the user sees the new status right away.
+      await OfflineTripManager().updateOrderStatusOffline(
+        orderName: widget.order.name,
+        newStatus: newStatus,
+      );
+      if (!mounted) return;
+      final isConnected = ConnectivityService().isConnected;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isConnected
+                ? 'Status updated to $newStatus'
+                : 'Saved offline. Will sync when reconnected.',
+          ),
+        ),
+      );
       await _load();
     } catch (e) {
       if (mounted) {
@@ -79,6 +127,18 @@ class _OrderLocationDetailScreenState
     } finally {
       if (mounted) setState(() => _updating = false);
     }
+  }
+
+  bool _isNetworkError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('socketexception') ||
+        s.contains('network is unreachable') ||
+        s.contains('failed host lookup') ||
+        s.contains('connection failed') ||
+        s.contains('connection refused') ||
+        s.contains('connection closed') ||
+        s.contains('timed out') ||
+        s.contains('clientexception');
   }
 
   void _startTracking(ExternalDeliveryDetail detail) {

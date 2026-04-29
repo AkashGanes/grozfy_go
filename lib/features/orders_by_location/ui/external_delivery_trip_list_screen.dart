@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../../core/navigation/app_routes.dart';
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/state/app_scope.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
@@ -26,6 +30,9 @@ class _ExternalDeliveryTripListScreenState
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String? _lastDriver;
+  // Run the background "warm everything" prefetch only once per app session.
+  // Subsequent navigations to this screen don't re-trigger it.
+  static bool _prefetchTriggered = false;
 
   @override
   void didChangeDependencies() {
@@ -34,6 +41,15 @@ class _ExternalDeliveryTripListScreenState
     _repository = ExternalDeliveryRepository();
     _pagingController = PagingController(firstPageKey: 0)
       ..addPageRequestListener(_fetchPage);
+
+    // First time the trip list opens online this session, kick off a
+    // background prefetch of every trip's full details + stops + orders.
+    // This way the driver can go offline at any point and details still
+    // open. We don't await — UI stays responsive while it runs.
+    if (!_prefetchTriggered && ConnectivityService().isConnected) {
+      _prefetchTriggered = true;
+      unawaited(OfflineTripManager().downloadAllTripsAtTripStart());
+    }
   }
 
   @override
@@ -44,8 +60,19 @@ class _ExternalDeliveryTripListScreenState
   }
 
   Future<void> _fetchPage(int pageKey) async {
+    // Offline: serve the whole cached list on the first page request,
+    // then mark as last so paging stops. We don't paginate the cache.
+    if (!ConnectivityService().isConnected) {
+      _serveFromCache(pageKey);
+      return;
+    }
+
     try {
       final trips = await _repository!.fetchTripPage(limitStart: pageKey);
+      ConnectivityService().reportNetworkSuccess();
+      // Warm the cache on every successful page so the list survives a
+      // future offline open.
+      await OfflineTripManager().cacheTripSummariesPage(trips);
       final items = trips.map((t) => TripRow(t) as TripListItem).toList();
       final isLast = trips.length < ExternalDeliveryRepository.pageSize;
       if (isLast) {
@@ -54,8 +81,38 @@ class _ExternalDeliveryTripListScreenState
         _pagingController!.appendPage(items, pageKey + trips.length);
       }
     } catch (e) {
+      if (_isNetworkError(e)) {
+        // The package listener can lag — flip the connectivity flag
+        // ourselves so the offline banner shows immediately.
+        ConnectivityService().reportNetworkFailure();
+        _serveFromCache(pageKey);
+        return;
+      }
       _pagingController!.error = e;
     }
+  }
+
+  void _serveFromCache(int pageKey) {
+    if (pageKey == 0) {
+      final cached = OfflineTripManager().getCachedTripSummaries();
+      _pagingController!.appendLastPage(
+        cached.map((t) => TripRow(t) as TripListItem).toList(),
+      );
+    } else {
+      _pagingController!.appendLastPage(const []);
+    }
+  }
+
+  bool _isNetworkError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('socketexception') ||
+        s.contains('network is unreachable') ||
+        s.contains('failed host lookup') ||
+        s.contains('connection failed') ||
+        s.contains('connection refused') ||
+        s.contains('connection closed') ||
+        s.contains('timed out') ||
+        s.contains('clientexception');
   }
 
   Future<void> _refresh() async {
