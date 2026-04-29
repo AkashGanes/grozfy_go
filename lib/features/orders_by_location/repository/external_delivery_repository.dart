@@ -935,6 +935,20 @@ class ExternalDeliveryRepository {
     }
   }
 
+  Future<void> clearProofPhoto({required String orderName}) async {
+    try {
+      await _updateExternalDeliveryFields(orderName, {'proof_photo': ''});
+    } catch (e) {
+      _logApi('clear_proof_photo_put_warn', e.toString());
+      await _setDocValue(
+        doctype: 'External Delivery',
+        name: orderName,
+        fieldname: 'proof_photo',
+        value: '',
+      );
+    }
+  }
+
   /// Marks a delivery as failed:
   /// 1. Updates the trip stop status to 'Failed' and writes the reason to notes.
   /// 2. Updates the External Delivery document: status=Failed, delivery_notes,
