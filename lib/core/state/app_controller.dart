@@ -17,6 +17,7 @@ import '../models/app_models.dart';
 import '../navigation/app_routes.dart';
 import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
+import '../services/location_ping_service.dart';
 import '../services/secure_token_storage.dart';
 import '../utils/validators.dart' as app_validators;
 import '../../features/orders_by_location/model/external_delivery.dart';
@@ -86,6 +87,7 @@ class AppController extends ChangeNotifier {
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
   static const String _prefActiveOrderId = 'active_order_id';
+  static const String _prefActiveTripId = 'active_trip_id';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 200;
   static const int _profileImageMaxDimension = 4096;
@@ -199,6 +201,7 @@ class AppController extends ChangeNotifier {
   bool _isFetchingActiveOrder = false;
   Timer? _liveLocationTimer;
   GeoLocation? _partnerLiveLocation;
+  String? _activeTripId;
 
   EarningsSummary _earnings = const EarningsSummary(
     today: 1250,
@@ -2826,7 +2829,7 @@ class AppController extends ChangeNotifier {
       final String? frappeStatus = _toFrappeStatus(status);
       if (frappeStatus != null) {
         try {
-          await _orderRepository.updateStatus(
+          await _orderRepository.updateStatusViaSetValue(
             _activeOrder!.orderId,
             frappeStatus,
           );
@@ -2878,7 +2881,10 @@ class AppController extends ChangeNotifier {
         );
         _acceptedOrders.removeWhere((order) => order.orderId == deliveredOrderId);
         _activeOrder = null;
+        _activeTripId = null;
+        LocationPingService.stop();
         unawaited(_persistActiveOrderId(null));
+        unawaited(_persistActiveTripId(null));
       } else if (status == OrderStatus.reachedPickup) {
         _notices.insert(
           0,
@@ -2904,7 +2910,10 @@ class AppController extends ChangeNotifier {
 
   void clearActiveOrder() {
     _activeOrder = null;
+    _activeTripId = null;
+    LocationPingService.stop();
     unawaited(_persistActiveOrderId(null));
+    unawaited(_persistActiveTripId(null));
     unawaited(
       PartnerWidgetManager.updateWidget(
         isOnline: _isOnline,
@@ -3095,6 +3104,9 @@ class AppController extends ChangeNotifier {
       );
       _replaceAcceptedOrder(_activeOrder!);
       await _persistActiveOrderId(_activeOrder!.orderId);
+      // Restore trip ID (set during acceptOrder) and resume location pings.
+      _activeTripId ??= _nullIfBlank(prefs.getString(_prefActiveTripId));
+      if (_activeTripId != null) unawaited(_startLocationPingIfReady());
       PartnerWidgetManager.updateWidget(
         isOnline: _isOnline,
         todayEarnings: _earnings.today,
@@ -3133,7 +3145,7 @@ class AppController extends ChangeNotifier {
     }
 
     try {
-      await _orderRepository.updateStatus(orderId, 'Added to Trip');
+      await _orderRepository.updateStatusViaSetValue(orderId, 'Added to Trip');
 
       // Create and submit an External Delivery Trip in Frappe so the web
       // dashboard reflects the accepted order immediately.
@@ -3141,6 +3153,8 @@ class AppController extends ChangeNotifier {
         final String tripName = await _orderRepository
             .createTripByOrderName(orderId);
         _logApi('accept_order_trip', 'trip $tripName created for order $orderId');
+        _activeTripId = tripName;
+        unawaited(_persistActiveTripId(tripName));
       } catch (e) {
         _logApi('accept_order_trip_warn', 'trip creation failed (non-fatal): $e');
       }
@@ -3159,6 +3173,7 @@ class AppController extends ChangeNotifier {
       );
       _replaceAcceptedOrder(_activeOrder!);
       unawaited(_persistActiveOrderId(_activeOrder!.orderId));
+      unawaited(_startLocationPingIfReady());
       _performance = _performance.copyWith(
         acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
       );
@@ -3257,8 +3272,11 @@ class AppController extends ChangeNotifier {
           status == OrderStatus.rejected ||
           status == OrderStatus.pending) {
         _activeOrder = null;
+        _activeTripId = null;
+        LocationPingService.stop();
         _acceptedOrders.clear();
         await _persistActiveOrderId(null);
+        await _persistActiveTripId(null);
         notifyListeners();
         return;
       }
@@ -3274,6 +3292,14 @@ class AppController extends ChangeNotifier {
       );
       _replaceAcceptedOrder(_activeOrder!);
       await _persistActiveOrderId(_activeOrder!.orderId);
+
+      // Restore trip ID from prefs so pings resume after app restart.
+      if (_activeTripId == null) {
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        _activeTripId = _nullIfBlank(prefs.getString(_prefActiveTripId));
+      }
+      if (_activeTripId != null) unawaited(_startLocationPingIfReady());
+
       PartnerWidgetManager.updateWidget(
         isOnline: _isOnline,
         todayEarnings: _earnings.today,
@@ -3283,8 +3309,11 @@ class AppController extends ChangeNotifier {
     } catch (e) {
       _logApi('restore_active_order_warn', e.toString());
       _activeOrder = null;
+      _activeTripId = null;
+      LocationPingService.stop();
       _acceptedOrders.clear();
       await _persistActiveOrderId(null);
+      await _persistActiveTripId(null);
       notifyListeners();
     }
   }
@@ -3493,11 +3522,13 @@ class AppController extends ChangeNotifier {
       Duration(seconds: _trackingInterval),
       (_) => _updateLiveLocation(),
     );
+    unawaited(_startLocationPingIfReady());
   }
 
   void stopLiveLocationTracking() {
     _liveLocationTimer?.cancel();
     _liveLocationTimer = null;
+    LocationPingService.stop();
   }
 
   void _updateLiveLocation() {
@@ -3512,6 +3543,50 @@ class AppController extends ChangeNotifier {
       );
     }
     notifyListeners();
+  }
+
+  Future<void> _startLocationPingIfReady() async {
+    if (_activeTripId == null || _activeOrder == null) return;
+    final String? authHeader = await _buildAuthHeader();
+    if (authHeader == null) return;
+    await LocationPingService.start(
+      tripId: _activeTripId!,
+      deliveryId: _activeOrder!.orderId,
+      authHeader: authHeader,
+      baseUrl: ApiConstants.erpBaseUrl,
+    );
+  }
+
+  Future<String?> _buildAuthHeader() async {
+    // Prefer API key:secret — doesn't expire and works reliably in background.
+    final String? apiKey =
+        await SecureTokenStorage.read(SecureTokenStorage.apiKey);
+    final String? apiSecret =
+        await SecureTokenStorage.read(SecureTokenStorage.apiSecret);
+    if (apiKey != null &&
+        apiKey.isNotEmpty &&
+        apiSecret != null &&
+        apiSecret.isNotEmpty) {
+      return 'token $apiKey:$apiSecret';
+    }
+    // Fall back to session/bearer token.
+    final String? token =
+        _sessionToken ??
+        await SecureTokenStorage.read(SecureTokenStorage.accessToken);
+    if (token == null || token.isEmpty) return null;
+    final String tokenType =
+        (await SecureTokenStorage.read(SecureTokenStorage.tokenType) ?? '')
+            .trim();
+    return tokenType.toLowerCase() == 'token' ? 'token $token' : 'Bearer $token';
+  }
+
+  Future<void> _persistActiveTripId(String? tripId) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (tripId == null || tripId.isEmpty) {
+      await prefs.remove(_prefActiveTripId);
+    } else {
+      await prefs.setString(_prefActiveTripId, tripId);
+    }
   }
 
   String t(

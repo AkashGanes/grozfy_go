@@ -85,9 +85,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   static const double _arrivalThreshold = 50.0;
   static const Color _primaryColor = Color(0xFF44b180);
   static const Color _secondaryColor = Color(0xFF2E7D32);
-  static const String _osrmBaseUrl = kDebugMode
-      ? 'https://router.project-osrm.org/route/v1/driving'
-      : 'TODO: Replace with self-hosted OSRM server URL';
+  static const String _osrmBaseUrl =
+      'https://router.project-osrm.org/route/v1/driving';
   static const Duration _routeRefreshInterval = Duration(seconds: 20);
   static const int _maxRoutePoints = 400;
 
@@ -164,6 +163,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
       if (_destination != null) {
         _getRoutePoints();
+        _startLiveTracking();
       }
     } catch (e) {
       setState(() {
@@ -179,6 +179,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       }
       if (_destination != null) {
         _getRoutePoints();
+        _startLiveTracking();
       }
     }
   }
@@ -580,82 +581,77 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   }
 
   void _updateMarkers() {
-    _markers = [
-      Marker(
-        point: _currentLocation,
-        width: 52,
-        height: 52,
-        child: Transform.rotate(
-          angle: _toRadians(_currentHeading),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.directions_bike,
-              color: Colors.blue,
-              size: 30,
-            ),
-          ),
-        ),
-      ),
-    ];
-
-    if (_pickupLat != null && _pickupLng != null) {
-      _markers.add(
+    if (!mounted) return;
+    setState(() {
+      _markers = [
         Marker(
-          point: LatLng(_pickupLat!, _pickupLng!),
+          point: _currentLocation,
           width: 52,
           height: 52,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+          child: Transform.rotate(
+            angle: _toRadians(_currentHeading),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.directions_bike,
+                color: Colors.blue,
+                size: 30,
+              ),
             ),
-            child: const Icon(Icons.store, color: Colors.orange, size: 30),
           ),
         ),
-      );
-    }
-
-    if (_destination != null) {
-      _markers.add(
-        Marker(
-          point: _destination!,
-          width: 52,
-          height: 52,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+        if (_pickupLat != null && _pickupLng != null)
+          Marker(
+            point: LatLng(_pickupLat!, _pickupLng!),
+            width: 52,
+            height: 52,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.store, color: Colors.orange, size: 30),
             ),
-            child: const Icon(Icons.location_on, color: Colors.red, size: 34),
           ),
-        ),
-      );
-    }
+        if (_destination != null)
+          Marker(
+            point: _destination!,
+            width: 52,
+            height: 52,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.location_on, color: Colors.red, size: 34),
+            ),
+          ),
+      ];
+    });
   }
 
   void _checkArrival() {

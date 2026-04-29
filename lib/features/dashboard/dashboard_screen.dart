@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -835,16 +837,47 @@ class _ActiveOrderActions extends StatelessWidget {
           Expanded(
             child: OutlinedButton(
               onPressed: () async {
-                final Uri uri = Uri.parse(
-                  'https://www.google.com/maps/dir/?api=1&destination=${order.latitude},${order.longitude}&travelmode=driving',
+                final double lat = order.latitude;
+                final double lng = order.longitude;
+
+                if (Platform.isAndroid) {
+                  final Uri androidUri = Uri.parse(
+                    'google.navigation:q=$lat,$lng&mode=d',
+                  );
+                  if (await canLaunchUrl(androidUri)) {
+                    await launchUrl(
+                      androidUri,
+                      mode: LaunchMode.externalApplication,
+                    );
+                    return;
+                  }
+                }
+
+                if (Platform.isIOS) {
+                  final Uri googleMapsIos = Uri.parse(
+                    'comgooglemaps://?daddr=$lat,$lng&directionsmode=driving',
+                  );
+                  if (await canLaunchUrl(googleMapsIos)) {
+                    await launchUrl(googleMapsIos);
+                    return;
+                  }
+                  final Uri appleMaps = Uri.parse('maps:?daddr=$lat,$lng');
+                  if (await canLaunchUrl(appleMaps)) {
+                    await launchUrl(appleMaps);
+                    return;
+                  }
+                }
+
+                final Uri webUri = Uri.parse(
+                  'https://www.google.com/maps/dir/?api=1'
+                  '&destination=$lat,$lng'
+                  '&travelmode=driving',
                 );
                 final bool launched = await launchUrl(
-                  uri,
+                  webUri,
                   mode: LaunchMode.externalApplication,
                 );
-                if (!context.mounted) {
-                  return;
-                }
+                if (!context.mounted) return;
                 if (!launched) {
                   showInfoSnack(context, app.t('unable_open_maps'));
                 }

@@ -68,7 +68,7 @@ class _OrderLocationDetailScreenState
   Future<void> _updateStatus(String newStatus) async {
     setState(() => _updating = true);
     try {
-      await widget.repository.updateStatus(widget.order.name, newStatus);
+      await widget.repository.updateStatusViaSetValue(widget.order.name, newStatus);
       await _load();
     } catch (e) {
       if (mounted) {
