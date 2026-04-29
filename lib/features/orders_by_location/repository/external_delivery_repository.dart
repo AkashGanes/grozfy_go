@@ -46,15 +46,16 @@ class ExternalDeliveryRepository {
 
   Future<Map<String, String>> _authHeaders() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? token =
-        await SecureTokenStorage.read(SecureTokenStorage.accessToken);
+    final String? token = await SecureTokenStorage.read(
+      SecureTokenStorage.accessToken,
+    );
     final String tokenType =
         (await SecureTokenStorage.read(SecureTokenStorage.tokenType) ?? 'token')
             .trim();
     final String language =
         prefs.getString(_prefLanguageCode)?.trim().isNotEmpty == true
-            ? prefs.getString(_prefLanguageCode)!.trim()
-            : 'en';
+        ? prefs.getString(_prefLanguageCode)!.trim()
+        : 'en';
     if (token != null && token.isNotEmpty) {
       return {
         'Accept': 'application/json',
@@ -68,10 +69,12 @@ class ExternalDeliveryRepository {
   /// Refreshes the session token using Frappe's OAuth2 get_token endpoint.
   Future<bool> _refreshSession() async {
     try {
-      final String? refreshToken =
-          await SecureTokenStorage.read(SecureTokenStorage.refreshToken);
-      final String? clientId =
-          await SecureTokenStorage.read(SecureTokenStorage.clientId);
+      final String? refreshToken = await SecureTokenStorage.read(
+        SecureTokenStorage.refreshToken,
+      );
+      final String? clientId = await SecureTokenStorage.read(
+        SecureTokenStorage.clientId,
+      );
       if (refreshToken == null || refreshToken.trim().isEmpty) return false;
       if (clientId == null || clientId.trim().isEmpty) return false;
 
@@ -100,10 +103,7 @@ class ExternalDeliveryRepository {
 
       final String? newType = data['token_type']?.toString();
       final String? newRefresh = data['refresh_token']?.toString();
-      await SecureTokenStorage.write(
-        SecureTokenStorage.accessToken,
-        newToken,
-      );
+      await SecureTokenStorage.write(SecureTokenStorage.accessToken, newToken);
       if (newType != null && newType.isNotEmpty) {
         await SecureTokenStorage.write(SecureTokenStorage.tokenType, newType);
       }
@@ -906,7 +906,27 @@ class ExternalDeliveryRepository {
       final body = jsonDecode(resp.body) as Map<String, dynamic>;
       final message = body['message'];
       if (message is Map<String, dynamic>) {
-        return message['file_url']?.toString();
+        final String? fileUrl = message['file_url']?.toString();
+        if (fileUrl != null && fileUrl.isNotEmpty) {
+          try {
+            await _updateExternalDeliveryFields(orderName, {
+              'proof_photo': fileUrl,
+            });
+          } catch (e) {
+            _logApi('upload_proof_photo_put_warn', e.toString());
+            try {
+              await _setDocValue(
+                doctype: 'External Delivery',
+                name: orderName,
+                fieldname: 'proof_photo',
+                value: fileUrl,
+              );
+            } catch (inner) {
+              _logApi('upload_proof_photo_field_warn', inner.toString());
+            }
+          }
+        }
+        return fileUrl;
       }
       return null;
     } catch (e) {
