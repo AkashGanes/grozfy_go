@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map_animations/flutter_map_animations.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
@@ -46,9 +47,11 @@ class DeliveryTrackingScreen extends StatefulWidget {
   State<DeliveryTrackingScreen> createState() => _DeliveryTrackingScreenState();
 }
 
-class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
+class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
+    with TickerProviderStateMixin {
   final ApiService _apiService = ApiService();
-  late final MapController _mapController;
+  late final AnimatedMapController _animatedMapController;
+  MapController get _mapController => _animatedMapController.mapController;
   StreamSubscription<Position>? _positionStream;
 
   String _deliveryName = '';
@@ -71,6 +74,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   bool _isFetchingRoute = false;
 
   bool _isTracking = false;
+  bool _isFollowMode = true;
   bool _isMinimized = false;
   bool _isLoading = true;
   double _distanceToDestination = 0;
@@ -95,7 +99,11 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   @override
   void initState() {
     super.initState();
-    _mapController = MapController();
+    _animatedMapController = AnimatedMapController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeInOut,
+    );
     _loadDeliveryData();
     _initializeLocation();
   }
@@ -124,7 +132,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   @override
   void dispose() {
     _positionStream?.cancel();
-    _mapController.dispose();
+    _animatedMapController.dispose();
     _demoLatController.dispose();
     _demoLngController.dispose();
     super.dispose();
@@ -160,7 +168,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       _updateMarkers();
 
       if (_isMapReady) {
-        _mapController.move(_currentLocation, 16.0);
+        _animatedMapController.animateTo(dest: _currentLocation, zoom: 16.0);
       }
 
       if (_destination != null) {
@@ -466,6 +474,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       LatLng(maxLat + 0.02, maxLng + 0.02),
     ]);
 
+    _mapController.rotate(0);
     _mapController.fitCamera(
       CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(50)),
     );
@@ -527,11 +536,12 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
 
     setState(() {
       _isTracking = true;
+      _isFollowMode = true;
     });
 
     const locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5,
+      distanceFilter: 3,
     );
 
     _positionStream =
@@ -547,9 +557,17 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
               nextLocation.latitude,
               nextLocation.longitude,
             );
-            final double nextHeading = movedMeters > 2
-                ? _calculateBearing(_currentLocation, nextLocation)
-                : _currentHeading;
+
+            // Prefer device compass heading (accurate even when slow);
+            // fall back to calculated bearing when moving fast enough.
+            final double nextHeading;
+            if (position.heading >= 0 && position.heading <= 360) {
+              nextHeading = position.heading;
+            } else if (movedMeters > 2) {
+              nextHeading = _calculateBearing(_currentLocation, nextLocation);
+            } else {
+              nextHeading = _currentHeading;
+            }
 
             setState(() {
               _currentLocation = nextLocation;
@@ -560,11 +578,15 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             _updateMarkers();
             _checkArrival();
 
-            if (_isMapReady && _isTracking) {
-              _mapController.move(_currentLocation, 16.0);
+            // Smoothly animate camera to follow user when in follow mode.
+            if (_isMapReady && _isFollowMode) {
+              _animatedMapController.animateTo(
+                dest: _currentLocation,
+                zoom: 17.0,
+              );
             }
 
-            if (_shouldRefreshRoute()) {
+            if (_shouldRefreshRoute() || _isSignificantlyOffRoute()) {
               _getRoutePoints();
             }
           },
@@ -572,6 +594,19 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             debugPrint('Location stream error: $e');
           },
         );
+  }
+
+  bool _isSignificantlyOffRoute() {
+    if (_polylineCoordinates.length < 2 || _isFetchingRoute) return false;
+    final int nearestIndex = _findNearestRoutePointIndex(_currentLocation);
+    final LatLng nearestPoint = _polylineCoordinates[nearestIndex];
+    return _calculateDistance(
+          _currentLocation.latitude,
+          _currentLocation.longitude,
+          nearestPoint.latitude,
+          nearestPoint.longitude,
+        ) >
+        80.0;
   }
 
   void _stopLiveTracking() {
@@ -1004,7 +1039,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       body: Stack(
         children: [
           FlutterMap(
-            mapController: _mapController,
+            mapController: _animatedMapController.mapController,
             options: MapOptions(
               initialCenter: _currentLocation,
               initialZoom: 16.0,
@@ -1014,7 +1049,15 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                 if (_polylineCoordinates.isNotEmpty) {
                   _fitMapToRoute();
                 } else {
-                  _mapController.move(_currentLocation, 16.0);
+                  _animatedMapController.animateTo(
+                    dest: _currentLocation,
+                    zoom: 16.0,
+                  );
+                }
+              },
+              onPositionChanged: (camera, hasGesture) {
+                if (hasGesture && _isFollowMode) {
+                  setState(() => _isFollowMode = false);
                 }
               },
             ),
@@ -1110,10 +1153,17 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                       ],
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.my_location, color: _primaryColor),
+                      icon: Icon(
+                        Icons.my_location,
+                        color: _isFollowMode ? _primaryColor : Colors.grey,
+                      ),
                       onPressed: () {
+                        setState(() => _isFollowMode = true);
                         if (_isMapReady) {
-                          _mapController.move(_currentLocation, 16.0);
+                          _animatedMapController.animateTo(
+                            dest: _currentLocation,
+                            zoom: 17.0,
+                          );
                         }
                       },
                     ),
