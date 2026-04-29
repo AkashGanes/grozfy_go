@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/api_constants.dart';
+import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
@@ -85,6 +86,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       title: 'My Profile',
       subtitle: 'Driver account',
       scrollable: false,
+      noBottomPadding: true,
       child: RefreshIndicator(
         onRefresh: _refreshProfile,
         child: SingleChildScrollView(
@@ -1315,9 +1317,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         'Accept': 'image/*',
       };
     }
-    return <String, String>{
-      'Accept': 'image/*',
-    };
+    return <String, String>{'Accept': 'image/*'};
   }
 
   bool _looksLikeAttachmentValue(String value, {required String fieldKey}) {
