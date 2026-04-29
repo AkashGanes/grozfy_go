@@ -325,8 +325,18 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     final bool reupload = widget.licenseReuploadMode;
-    final app = ref.watch(appControllerProvider);
-    final bool kycDone = app.kycCompleted;
+    // Subscribe so the form rebuilds when the controller's existing-doc
+    // values are populated by the post-init profile fetch.
+    ref.watch(appControllerProvider);
+    // Per-document editability: a field stays editable until it has actually
+    // been uploaded. Reupload mode forces the license editable regardless.
+    final bool licenseUploaded = (_existingLicenseUrl ?? '').isNotEmpty;
+    final bool aadharUploaded = (_existingAadharUrl ?? '').isNotEmpty;
+    final bool panUploaded = (_existingPanUrl ?? '').isNotEmpty;
+    final bool licenseEditable = reupload || !licenseUploaded;
+    final bool aadharEditable = !aadharUploaded;
+    final bool panEditable = !panUploaded;
+    final bool anyEditable = licenseEditable || aadharEditable || panEditable;
 
     return AppShell(
       title: reupload ? 'Re-upload License' : 'KYC Verification',
@@ -377,7 +387,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   controller: _licenseNumberCtrl,
                   textCapitalization: TextCapitalization.characters,
                   validator: (v) => validateLicenseNumber(v, required: reupload),
-                  enabled: !kycDone,
+                  enabled: licenseEditable,
                   onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(
                     labelText: 'License Number',
@@ -390,8 +400,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   label: 'License Attachment',
                   fileName: _licenseFileName,
                   onPick: () => _pickFile('license'),
-                  existingUrl: _existingLicenseUrl,
-                  enabled: !kycDone,
+                  existingUrl: reupload ? null : _existingLicenseUrl,
+                  enabled: licenseEditable,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -400,7 +410,9 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                       child: _DateTile(
                         label: 'Issuing Date',
                         value: _issuingDate,
-                        onTap: kycDone ? () {} : () => _pickDate(isIssuing: true),
+                        onTap: licenseEditable
+                            ? () => _pickDate(isIssuing: true)
+                            : () {},
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -408,7 +420,9 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                       child: _DateTile(
                         label: 'Expiry Date',
                         value: _expiryDate,
-                        onTap: kycDone ? () {} : () => _pickDate(isIssuing: false),
+                        onTap: licenseEditable
+                            ? () => _pickDate(isIssuing: false)
+                            : () {},
                       ),
                     ),
                   ],
@@ -429,7 +443,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   controller: _aadharNoCtrl,
                   keyboardType: TextInputType.number,
                   maxLength: 12,
-                  enabled: !kycDone,
+                  enabled: aadharEditable,
                   onChanged: (_) => setState(() {}),
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   validator: validateAadhar,
@@ -447,7 +461,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   onPick: () => _pickFile('aadhar'),
                   required: true,
                   existingUrl: _existingAadharUrl,
-                  enabled: !kycDone,
+                  enabled: aadharEditable,
                 ),
               ],
             ),
@@ -465,7 +479,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   textCapitalization: TextCapitalization.characters,
                   maxLength: 10,
                   validator: validatePAN,
-                  enabled: !kycDone,
+                  enabled: panEditable,
                   decoration: const InputDecoration(
                     labelText: 'PAN Number',
                     prefixIcon: Icon(Icons.account_balance_wallet_outlined),
@@ -479,13 +493,13 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   fileName: _panFileName,
                   onPick: () => _pickFile('pan'),
                   existingUrl: _existingPanUrl,
-                  enabled: !kycDone,
+                  enabled: panEditable,
                 ),
               ],
             ),
           ),
           ], // end if (!reupload)
-          if (!kycDone || reupload) ...[
+          if (anyEditable) ...[
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
