@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import '../theme/app_theme.dart';
+import 'app_bottom_nav.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -14,6 +14,11 @@ class AppShell extends StatelessWidget {
     this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 20),
     this.loading = false,
     this.onRefresh,
+    this.footer,
+    this.showBottomNav = false,
+    this.bottomNavIndex = 0,
+    this.onBottomNavTap,
+    this.noBottomPadding = true,
   });
 
   final String title;
@@ -24,10 +29,18 @@ class AppShell extends StatelessWidget {
   final EdgeInsets padding;
   final bool loading;
   final Future<void> Function()? onRefresh;
+  final Widget? footer;
+  final bool showBottomNav;
+  final int bottomNavIndex;
+  final ValueChanged<int>? onBottomNavTap;
+  final bool noBottomPadding;
 
   @override
   Widget build(BuildContext context) {
-    final Widget body = Padding(padding: padding, child: child);
+    final effectivePadding = (footer != null && noBottomPadding)
+        ? EdgeInsets.fromLTRB(padding.left, padding.top, padding.right, 0)
+        : padding;
+    final Widget body = Padding(padding: effectivePadding, child: child);
 
     return Scaffold(
       body: Container(
@@ -75,25 +88,46 @@ class AppShell extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  if (footer == null) const SizedBox(height: 12),
                   Expanded(
                     child: scrollable
                         ? onRefresh != null
-                            ? RefreshIndicator(
-                                onRefresh: onRefresh!,
-                                child: SingleChildScrollView(
-                                  physics: const AlwaysScrollableScrollPhysics(
-                                    parent: BouncingScrollPhysics(),
+                              ? RefreshIndicator(
+                                  onRefresh: onRefresh!,
+                                  child: SingleChildScrollView(
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(
+                                          parent: BouncingScrollPhysics(),
+                                        ),
+                                    child: body,
                                   ),
+                                )
+                              : SingleChildScrollView(
+                                  physics: const BouncingScrollPhysics(),
                                   child: body,
-                                ),
-                              )
-                            : SingleChildScrollView(
-                                physics: const BouncingScrollPhysics(),
-                                child: body,
-                              )
+                                )
                         : body,
                   ),
+                  if (footer != null) ...[
+                    padding == const EdgeInsets.fromLTRB(20, 12, 20, 20)
+                        ? Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              20,
+                              0,
+                              20,
+                              noBottomPadding ? 0 : 20,
+                            ),
+                            child: footer,
+                          )
+                        : footer!,
+                  ],
+                  if (showBottomNav) ...[
+                    const SizedBox(height: 8),
+                    AppBottomNav(
+                      currentIndex: bottomNavIndex,
+                      onTap: onBottomNavTap ?? (_) {},
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -302,9 +336,10 @@ class _ShellLoadingIndicatorState extends State<_ShellLoadingIndicator>
     );
 
     _animations = _controllers.map((controller) {
-      return Tween<double>(begin: 0, end: -12).animate(
-        CurvedAnimation(parent: controller, curve: Curves.easeInOut),
-      );
+      return Tween<double>(
+        begin: 0,
+        end: -12,
+      ).animate(CurvedAnimation(parent: controller, curve: Curves.easeInOut));
     }).toList();
 
     _startAnimation();
@@ -349,7 +384,9 @@ class _ShellLoadingIndicatorState extends State<_ShellLoadingIndicator>
                   width: 10,
                   height: 10,
                   decoration: BoxDecoration(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.3 + (index * 0.2)),
+                    color: AppTheme.oceanBlue.withValues(
+                      alpha: 0.3 + (index * 0.2),
+                    ),
                     shape: BoxShape.circle,
                   ),
                 ),

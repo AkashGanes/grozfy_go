@@ -234,6 +234,38 @@ class AppController extends ChangeNotifier {
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
   DeliveryOrder? get activeOrder => _activeOrder;
+
+  void createMockActiveOrder() {
+    if (_activeOrder == null) {
+      _activeOrder = DeliveryOrder(
+        orderId: '#OD${3000 + _random.nextInt(999)}',
+        customerName: 'Sneha Gupta',
+        customerPhone: '9876512345',
+        deliveryAddress: 'Saket, New Delhi - 110017',
+        storeId: 'STORE200',
+        storeName: 'Pizza Palace',
+        storeContact: '9876598765',
+        storeAddress: 'Dwarka, New Delhi - 110075',
+        orderItems: <OrderItem>[
+          const OrderItem(name: 'Pepperoni Pizza', quantity: 2, price: 450),
+          const OrderItem(name: 'Garlic Bread', quantity: 1, price: 120),
+          const OrderItem(name: 'Cola', quantity: 2, price: 60),
+        ],
+        orderStatus: OrderStatus.accepted,
+        latitude: 28.5692,
+        longitude: 77.1538,
+        pickup: 'Dwarka, New Delhi',
+        drop: 'Saket, New Delhi',
+        deliveryInstructions: 'Ring bell twice',
+        paymentMode: 'Online',
+        distanceKm: 5.2,
+        estimatedEarnings: 145,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+      );
+      notifyListeners();
+    }
+  }
+
   EarningsSummary get earnings => _earnings;
   PerformanceMetrics get performance => _performance;
   List<AppNotice> get notices => List<AppNotice>.unmodifiable(_notices);
@@ -1104,10 +1136,10 @@ class AppController extends ChangeNotifier {
       if (newToken == null) return false;
 
       _sessionToken = newToken;
-      _tokenType =
-          _nullIfBlank(data['token_type']?.toString()) ?? _tokenType;
-      final String? newRefresh =
-          _nullIfBlank(data['refresh_token']?.toString());
+      _tokenType = _nullIfBlank(data['token_type']?.toString()) ?? _tokenType;
+      final String? newRefresh = _nullIfBlank(
+        data['refresh_token']?.toString(),
+      );
       if (newRefresh != null) {
         _refreshToken = newRefresh;
       }
@@ -1761,9 +1793,7 @@ class AppController extends ChangeNotifier {
   }) async {
     try {
       // Build filters: name/search-field LIKE '%query%' + any extra filters.
-      final List<List<dynamic>> filterList = <List<dynamic>>[
-        ...extraFilters,
-      ];
+      final List<List<dynamic>> filterList = <List<dynamic>>[...extraFilters];
       final String trimmed = query.trim();
       if (trimmed.isNotEmpty) {
         // Search across all provided search fields (OR logic via OR operator).
@@ -2359,10 +2389,9 @@ class AppController extends ChangeNotifier {
       final Uri uri = Uri.parse(
         '${ApiConstants.erpBaseUrl}/api/resource/Driver/${Uri.encodeComponent(_driverName!)}',
       );
-      await authorizedPutJson(
-        uri,
-        <String, dynamic>{'custom_custom_is_online': value ? 1 : 0},
-      );
+      await authorizedPutJson(uri, <String, dynamic>{
+        'custom_custom_is_online': value ? 1 : 0,
+      });
       return null;
     } catch (e) {
       return 'Failed to sync availability: ${e.toString().replaceAll('Exception: ', '')}';
@@ -2553,8 +2582,68 @@ class AppController extends ChangeNotifier {
   List<DeliveryOrder> get availableOrders =>
       List<DeliveryOrder>.unmodifiable(_availableOrders);
 
-  List<DeliveryOrder> get acceptedOrders =>
-      List<DeliveryOrder>.unmodifiable(_acceptedOrders);
+  List<DeliveryOrder> get acceptedOrders {
+    if (_acceptedOrders.isEmpty) {
+      _populateMockAcceptedOrders();
+    }
+    return List<DeliveryOrder>.unmodifiable(_acceptedOrders);
+  }
+
+  void _populateMockAcceptedOrders() {
+    final List<String> customerNames = <String>[
+      'Riya Sharma',
+      'Amit Kumar',
+      'Priya Singh',
+    ];
+    final List<String> storeNames = <String>[
+      'Fresh Bites Kitchen',
+      'Tasty Treats',
+      'Burger Barn',
+    ];
+    final List<String> addresses = <String>[
+      'Connaught Place, New Delhi',
+      'Karol Bagh, New Delhi',
+      'Lajpat Nagar, New Delhi',
+    ];
+    final List<OrderStatus> statuses = <OrderStatus>[
+      OrderStatus.delivered,
+      OrderStatus.delivered,
+      OrderStatus.cancelled,
+    ];
+
+    for (int i = 0; i < 3; i++) {
+      _acceptedOrders.add(
+        DeliveryOrder(
+          orderId: '#OD${2000 + i}',
+          customerName: customerNames[i],
+          customerPhone: '98765${1000 + i}',
+          deliveryAddress: '${addresses[i]} - ${110001 + i * 10}',
+          storeId: 'STORE${100 + i}',
+          storeName: storeNames[i],
+          storeContact: '98765${43210 + i}',
+          storeAddress: addresses[(i + 1) % addresses.length],
+          orderItems: <OrderItem>[
+            OrderItem(
+              name: 'Combo Meal ${i + 1}',
+              quantity: 1 + i,
+              price: (150 + i * 50).toDouble(),
+            ),
+          ],
+          orderStatus: statuses[i],
+          latitude: 28.6139 + i * 0.02,
+          longitude: 77.2090 + i * 0.02,
+          pickup: addresses[(i + 1) % addresses.length],
+          drop: addresses[i],
+          deliveryInstructions: 'Call before arrival',
+          paymentMode: 'COD',
+          distanceKm: (3 + i).toDouble(),
+          estimatedEarnings: (60 + i * 20).toDouble(),
+          assignmentStatus: OrderAssignmentStatus.assigned,
+        ),
+      );
+    }
+    notifyListeners();
+  }
 
   bool get isLoadingOrders => _isLoadingOrders;
 
@@ -2607,7 +2696,9 @@ class AppController extends ChangeNotifier {
     if (raw is List) {
       for (final dynamic item in raw) {
         if (item is Map<String, dynamic>) {
-          _availableOrders.add(_orderFromExternal(ExternalDeliveryOrder.fromJson(item)));
+          _availableOrders.add(
+            _orderFromExternal(ExternalDeliveryOrder.fromJson(item)),
+          );
         }
       }
     }
@@ -2986,7 +3077,9 @@ class AppController extends ChangeNotifier {
     final String? driverName = _nullIfBlank(message['driver_name']?.toString());
     final String? clientId = _nullIfBlank(message['client_id']?.toString());
     final String? apiKey = _nullIfBlank(message['api_key']?.toString());
-    final String? apiSecretVal = _nullIfBlank(message['api_secret']?.toString());
+    final String? apiSecretVal = _nullIfBlank(
+      message['api_secret']?.toString(),
+    );
     final int? expiresIn = int.tryParse(
       message['expires_in']?.toString() ?? '',
     );
@@ -3322,7 +3415,9 @@ class AppController extends ChangeNotifier {
         final dynamic onlineRaw = driverDoc['custom_custom_is_online'];
         if (onlineRaw != null) {
           final bool backendOnline =
-              onlineRaw == 1 || onlineRaw == true || onlineRaw.toString() == '1';
+              onlineRaw == 1 ||
+              onlineRaw == true ||
+              onlineRaw.toString() == '1';
           if (_isOnline != backendOnline) {
             _isOnline = backendOnline;
             _writePref(
@@ -3332,7 +3427,9 @@ class AppController extends ChangeNotifier {
           }
         }
         if (_driverName == null || _driverName!.isEmpty) {
-          final String? fetchedName = _nullIfBlank(driverDoc['name']?.toString());
+          final String? fetchedName = _nullIfBlank(
+            driverDoc['name']?.toString(),
+          );
           if (fetchedName != null) {
             _driverName = fetchedName;
             _writePref(
@@ -3481,8 +3578,7 @@ class AppController extends ChangeNotifier {
       final http.Response retryResp = await http
           .get(uri, headers: refreshedHeaders)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3524,13 +3620,13 @@ class AppController extends ChangeNotifier {
     }
 
     if (await refreshSession()) {
-      final Map<String, String> refreshedHeaders =
-          _authorizationHeaders(contentType: 'application/json').first;
+      final Map<String, String> refreshedHeaders = _authorizationHeaders(
+        contentType: 'application/json',
+      ).first;
       final http.Response retryResp = await http
           .put(uri, headers: refreshedHeaders, body: encodedBody)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3579,13 +3675,13 @@ class AppController extends ChangeNotifier {
     }
 
     if (await refreshSession()) {
-      final Map<String, String> refreshedHeaders =
-          _authorizationHeaders(contentType: 'application/json').first;
+      final Map<String, String> refreshedHeaders = _authorizationHeaders(
+        contentType: 'application/json',
+      ).first;
       final http.Response retryResp = await http
           .post(uri, headers: refreshedHeaders, body: encodedBody)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3627,8 +3723,7 @@ class AppController extends ChangeNotifier {
       final http.Response retryResp = await http
           .get(uri, headers: refreshedHeaders)
           .timeout(_networkTimeout);
-      final Map<String, dynamic> retryPayload =
-          _decodeJsonMap(retryResp.body);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
         return retryPayload;
       }
@@ -3674,8 +3769,7 @@ class AppController extends ChangeNotifier {
         ..headers.addAll(refreshedHeaders)
         ..fields.addAll(fields)
         ..files.add(await http.MultipartFile.fromPath('file', filePath));
-      final retryStreamed =
-          await retryRequest.send().timeout(_networkTimeout);
+      final retryStreamed = await retryRequest.send().timeout(_networkTimeout);
       final retryResp = await http.Response.fromStream(retryStreamed);
       final retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
@@ -3731,11 +3825,13 @@ class AppController extends ChangeNotifier {
         ..headers.addAll(refreshedHeaders)
         ..fields.addAll(fields)
         ..files.add(
-          await http.MultipartFile.fromPath('file', filePath,
-              filename: fileName),
+          await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            filename: fileName,
+          ),
         );
-      final retryStreamed =
-          await retryRequest.send().timeout(_networkTimeout);
+      final retryStreamed = await retryRequest.send().timeout(_networkTimeout);
       final retryResp = await http.Response.fromStream(retryStreamed);
       final retryPayload = _decodeJsonMap(retryResp.body);
       if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
@@ -4036,8 +4132,9 @@ class AppController extends ChangeNotifier {
       authHeaders.add(bearerHeaders);
     }
     if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
-      final String altType =
-          _tokenType.trim().toLowerCase() == 'token' ? 'Bearer' : 'token';
+      final String altType = _tokenType.trim().toLowerCase() == 'token'
+          ? 'Bearer'
+          : 'token';
       final Map<String, String> tokenHeaders = <String, String>{
         'Accept': 'application/json',
         'Authorization': '$altType ${_sessionToken!.trim()}',

@@ -29,6 +29,15 @@ class DashboardScreen extends StatelessWidget {
           app.hydrateBankFromBackend(forceRefresh: true),
         ]);
       },
+      showBottomNav: true,
+      bottomNavIndex: 0,
+      onBottomNavTap: (index) {
+        if (index == 1) {
+          Navigator.of(context).pushNamed(AppRoutes.myOrders);
+        } else if (index == 2) {
+          Navigator.of(context).pushNamed(AppRoutes.more);
+        }
+      },
       actions: [
         Consumer(
           builder: (context, ref, _) {
@@ -174,8 +183,8 @@ class DashboardScreen extends StatelessWidget {
                   app.availabilitySyncing
                       ? 'Syncing availability...'
                       : app.isOnline
-                          ? 'Online and receiving order requests'
-                          : 'Offline, no new orders will be assigned',
+                      ? 'Online and receiving order requests'
+                      : 'Offline, no new orders will be assigned',
                   style: const TextStyle(color: Colors.black54),
                 ),
                 if (!app.canGoOnline && !app.isKycComplete) ...[
@@ -492,155 +501,6 @@ class DashboardScreen extends StatelessWidget {
                     ],
                   ),
           ),
-          const SizedBox(height: 14),
-          const SectionLabel('Notifications'),
-          FrostCard(
-            child: Column(
-              children: [
-                Consumer(
-                  builder: (context, ref, _) {
-                    final async = ref.watch(recentNotificationsProvider);
-                    return async.when(
-                      data: (items) {
-                        final overrides = ref.watch(
-                          notificationReadOverridesProvider,
-                        );
-                        final List<Widget> rows = <Widget>[
-                          ...items.take(2).map((notification) {
-                            final effectiveRead =
-                                notification.read ||
-                                overrides.contains(notification.name);
-                            return _NotificationRow(
-                              title: notification.subject,
-                              message: _dashboardNotificationMessage(
-                                notification.message,
-                              ),
-                              time: notification.creation,
-                              isUnread: !effectiveRead,
-                              onTap: () {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(AppRoutes.notifications);
-                              },
-                            );
-                          }),
-                          ...app.notices.take(4).map((notice) {
-                            return _NotificationRow(
-                              title: notice.title,
-                              message: notice.message,
-                              time: notice.time,
-                            );
-                          }),
-                        ];
-
-                        if (rows.isEmpty) {
-                          return const Padding(
-                            padding: EdgeInsets.only(top: 2),
-                            child: Text(
-                              'No notifications yet.',
-                              style: TextStyle(color: Colors.black54),
-                            ),
-                          );
-                        }
-
-                        return Column(children: rows);
-                      },
-                      loading: () => const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Center(
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2.4),
-                          ),
-                        ),
-                      ),
-                      error: (err, _) => Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Unable to load notifications.',
-                              style: TextStyle(color: Colors.black54),
-                            ),
-                          ),
-                          TextButton(
-                            onPressed: () {
-                              ref.invalidate(recentNotificationsProvider);
-                            },
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          const SectionLabel('Quick Access'),
-          FrostCard(
-            child: Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                _quickButton(
-                  context,
-                  'My Profile',
-                  Icons.person_outline_rounded,
-                  route: AppRoutes.profile,
-                ),
-                _quickButton(
-                  context,
-                  'Earnings History',
-                  Icons.receipt_long_rounded,
-                ),
-                _quickButton(
-                  context,
-                  'Documents',
-                  Icons.file_copy_outlined,
-                  route: AppRoutes.kycDocuments,
-                ),
-                _quickButton(
-                  context,
-                  'Vehicle',
-                  Icons.two_wheeler_rounded,
-                  route: AppRoutes.vehicleDetails,
-                ),
-                _quickButton(
-                  context,
-                  'Bank Details',
-                  Icons.account_balance_outlined,
-                  route: AppRoutes.bankSetup,
-                ),
-                _quickButton(
-                  context,
-                  'Orders by Location',
-                  Icons.list_alt_rounded,
-                  route: AppRoutes.ordersByLocation,
-                ),
-                _quickButton(
-                  context,
-                  'Available Orders',
-                  Icons.local_shipping_outlined,
-                  route: AppRoutes.orderListing,
-                ),
-                _quickButton(
-                  context,
-                  'External Trips',
-                  Icons.local_shipping_outlined,
-                  route: AppRoutes.externalDeliveryTripList,
-                ),
-                _quickButton(context, 'Support', Icons.support_agent_rounded),
-                _quickButton(
-                  context,
-                  'Settings',
-                  Icons.settings_outlined,
-                  route: AppRoutes.settings,
-                ),
-              ],
-            ),
-          ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: () {
@@ -769,8 +629,7 @@ class _DashboardLocationCard extends StatelessWidget {
                         TileLayer(
                           urlTemplate:
                               'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName:
-                              'com.lyncspace.grozfygo',
+                          userAgentPackageName: 'com.lyncspace.grozfygo',
                         ),
                         MarkerLayer(
                           markers: [

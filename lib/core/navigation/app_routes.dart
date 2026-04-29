@@ -26,4 +26,7 @@ class AppRoutes {
   static const externalDeliveryTripDetails = '/external-delivery-trip-details';
   static const settings = '/settings';
   static const notifications = '/notifications';
+  static const myOrders = '/my-orders';
+  static const more = '/more';
+  static const earnings = '/earnings';
 }
