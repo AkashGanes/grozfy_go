@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/skeleton_loader.dart';
 
@@ -33,6 +34,11 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   String? _selectedPartyType;
   String? _selectedParty;
 
+  final _formKey = GlobalKey<FormState>();
+
+  bool _disabled = false;
+  bool _isDefault = false;
+  bool _isCompanyAccount = false;
   bool _busy = false;
   bool _ready = false;
   bool _editMode = false;
@@ -155,6 +161,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   }
 
   Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
     final app = AppScope.of(context);
     setState(() => _busy = true);
     final String? error = await app.submitBankDetails(
@@ -266,16 +273,21 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       title: 'Bank Account Setup',
       subtitle: 'Bank Account DocType fields from ERP',
       loading: _busy,
-      child: FrostCard(
+      child: Form(
+        key: _formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: FrostCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
+            TextFormField(
               controller: _accountNameCtrl,
               onChanged: (_) => setState(() {}),
+              validator: requiredField,
               decoration: const InputDecoration(
                 labelText: 'Account Name *',
                 prefixIcon: Icon(Icons.person_outline_rounded),
+                helperText: ' ',
               ),
             ),
             const SizedBox(height: 12),
@@ -362,9 +374,10 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextFormField(
               controller: _ibanCtrl,
               textCapitalization: TextCapitalization.characters,
+              validator: validateIBAN,
               inputFormatters: <TextInputFormatter>[
                 FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 ]')),
                 LengthLimitingTextInputFormatter(34),
@@ -372,35 +385,41 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
               decoration: const InputDecoration(
                 labelText: 'IBAN',
                 prefixIcon: Icon(Icons.credit_card_outlined),
+                helperText: ' ',
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
+            TextFormField(
               controller: _branchCodeCtrl,
               onChanged: (_) => setState(() {}),
               textCapitalization: TextCapitalization.characters,
+              validator: validateBranchCode,
               inputFormatters: <TextInputFormatter>[
-                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
-                LengthLimitingTextInputFormatter(20),
+                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                LengthLimitingTextInputFormatter(11),
               ],
               decoration: const InputDecoration(
-                labelText: 'Branch Code *',
+                labelText: 'Branch Code (IFSC) *',
                 prefixIcon: Icon(Icons.qr_code_rounded),
+                helperText: ' ',
+                counterText: '',
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
+            TextFormField(
               controller: _bankAccountNoCtrl,
-              textCapitalization: TextCapitalization.characters,
+              keyboardType: TextInputType.number,
+              validator: validateBankAccountNo,
               inputFormatters: <TextInputFormatter>[
-                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
-                LengthLimitingTextInputFormatter(34),
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(18),
               ],
               decoration: const InputDecoration(
                 labelText: 'Bank Account No',
                 prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                helperText: ' ',
+                counterText: '',
               ),
             ),
+            const SizedBox(height: 4),
             const SizedBox(height: 12),
             TextField(
               controller: _lastIntegrationDateCtrl,
@@ -419,6 +438,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

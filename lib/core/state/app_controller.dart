@@ -16,6 +16,7 @@ import '../navigation/app_routes.dart';
 import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
 import '../services/secure_token_storage.dart';
+import '../utils/validators.dart' as app_validators;
 import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
@@ -63,6 +64,10 @@ class AppController extends ChangeNotifier {
   static const String _prefBankDocName = 'bank_doc_name';
   static const String _prefBankAccountName = 'bank_account_name';
   static const String _prefIsOnline = 'is_online';
+  static const String _prefPermForeground = 'perm_foreground_location';
+  static const String _prefPermBackground = 'perm_background_location';
+  static const String _prefPermNotification = 'perm_notification';
+  static const String _prefLicenseRequiresReupload = 'license_requires_reupload';
   static const String _prefThemeMode = 'theme_mode';
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
@@ -107,6 +112,7 @@ class AppController extends ChangeNotifier {
   bool _rememberMe = false;
   bool _profileCompleted = false;
   bool _kycCompleted = false;
+  bool _licenseRequiresReupload = false;
   String? _sessionToken;
   String _tokenType = 'Bearer';
   String? _refreshToken;
@@ -284,6 +290,7 @@ class AppController extends ChangeNotifier {
   );
 
   bool get isKycComplete => _kycCompleted;
+  bool get licenseRequiresReupload => _licenseRequiresReupload;
 
   bool get canGoOnline =>
       _kycCompleted &&
@@ -393,6 +400,13 @@ class AppController extends ChangeNotifier {
         ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)];
     _backgroundColorValue = prefs.getInt(_prefBackgroundColor) ?? 0xFFF0F4FA;
     _accentColorValue = prefs.getInt(_prefAccentColor) ?? 0xFF1C4E80;
+    _permissionState = PermissionState(
+      foregroundLocation: prefs.getBool(_prefPermForeground) ?? false,
+      backgroundLocation: prefs.getBool(_prefPermBackground) ?? false,
+      notification: prefs.getBool(_prefPermNotification) ?? false,
+    );
+    _licenseRequiresReupload =
+        prefs.getBool(_prefLicenseRequiresReupload) ?? false;
     _isLoggedIn = _sessionToken != null;
     if (_isLoggedIn) {
       final String fullName =
@@ -412,6 +426,22 @@ class AppController extends ChangeNotifier {
     unawaited(FCMService().subscribe(this));
 
     notifyListeners();
+
+    // Background-fetch backend data so profile completeness is correct on open
+    if (_isLoggedIn) {
+      unawaited(_backgroundSync());
+    }
+  }
+
+  /// Fetches profile first (so _driverName is set), then hydrates vehicle
+  /// and bank in parallel. Used on bootstrap, login, and registration so the
+  /// profile completeness section is correct without a manual refresh.
+  Future<void> _backgroundSync() async {
+    await fetchLoggedInEmployeeDriverProfile();
+    await Future.wait(<Future<void>>[
+      hydrateVehicleFromBackend(),
+      hydrateBankFromBackend(),
+    ]);
   }
 
   Future<void> initializeConnectivity() async {
@@ -909,10 +939,7 @@ class AppController extends ChangeNotifier {
   }
 
   String? validateMobile(String mobile) {
-    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(mobile.trim())) {
-      return 'Enter a valid 10-digit mobile number';
-    }
-    return null;
+    return app_validators.validateMobile(mobile);
   }
 
   Future<String> sendOtp(String mobile) async {
@@ -1086,6 +1113,8 @@ class AppController extends ChangeNotifier {
       unawaited(FCMService().subscribe(this));
 
       notifyListeners();
+      unawaited(_backgroundSync());
+
       return null;
     } catch (e) {
       _logApi('verify_whatsapp_otp error', e.toString());
@@ -1264,6 +1293,8 @@ class AppController extends ChangeNotifier {
 
       await _persistSession(responseData);
       notifyListeners();
+      unawaited(_backgroundSync());
+
       return null;
     } catch (e) {
       _logApi('register_delivery_partner error', e.toString());
@@ -1381,6 +1412,10 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefBankDocName),
       prefs.remove(_prefBankAccountName),
       prefs.setBool(_prefRememberMe, false),
+      prefs.remove(_prefPermForeground),
+      prefs.remove(_prefPermBackground),
+      prefs.remove(_prefPermNotification),
+      prefs.remove(_prefLicenseRequiresReupload),
     ]);
 
     // Server-side cleanup — fire-and-forget so the caller's navigation
@@ -1519,6 +1554,7 @@ class AppController extends ChangeNotifier {
           await prefs.setString(_prefDriverName, newDriverName);
         }
         _kycCompleted = true;
+        _licenseRequiresReupload = false;
         final SharedPreferences prefs = await SharedPreferences.getInstance();
         await prefs.setBool(_prefKycCompleted, true);
         notifyListeners();
@@ -1548,6 +1584,68 @@ class AppController extends ChangeNotifier {
 
     _kycStatus[key] = VerificationStatus.pending;
     notifyListeners();
+  }
+
+  void _checkLicenseStatus(Map<String, dynamic> driverDoc) {
+    if (!_kycCompleted) return;
+    final licenseNumber = _nullIfBlank(driverDoc['license_number']?.toString());
+    final licenseAttachment = _nullIfBlank(
+      driverDoc['custom_license_attachment']?.toString(),
+    );
+    final removed = licenseNumber == null && licenseAttachment == null;
+    if (_licenseRequiresReupload != removed) {
+      _licenseRequiresReupload = removed;
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.setBool(_prefLicenseRequiresReupload, removed),
+      );
+      notifyListeners();
+    }
+  }
+
+  void clearLicenseReuploadFlag() {
+    if (_licenseRequiresReupload) {
+      _licenseRequiresReupload = false;
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.remove(_prefLicenseRequiresReupload),
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<String?> resubmitLicense({
+    required String licenseNumber,
+    required String licenseAttachmentUrl,
+    String? issuingDate,
+    String? expiryDate,
+  }) async {
+    if (_sessionToken == null) return 'Not authenticated';
+
+    final String? driverName = _driverName;
+    if (driverName == null || driverName.isEmpty) {
+      return 'Driver profile not found. Please try again.';
+    }
+
+    try {
+      final Map<String, dynamic> fields = <String, dynamic>{
+        'license_number': licenseNumber,
+        'custom_license_attachment': licenseAttachmentUrl,
+      };
+      if (issuingDate != null) fields['issuing_date'] = issuingDate;
+      if (expiryDate != null) fields['expiry_date'] = expiryDate;
+
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Driver/${Uri.encodeComponent(driverName)}',
+      );
+
+      await authorizedPutJson(uri, fields);
+      _licenseRequiresReupload = false;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
   void simulateKycApproval() {
@@ -1730,8 +1828,32 @@ class AppController extends ChangeNotifier {
       }
       if (data == null && licensePlate != null) {
         _logApi('vehicle.hydrate', 'fetch by license_plate=$licensePlate');
+        data = await fetchVehicleByLicensePlate(licensePlate);
       }
-      data ??= await fetchVehicleByLicensePlate(licensePlate ?? '');
+      // Fallback: vehicle linked directly in driver profile doc
+      if (data == null) {
+        final String? vehicleFromDriver = _nullIfBlank(
+          _loggedProfileDetails?.driver?['vehicle']?.toString(),
+        );
+        if (vehicleFromDriver != null) {
+          _logApi('vehicle.hydrate', 'fetch by driver.vehicle=$vehicleFromDriver');
+          data = await fetchVehicleByName(vehicleFromDriver);
+        }
+      }
+      // Fallback: search by driver name
+      if (data == null && _driverName != null) {
+        _logApi('vehicle.hydrate', 'search by driver=$_driverName');
+        final String? name = await _findResourceName(
+          doctype: 'Vehicle',
+          filters: <List<String>>[
+            <String>['Vehicle', 'driver', '=', _driverName!],
+          ],
+          fields: <String>['name'],
+        );
+        if (name != null) {
+          data = await _fetchResourceDoc('Vehicle', name);
+        }
+      }
       if (data == null) {
         _logApi('vehicle.hydrate', 'no vehicle found');
         return;
@@ -1921,6 +2043,21 @@ class AppController extends ChangeNotifier {
           doctype: 'Bank Account',
           filters: <List<String>>[
             <String>['Bank Account', 'account_name', '=', accountName],
+          ],
+          fields: <String>['name'],
+        );
+        if (name != null) {
+          data = await _fetchResourceDoc('Bank Account', name);
+        }
+      }
+      // Fallback: search by driver as party
+      if (data == null && _driverName != null) {
+        _logApi('bank.hydrate', 'search by party=Driver/$_driverName');
+        final String? name = await _findResourceName(
+          doctype: 'Bank Account',
+          filters: <List<String>>[
+            <String>['Bank Account', 'party_type', '=', 'Driver'],
+            <String>['Bank Account', 'party', '=', _driverName!],
           ],
           fields: <String>['name'],
         );
@@ -2191,15 +2328,13 @@ class AppController extends ChangeNotifier {
       return 'Branch code is required';
     }
     if (!RegExp(
-      r'^[A-Z0-9-]{2,20}$',
+      r'^[A-Z]{4}0[A-Z0-9]{6}$',
     ).hasMatch(normalizedBranchCode.toUpperCase())) {
-      return 'Branch code should be 2-20 characters (A-Z, 0-9, -)';
+      return 'Enter a valid IFSC code (e.g. SBIN0001234)';
     }
     if (normalizedBankAccountNo != null &&
-        !RegExp(
-          r'^[A-Z0-9-]{6,34}$',
-        ).hasMatch(normalizedBankAccountNo.toUpperCase())) {
-      return 'Bank account no should be 6-34 characters (A-Z, 0-9, -)';
+        !RegExp(r'^\d{9,18}$').hasMatch(normalizedBankAccountNo)) {
+      return 'Enter a valid account number (9–18 digits)';
     }
 
     String? normalizedIban = _nullIfBlank(iban);
@@ -2318,6 +2453,15 @@ class AppController extends ChangeNotifier {
       backgroundLocation: background,
       notification: notification,
     );
+    if (foreground != null) {
+      _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermForeground, foreground));
+    }
+    if (background != null) {
+      _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermBackground, background));
+    }
+    if (notification != null) {
+      _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermNotification, notification));
+    }
     notifyListeners();
   }
 
@@ -3412,6 +3556,7 @@ class AppController extends ChangeNotifier {
       );
 
       if (driverDoc != null) {
+        _checkLicenseStatus(driverDoc);
         final dynamic onlineRaw = driverDoc['custom_custom_is_online'];
         if (onlineRaw != null) {
           final bool backendOnline =

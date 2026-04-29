@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/skeleton_loader.dart';
 
@@ -29,6 +30,8 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
   final TextEditingController _colorCtrl = TextEditingController();
   final TextEditingController _wheelsCtrl = TextEditingController();
   final TextEditingController _doorsCtrl = TextEditingController();
+
+  final _formKey = GlobalKey<FormState>();
 
   String? _selectedFuel;
   String? _selectedUom;
@@ -188,6 +191,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
   }
 
   Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
     final app = AppScope.of(context);
     setState(() => _busy = true);
     final result = await app.submitVehicleDetails(
@@ -270,47 +274,55 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
       title: 'Vehicle Registration',
       subtitle: 'Add all vehicle details from ERP schema',
       loading: _busy,
-      child: Column(
+      child: Form(
+        key: _formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SectionLabel('Required Details'),
           FrostCard(
             child: Column(
               children: [
-                TextField(
+                TextFormField(
                   controller: _licensePlateCtrl,
                   textCapitalization: TextCapitalization.characters,
+                  validator: validateLicensePlate,
                   decoration: const InputDecoration(
                     labelText: 'License Plate *',
                     prefixIcon: Icon(Icons.confirmation_number_outlined),
+                    helperText: ' ',
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
+                TextFormField(
                   controller: _makeCtrl,
+                  validator: validateVehicleName,
                   decoration: const InputDecoration(
                     labelText: 'Make *',
                     prefixIcon: Icon(Icons.factory_outlined),
+                    helperText: ' ',
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
+                TextFormField(
                   controller: _modelCtrl,
+                  validator: validateVehicleName,
                   decoration: const InputDecoration(
                     labelText: 'Model *',
                     prefixIcon: Icon(Icons.directions_car_outlined),
+                    helperText: ' ',
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
+                TextFormField(
                   controller: _odometerCtrl,
                   keyboardType: TextInputType.number,
+                  validator: validateOdometer,
                   decoration: const InputDecoration(
                     labelText: 'Odometer Value (Last) *',
                     prefixIcon: Icon(Icons.speed_outlined),
+                    helperText: ' ',
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 4),
                 DropdownButtonFormField<String>(
                   initialValue: _selectedFuel,
                   items: fuelOptions
@@ -372,22 +384,27 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextFormField(
                   controller: _chassisNoCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  validator: validateChassisNumber,
                   decoration: const InputDecoration(
                     labelText: 'Chassis Number',
                     prefixIcon: Icon(Icons.pin_outlined),
+                    helperText: ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextFormField(
                   controller: _vehicleValueCtrl,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
+                  validator: validateVehicleValue,
                   decoration: const InputDecoration(
                     labelText: 'Vehicle Value',
                     prefixIcon: Icon(Icons.currency_rupee_outlined),
+                    helperText: ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -423,11 +440,14 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextFormField(
                   controller: _policyNoCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  validator: validatePolicyNumber,
                   decoration: const InputDecoration(
                     labelText: 'Policy Number',
                     prefixIcon: Icon(Icons.policy_outlined),
+                    helperText: ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -449,34 +469,40 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                   icon: Icons.eco_outlined,
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                TextFormField(
                   controller: _colorCtrl,
+                  validator: validateColor,
                   decoration: const InputDecoration(
                     labelText: 'Color',
                     prefixIcon: Icon(Icons.palette_outlined),
+                    helperText: ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
-                      child: TextField(
+                      child: TextFormField(
                         controller: _wheelsCtrl,
                         keyboardType: TextInputType.number,
+                        validator: validatePositiveInt,
                         decoration: const InputDecoration(
                           labelText: 'Wheels',
                           prefixIcon: Icon(Icons.tire_repair_outlined),
+                          helperText: ' ',
                         ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: TextField(
+                      child: TextFormField(
                         controller: _doorsCtrl,
                         keyboardType: TextInputType.number,
+                        validator: validatePositiveInt,
                         decoration: const InputDecoration(
                           labelText: 'Doors',
                           prefixIcon: Icon(Icons.sensor_door_outlined),
+                          helperText: ' ',
                         ),
                       ),
                     ),
@@ -497,6 +523,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
             child: const Text('Submit Vehicle Details'),
           ),
         ],
+      ),
       ),
     );
   }
