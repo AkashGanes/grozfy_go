@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/skeleton_loader.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../orders_by_location/ui/delivery_proof_sheet.dart';
 
 class DeliveryListScreen extends StatefulWidget {
   const DeliveryListScreen({super.key});
@@ -395,6 +396,7 @@ class _DeliveryDetailsSheet extends StatefulWidget {
 class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
   late ExternalDeliveryOrder _delivery;
   bool _loadingFull = true;
+  bool _uploadingProof = false;
 
   @override
   void initState() {
@@ -412,6 +414,21 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
       });
     } else if (mounted) {
       setState(() => _loadingFull = false);
+    }
+  }
+
+  Future<void> _uploadProofPhotoLate(BuildContext context) async {
+    final photoPath = await showDeliveryProofSheet(context);
+    if (!mounted || photoPath == null) return;
+    setState(() => _uploadingProof = true);
+    try {
+      await ExternalDeliveryRepository().uploadProofPhoto(
+        orderName: _delivery.name,
+        filePath: photoPath,
+      );
+      await _fetchFullDelivery();
+    } finally {
+      if (mounted) setState(() => _uploadingProof = false);
     }
   }
 
@@ -586,6 +603,48 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
                     '${_delivery.dropLat!.toStringAsFixed(6)}, ${_delivery.dropLng!.toStringAsFixed(6)}',
                   ),
               ]),
+
+              if (_delivery.proofPhoto != null &&
+                  _delivery.proofPhoto!.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Proof of Delivery',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                buildProofPhotoWidget(context, _delivery.proofPhoto!),
+              ] else if (_delivery.status.toLowerCase() == 'delivered') ...[
+                const SizedBox(height: 16),
+                Text(
+                  'Proof of Delivery',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: _uploadingProof
+                      ? const Center(child: CircularProgressIndicator())
+                      : OutlinedButton.icon(
+                          onPressed: () => _uploadProofPhotoLate(context),
+                          icon: const Icon(Icons.add_a_photo_outlined),
+                          label: const Text('Add Proof Photo'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                ),
+              ],
 
               const SizedBox(height: 32),
 

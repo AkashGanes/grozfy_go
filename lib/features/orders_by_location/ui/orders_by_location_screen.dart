@@ -49,10 +49,7 @@ class _OrdersByLocationScreenState
       ..addPageRequestListener(_fetchPage);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final app = ref.read(appControllerProvider);
-      if (app.selectedStoreName == null) {
-        _showStorePicker(initial: true);
-      }
+      // No forced picker — null selectedStoreName means "All Stores".
     });
   }
 
@@ -389,7 +386,7 @@ class _OrdersByLocationScreenState
     _toggleSelection(order);
   }
 
-  Future<void> _showStorePicker({bool initial = false}) async {
+  Future<void> _showStorePicker() async {
     List<String> stores = [];
     bool loading = true;
 
@@ -397,8 +394,6 @@ class _OrdersByLocationScreenState
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      isDismissible: !initial,
-      enableDrag: !initial,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
@@ -410,6 +405,9 @@ class _OrdersByLocationScreenState
                 });
               });
             }
+
+            final currentStore =
+                ref.read(appControllerProvider).selectedStoreName;
 
             return Container(
               decoration: const BoxDecoration(
@@ -426,7 +424,6 @@ class _OrdersByLocationScreenState
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Handle
                   Center(
                     child: Container(
                       width: 36,
@@ -439,7 +436,7 @@ class _OrdersByLocationScreenState
                     ),
                   ),
                   const Text(
-                    'Select Your Location',
+                    'Filter by Store',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -448,7 +445,7 @@ class _OrdersByLocationScreenState
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Orders will be filtered by your selected store.',
+                    'Select a store to filter orders, or choose All Stores.',
                     style: TextStyle(fontSize: 13, color: Colors.black45),
                   ),
                   const SizedBox(height: 16),
@@ -461,33 +458,59 @@ class _OrdersByLocationScreenState
                         ),
                       ),
                     )
-                  else if (stores.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(
-                        child: Text(
-                          'No stores found',
-                          style: TextStyle(color: Colors.black45),
-                        ),
-                      ),
-                    )
                   else
                     ConstrainedBox(
                       constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(ctx).size.height * 0.4,
+                        maxHeight: MediaQuery.of(ctx).size.height * 0.5,
                       ),
                       child: ListView.separated(
                         shrinkWrap: true,
-                        itemCount: stores.length,
+                        // +1 for the "All Stores" row at the top
+                        itemCount: stores.length + 1,
                         separatorBuilder: (context, index) =>
                             const Divider(height: 1),
                         itemBuilder: (_, i) {
-                          final store = stores[i];
-                          final selected =
-                              ref
-                                  .read(appControllerProvider)
-                                  .selectedStoreName ==
-                              store;
+                          // ── All Stores row ──
+                          if (i == 0) {
+                            final selected = currentStore == null;
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(
+                                Icons.public_rounded,
+                                color: selected
+                                    ? AppTheme.oceanBlue
+                                    : Colors.black38,
+                              ),
+                              title: Text(
+                                'All Stores',
+                                style: TextStyle(
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: selected
+                                      ? AppTheme.oceanBlue
+                                      : AppTheme.nightBlue,
+                                ),
+                              ),
+                              trailing: selected
+                                  ? const Icon(
+                                      Icons.check_circle_rounded,
+                                      color: AppTheme.oceanBlue,
+                                    )
+                                  : null,
+                              onTap: () async {
+                                await ref
+                                    .read(appControllerProvider)
+                                    .setSelectedStore(null);
+                                if (ctx.mounted) Navigator.of(ctx).pop();
+                                _refresh();
+                              },
+                            );
+                          }
+
+                          // ── Individual store rows ──
+                          final store = stores[i - 1];
+                          final selected = currentStore == store;
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(
@@ -587,7 +610,7 @@ class _OrdersByLocationScreenState
                   children: [
                     _buildHeader(selectedStore),
                     const SizedBox(height: 10),
-                    if (!_selectionMode && selectedStore != null)
+                    if (!_selectionMode)
                       _buildSearchBar(),
                     Expanded(
                       child: _searchQuery.isNotEmpty
@@ -878,7 +901,7 @@ class _OrdersByLocationScreenState
                   ),
                 ),
                 Text(
-                  selectedStore ?? 'Select a location',
+                  selectedStore ?? 'All Stores',
                   style: const TextStyle(fontSize: 14, color: Colors.black54),
                 ),
               ],

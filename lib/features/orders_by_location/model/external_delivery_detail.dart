@@ -46,6 +46,7 @@ class ExternalDeliveryDetail {
     this.items = const [],
     this.creation,
     this.modified,
+    this.proofPhoto,
   });
 
   final String name;
@@ -63,6 +64,7 @@ class ExternalDeliveryDetail {
   final List<DeliveryItem> items;
   final String? creation;
   final String? modified;
+  final String? proofPhoto;
 
   factory ExternalDeliveryDetail.fromJson(Map<String, dynamic> m) {
     double? toDouble(dynamic v) {
@@ -118,6 +120,7 @@ class ExternalDeliveryDetail {
       items: items,
       creation: _nullIfBlank(m['creation']?.toString()),
       modified: _nullIfBlank(m['modified']?.toString()),
+      proofPhoto: _nullIfBlank(m['proof_photo']?.toString()),
     );
   }
 

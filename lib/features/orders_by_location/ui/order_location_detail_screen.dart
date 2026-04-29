@@ -8,6 +8,7 @@ import '../../../core/utils/call_utils.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
+import 'delivery_proof_sheet.dart';
 
 class OrderLocationDetailScreen extends StatefulWidget {
   const OrderLocationDetailScreen({
@@ -76,6 +77,33 @@ class _OrderLocationDetailScreenState
           SnackBar(content: Text(e.toString())),
         );
       }
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
+  }
+
+  Future<void> _handleDelivered() async {
+    final photoPath = await showDeliveryProofSheet(context);
+    if (!mounted) return;
+    if (photoPath != null) {
+      widget.repository.uploadProofPhoto(
+        orderName: widget.order.name,
+        filePath: photoPath,
+      );
+    }
+    await _updateStatus('Delivered');
+  }
+
+  Future<void> _uploadProofPhotoLate() async {
+    final photoPath = await showDeliveryProofSheet(context);
+    if (!mounted || photoPath == null) return;
+    setState(() => _updating = true);
+    try {
+      await widget.repository.uploadProofPhoto(
+        orderName: widget.order.name,
+        filePath: photoPath,
+      );
+      await _load();
     } finally {
       if (mounted) setState(() => _updating = false);
     }
@@ -401,6 +429,41 @@ class _OrderLocationDetailScreenState
                     const SizedBox(height: 14),
                   ],
 
+                  // ── Proof of Delivery ──────────────────────────
+                  if (detail.proofPhoto != null &&
+                      detail.proofPhoto!.isNotEmpty) ...[
+                    const _SheetSectionLabel(
+                        icon: Icons.camera_alt_rounded,
+                        label: 'Proof of Delivery'),
+                    const SizedBox(height: 10),
+                    buildProofPhotoWidget(context, detail.proofPhoto!),
+                    const SizedBox(height: 6),
+                    const Divider(height: 1),
+                    const SizedBox(height: 14),
+                  ] else if (detail.status.toLowerCase() == 'delivered') ...[
+                    const _SheetSectionLabel(
+                        icon: Icons.camera_alt_rounded,
+                        label: 'Proof of Delivery'),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _updating ? null : _uploadProofPhotoLate,
+                        icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                        label: const Text('Add Proof Photo'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Divider(height: 1),
+                    const SizedBox(height: 14),
+                  ],
+
                   // ── Action buttons ─────────────────────────────
                   if (_updating)
                     const Center(
@@ -421,7 +484,7 @@ class _OrderLocationDetailScreenState
                       onAccept: () => _updateStatus('Accepted'),
                       onStartDelivery: () =>
                           _updateStatus('Out for Delivery'),
-                      onDelivered: () => _updateStatus('Delivered'),
+                      onDelivered: _handleDelivered,
                     ),
                   ],
                 ],

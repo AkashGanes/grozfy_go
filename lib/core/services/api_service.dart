@@ -19,6 +19,7 @@ class ApiService {
     'status',
     'creation',
     'modified',
+    'proof_photo',
   ];
 
   String? _sessionToken;

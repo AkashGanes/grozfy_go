@@ -15,6 +15,8 @@ import '../../core/services/api_service.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/utils/call_utils.dart';
+import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../orders_by_location/ui/delivery_proof_sheet.dart';
 
 class DeliveryTrackingScreen extends StatefulWidget {
   final String? deliveryName;
@@ -790,6 +792,16 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         ),
       );
       return;
+    }
+
+    final photoPath = await showDeliveryProofSheet(context);
+    if (!mounted) return;
+
+    if (photoPath != null && deliveryName.isNotEmpty) {
+      ExternalDeliveryRepository().uploadProofPhoto(
+        orderName: deliveryName,
+        filePath: photoPath,
+      );
     }
 
     scaffoldMessenger.showSnackBar(
