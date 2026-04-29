@@ -170,6 +170,10 @@ class AppController extends ChangeNotifier {
   static const int _maxRetries = 3;
   static const Duration _retryDelay = Duration(seconds: 2);
   Timer? _liveLocationTimer;
+  Timer? _orderTimer;
+  int _orderElapsedSeconds = 0;
+  DateTime? _orderStartTime;
+  DateTime? _orderEndTime;
   GeoLocation? _partnerLiveLocation;
 
   EarningsSummary _earnings = const EarningsSummary(
@@ -267,6 +271,47 @@ class AppController extends ChangeNotifier {
   }
 
   EarningsSummary get earnings => _earnings;
+
+  bool get isOrderTimerRunning => _orderTimer != null && _orderStartTime != null;
+
+  String get orderElapsedTime {
+    final hours = _orderElapsedSeconds ~/ 3600;
+    final minutes = (_orderElapsedSeconds % 3600) ~/ 60;
+    final seconds = _orderElapsedSeconds % 60;
+    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  int get orderTotalSeconds => _orderElapsedSeconds;
+
+  void startOrderTimer() {
+    if (_orderTimer != null) return;
+    _orderStartTime = DateTime.now();
+    _orderElapsedSeconds = 0;
+    _orderTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _orderElapsedSeconds++;
+      notifyListeners();
+    });
+    notifyListeners();
+  }
+
+  int stopOrderTimer() {
+    _orderTimer?.cancel();
+    _orderTimer = null;
+    _orderEndTime = DateTime.now();
+    final finalSeconds = _orderElapsedSeconds;
+    notifyListeners();
+    return finalSeconds;
+  }
+
+  void resetOrderTimer() {
+    _orderTimer?.cancel();
+    _orderTimer = null;
+    _orderStartTime = null;
+    _orderEndTime = null;
+    _orderElapsedSeconds = 0;
+    notifyListeners();
+  }
+
   PerformanceMetrics get performance => _performance;
   List<AppNotice> get notices => List<AppNotice>.unmodifiable(_notices);
   bool get isConnected => _isConnected;
@@ -2439,6 +2484,13 @@ class AppController extends ChangeNotifier {
     }
 
     _activeOrder = _activeOrder!.copyWith(orderStatus: status);
+
+    if (status == OrderStatus.delivered ||
+        status == OrderStatus.cancelled ||
+        status == OrderStatus.rejected) {
+      _orderEndTime = DateTime.now();
+      stopOrderTimer();
+    }
 
     if (status == OrderStatus.delivered) {
       final double payout = _activeOrder!.estimatedEarnings;

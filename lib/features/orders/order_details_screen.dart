@@ -5,6 +5,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/utils/call_utils.dart';
 import '../../core/widgets/app_shell.dart';
+import 'widgets/order_timer_widget.dart';
 
 class OrderDetailsScreen extends StatelessWidget {
   const OrderDetailsScreen({super.key});
@@ -33,6 +34,10 @@ class OrderDetailsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (app.isOrderTimerRunning) ...[
+              const Center(child: OrderTimerWidget()),
+              const SizedBox(height: 12),
+            ],
             FrostCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

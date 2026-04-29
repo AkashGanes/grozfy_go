@@ -399,6 +399,8 @@ class DeliveryOrder {
     this.assignmentStatus = OrderAssignmentStatus.unassigned,
     this.assignedDeliveryPartnerId,
     this.reachedStoreAt,
+    this.acceptedAt,
+    this.completedAt,
     this.deliveryPartnerLocation,
   });
 
@@ -425,6 +427,8 @@ class DeliveryOrder {
   final OrderAssignmentStatus assignmentStatus;
   final String? assignedDeliveryPartnerId;
   final DateTime? reachedStoreAt;
+  final DateTime? acceptedAt;
+  final DateTime? completedAt;
   final GeoLocation? deliveryPartnerLocation;
 
   double get totalAmount =>
@@ -454,6 +458,8 @@ class DeliveryOrder {
     OrderAssignmentStatus? assignmentStatus,
     String? assignedDeliveryPartnerId,
     DateTime? reachedStoreAt,
+    DateTime? acceptedAt,
+    DateTime? completedAt,
     GeoLocation? deliveryPartnerLocation,
   }) {
     return DeliveryOrder(
@@ -481,6 +487,8 @@ class DeliveryOrder {
       assignedDeliveryPartnerId:
           assignedDeliveryPartnerId ?? this.assignedDeliveryPartnerId,
       reachedStoreAt: reachedStoreAt ?? this.reachedStoreAt,
+      acceptedAt: acceptedAt ?? this.acceptedAt,
+      completedAt: completedAt ?? this.completedAt,
       deliveryPartnerLocation:
           deliveryPartnerLocation ?? this.deliveryPartnerLocation,
     );

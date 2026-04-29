@@ -5,6 +5,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/services/api_service.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
+import 'widgets/order_timer_widget.dart';
 
 class OrderStatusScreen extends StatefulWidget {
   const OrderStatusScreen({super.key});
@@ -47,6 +48,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
 
     app.updateOrderStatus(next);
+
+    if (next == OrderStatus.delivered ||
+        next == OrderStatus.cancelled ||
+        next == OrderStatus.rejected) {
+      app.stopOrderTimer();
+    }
 
     if (!mounted) return;
     setState(() => _syncing = false);
@@ -144,6 +151,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (app.isOrderTimerRunning) ...[
+            const Center(child: OrderTimerWidget()),
+            const SizedBox(height: 14),
+          ],
           FrostCard(
             child: Column(
               children: _flow.asMap().entries.map((entry) {

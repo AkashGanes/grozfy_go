@@ -8,6 +8,7 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
+import 'widgets/order_timer_widget.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
   const OrderTrackingScreen({super.key});
@@ -91,6 +92,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       title: 'Track Order ${order.orderId}',
       subtitle: 'Real-time tracking visible to customer & admin',
       actions: [
+        if (app.isOrderTimerRunning)
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: OrderTimerWidget(),
+          ),
         IconButton(
           icon: Icon(_isLiveTracking ? Icons.gps_fixed : Icons.gps_off),
           onPressed: () {
