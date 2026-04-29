@@ -465,12 +465,9 @@ class _OrdersByLocationScreenState
                       ),
                       child: ListView.separated(
                         shrinkWrap: true,
-                        // +1 for the "All Stores" row at the top
                         itemCount: stores.length + 1,
-                        separatorBuilder: (context, index) =>
-                            const Divider(height: 1),
+                        separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (_, i) {
-                          // ── All Stores row ──
                           if (i == 0) {
                             final selected = currentStore == null;
                             return ListTile(
@@ -508,7 +505,6 @@ class _OrdersByLocationScreenState
                             );
                           }
 
-                          // ── Individual store rows ──
                           final store = stores[i - 1];
                           final selected = currentStore == store;
                           return ListTile(
