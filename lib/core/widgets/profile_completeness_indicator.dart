@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../models/app_models.dart';
+import '../state/app_scope.dart';
 import '../theme/app_theme.dart';
 
 class ProfileCompletenessIndicator extends StatelessWidget {
@@ -25,6 +26,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
   }
 
   Widget _buildCompact(BuildContext context) {
+    final app = AppScope.of(context);
     final percentage = (completeness.percentage * 100).round();
     final color = _getProgressColor(completeness.percentage);
     final remaining = completeness.totalCount - completeness.completedCount;
@@ -71,7 +73,9 @@ class ProfileCompletenessIndicator extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  remaining == 0 ? 'Profile Complete' : '$remaining steps left',
+                  remaining == 0
+                      ? app.t('profile_complete')
+                      : app.t('steps_left').replaceAll('{count}', '$remaining'),
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -106,6 +110,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
   }
 
   Widget _buildFull(BuildContext context) {
+    final app = AppScope.of(context);
     final percentage = (completeness.percentage * 100).round();
     final color = _getProgressColor(completeness.percentage);
     final isComplete = completeness.percentage == 1.0;
@@ -185,8 +190,8 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                           children: [
                             Text(
                               isComplete
-                                  ? 'All Done!'
-                                  : 'Profile Progress',
+                                  ? app.t('all_done')
+                                  : app.t('profile_progress'),
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
@@ -195,7 +200,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              completeness.message,
+                              completeness.localizedMessage(app.languageCode),
                               style: TextStyle(
                                 fontSize: 13,
                                 color: AppTheme.nightBlue.withValues(alpha: 0.6),
@@ -228,7 +233,12 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        '${completeness.completedCount} of ${completeness.totalCount} completed',
+                        app.t('completed_steps')
+                            .replaceAll(
+                              '{completed}',
+                              '${completeness.completedCount}',
+                            )
+                            .replaceAll('{total}', '${completeness.totalCount}'),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -246,7 +256,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            'Tap to complete',
+                            app.t('tap_to_complete'),
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
@@ -267,7 +277,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                       .where((item) => !item.isCompleted)
                       .take(3)
                       .map((item) => Expanded(
-                            child: _buildPendingCard(item, color),
+                            child: _buildPendingCard(context, item, color),
                           ))
                       .toList(),
                 ),
@@ -281,7 +291,12 @@ class ProfileCompletenessIndicator extends StatelessWidget {
         .slideY(begin: 0.1, end: 0, duration: 400.ms);
   }
 
-  Widget _buildPendingCard(ProfileCompletenessItem item, Color color) {
+  Widget _buildPendingCard(
+    BuildContext context,
+    ProfileCompletenessItem item,
+    Color color,
+  ) {
+    final app = AppScope.of(context);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.all(10),
@@ -310,7 +325,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  'Pending',
+                  app.t('pending'),
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w700,
@@ -322,7 +337,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            item.name,
+            app.t(item.name),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -379,19 +394,19 @@ class ProfileCompletenessIndicator extends StatelessWidget {
 
   IconData _getItemIcon(String name) {
     switch (name) {
-      case 'Basic Profile':
+      case 'profile_basic_profile':
         return Icons.person_outline_rounded;
-      case 'Profile Photo':
+      case 'profile_photo':
         return Icons.photo_camera_outlined;
-      case 'KYC Documents':
+      case 'kyc_documents':
         return Icons.badge_outlined;
-      case 'Vehicle Details':
+      case 'vehicle_details':
         return Icons.two_wheeler_rounded;
-      case 'Bank Account':
+      case 'bank_account':
         return Icons.account_balance_outlined;
-      case 'Delivery Zone':
+      case 'delivery_zone':
         return Icons.location_on_outlined;
-      case 'Permissions':
+      case 'permissions':
         return Icons.security_outlined;
       default:
         return Icons.circle_outlined;
@@ -427,6 +442,7 @@ class _DetailsBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final app = AppScope.of(context);
     final percentage = (completeness.percentage * 100).round();
     final color = _getProgressColor(completeness.percentage);
 
@@ -479,8 +495,8 @@ class _DetailsBottomSheet extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Profile Completeness',
+                          Text(
+                            app.t('profile_completeness'),
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
@@ -489,7 +505,15 @@ class _DetailsBottomSheet extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${completeness.completedCount} of ${completeness.totalCount} steps completed',
+                            app.t('completed_steps')
+                                .replaceAll(
+                                  '{completed}',
+                                  '${completeness.completedCount}',
+                                )
+                                .replaceAll(
+                                  '{total}',
+                                  '${completeness.totalCount}',
+                                ),
                             style: const TextStyle(
                               fontSize: 14,
                               color: Colors.black54,
@@ -534,7 +558,7 @@ class _DetailsBottomSheet extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Text(
-              completeness.message,
+              completeness.localizedMessage(app.languageCode),
               style: const TextStyle(
                 fontSize: 13,
                 color: Colors.black54,
@@ -550,7 +574,7 @@ class _DetailsBottomSheet extends StatelessWidget {
               itemCount: completeness.items.length,
               itemBuilder: (context, index) {
                 final item = completeness.items[index];
-                return _buildItemTile(item, color, index);
+                return _buildItemTile(context, item, color, index);
               },
             ),
           ),
@@ -562,7 +586,13 @@ class _DetailsBottomSheet extends StatelessWidget {
         .slideY(begin: 0.1, end: 0, duration: 300.ms);
   }
 
-  Widget _buildItemTile(ProfileCompletenessItem item, Color color, int index) {
+  Widget _buildItemTile(
+    BuildContext context,
+    ProfileCompletenessItem item,
+    Color color,
+    int index,
+  ) {
+    final app = AppScope.of(context);
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: Duration(milliseconds: 300 + (index * 50)),
@@ -621,7 +651,7 @@ class _DetailsBottomSheet extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          item.name,
+                          app.t(item.name),
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
@@ -632,7 +662,7 @@ class _DetailsBottomSheet extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          item.description,
+                          app.t(item.description),
                           style: TextStyle(
                             fontSize: 12,
                             color: AppTheme.nightBlue.withValues(alpha: 0.5),
@@ -665,8 +695,8 @@ class _DetailsBottomSheet extends StatelessWidget {
                         color: color,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text(
-                        'Complete',
+                      child: Text(
+                        app.t('complete'),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -697,19 +727,19 @@ class _DetailsBottomSheet extends StatelessWidget {
 
   IconData _getItemIcon(String name) {
     switch (name) {
-      case 'Basic Profile':
+      case 'profile_basic_profile':
         return Icons.person_outline_rounded;
-      case 'Profile Photo':
+      case 'profile_photo':
         return Icons.photo_camera_outlined;
-      case 'KYC Documents':
+      case 'kyc_documents':
         return Icons.badge_outlined;
-      case 'Vehicle Details':
+      case 'vehicle_details':
         return Icons.two_wheeler_rounded;
-      case 'Bank Account':
+      case 'bank_account':
         return Icons.account_balance_outlined;
-      case 'Delivery Zone':
+      case 'delivery_zone':
         return Icons.location_on_outlined;
-      case 'Permissions':
+      case 'permissions':
         return Icons.security_outlined;
       default:
         return Icons.circle_outlined;

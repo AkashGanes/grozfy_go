@@ -59,8 +59,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final String mobile = app.pendingRegistrationMobile ?? '';
 
     return AppShell(
-      title: 'Complete Registration',
-      subtitle: 'Your mobile has been verified. Fill in your details.',
+      title: app.t('complete_registration'),
+      subtitle: app.t('register_subtitle'),
       loading: _busy,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -69,9 +69,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Mobile number (read-only, pre-filled)
                 Text(
-                  'Mobile Number',
+                  app.t('mobile_number'),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -80,17 +79,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 TextField(
                   enabled: false,
                   decoration: InputDecoration(
-                    hintText: mobile.isEmpty ? 'Verified' : '+91  $mobile',
+                    hintText: mobile.isEmpty ? app.t('verified') : '+91  $mobile',
                     prefixIcon: const Icon(Icons.phone_android_rounded),
                     suffixIcon:
                         const Icon(Icons.check_circle, color: Colors.green),
                   ),
                 ),
                 const SizedBox(height: 20),
-
-                // Full name
                 Text(
-                  'Full Name',
+                  app.t('full_name'),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -101,16 +98,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   textCapitalization: TextCapitalization.words,
                   autofocus: true,
                   onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    hintText: 'Enter your full name',
-                    prefixIcon: Icon(Icons.person_outline_rounded),
+                  decoration: InputDecoration(
+                    hintText: app.t('enter_full_name'),
+                    prefixIcon: const Icon(Icons.person_outline_rounded),
                   ),
                 ),
                 const SizedBox(height: 20),
-
-                // Email (optional)
                 Text(
-                  'Email (Optional)',
+                  app.t('email_optional'),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -119,20 +114,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 TextField(
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    hintText: 'Enter your email address',
-                    prefixIcon: Icon(Icons.email_outlined),
+                  decoration: InputDecoration(
+                    hintText: app.t('enter_email'),
+                    prefixIcon: const Icon(Icons.email_outlined),
                   ),
                 ),
                 const SizedBox(height: 24),
-
-                // Register button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: _isFormValid && !_busy ? _register : null,
                     child: Text(
-                        _busy ? 'Creating account...' : 'Create Account'),
+                        _busy ? app.t('creating_account') : app.t('create_account')),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -146,7 +139,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                               (route) => false,
                             ),
                     icon: const Icon(Icons.arrow_back, size: 18),
-                    label: const Text('Back to Login'),
+                    label: Text(app.t('back_to_login')),
                   ),
                 ),
               ],

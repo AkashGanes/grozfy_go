@@ -1,27 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../../core/navigation/app_routes.dart';
+import '../../../core/state/app_scope.dart';
+import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../repository/external_delivery_repository.dart';
 
-class ExternalDeliveryTripListScreen extends StatefulWidget {
+class ExternalDeliveryTripListScreen extends ConsumerStatefulWidget {
   const ExternalDeliveryTripListScreen({super.key});
 
   @override
-  State<ExternalDeliveryTripListScreen> createState() =>
+  ConsumerState<ExternalDeliveryTripListScreen> createState() =>
       _ExternalDeliveryTripListScreenState();
 }
 
 class _ExternalDeliveryTripListScreenState
-    extends State<ExternalDeliveryTripListScreen> {
+    extends ConsumerState<ExternalDeliveryTripListScreen> {
   ExternalDeliveryRepository? _repository;
   PagingController<int, TripListItem>? _pagingController;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  String? _lastDriver;
 
   @override
   void didChangeDependencies() {
@@ -206,18 +210,32 @@ class _ExternalDeliveryTripListScreenState
 
   @override
   Widget build(BuildContext context) {
+    final app = ref.watch(appControllerProvider);
+
+    ref.listen(
+      appControllerProvider.select((c) => c.languageCode),
+      (previous, next) {
+        if (previous != null && previous != next) {
+          _lastDriver = null;
+          _pagingController?.refresh();
+        }
+      },
+    );
+
     final controller = _pagingController;
     if (controller == null) return const SizedBox.shrink();
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return AppShell(
-      title: 'External Delivery Trips',
-      subtitle: 'My trips',
-      actions: const [
+      title: app.t('external_delivery_trips'),
+      subtitle: app.t('trips_grouped_by_driver'),
+      actions: [
         Padding(
-          padding: EdgeInsets.only(right: 10),
+          padding: const EdgeInsets.only(right: 10),
           child: Icon(
             Icons.local_shipping_outlined,
-            color: AppTheme.oceanBlue,
+            color: colorScheme.primary,
             size: 22,
           ),
         ),
@@ -229,7 +247,7 @@ class _ExternalDeliveryTripListScreenState
           _buildSearchBar(),
           Expanded(
             child: RefreshIndicator(
-              color: AppTheme.oceanBlue,
+              color: colorScheme.primary,
               onRefresh: _refresh,
               child: _searchQuery.trim().isEmpty
                   ? _buildPagedList(controller)
@@ -255,48 +273,23 @@ class _TripCard extends StatelessWidget {
     return '${parts[2]}/${parts[1]}/${parts[0]}';
   }
 
-  String _statusLabel(String status) {
-    switch (status.toLowerCase()) {
-      case 'draft':
-        return 'Draft';
-      case 'scheduled':
-        return 'Scheduled';
-      case 'in progress':
-      case 'in_transit':
-        return 'In Progress';
-      case 'completed':
-        return 'Completed';
-      case 'failed':
-        return 'Failed';
-      case 'cancelled':
-        return 'Cancelled';
+  String _docstatusLabel(BuildContext context, int docstatus) {
+    final app = AppScope.of(context);
+    switch (docstatus) {
+      case 0:
+        return app.t('draft');
+      case 1:
+        return app.t('submitted');
+      case 2:
+        return app.t('cancelled');
       default:
-        return status.isEmpty ? 'Unknown' : status;
-    }
-  }
-
-  Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'draft':
-        return Colors.grey;
-      case 'scheduled':
-        return Colors.blue;
-      case 'in progress':
-      case 'in_transit':
-        return Colors.orange;
-      case 'completed':
-        return Colors.green;
-      case 'failed':
-        return Colors.red;
-      case 'cancelled':
-        return Colors.grey;
-      default:
-        return Colors.grey;
+        return app.t('unknown');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: GestureDetector(
@@ -305,9 +298,9 @@ class _TripCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.local_shipping_outlined,
-                color: AppTheme.oceanBlue,
+                color: colorScheme.primary,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -334,31 +327,26 @@ class _TripCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _statusColor(trip.status).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: _statusColor(trip.status).withValues(alpha: 0.35),
-                      ),
-                    ),
-                    child: Text(
-                      _statusLabel(trip.status),
-                      style: TextStyle(
-                        color: _statusColor(trip.status),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: colorScheme.primary.withValues(alpha: 0.35),
                   ),
-                ],
+                ),
+                child: Text(
+                  _docstatusLabel(context, trip.docstatus),
+                  style: TextStyle(
+                    color: colorScheme.primary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),

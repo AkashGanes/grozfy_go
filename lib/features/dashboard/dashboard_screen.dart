@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../notifications/providers/notification_providers.dart';
 
 import '../../core/models/app_models.dart';
@@ -246,10 +247,10 @@ class _DashboardScreenState extends State<DashboardScreen>
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Availability',
-                        style: TextStyle(fontWeight: FontWeight.w700),
+                        app.t('availability'),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
                     if (app.availabilitySyncing)
@@ -276,10 +277,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                 const SizedBox(height: 4),
                 Text(
                   app.availabilitySyncing
-                      ? 'Syncing availability...'
+                      ? app.t('syncing_availability')
                       : app.isOnline
-                      ? 'Online and receiving order requests'
-                      : 'Offline, no new orders will be assigned',
+                      ? app.t('online_status')
+                      : app.t('offline_status'),
                   style: const TextStyle(color: Colors.black54),
                 ),
                 if (!app.canGoOnline && !app.isKycComplete) ...[
@@ -294,10 +295,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       children: [
                         const Icon(Icons.warning_amber_rounded),
                         const SizedBox(width: 10),
-                        const Expanded(
-                          child: Text(
-                            'Complete KYC + bank + permissions before going online.',
-                          ),
+                        Expanded(
+                          child: Text(app.t('kyc_warning')),
                         ),
                         TextButton(
                           onPressed: () {
@@ -305,7 +304,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                               context,
                             ).pushNamed(AppRoutes.kycDocuments);
                           },
-                          child: const Text('Complete'),
+                          child: Text(app.t('complete')),
                         ),
                       ],
                     ),
@@ -317,19 +316,19 @@ class _DashboardScreenState extends State<DashboardScreen>
           const SizedBox(height: 12),
           _DashboardLocationCard(app: app),
           const SizedBox(height: 14),
-          const SectionLabel('Earnings Summary'),
+          SectionLabel(app.t('earnings_summary')),
           FrostCard(
             child: Column(
               children: [
                 Row(
                   children: [
                     StatTile(
-                      label: 'Today',
+                      label: app.t('today'),
                       value: 'Rs. ${app.earnings.today.toStringAsFixed(0)}',
                     ),
                     const SizedBox(width: 10),
                     StatTile(
-                      label: 'This Week',
+                      label: app.t('this_week'),
                       value: 'Rs. ${app.earnings.week.toStringAsFixed(0)}',
                       color: AppTheme.mint,
                     ),
@@ -339,13 +338,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                 Row(
                   children: [
                     StatTile(
-                      label: 'Total',
+                      label: app.t('total'),
                       value: 'Rs. ${app.earnings.total.toStringAsFixed(0)}',
                       color: AppTheme.nightBlue,
                     ),
                     const SizedBox(width: 10),
                     StatTile(
-                      label: 'Pending Payout',
+                      label: app.t('pending_payout'),
                       value:
                           'Rs. ${app.earnings.pendingPayout.toStringAsFixed(0)}',
                       color: AppTheme.mango,
@@ -356,20 +355,20 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
           const SizedBox(height: 14),
-          const SectionLabel('Performance Metrics'),
+          SectionLabel(app.t('performance_metrics')),
           FrostCard(
             child: Column(
               children: [
                 Row(
                   children: [
                     StatTile(
-                      label: 'Rating',
+                      label: app.t('rating'),
                       value:
                           '${app.performance.rating.toStringAsFixed(1)} star',
                     ),
                     const SizedBox(width: 10),
                     StatTile(
-                      label: 'Acceptance',
+                      label: app.t('acceptance'),
                       value:
                           '${app.performance.acceptanceRate.toStringAsFixed(1)}%',
                       color: AppTheme.nightBlue,
@@ -380,14 +379,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                 Row(
                   children: [
                     StatTile(
-                      label: 'Completion',
+                      label: app.t('completion'),
                       value:
                           '${app.performance.completionRate.toStringAsFixed(1)}%',
                       color: AppTheme.mint,
                     ),
                     const SizedBox(width: 10),
                     StatTile(
-                      label: 'Total Deliveries',
+                      label: app.t('total_deliveries'),
                       value: '${app.performance.totalDeliveries}',
                       color: AppTheme.mango,
                     ),
@@ -397,7 +396,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
           const SizedBox(height: 14),
-          const SectionLabel('Batch Pickup'),
+          SectionLabel(app.t('batch_pickup')),
           FrostCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -417,21 +416,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                     ),
                     const SizedBox(width: 14),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Multi-Order Pickup',
-                            style: TextStyle(
+                            app.t('multi_order_pickup'),
+                            style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
                           ),
-                          SizedBox(height: 2),
+                          const SizedBox(height: 2),
                           Text(
-                            'Pick up multiple orders in one trip',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                            app.t('pick_up_multiple'),
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
                           ),
                         ],
                       ),
@@ -450,7 +449,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ).pushNamed(AppRoutes.ordersByLocation);
                         },
                         icon: const Icon(Icons.list_alt_rounded),
-                        label: const Text('Select Orders'),
+                        label: Text(app.t('select_orders')),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -462,7 +461,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ).pushNamed(AppRoutes.externalDeliveryTripList);
                         },
                         icon: const Icon(Icons.route_rounded),
-                        label: const Text('View Trips'),
+                        label: Text(app.t('view_trips')),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.mint,
                         ),
@@ -477,12 +476,12 @@ class _DashboardScreenState extends State<DashboardScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const SectionLabel('Available Deliveries'),
+              SectionLabel(app.t('available_deliveries')),
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pushNamed(AppRoutes.deliveryList);
                 },
-                child: const Text('View All'),
+                child: Text(app.t('view_all')),
               ),
             ],
           ),
@@ -504,17 +503,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'External Deliveries',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                            app.t('external_deliveries'),
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                           Text(
-                            'View and manage deliveries from ERPNext',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                            app.t('external_deliveries_desc'),
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
                           ),
                         ],
                       ),
@@ -530,7 +529,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       Navigator.of(context).pushNamed(AppRoutes.deliveryList);
                     },
                     icon: const Icon(Icons.list_alt),
-                    label: const Text('View Deliveries'),
+                    label: Text(app.t('view_deliveries')),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white,
@@ -541,20 +540,34 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
           const SizedBox(height: 14),
-          const SectionLabel('Active Order'),
+          SectionLabel(app.t('active_order')),
           FrostCard(
-            child: app.activeOrder == null
+            child: app.isFetchingActiveOrder
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Row(
+                      children: [
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(app.t('loading_active_order')),
+                      ],
+                    ),
+                  )
+                : app.activeOrder == null
                 ? Row(
                     children: [
-                      const Expanded(child: Text('No active order right now.')),
+                      Expanded(child: Text(app.t('no_active_order'))),
                       TextButton(
                         onPressed: () {
-                          app.generateIncomingOrder();
                           Navigator.of(
                             context,
-                          ).pushNamed(AppRoutes.orderRequest);
+                          ).pushNamed(AppRoutes.orderListing);
                         },
-                        child: const Text('Get Request'),
+                        child: Text(app.t('browse_nearby')),
                       ),
                     ],
                   )
@@ -562,49 +575,166 @@ class _DashboardScreenState extends State<DashboardScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${app.activeOrder!.orderId} · ${app.activeOrder!.orderStatus.label}',
+                        '${app.activeOrder!.orderId} · ${app.orderStatusLabel(app.activeOrder!.orderStatus)}',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),
                       Text(app.activeOrder!.drop),
                       const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(AppRoutes.orderDetails);
-                              },
-                              child: const Text('View Order'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () {
-                                Navigator.of(
-                                  context,
-                                ).pushNamed(AppRoutes.navigation);
-                              },
-                              child: const Text('Quick Navigate'),
-                            ),
-                          ),
-                        ],
-                      ),
+                      _ActiveOrderActions(order: app.activeOrder!),
                     ],
                   ),
           ),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: () {
-              app.generateIncomingOrder();
-              Navigator.of(context).pushNamed(AppRoutes.orderRequest);
-            },
-            icon: const Icon(Icons.local_shipping_rounded),
-            label: const Text('Simulate Incoming Order'),
+          const SizedBox(height: 14),
+          SectionLabel(app.t('notifications')),
+          FrostCard(
+            child: Column(
+              children: [
+                Consumer(
+                  builder: (context, ref, _) {
+                    final async = ref.watch(recentNotificationsProvider);
+                    return async.when(
+                      data: (items) {
+                        final overrides = ref.watch(
+                          notificationReadOverridesProvider,
+                        );
+                        final List<Widget> rows = <Widget>[
+                          ...items.take(2).map((notification) {
+                            final effectiveRead =
+                                notification.read ||
+                                overrides.contains(notification.name);
+                            return _NotificationRow(
+                              title: notification.subject,
+                              message: _dashboardNotificationMessage(
+                                notification.message,
+                              ),
+                              time: notification.creation,
+                              isUnread: !effectiveRead,
+                              onTap: () {
+                                Navigator.of(
+                                  context,
+                                ).pushNamed(AppRoutes.notifications);
+                              },
+                            );
+                          }),
+                          ...app.notices.take(4).map((notice) {
+                            return _NotificationRow(
+                              title: notice.title,
+                              message: notice.message,
+                              time: notice.time,
+                            );
+                          }),
+                        ];
+
+                        if (rows.isEmpty) {
+                          return const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Text(
+                              'No notifications yet.',
+                              style: TextStyle(color: Colors.black54),
+                            ),
+                          );
+                        }
+
+                        return Column(children: rows);
+                      },
+                      loading: () => const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2.4),
+                          ),
+                        ),
+                      ),
+                      error: (err, _) => Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Unable to load notifications.',
+                              style: TextStyle(color: Colors.black54),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              ref.invalidate(recentNotificationsProvider);
+                            },
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
+          const SizedBox(height: 14),
+          SectionLabel(app.t('quick_access')),
+          FrostCard(
+            child: Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _quickButton(
+                  context,
+                  app.t('my_profile'),
+                  Icons.person_outline_rounded,
+                  route: AppRoutes.profile,
+                ),
+                _quickButton(
+                  context,
+                  app.t('earnings_history'),
+                  Icons.receipt_long_rounded,
+                ),
+                _quickButton(
+                  context,
+                  app.t('documents'),
+                  Icons.file_copy_outlined,
+                  route: AppRoutes.kycDocuments,
+                ),
+                _quickButton(
+                  context,
+                  app.t('vehicle'),
+                  Icons.two_wheeler_rounded,
+                  route: AppRoutes.vehicleDetails,
+                ),
+                _quickButton(
+                  context,
+                  app.t('bank_details'),
+                  Icons.account_balance_outlined,
+                  route: AppRoutes.bankSetup,
+                ),
+                _quickButton(
+                  context,
+                  app.t('orders_by_location'),
+                  Icons.list_alt_rounded,
+                  route: AppRoutes.ordersByLocation,
+                ),
+                _quickButton(
+                  context,
+                  app.t('available_orders'),
+                  Icons.local_shipping_outlined,
+                  route: AppRoutes.orderListing,
+                ),
+                _quickButton(
+                  context,
+                  app.t('external_trips'),
+                  Icons.local_shipping_outlined,
+                  route: AppRoutes.externalDeliveryTripList,
+                ),
+                _quickButton(context, app.t('support'), Icons.support_agent_rounded),
+                _quickButton(
+                  context,
+                  app.t('settings'),
+                  Icons.settings_outlined,
+                  route: AppRoutes.settings,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
         ],
       ),
     );
@@ -665,6 +795,141 @@ class _DashboardScreenState extends State<DashboardScreen>
     return lines.join('\n');
   }
 
+}
+
+class _ActiveOrderActions extends StatelessWidget {
+  const _ActiveOrderActions({required this.order});
+
+  final DeliveryOrder order;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final List<Widget> rows = <Widget>[
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.of(
+                  context,
+                ).pushNamed(AppRoutes.orderDetails, arguments: order);
+              },
+              child: Text(app.t('view_order')),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pushNamed(AppRoutes.navigation);
+              },
+              child: Text(app.t('navigate')),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () async {
+                final Uri uri = Uri.parse(
+                  'https://www.google.com/maps/dir/?api=1&destination=${order.latitude},${order.longitude}&travelmode=driving',
+                );
+                final bool launched = await launchUrl(
+                  uri,
+                  mode: LaunchMode.externalApplication,
+                );
+                if (!context.mounted) {
+                  return;
+                }
+                if (!launched) {
+                  showInfoSnack(context, app.t('unable_open_maps'));
+                }
+              },
+              child: Text(app.t('open_maps')),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () {
+                Navigator.of(context).pushNamed(AppRoutes.orderTracking);
+              },
+              child: Text(app.t('track_order')),
+            ),
+          ),
+        ],
+      ),
+    ];
+
+    final ({String label, OrderProgressStatus next})? transition =
+        _nextTransition(order.orderStatus, app);
+    if (transition != null) {
+      rows.add(const SizedBox(height: 10));
+      rows.add(
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
+              final navigator = Navigator.of(context);
+              final error = await app.updateOrderStatus(transition.next);
+              if (!context.mounted) {
+                return;
+              }
+              if (error != null) {
+                messenger.showSnackBar(SnackBar(content: Text(error)));
+                return;
+              }
+              if (transition.next == OrderProgressStatus.delivered) {
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(app.t('order_delivered')),
+                  ),
+                );
+                navigator.pushNamedAndRemoveUntil(
+                  AppRoutes.dashboard,
+                  (route) => false,
+                );
+              } else {
+                navigator.pushNamed(AppRoutes.orderStatus);
+              }
+            },
+            child: Text(transition.label),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
+    );
+  }
+
+  ({String label, OrderProgressStatus next})? _nextTransition(
+    OrderProgressStatus current,
+    AppController app,
+  ) {
+    switch (current) {
+      case OrderStatus.accepted:
+        return (label: app.t('mark_reached_pickup'), next: OrderStatus.reachedPickup);
+      case OrderStatus.reachedPickup:
+        return (label: app.t('mark_picked_up'), next: OrderStatus.pickedUp);
+      case OrderStatus.pickedUp:
+        return (label: app.t('start_delivery'), next: OrderStatus.outForDelivery);
+      case OrderStatus.outForDelivery:
+        return (label: app.t('mark_delivered'), next: OrderStatus.delivered);
+      case OrderStatus.pending:
+      case OrderStatus.rejected:
+      case OrderStatus.delivered:
+      case OrderStatus.cancelled:
+        return null;
+    }
+  }
 }
 
 class _DashboardLocationCard extends StatelessWidget {
@@ -806,35 +1071,24 @@ class _DashboardLocationCard extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 14),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.bottomLeft,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Current Location',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 18,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  app.currentLocationLabel ??
-                                      'Location not selected yet',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.92),
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ],
-                            ),
+                        const Spacer(),
+                        Text(
+                          app.t('current_location'),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          app.currentLocationLabel ??
+                              app.t('location_not_selected'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.92),
+                            height: 1.35,
                           ),
                         ),
                       ],

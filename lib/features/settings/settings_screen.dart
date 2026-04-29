@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -13,7 +14,7 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(controller.t('settings')),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
@@ -54,7 +55,7 @@ class SettingsScreen extends ConsumerWidget {
               Icon(Icons.language, color: theme.colorScheme.primary, size: 22),
               const SizedBox(width: 12),
               Text(
-                'Language',
+                controller.t('language'),
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -70,7 +71,7 @@ class SettingsScreen extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  _getLanguageName(currentLang),
+                  _getLanguageName(controller, currentLang),
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -85,68 +86,29 @@ class SettingsScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: Column(
                 children: [
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'en',
-                    label: 'English',
-                    sample: 'Ready for delivery shifts',
-                    selected: currentLang == 'en',
-                    onTap: () => controller.setLanguage('en'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'hi',
-                    label: 'Hindi',
-                    sample: 'डिलीवरी शिफ्ट के लिए तैयार',
-                    selected: currentLang == 'hi',
-                    onTap: () => controller.setLanguage('hi'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'tn',
-                    label: 'Tamil',
-                    sample: 'டெலிவரி ஷிப்ட் தயார்',
-                    selected: currentLang == 'tn',
-                    onTap: () => controller.setLanguage('tn'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'te',
-                    label: 'Telugu',
-                    sample: 'డెలివరీ షిఫ్ట్ సిద్ధం',
-                    selected: currentLang == 'te',
-                    onTap: () => controller.setLanguage('te'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'kn',
-                    label: 'Kannada',
-                    sample: 'ಡೆಲಿವರಿ ಶಿಫ್ಟ್ ಸಿದ್ಧ',
-                    selected: currentLang == 'kn',
-                    onTap: () => controller.setLanguage('kn'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'ml',
-                    label: 'Malayalam',
-                    sample: 'ഡെലിവറി ഷിഫ്റ്റ് തയാറാണ്',
-                    selected: currentLang == 'ml',
-                    onTap: () => controller.setLanguage('ml'),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildLanguageTile(
-                    context: context,
-                    code: 'bn',
-                    label: 'Bengali',
-                    sample: 'ডেলিভারি শিফটের জন্য প্রস্তুত',
-                    selected: currentLang == 'bn',
-                    onTap: () => controller.setLanguage('bn'),
-                  ),
+                  ...[
+                    ('en', 'sample_english_ready'),
+                    ('hi', 'sample_hindi_ready'),
+                    ('ta', 'sample_tamil_ready'),
+                    ('te', 'sample_telugu_ready'),
+                    ('kn', 'sample_kannada_ready'),
+                    ('ml', 'sample_malayalam_ready'),
+                    ('bn', 'sample_bengali_ready'),
+                  ].expand((entry) {
+                    final code = entry.$1;
+                    final sampleKey = entry.$2;
+                    return [
+                      if (code != 'en') const SizedBox(height: 8),
+                      _buildLanguageTile(
+                        context: context,
+                        code: code,
+                        label: AppStrings.nativeLanguageNames[code] ?? code,
+                        sample: controller.t(sampleKey),
+                        selected: currentLang == code,
+                        onTap: () => controller.setLanguage(code),
+                      ),
+                    ];
+                  }),
                 ],
               ),
             ),
@@ -238,23 +200,8 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  String _getLanguageName(String code) {
-    switch (code) {
-      case 'hi':
-        return 'हिंदी';
-      case 'tn':
-        return 'தமிழ்';
-      case 'te':
-        return 'తెలుగు';
-      case 'kn':
-        return 'ಕನ್ನಡ';
-      case 'ml':
-        return 'മലയാളം';
-      case 'bn':
-        return 'বাংলা';
-      default:
-        return 'English';
-    }
+  String _getLanguageName(dynamic controller, String code) {
+    return AppStrings.nativeLanguageNames[code] ?? code.toUpperCase();
   }
 
   Widget _buildThemeCustomizationSection(
@@ -279,7 +226,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
               const SizedBox(width: 12),
               Text(
-                'Theme Customization',
+                controller.t('theme_customization'),
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -297,7 +244,7 @@ class SettingsScreen extends ConsumerWidget {
                   _buildColorPickerRow(
                     context: context,
                     controller: controller,
-                    label: 'Background Color',
+                    label: controller.t('background_color'),
                     currentColor: controller.backgroundColor,
                     colorOptions: AppTheme.backgroundColorOptions,
                     onColorSelected: controller.setBackgroundColor,
@@ -306,7 +253,7 @@ class SettingsScreen extends ConsumerWidget {
                   _buildColorPickerRow(
                     context: context,
                     controller: controller,
-                    label: 'Accent Color',
+                    label: controller.t('accent_color'),
                     currentColor: controller.accentColor,
                     colorOptions: AppTheme.accentColorOptions,
                     onColorSelected: controller.setAccentColor,
@@ -329,7 +276,7 @@ class SettingsScreen extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Theme Mode',
+          controller.t('theme_mode'),
           style: theme.textTheme.bodyLarge?.copyWith(
             fontWeight: FontWeight.w500,
           ),
@@ -343,7 +290,7 @@ class SettingsScreen extends ConsumerWidget {
                 controller: controller,
                 mode: ThemeMode.system,
                 icon: Icons.brightness_auto,
-                label: 'System',
+                label: controller.t('system'),
               ),
             ),
             const SizedBox(width: 8),
@@ -353,7 +300,7 @@ class SettingsScreen extends ConsumerWidget {
                 controller: controller,
                 mode: ThemeMode.light,
                 icon: Icons.light_mode,
-                label: 'Light',
+                label: controller.t('light'),
               ),
             ),
             const SizedBox(width: 8),
@@ -363,7 +310,7 @@ class SettingsScreen extends ConsumerWidget {
                 controller: controller,
                 mode: ThemeMode.dark,
                 icon: Icons.dark_mode,
-                label: 'Dark',
+                label: controller.t('dark'),
               ),
             ),
           ],
@@ -514,14 +461,12 @@ class SettingsScreen extends ConsumerWidget {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Text('Reset Theme'),
-            content: const Text(
-              'Are you sure you want to reset all theme settings to their defaults?',
-            ),
+            title: Text(controller.t('reset_theme_title')),
+            content: Text(controller.t('reset_theme_message')),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel'),
+                child: Text(controller.t('cancel')),
               ),
               FilledButton(
                 onPressed: () {
@@ -529,7 +474,7 @@ class SettingsScreen extends ConsumerWidget {
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: const Text('Theme reset to defaults'),
+                      content: Text(controller.t('reset_success')),
                       behavior: SnackBarBehavior.floating,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -537,14 +482,14 @@ class SettingsScreen extends ConsumerWidget {
                     ),
                   );
                 },
-                child: const Text('Reset'),
+                child: Text(controller.t('reset')),
               ),
             ],
           ),
         );
       },
       icon: const Icon(Icons.refresh),
-      label: const Text('Reset to Defaults'),
+      label: Text(controller.t('reset_defaults')),
       style: OutlinedButton.styleFrom(
         minimumSize: const Size.fromHeight(48),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'core/models/app_models.dart';
+import 'core/localization/app_localizations.dart';
 import 'core/services/fcm_initializer.dart';
 import 'core/navigation/app_routes.dart';
 import 'core/state/providers.dart';
@@ -105,12 +108,25 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
       child: MaterialApp(
         navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
-        title: 'Grozfy Go',
-        theme: AppTheme.getTheme(
-          mode: controller.themeMode,
+        title: controller.t('app_title'),
+        theme: AppTheme.getLightTheme(
           scaffoldBackgroundColor: controller.backgroundColor,
           primaryColor: controller.accentColor,
         ),
+        darkTheme: AppTheme.getDarkTheme(
+          primaryColor: controller.accentColor,
+        ),
+        themeMode: controller.themeMode,
+        locale: controller.languageCode.isNotEmpty
+            ? Locale(controller.languageCode)
+            : null,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          AppLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
         initialRoute: AppRoutes.splash,
         builder: (context, child) {
           return NoInternetWrapper(child: child ?? const SizedBox.shrink());
@@ -228,8 +244,10 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
                 builder: (_) => const OrderRequestScreen(),
               );
             case AppRoutes.orderDetails:
+              final dynamic orderArgs = settings.arguments;
+              final order = orderArgs is DeliveryOrder ? orderArgs : null;
               return MaterialPageRoute<void>(
-                builder: (_) => const OrderDetailsScreen(),
+                builder: (_) => OrderDetailsScreen(order: order),
               );
             case AppRoutes.navigation:
               return MaterialPageRoute<void>(

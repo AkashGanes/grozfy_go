@@ -163,7 +163,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          status.label,
+                          app.orderStatusLabel(status),
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             color: done ? Colors.black87 : Colors.black45,

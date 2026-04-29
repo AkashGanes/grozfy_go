@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/localization/localized_text.dart';
+
 class ExternalDelivery {
   const ExternalDelivery({
     required this.name,
@@ -71,7 +73,12 @@ class ExternalDeliveryTrip {
   final Map<String, dynamic> rawFields;
 
   /// True when this trip was created as a return-to-store trip.
-  bool get isReturnTrip => tripNotes.contains('Return Trip');
+  bool get isReturnTrip =>
+      tripNotes.toLowerCase().startsWith('return_trip_for:');
+
+  String localizedTripNotes(String languageCode) {
+    return LocalizedText.resolveTripNotes(languageCode, tripNotes);
+  }
 
   factory ExternalDeliveryTrip.fromJson(Map<String, dynamic> m) {
     final rawStops = m['stops'];
@@ -203,9 +210,19 @@ class OrderRow extends LocationListItem {
 
 extension ExternalDeliveryStatusColor on String {
   Color get statusColor => switch (this) {
-    'Delivered' => const Color(0xFF2E7D32),
-    'Added to Trip' => const Color(0xFFE65100),
-    'Pending' => const Color(0xFF757575),
+    _ when _normalizedStatus(this) == 'delivered' => const Color(0xFF2E7D32),
+    _ when _normalizedStatus(this) == 'added_to_trip' =>
+      const Color(0xFFE65100),
+    _ when _normalizedStatus(this) == 'pending' => const Color(0xFF757575),
     _ => const Color(0xFF757575),
   };
+}
+
+String _normalizedStatus(String value) {
+  return value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
 }

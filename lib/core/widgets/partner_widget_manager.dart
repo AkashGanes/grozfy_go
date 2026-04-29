@@ -43,7 +43,7 @@ class PartnerWidgetManager {
         isOnline: isOnline,
         todayEarnings: todayEarnings,
         activeOrderId: activeOrder?.id,
-        activeOrderStatus: activeOrder?.orderStatus.label,
+        activeOrderStatus: activeOrder?.orderStatus.localizationKey,
         lastUpdated: DateTime.now(),
       );
 

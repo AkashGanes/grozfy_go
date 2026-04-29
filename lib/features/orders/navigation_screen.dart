@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
@@ -16,19 +19,19 @@ class NavigationScreen extends StatelessWidget {
 
     if (order == null) {
       return AppShell(
-        title: 'Navigation',
-        subtitle: 'No active route',
+        title: app.t('navigation'),
+        subtitle: app.t('no_active_route'),
         child: ElevatedButton(
           onPressed: () =>
               Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard),
-          child: const Text('Back to Dashboard'),
+          child: Text(app.t('back_to_dashboard')),
         ),
       );
     }
 
     return AppShell(
-      title: 'Navigation',
-      subtitle: 'Route guidance and ETA tracking',
+      title: app.t('navigation'),
+      subtitle: app.t('route_summary'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -36,80 +39,306 @@ class NavigationScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  height: 180,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFDDEBFF), Color(0xFFEAFBEF)],
+                Row(
+                  children: [
+                    const Icon(Icons.route_rounded, color: Colors.deepOrange),
+                    const SizedBox(width: 8),
+                    Text(
+                      app.t('delivery_route'),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
                     ),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.route_rounded, size: 52),
-                  ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _StepTile(
+                  icon: Icons.store_rounded,
+                  iconColor: Colors.blue,
+                  title: app.t('pickup_store'),
+                  subtitle: order.pickup,
                 ),
                 const SizedBox(height: 12),
-                _row('Pickup', order.pickup),
-                _row('Drop', order.drop),
-                _row('ETA', '18 mins'),
-                _row('Distance', '${order.distanceKm.toStringAsFixed(1)} km'),
+                const Padding(
+                  padding: EdgeInsets.only(left: 16),
+                  child: Icon(Icons.arrow_downward_rounded, color: Colors.grey),
+                ),
+                const SizedBox(height: 12),
+                _StepTile(
+                  icon: Icons.location_on_rounded,
+                  iconColor: Colors.red,
+                  title: app.t('delivery_drop'),
+                  subtitle: order.drop.isNotEmpty
+                      ? order.drop
+                      : order.deliveryAddress,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _StatChip(
+                        icon: Icons.straighten_rounded,
+                        label: 'Distance',
+                        value: '${order.distanceKm.toStringAsFixed(1)} km',
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _StatChip(
+                        icon: Icons.sell_rounded,
+                        label: 'Earnings',
+                        value:
+                            'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _InfoLine(
+                  icon: Icons.pin_drop_rounded,
+                  label: 'Coordinates',
+                  value:
+                      '${order.latitude.toStringAsFixed(5)}, ${order.longitude.toStringAsFixed(5)}',
+                ),
+                const SizedBox(height: 8),
+                _InfoLine(
+                  icon: Icons.receipt_long_rounded,
+                  label: 'Order',
+                  value: order.orderId,
+                ),
               ],
             ),
           ),
           const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () {
-              showInfoSnack(context, 'Launching Google Maps route');
-            },
-            icon: const Icon(Icons.open_in_new_rounded),
-            label: const Text('Open in Google Maps'),
+          ElevatedButton.icon(
+            onPressed: () => _launchGoogleMapsNavigation(
+              context,
+              order.latitude,
+              order.longitude,
+            ),
+            icon: const Icon(Icons.navigation_rounded),
+            label: Text(app.t('open_google_maps')),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const DeliveryTrackingScreen(),
+                MaterialPageRoute<void>(
+                  builder: (_) => DeliveryTrackingScreen(
+                    deliveryName: order.orderId,
+                    customerName: order.customerName,
+                    storeName: order.storeName,
+                    contactNumber: order.customerPhone.isNotEmpty
+                        ? order.customerPhone
+                        : order.contactNumber,
+                    dropAddress: order.deliveryAddress,
+                    dropLat: order.latitude,
+                    dropLng: order.longitude,
+                  ),
                 ),
               );
             },
             icon: const Icon(Icons.map_rounded),
-            label: const Text('Use In-app Navigation'),
+            label: Text(app.t('use_inapp_nav')),
           ),
           const SizedBox(height: 12),
           ElevatedButton(
-            onPressed: () {
-              final String? error = app.reachedPickup(order.orderId);
+            onPressed: () async {
+              final error = await app.updateOrderStatus(
+                OrderProgressStatus.reachedPickup,
+              );
+              if (!context.mounted) return;
               if (error != null) {
-                showInfoSnack(context, error);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(error)),
+                );
                 return;
               }
-              Navigator.of(context).pushReplacementNamed(AppRoutes.orderStatus);
+              Navigator.of(context).pushNamed(AppRoutes.orderStatus);
             },
-            child: const Text('Reached Pickup'),
+            child: Text(app.t('reached_pickup')),
           ),
         ],
       ),
     );
   }
 
-  Widget _row(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
+  Future<void> _launchGoogleMapsNavigation(
+    BuildContext context,
+    double lat,
+    double lng,
+  ) async {
+    if (Platform.isAndroid) {
+      final Uri androidUri = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
+      if (await canLaunchUrl(androidUri)) {
+        await launchUrl(androidUri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    }
+
+    if (Platform.isIOS) {
+      final Uri googleMapsIos = Uri.parse(
+        'comgooglemaps://?daddr=$lat,$lng&directionsmode=driving',
+      );
+      if (await canLaunchUrl(googleMapsIos)) {
+        await launchUrl(googleMapsIos);
+        return;
+      }
+      final Uri appleMaps = Uri.parse('maps:?daddr=$lat,$lng');
+      if (await canLaunchUrl(appleMaps)) {
+        await launchUrl(appleMaps);
+        return;
+      }
+    }
+
+    final Uri webUri = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&destination=$lat,$lng'
+      '&travelmode=driving',
+    );
+    if (await canLaunchUrl(webUri)) {
+      await launchUrl(webUri, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open maps')),
+      );
+    }
+  }
+}
+
+class _StepTile extends StatelessWidget {
+  const _StepTile({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: iconColor.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: iconColor),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Colors.black54, height: 1.3),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  const _StatChip({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 80,
-            child: Text(label, style: const TextStyle(color: Colors.black54)),
+          Row(
+            children: [
+              Icon(icon, size: 16, color: Colors.deepOrange),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.black54,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
+          const SizedBox(height: 6),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
         ],
       ),
+    );
+  }
+}
+
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: Colors.grey),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 86,
+          child: Text(
+            label,
+            style: const TextStyle(color: Colors.black54, fontSize: 12),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
     );
   }
 }

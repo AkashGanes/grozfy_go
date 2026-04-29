@@ -56,11 +56,27 @@ class _CurrentLocationPickerScreenState
   String _addressLabel = 'Selecting location...';
   List<SearchResult> _searchResults = [];
   Timer? _searchDebounce;
+  StreamSubscription<ServiceStatus>? _serviceStatusSubscription;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _serviceStatusSubscription = Geolocator.getServiceStatusStream().listen(
+      (ServiceStatus status) {
+        if (!mounted) return;
+        if (status == ServiceStatus.enabled) {
+          // Only auto-fetch when we were showing an error; leave a working
+          // user-selected location untouched if GPS briefly cycles.
+          if (_error != null) _loadCurrentLocation();
+        } else {
+          setState(() {
+            _error = 'Location service is disabled. Please enable GPS.';
+            _addressLabel = 'Tap on map to select location';
+          });
+        }
+      },
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final app = AppScope.of(context);
       if (app.hasSelectedLocation &&
@@ -80,6 +96,7 @@ class _CurrentLocationPickerScreenState
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _serviceStatusSubscription?.cancel();
     _searchDebounce?.cancel();
     _debounceTimer?.cancel();
     _searchController.dispose();
@@ -122,16 +139,14 @@ class _CurrentLocationPickerScreenState
       // GPS is disabled or permission denied
       setState(() {
         _loading = false;
-        if (_error == null) {
-          if (!serviceEnabled) {
-            _error = 'Location service is disabled. Please enable GPS.';
-          } else if (permission == LocationPermission.denied) {
-            _error = 'Location permission denied. Please allow access.';
-          } else if (permission == LocationPermission.deniedForever) {
-            _error = 'Location permission permanently denied. Open settings to enable it.';
-          }
-          _addressLabel = 'Tap on map to select location';
+        if (!serviceEnabled) {
+          _error = 'Location service is disabled. Please enable GPS.';
+        } else if (permission == LocationPermission.denied) {
+          _error = 'Location permission denied. Please allow access.';
+        } else if (permission == LocationPermission.deniedForever) {
+          _error = 'Location permission permanently denied. Open settings to enable it.';
         }
+        _addressLabel = 'Tap on map to select location';
       });
     }
   }

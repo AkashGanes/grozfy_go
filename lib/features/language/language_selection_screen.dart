@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/localization/app_strings.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/widgets/app_shell.dart';
@@ -18,53 +19,56 @@ class _LanguageSelectionScreenState
   String _selectedCode = 'en';
 
   @override
+  void initState() {
+    super.initState();
+    final String savedLanguage = ref.read(appControllerProvider).languageCode;
+    if (savedLanguage.isNotEmpty) {
+      _selectedCode = savedLanguage;
+    }
+  }
+
+  static const _languages = [
+    ('en', 'sample_english_ready'),
+    ('hi', 'sample_hindi_ready'),
+    ('ta', 'sample_tamil_ready'),
+    ('te', 'sample_telugu_ready'),
+    ('kn', 'sample_kannada_ready'),
+    ('ml', 'sample_malayalam_ready'),
+    ('bn', 'sample_bengali_ready'),
+  ];
+
+  List<Widget> _buildLanguageTiles(dynamic app) {
+    final tiles = <Widget>[];
+    for (final (code, sampleKey) in _languages) {
+      if (tiles.isNotEmpty) tiles.add(const SizedBox(height: 12));
+      tiles.add(
+        _LanguageTile(
+          code: code,
+          label: AppStrings.nativeLanguageNames[code] ?? code,
+          sample: app.t(sampleKey),
+          selected: _selectedCode == code,
+          onTap: () => setState(() => _selectedCode = code),
+        ),
+      );
+    }
+    return tiles;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final app = ref.watch(appControllerProvider);
 
     return AppShell(
-      title: 'Choose Language',
-      subtitle: 'Select preferred app language for daily use',
+      title: app.t('choose_language'),
+      subtitle: app.t('choose_language_subtitle'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const FrostCard(
-            child: Text(
-              'This app supports multilingual flows. You can change language '
-              'again anytime from settings.',
-            ),
+          FrostCard(
+            child: Text(app.t('language_info')),
           ),
           const SizedBox(height: 16),
-          _LanguageTile(
-            code: 'en',
-            label: 'English',
-            sample: 'Ready for delivery shifts',
-            selected: _selectedCode == 'en',
-            onTap: () => setState(() => _selectedCode = 'en'),
-          ),
-          const SizedBox(height: 12),
-          _LanguageTile(
-            code: 'tn',
-            label: 'Tamil',
-            sample: 'டெலிவரி ஷிப்ட் தயார்',
-            selected: _selectedCode == 'tn',
-            onTap: () => setState(() => _selectedCode = 'tn'),
-          ),
-          const SizedBox(height: 12),
-          _LanguageTile(
-            code: 'hi',
-            label: 'Hindi',
-            sample: 'डिलीवरी शिफ्ट के लिए तैयार',
-            selected: _selectedCode == 'hi',
-            onTap: () => setState(() => _selectedCode = 'hi'),
-          ),
-          const SizedBox(height: 12),
-          _LanguageTile(
-            code: 'bn',
-            label: 'Bengali',
-            sample: 'ডেলিভারি শিফটের জন্য প্রস্তুত',
-            selected: _selectedCode == 'bn',
-            onTap: () => setState(() => _selectedCode = 'bn'),
-          ),
+          ..._buildLanguageTiles(app),
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: () {
@@ -77,7 +81,7 @@ class _LanguageSelectionScreenState
                     : AppRoutes.login,
               );
             },
-            child: const Text('Continue'),
+            child: Text(app.t('continue')),
           ),
         ],
       ),
