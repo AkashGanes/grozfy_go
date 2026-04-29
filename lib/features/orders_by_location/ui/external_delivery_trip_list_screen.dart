@@ -287,9 +287,24 @@ class _TripCard extends StatelessWidget {
     }
   }
 
+  Color _getStatusColor(String status) {
+    final normalized = status.trim().toLowerCase();
+    if (normalized.contains('completed')) {
+      return const Color(0xFF2E7D32);
+    } else if (normalized.contains('in transit') || normalized.contains('ongoing')) {
+      return const Color(0xFFE65100);
+    } else if (normalized.contains('draft')) {
+      return const Color(0xFF757575);
+    } else if (normalized.contains('failed')) {
+      return const Color(0xFFD32F2F);
+    }
+    return const Color(0xFF757575);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final statusColor = _getStatusColor(trip.status);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: GestureDetector(
@@ -298,6 +313,15 @@ class _TripCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
+              Container(
+                width: 10,
+                height: 10,
+                margin: const EdgeInsets.only(right: 12, top: 2),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: statusColor,
+                ),
+              ),
               Icon(
                 Icons.local_shipping_outlined,
                 color: colorScheme.primary,
@@ -327,27 +351,28 @@ class _TripCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: colorScheme.primary.withValues(alpha: 0.35),
+              if (trip.status.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: statusColor.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: Text(
+                    trip.status,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                child: Text(
-                  _docstatusLabel(context, trip.docstatus),
-                  style: TextStyle(
-                    color: colorScheme.primary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
             ],
           ),
         ),
