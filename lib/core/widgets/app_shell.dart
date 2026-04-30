@@ -138,7 +138,6 @@ class AppShell extends StatelessWidget {
                         : footer!,
                   ],
                   if (showBottomNav) ...[
-                    const SizedBox(height: 8),
                     AppBottomNav(
                       currentIndex: bottomNavIndex,
                       onTap: onBottomNavTap ?? (_) {},
