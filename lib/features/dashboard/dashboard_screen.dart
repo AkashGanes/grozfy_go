@@ -982,22 +982,21 @@ class _DashboardLocationCard extends StatelessWidget {
                               : const [],
                           userAgentPackageName: 'com.lyncspace.grozfygo',
                         ),
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: center,
-                              width: 52,
-                              height: 52,
-                              child: Icon(
-                                Icons.location_pin,
-                                size: 40,
-                                color: isDark
-                                    ? AppTheme.mint
-                                    : AppTheme.nightBlue,
+                        if (!isDark)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: center,
+                                width: 52,
+                                height: 52,
+                                child: const Icon(
+                                  Icons.location_pin,
+                                  size: 40,
+                                  color: AppTheme.nightBlue,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
                       ],
                     )
                   : Container(
@@ -1013,6 +1012,26 @@ class _DashboardLocationCard extends StatelessWidget {
                       ),
                     ),
             ),
+            if (isDark && hasLocation) ...[
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: ColoredBox(
+                    color: context.scheme.surface.withValues(alpha: 0.55),
+                  ),
+                ),
+              ),
+              const Positioned.fill(
+                child: IgnorePointer(
+                  child: Center(
+                    child: Icon(
+                      Icons.location_pin,
+                      size: 40,
+                      color: AppTheme.mint,
+                    ),
+                  ),
+                ),
+              ),
+            ],
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
