@@ -6,6 +6,7 @@ class NoInternetOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       color: Colors.black.withValues(alpha: 0.85),
       child: Center(
@@ -13,7 +14,7 @@ class NoInternetOverlay extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 40),
           padding: const EdgeInsets.all(32),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(24),
           ),
           child: Column(
@@ -33,21 +34,21 @@ class NoInternetOverlay extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'No Internet Connection',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.nightBlue,
+                  color: scheme.onSurface,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Please check your connection and try again',
                 style: TextStyle(
                   fontSize: 14,
-                  color: Colors.black54,
+                  color: scheme.onSurface.withValues(alpha: 0.6),
                 ),
                 textAlign: TextAlign.center,
               ),

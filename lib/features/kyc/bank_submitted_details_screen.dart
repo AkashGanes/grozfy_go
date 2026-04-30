@@ -65,9 +65,9 @@ class BankSubmittedDetailsScreen extends StatelessWidget {
                     width: 150,
                     child: Text(
                       entry.key,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),

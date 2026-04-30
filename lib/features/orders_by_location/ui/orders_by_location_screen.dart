@@ -282,11 +282,11 @@ class _OrdersByLocationScreenState
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Row(
+        title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: AppTheme.mango, size: 28),
-            const SizedBox(width: 10),
-            const Text('Distance Warning'),
+            SizedBox(width: 10),
+            Text('Distance Warning'),
           ],
         ),
         content: Text(message),
@@ -464,6 +464,7 @@ class _OrdersByLocationScreenState
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
+            final ColorScheme scheme = Theme.of(ctx).colorScheme;
             if (loading) {
               _repository.fetchStoreNames().then((names) {
                 setModal(() {
@@ -474,9 +475,9 @@ class _OrdersByLocationScreenState
             }
 
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               padding: EdgeInsets.fromLTRB(
                 20,
@@ -495,23 +496,26 @@ class _OrdersByLocationScreenState
                       height: 4,
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: Colors.black12,
+                        color: scheme.onSurface.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
-                  const Text(
+                  Text(
                     'Select Your Location',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.nightBlue,
+                      color: scheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     'Orders will be filtered by your selected store.',
-                    style: TextStyle(fontSize: 13, color: Colors.black45),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: scheme.onSurface.withValues(alpha: 0.5),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   if (loading)
@@ -524,12 +528,14 @@ class _OrdersByLocationScreenState
                       ),
                     )
                   else if (stores.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
                       child: Center(
                         child: Text(
                           'No stores found',
-                          style: TextStyle(color: Colors.black45),
+                          style: TextStyle(
+                            color: scheme.onSurface.withValues(alpha: 0.5),
+                          ),
                         ),
                       ),
                     )
@@ -556,7 +562,7 @@ class _OrdersByLocationScreenState
                               Icons.store_rounded,
                               color: selected
                                   ? AppTheme.oceanBlue
-                                  : Colors.black38,
+                                  : scheme.onSurface.withValues(alpha: 0.4),
                             ),
                             title: Text(
                               store,
@@ -566,7 +572,7 @@ class _OrdersByLocationScreenState
                                     : FontWeight.w500,
                                 color: selected
                                     ? AppTheme.oceanBlue
-                                    : AppTheme.nightBlue,
+                                    : scheme.onSurface,
                               ),
                             ),
                             trailing: selected
@@ -786,6 +792,7 @@ class _OrdersByLocationScreenState
   }
 
   Widget _buildSearchResults() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final items = _filteredItems();
     if (items.isEmpty) {
       return Padding(
@@ -800,18 +807,21 @@ class _OrdersByLocationScreenState
                 color: AppTheme.mango.withValues(alpha: 0.7),
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'No orders found',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.nightBlue,
+                  color: scheme.onSurface,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 'No results for "$_searchQuery"',
-                style: const TextStyle(fontSize: 13, color: Colors.black45),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
+                ),
               ),
             ],
           ),
@@ -843,14 +853,15 @@ class _OrdersByLocationScreenState
   }
 
   Widget _buildSearchBar() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Container(
         height: 44,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.86),
+          color: scheme.surface.withValues(alpha: 0.86),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
+          border: Border.all(color: scheme.surface.withValues(alpha: 0.7)),
           boxShadow: const [
             BoxShadow(
               color: Color(0x0A0A1D3A),
@@ -862,21 +873,24 @@ class _OrdersByLocationScreenState
         child: TextField(
           controller: _searchController,
           onChanged: (v) => setState(() => _searchQuery = v),
-          style: const TextStyle(fontSize: 14, color: AppTheme.nightBlue),
+          style: TextStyle(fontSize: 14, color: scheme.onSurface),
           decoration: InputDecoration(
             hintText: 'Search by order ID or customer…',
-            hintStyle: const TextStyle(fontSize: 13, color: Colors.black38),
-            prefixIcon: const Icon(
+            hintStyle: TextStyle(
+              fontSize: 13,
+              color: scheme.onSurface.withValues(alpha: 0.4),
+            ),
+            prefixIcon: Icon(
               Icons.search_rounded,
               size: 20,
-              color: Colors.black38,
+              color: scheme.onSurface.withValues(alpha: 0.4),
             ),
             suffixIcon: _searchQuery.isNotEmpty
                 ? IconButton(
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.close_rounded,
                       size: 18,
-                      color: Colors.black38,
+                      color: scheme.onSurface.withValues(alpha: 0.4),
                     ),
                     onPressed: () {
                       _searchController.clear();
@@ -893,6 +907,7 @@ class _OrdersByLocationScreenState
   }
 
   Widget _buildHeader(String? selectedStore) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     if (_selectionMode) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(12, 16, 12, 0),
@@ -906,15 +921,15 @@ class _OrdersByLocationScreenState
             Expanded(
               child: Text(
                 '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.nightBlue,
+                  color: scheme.onSurface,
                 ),
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
+              icon: Icon(Icons.store_rounded, color: scheme.onSurface),
               tooltip: 'Change location',
               onPressed: () => _showStorePicker(),
             ),
@@ -931,23 +946,26 @@ class _OrdersByLocationScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Orders by Location',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.nightBlue,
+                    color: scheme.onSurface,
                   ),
                 ),
                 Text(
                   selectedStore ?? 'Select a location',
-                  style: const TextStyle(fontSize: 14, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
               ],
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
+            icon: Icon(Icons.store_rounded, color: scheme.onSurface),
             tooltip: 'Change location',
             onPressed: () => _showStorePicker(),
           ),
@@ -957,6 +975,7 @@ class _OrdersByLocationScreenState
   }
 
   Widget _buildSelectionBottomBar() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Positioned(
       left: 0,
       right: 0,
@@ -969,7 +988,7 @@ class _OrdersByLocationScreenState
           MediaQuery.of(context).padding.bottom + 16,
         ),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.1),
@@ -1057,6 +1076,7 @@ class _OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final statusColor = order.status.statusColor;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -1078,7 +1098,9 @@ class _OrderCard extends StatelessWidget {
                       color: selected ? AppTheme.oceanBlue : Colors.transparent,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: selected ? AppTheme.oceanBlue : Colors.black38,
+                        color: selected
+                            ? AppTheme.oceanBlue
+                            : scheme.onSurface.withValues(alpha: 0.4),
                         width: 2,
                       ),
                     ),
@@ -1108,40 +1130,40 @@ class _OrderCard extends StatelessWidget {
                     children: [
                       Text(
                         order.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
-                          color: AppTheme.nightBlue,
+                          color: scheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.person_outline,
                             size: 13,
-                            color: Colors.black45,
+                            color: scheme.onSurface.withValues(alpha: 0.5),
                           ),
                           const SizedBox(width: 4),
                           Text(
                             order.customerName,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.black54,
+                              color: scheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                           const SizedBox(width: 10),
-                          const Icon(
+                          Icon(
                             Icons.schedule,
                             size: 13,
-                            color: Colors.black45,
+                            color: scheme.onSurface.withValues(alpha: 0.5),
                           ),
                           const SizedBox(width: 4),
                           Text(
                             _formatDate(order.modified),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.black45,
+                              color: scheme.onSurface.withValues(alpha: 0.5),
                             ),
                           ),
                         ],
@@ -1200,6 +1222,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 60),
       child: FrostCard(
@@ -1212,18 +1235,21 @@ class _EmptyState extends StatelessWidget {
               color: AppTheme.oceanBlue.withValues(alpha: 0.4),
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'No orders found',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppTheme.nightBlue,
+                color: scheme.onSurface,
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Pull down to refresh',
-              style: TextStyle(fontSize: 13, color: Colors.black45),
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSurface.withValues(alpha: 0.5),
+              ),
             ),
           ],
         ),
@@ -1243,6 +1269,7 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 40),
       child: FrostCard(
@@ -1258,7 +1285,10 @@ class _ErrorState extends StatelessWidget {
             Text(
               error?.toString() ?? 'Something went wrong',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(

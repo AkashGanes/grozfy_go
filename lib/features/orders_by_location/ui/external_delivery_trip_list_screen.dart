@@ -133,6 +133,7 @@ class _ExternalDeliveryTripListScreenState
   }
 
   Widget _buildSearchBar() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
       child: FrostCard(
@@ -146,7 +147,9 @@ class _ExternalDeliveryTripListScreenState
             contentPadding: const EdgeInsets.symmetric(vertical: 8),
             border: InputBorder.none,
             hintText: 'Search Trip ID',
-            hintStyle: const TextStyle(color: Colors.black45),
+            hintStyle: TextStyle(
+              color: scheme.onSurface.withValues(alpha: 0.5),
+            ),
             prefixIcon: const Icon(
               Icons.search_rounded,
               color: AppTheme.oceanBlue,
@@ -159,9 +162,9 @@ class _ExternalDeliveryTripListScreenState
                       _searchController.clear();
                       setState(() => _searchQuery = '');
                     },
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.close_rounded,
-                      color: Colors.black45,
+                      color: scheme.onSurface.withValues(alpha: 0.5),
                       size: 18,
                     ),
                   ),
@@ -390,18 +393,18 @@ class _TripCard extends StatelessWidget {
                   children: [
                     Text(
                       trip.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
-                        color: AppTheme.nightBlue,
+                        color: colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Date: ${_formatDate(trip.tripDate)} • Stops: ${trip.completedStops}/${trip.totalStops}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Colors.black54,
+                        color: colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -443,6 +446,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 60),
       child: FrostCard(
@@ -455,18 +459,21 @@ class _EmptyState extends StatelessWidget {
               color: AppTheme.oceanBlue.withValues(alpha: 0.4),
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'No trips found',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppTheme.nightBlue,
+                color: scheme.onSurface,
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Pull down to refresh',
-              style: TextStyle(fontSize: 13, color: Colors.black45),
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSurface.withValues(alpha: 0.5),
+              ),
             ),
           ],
         ),
@@ -545,6 +552,7 @@ class _SearchEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return FrostCard(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -555,18 +563,21 @@ class _SearchEmptyState extends StatelessWidget {
             color: AppTheme.oceanBlue.withValues(alpha: 0.45),
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'No trip found for this ID',
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w600,
-              color: AppTheme.nightBlue,
+              color: scheme.onSurface,
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Try another Trip ID',
-            style: TextStyle(fontSize: 13, color: Colors.black45),
+            style: TextStyle(
+              fontSize: 13,
+              color: scheme.onSurface.withValues(alpha: 0.5),
+            ),
           ),
         ],
       ),
@@ -581,6 +592,7 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 40),
       child: FrostCard(
@@ -596,7 +608,10 @@ class _ErrorState extends StatelessWidget {
             Text(
               error?.toString() ?? 'Something went wrong',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(

@@ -63,9 +63,10 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
   }
 
   void _showPhotoSourceSheet() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: scheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
@@ -108,11 +109,12 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
       child: SingleChildScrollView(
@@ -126,7 +128,7 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.black12,
+                  color: scheme.onSurface.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -150,12 +152,12 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Text(
+                Text(
                   'Delivery Failed',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.nightBlue,
+                    color: scheme.onSurface,
                   ),
                 ),
               ],
@@ -163,11 +165,11 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
             const SizedBox(height: 20),
 
             // Reason label
-            const Text(
+            Text(
               'Why couldn\'t you deliver?',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: Colors.black87,
+                color: scheme.onSurface.withValues(alpha: 0.85),
                 fontSize: 13,
               ),
             ),
@@ -184,7 +186,7 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                   decoration: BoxDecoration(
                     color: _selectedReason == reason
                         ? AppTheme.oceanBlue.withValues(alpha: 0.08)
-                        : Colors.grey.withValues(alpha: 0.06),
+                        : scheme.onSurface.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: _selectedReason == reason
@@ -201,7 +203,7 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                         size: 18,
                         color: _selectedReason == reason
                             ? AppTheme.oceanBlue
-                            : Colors.black38,
+                            : scheme.onSurface.withValues(alpha: 0.4),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
@@ -209,8 +211,8 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                           reason,
                           style: TextStyle(
                             color: _selectedReason == reason
-                                ? AppTheme.nightBlue
-                                : Colors.black54,
+                                ? scheme.onSurface
+                                : scheme.onSurface.withValues(alpha: 0.6),
                             fontWeight: _selectedReason == reason
                                 ? FontWeight.w600
                                 : FontWeight.normal,
@@ -226,11 +228,11 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
             const SizedBox(height: 14),
 
             // Notes field
-            const Text(
+            Text(
               'Notes (optional)',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: Colors.black87,
+                color: scheme.onSurface.withValues(alpha: 0.85),
                 fontSize: 13,
               ),
             ),
@@ -241,9 +243,12 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
               textInputAction: TextInputAction.done,
               decoration: InputDecoration(
                 hintText: 'Add any additional details...',
-                hintStyle: const TextStyle(color: Colors.black38, fontSize: 13),
+                hintStyle: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.4),
+                  fontSize: 13,
+                ),
                 filled: true,
-                fillColor: Colors.grey.withValues(alpha: 0.06),
+                fillColor: scheme.onSurface.withValues(alpha: 0.05),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
@@ -253,7 +258,7 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
-                    color: Colors.black.withValues(alpha: 0.1),
+                    color: scheme.onSurface.withValues(alpha: 0.1),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
@@ -273,11 +278,11 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
             const SizedBox(height: 14),
 
             // Photo proof section
-            const Text(
+            Text(
               'Photo Proof (optional)',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
-                color: Colors.black87,
+                color: scheme.onSurface.withValues(alpha: 0.85),
                 fontSize: 13,
               ),
             ),
@@ -289,20 +294,27 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                       width: double.infinity,
                       height: 80,
                       decoration: BoxDecoration(
-                        color: Colors.grey.withValues(alpha: 0.06),
+                        color: scheme.onSurface.withValues(alpha: 0.05),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(
-                          color: Colors.black.withValues(alpha: 0.1),
+                          color: scheme.onSurface.withValues(alpha: 0.1),
                         ),
                       ),
-                      child: const Column(
+                      child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.camera_alt_outlined, color: Colors.black38, size: 26),
-                          SizedBox(height: 4),
+                          Icon(
+                            Icons.camera_alt_outlined,
+                            color: scheme.onSurface.withValues(alpha: 0.4),
+                            size: 26,
+                          ),
+                          const SizedBox(height: 4),
                           Text(
                             'Tap to add photo',
-                            style: TextStyle(color: Colors.black38, fontSize: 12),
+                            style: TextStyle(
+                              color: scheme.onSurface.withValues(alpha: 0.4),
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),

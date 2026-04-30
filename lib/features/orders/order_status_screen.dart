@@ -120,6 +120,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final app = AppScope.of(context);
     final order = app.activeOrder;
 
@@ -158,7 +159,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                         done
                             ? Icons.check_circle_rounded
                             : Icons.radio_button_unchecked,
-                        color: done ? Colors.green : Colors.grey,
+                        color: done
+                            ? Colors.green
+                            : scheme.onSurface.withValues(alpha: 0.4),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -166,7 +169,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           app.orderStatusLabel(status),
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            color: done ? Colors.black87 : Colors.black45,
+                            color: done
+                                ? scheme.onSurface
+                                : scheme.onSurface.withValues(alpha: 0.5),
                           ),
                         ),
                       ),

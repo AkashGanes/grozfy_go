@@ -540,13 +540,14 @@ class _DateTile extends StatelessWidget {
     final String display = value != null
         ? '${value!.day.toString().padLeft(2, '0')}/${value!.month.toString().padLeft(2, '0')}/${value!.year}'
         : 'Select';
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.black12),
+          border: Border.all(color: scheme.onSurface.withValues(alpha: 0.12)),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -554,7 +555,10 @@ class _DateTile extends StatelessWidget {
           children: [
             Text(
               label,
-              style: const TextStyle(fontSize: 11, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 11,
+                color: scheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
             const SizedBox(height: 4),
             Row(
@@ -597,6 +601,7 @@ class _AttachTile extends StatelessWidget {
     final bool hasNewFile = fileName != null;
     final bool hasExisting = existingUrl != null && !hasNewFile;
     final bool hasFile = hasNewFile || hasExisting;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: enabled ? onPick : null,
@@ -605,19 +610,21 @@ class _AttachTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: hasFile
               ? AppTheme.mint.withValues(alpha: 0.08)
-              : Colors.grey.withValues(alpha: 0.06),
+              : scheme.onSurface.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: hasFile
                 ? AppTheme.mint.withValues(alpha: 0.3)
-                : Colors.black12,
+                : scheme.onSurface.withValues(alpha: 0.12),
           ),
         ),
         child: Row(
           children: [
             Icon(
               hasFile ? Icons.check_circle : Icons.upload_file_rounded,
-              color: hasFile ? Colors.green : Colors.grey,
+              color: hasFile
+                  ? Colors.green
+                  : scheme.onSurface.withValues(alpha: 0.4),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -634,9 +641,9 @@ class _AttachTile extends StatelessWidget {
                   if (hasNewFile)
                     Text(
                       fileName!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Colors.black54,
+                        color: scheme.onSurface.withValues(alpha: 0.6),
                       ),
                       overflow: TextOverflow.ellipsis,
                     )
@@ -652,15 +659,22 @@ class _AttachTile extends StatelessWidget {
                       ],
                     )
                   else
-                    const Text(
+                    Text(
                       'Tap to select image',
-                      style: TextStyle(fontSize: 11, color: Colors.black38),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: scheme.onSurface.withValues(alpha: 0.4),
+                      ),
                     ),
                 ],
               ),
             ),
             if (hasFile && enabled)
-              const Icon(Icons.edit, size: 16, color: Colors.black38),
+              Icon(
+                Icons.edit,
+                size: 16,
+                color: scheme.onSurface.withValues(alpha: 0.4),
+              ),
           ],
         ),
       ),

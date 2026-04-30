@@ -14,12 +14,14 @@ class AppBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
             blurRadius: 20,
             offset: const Offset(0, -4),
           ),
@@ -72,6 +74,8 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Color inactive =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -82,14 +86,14 @@ class _NavItem extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: isSelected ? AppTheme.oceanBlue : Colors.black45,
+              color: isSelected ? AppTheme.oceanBlue : inactive,
               size: 26,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? AppTheme.oceanBlue : Colors.black45,
+                color: isSelected ? AppTheme.oceanBlue : inactive,
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),

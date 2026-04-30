@@ -207,6 +207,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool searching = _searchQuery.length >= 2;
 
     return AppShell(
@@ -224,39 +225,44 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
               decoration: InputDecoration(
                 hintText: 'Search by Order ID, Store or Customer…',
                 hintStyle: TextStyle(
-                  color: Colors.grey.shade400,
+                  color: scheme.onSurface.withValues(alpha: 0.4),
                   fontSize: 13,
                 ),
                 prefixIcon: Icon(
                   Icons.search_rounded,
-                  color:
-                      searching ? AppTheme.oceanBlue : Colors.grey.shade400,
+                  color: searching
+                      ? AppTheme.oceanBlue
+                      : scheme.onSurface.withValues(alpha: 0.4),
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.close_rounded, size: 20),
-                        color: Colors.grey.shade500,
+                        color: scheme.onSurface.withValues(alpha: 0.6),
                         onPressed: _clearSearch,
                       )
                     : null,
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: scheme.surface,
                 contentPadding: const EdgeInsets.symmetric(
                   vertical: 13,
                   horizontal: 16,
                 ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
+                  borderSide: BorderSide(
+                    color: scheme.onSurface.withValues(alpha: 0.12),
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
+                  borderSide: BorderSide(
+                    color: scheme.onSurface.withValues(alpha: 0.12),
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide:
-                      BorderSide(color: AppTheme.oceanBlue, width: 1.5),
+                      const BorderSide(color: AppTheme.oceanBlue, width: 1.5),
                 ),
               ),
             ),
@@ -269,7 +275,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
               child: Row(
                 children: [
                   if (_searchLoading) ...[
-                    SizedBox(
+                    const SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
@@ -282,7 +288,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                       'Searching…',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade500,
+                        color: scheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ] else if (_searchError != null) ...[
@@ -317,7 +323,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                       ),
                       child: Text(
                         '${_searchResults.length} result${_searchResults.length == 1 ? '' : 's'}',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 12,
                           color: AppTheme.oceanBlue,
                           fontWeight: FontWeight.w600,
@@ -332,7 +338,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                       'Clear',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.grey.shade500,
+                        color: scheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ),
@@ -443,6 +449,7 @@ class _FullOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: FrostCard(
@@ -503,7 +510,7 @@ class _FullOrderCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade600,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -515,7 +522,7 @@ class _FullOrderCard extends StatelessWidget {
                         Icon(
                           Icons.circle,
                           size: 5,
-                          color: Colors.grey.shade400,
+                          color: scheme.onSurface.withValues(alpha: 0.4),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -529,7 +536,7 @@ class _FullOrderCard extends StatelessWidget {
                           'x${item.quantity}  Rs. ${(item.price * item.quantity).toStringAsFixed(0)}',
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey.shade500,
+                            color: scheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
                       ],
@@ -581,6 +588,7 @@ class _SearchResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: FrostCard(
@@ -598,7 +606,7 @@ class _SearchResultCard extends StatelessWidget {
                     color: AppTheme.oceanBlue.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
+                  child: const Icon(
                     Icons.shopping_bag_rounded,
                     color: AppTheme.oceanBlue,
                     size: 22,
@@ -623,7 +631,7 @@ class _SearchResultCard extends StatelessWidget {
                         query: query,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade600,
+                          color: scheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -632,7 +640,7 @@ class _SearchResultCard extends StatelessWidget {
                         query: query,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade500,
+                          color: scheme.onSurface.withValues(alpha: 0.5),
                         ),
                       ),
                     ],
@@ -640,7 +648,7 @@ class _SearchResultCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 if (isLoading)
-                  SizedBox(
+                  const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
@@ -652,7 +660,7 @@ class _SearchResultCard extends StatelessWidget {
                   Icon(
                     Icons.arrow_forward_ios_rounded,
                     size: 16,
-                    color: Colors.grey.shade400,
+                    color: scheme.onSurface.withValues(alpha: 0.4),
                   ),
               ],
             ),
@@ -685,9 +693,10 @@ class _Highlight extends StatelessWidget {
     final idx = lower.indexOf(lq);
     if (idx < 0) return Text(text, style: style);
 
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return RichText(
       text: TextSpan(
-        style: style.copyWith(color: Colors.black87),
+        style: style.copyWith(color: scheme.onSurface),
         children: [
           TextSpan(text: text.substring(0, idx)),
           TextSpan(
@@ -717,18 +726,26 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(top: 5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 15, color: Colors.grey.shade500),
+          Icon(
+            icon,
+            size: 15,
+            color: scheme.onSurface.withValues(alpha: 0.5),
+          ),
           const SizedBox(width: 8),
           SizedBox(
             width: 62,
             child: Text(
               label,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              style: TextStyle(
+                fontSize: 12,
+                color: scheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
           ),
           Expanded(
@@ -755,6 +772,7 @@ class _SearchEmpty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 16),
       child: Column(
@@ -763,7 +781,7 @@ class _SearchEmpty extends StatelessWidget {
           Icon(
             Icons.search_off_rounded,
             size: 56,
-            color: Colors.grey.shade400,
+            color: scheme.onSurface.withValues(alpha: 0.4),
           ),
           const SizedBox(height: 14),
           Text(
@@ -774,7 +792,10 @@ class _SearchEmpty extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             'Try a different order ID, store name, or customer name.',
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: 0.6),
+              fontSize: 13,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -788,14 +809,19 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 48),
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.local_shipping_outlined, size: 64, color: Colors.grey),
-          SizedBox(height: 12),
-          Text('No available orders'),
+          Icon(
+            Icons.local_shipping_outlined,
+            size: 64,
+            color: scheme.onSurface.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: 12),
+          const Text('No available orders'),
         ],
       ),
     );

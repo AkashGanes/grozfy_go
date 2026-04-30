@@ -188,6 +188,7 @@ class _OrderLocationDetailScreenState
   }
 
   Widget _buildError() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Stack(
       children: [
         _MapLayer(mapController: _mapController, started: false),
@@ -207,8 +208,10 @@ class _OrderLocationDetailScreenState
                 Text(
                   _error ?? 'Something went wrong',
                   textAlign: TextAlign.center,
-                  style:
-                      const TextStyle(color: Colors.black54, fontSize: 13),
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
@@ -225,6 +228,7 @@ class _OrderLocationDetailScreenState
   }
 
   Widget _buildContent() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final detail = _detail!;
     final statusColor = detail.status.statusColor;
 
@@ -250,11 +254,11 @@ class _OrderLocationDetailScreenState
           snapSizes: const [0.22, 0.45, 0.92],
           builder: (context, scrollController) {
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
+              decoration: BoxDecoration(
+                color: scheme.surface,
                 borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(24)),
-                boxShadow: [
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: const [
                   BoxShadow(
                     color: Color(0x22000000),
                     blurRadius: 20,
@@ -278,7 +282,7 @@ class _OrderLocationDetailScreenState
                       width: 36,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.black12,
+                        color: scheme.onSurface.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -293,23 +297,26 @@ class _OrderLocationDetailScreenState
                           children: [
                             Text(
                               detail.name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w800,
-                                color: AppTheme.nightBlue,
+                                color: scheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Row(
                               children: [
-                                const Icon(Icons.store_rounded,
-                                    size: 13, color: Colors.black38),
+                                Icon(Icons.store_rounded,
+                                    size: 13,
+                                    color: scheme.onSurface
+                                        .withValues(alpha: 0.4)),
                                 const SizedBox(width: 4),
                                 Text(
                                   detail.storeName,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.black54),
+                                      color: scheme.onSurface
+                                          .withValues(alpha: 0.6)),
                                 ),
                               ],
                             ),
@@ -364,18 +371,20 @@ class _OrderLocationDetailScreenState
                           children: [
                             Text(
                               detail.customerName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 16,
-                                color: AppTheme.nightBlue,
+                                color: scheme.onSurface,
                               ),
                             ),
                             if (detail.contactMobile != null) ...[
                               const SizedBox(height: 2),
                               Text(
                                 detail.contactMobile!,
-                                style: const TextStyle(
-                                    fontSize: 13, color: Colors.black45),
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: scheme.onSurface
+                                        .withValues(alpha: 0.5)),
                               ),
                             ],
                           ],
@@ -430,26 +439,28 @@ class _OrderLocationDetailScreenState
                             Expanded(
                               child: Text(
                                 item.itemName,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 14,
-                                  color: AppTheme.nightBlue,
+                                  color: scheme.onSurface,
                                 ),
                               ),
                             ),
                             Text(
                               'x${item.qty % 1 == 0 ? item.qty.toInt() : item.qty}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
-                                color: AppTheme.nightBlue,
+                                color: scheme.onSurface,
                               ),
                             ),
                             if (item.amount != null) ...[
                               const SizedBox(width: 14),
                               Text(
                                 '₹${item.amount!.toStringAsFixed(0)}',
-                                style: const TextStyle(
-                                    fontSize: 13, color: Colors.black45),
+                                style: TextStyle(
+                                    fontSize: 13,
+                                    color: scheme.onSurface
+                                        .withValues(alpha: 0.5)),
                               ),
                             ],
                           ],
@@ -587,6 +598,7 @@ class _BackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Positioned(
       top: MediaQuery.of(context).padding.top + 8,
       left: 12,
@@ -596,7 +608,7 @@ class _BackButton extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
@@ -606,9 +618,9 @@ class _BackButton extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(
+          child: Icon(
             Icons.arrow_back_rounded,
-            color: AppTheme.nightBlue,
+            color: scheme.onSurface,
             size: 20,
           ),
         ),
@@ -629,11 +641,12 @@ class _SheetShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: const [
           BoxShadow(
               color: Color(0x22000000),
               blurRadius: 20,
@@ -650,7 +663,7 @@ class _SheetShell extends StatelessWidget {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.black12,
+                color: scheme.onSurface.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -711,6 +724,7 @@ class _AddressRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -722,18 +736,18 @@ class _AddressRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black45,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 address,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
-                  color: AppTheme.nightBlue,
+                  color: scheme.onSurface,
                   height: 1.4,
                 ),
               ),

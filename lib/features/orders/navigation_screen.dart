@@ -60,9 +60,15 @@ class NavigationScreen extends StatelessWidget {
                   subtitle: order.pickup,
                 ),
                 const SizedBox(height: 12),
-                const Padding(
-                  padding: EdgeInsets.only(left: 16),
-                  child: Icon(Icons.arrow_downward_rounded, color: Colors.grey),
+                Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: Icon(
+                    Icons.arrow_downward_rounded,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.4),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _StepTile(
@@ -225,6 +231,7 @@ class _StepTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -252,7 +259,10 @@ class _StepTile extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: const TextStyle(color: Colors.black54, height: 1.3),
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.6),
+                  height: 1.3,
+                ),
               ),
             ],
           ),
@@ -275,12 +285,13 @@ class _StatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: scheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black12),
+        border: Border.all(color: scheme.onSurface.withValues(alpha: 0.12)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,9 +302,9 @@ class _StatChip extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
-                  color: Colors.black54,
+                  color: scheme.onSurface.withValues(alpha: 0.6),
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -320,16 +331,20 @@ class _InfoLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: Colors.grey),
+        Icon(icon, size: 18, color: scheme.onSurface.withValues(alpha: 0.4)),
         const SizedBox(width: 8),
         SizedBox(
           width: 86,
           child: Text(
             label,
-            style: const TextStyle(color: Colors.black54, fontSize: 12),
+            style: TextStyle(
+              color: scheme.onSurface.withValues(alpha: 0.6),
+              fontSize: 12,
+            ),
           ),
         ),
         Expanded(

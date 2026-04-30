@@ -150,6 +150,7 @@ class _ExternalDeliveryTripDetailsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return AppShell(
       title: 'External Delivery Trip',
       subtitle: widget.tripName,
@@ -176,7 +177,9 @@ class _ExternalDeliveryTripDetailsScreenState
                     Text(
                       snapshot.error.toString().replaceFirst('Exception: ', ''),
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.black54),
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.6),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
@@ -203,13 +206,14 @@ class _ExternalDeliveryTripDetailsScreenState
                     .fadeIn(duration: 220.ms)
                     .slideY(begin: 0.04, end: 0),
                 const SizedBox(height: 10),
-                const TabBar(
-                  indicatorColor: AppTheme.oceanBlue,
-                  labelColor: AppTheme.nightBlue,
-                  unselectedLabelColor: Colors.black54,
+                TabBar(
+                  indicatorColor: scheme.primary,
+                  labelColor: scheme.primary,
+                  unselectedLabelColor:
+                      scheme.onSurface.withValues(alpha: 0.6),
                   indicatorSize: TabBarIndicatorSize.tab,
                   dividerColor: Colors.transparent,
-                  tabs: [
+                  tabs: const [
                     Tab(
                       icon: Icon(Icons.local_shipping_outlined, size: 18),
                       text: 'Trip',
@@ -297,6 +301,7 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _loadingView() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     Widget line({double widthFactor = 1}) {
       return FractionallySizedBox(
         widthFactor: widthFactor,
@@ -315,7 +320,7 @@ class _ExternalDeliveryTripDetailsScreenState
         Container(
           height: 44,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.72),
+            color: scheme.surface.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(12),
           ),
         )
@@ -371,6 +376,7 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _tripIdentityHeader(ExternalDeliveryTrip trip) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return FrostCard(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
@@ -392,8 +398,8 @@ class _ExternalDeliveryTripDetailsScreenState
           Expanded(
             child: Text(
               'Trip ID: ${trip.name}',
-              style: const TextStyle(
-                color: AppTheme.nightBlue,
+              style: TextStyle(
+                color: scheme.onSurface,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -404,6 +410,7 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _tripInfoRow(IconData icon, String label, String value) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -424,16 +431,16 @@ class _ExternalDeliveryTripDetailsScreenState
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.black54,
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.6),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
-                    color: AppTheme.nightBlue,
+                  style: TextStyle(
+                    color: scheme.onSurface,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -448,6 +455,7 @@ class _ExternalDeliveryTripDetailsScreenState
   bool _returningToStore = false;
 
   Widget _returnTripBanner(ExternalDeliveryTrip trip) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final alreadyCompleted =
         trip.status.trim().toLowerCase() == 'completed' ||
         trip.stops.every(
@@ -487,14 +495,14 @@ class _ExternalDeliveryTripDetailsScreenState
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.undo_rounded, color: AppTheme.mango, size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.undo_rounded, color: AppTheme.mango, size: 20),
+                    const SizedBox(width: 8),
                     Text(
                       'Return Trip',
                       style: TextStyle(
-                        color: AppTheme.nightBlue,
+                        color: scheme.onSurface,
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
                       ),
@@ -502,9 +510,12 @@ class _ExternalDeliveryTripDetailsScreenState
                   ],
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Once you arrive at the store, confirm the package has been handed back.',
-                  style: TextStyle(color: Colors.black54, fontSize: 12),
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -547,27 +558,30 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Future<void> _handleReturnedToStore(ExternalDeliveryTrip trip) async {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.store_outlined, color: AppTheme.oceanBlue),
-            SizedBox(width: 8),
+            const Icon(Icons.store_outlined, color: AppTheme.oceanBlue),
+            const SizedBox(width: 8),
             Text(
               'Returned to Store?',
               style: TextStyle(
-                color: AppTheme.nightBlue,
+                color: scheme.onSurface,
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
               ),
             ),
           ],
         ),
-        content: const Text(
+        content: Text(
           'Confirm that you have handed the package back to the store.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(
+            color: scheme.onSurface.withValues(alpha: 0.6),
+          ),
         ),
         actions: [
           TextButton(
@@ -620,6 +634,7 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _stopsTab(ExternalDeliveryTrip trip) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final orderedStops = trip.stops.asMap().entries.toList();
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -630,10 +645,12 @@ class _ExternalDeliveryTripDetailsScreenState
             const SizedBox(height: 10),
           ],
           if (trip.stops.isEmpty)
-            const FrostCard(
+            FrostCard(
               child: Text(
                 'No stops found',
-                style: TextStyle(color: Colors.black54),
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
             )
                 .animate()
@@ -835,18 +852,19 @@ class _ExternalDeliveryTripDetailsScreenState
         ? result.reason
         : '${result.reason} — ${result.notes}';
 
+    final scheme = Theme.of(context).colorScheme;
     final createReturn = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.undo_rounded, color: AppTheme.oceanBlue),
-            SizedBox(width: 8),
+            const Icon(Icons.undo_rounded, color: AppTheme.oceanBlue),
+            const SizedBox(width: 8),
             Text(
               'Return to Store?',
               style: TextStyle(
-                color: AppTheme.nightBlue,
+                color: scheme.onSurface,
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
               ),
@@ -855,7 +873,7 @@ class _ExternalDeliveryTripDetailsScreenState
         ),
         content: Text(
           'Create a return trip to bring "$orderName" back to the store?',
-          style: const TextStyle(color: Colors.black54),
+          style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.6)),
         ),
         actions: [
           TextButton(
@@ -972,10 +990,11 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _kv(String key, String value) {
-    const icon = Icon(
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final icon = Icon(
       Icons.label_outline_rounded,
       size: 14,
-      color: Colors.black45,
+      color: scheme.onSurface.withValues(alpha: 0.5),
     );
 
     return Padding(
@@ -988,16 +1007,16 @@ class _ExternalDeliveryTripDetailsScreenState
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 2),
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
                   child: icon,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     key,
-                    style: const TextStyle(
-                      color: Colors.black54,
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: 0.6),
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1009,7 +1028,7 @@ class _ExternalDeliveryTripDetailsScreenState
           Expanded(
             child: SelectableText(
               value,
-              style: const TextStyle(color: AppTheme.nightBlue, height: 1.25),
+              style: TextStyle(color: scheme.onSurface, height: 1.25),
             ),
           ),
         ],
@@ -1018,6 +1037,7 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _stopTitle(String stopText) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Row(
       children: [
         const Icon(
@@ -1028,9 +1048,9 @@ class _ExternalDeliveryTripDetailsScreenState
         const SizedBox(width: 6),
         Text(
           stopText,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w700,
-            color: AppTheme.nightBlue,
+            color: scheme.onSurface,
           ),
         ),
       ],

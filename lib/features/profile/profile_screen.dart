@@ -12,7 +12,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/api_constants.dart';
-import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
@@ -263,7 +262,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(error, style: const TextStyle(color: Colors.black87)),
+          Text(
+            error,
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+          ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: () {
@@ -429,9 +431,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Container(
             width: 124,
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.03),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -450,11 +454,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             fallbackHeaders: fallbackHeaders,
                           )
                         : Container(
-                            color: const Color(0xFFF4F6F9),
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                             alignment: Alignment.center,
-                            child: const Icon(
+                            child: Icon(
                               Icons.insert_drive_file_outlined,
-                              color: Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                               size: 30,
                             ),
                           ),
@@ -732,12 +736,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       avatarContent = const Icon(Icons.person_rounded, size: 42);
     }
 
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return FrostCard(
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF5FF),
+          color: isDark
+              ? scheme.primary.withValues(alpha: 0.12)
+              : const Color(0xFFEAF5FF),
           borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
@@ -748,7 +756,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               children: [
                 CircleAvatar(
                   radius: 44,
-                  backgroundColor: Colors.white,
+                  backgroundColor: isDark ? scheme.surfaceContainerHighest : Colors.white,
                   child: ClipOval(
                     child: SizedBox(width: 88, height: 88, child: avatarContent),
                   ),
@@ -765,9 +773,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         width: 28,
                         height: 28,
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
+                          color: scheme.primary,
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white, width: 2),
+                          border: Border.all(color: scheme.surface, width: 2),
                         ),
                         child: const Icon(
                           Icons.edit_rounded,
@@ -802,7 +810,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const SizedBox(width: 6),
                 Text(
                   t('verified_account'),
-                  style: const TextStyle(color: Colors.black54),
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
               ],
             ),
@@ -824,7 +834,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const SizedBox(height: 4),
           Text(
             t('edit_name_phone_number_email_and_profile_picture'),
-            style: const TextStyle(color: Colors.black54),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -1012,20 +1024,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     required VoidCallback onToggle,
     required Widget child,
   }) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: expanded ? Colors.white : Colors.white.withValues(alpha: 0.92),
+        color: expanded
+            ? scheme.surface
+            : scheme.surface.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: expanded
-              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.25)
-              : Colors.black.withValues(alpha: 0.08),
+              ? scheme.primary.withValues(alpha: 0.25)
+              : scheme.onSurface.withValues(alpha: 0.1),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.03),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -1063,8 +1079,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        color: Colors.black54,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.6),
                         fontSize: 12,
                       ),
                     ),
@@ -1122,6 +1138,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       return Text(t('no_category_data'));
     }
 
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Column(
       children: categories.map((item) {
         return Padding(
@@ -1130,9 +1147,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.03),
+              color: scheme.onSurface.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+              border: Border.all(
+                color: scheme.onSurface.withValues(alpha: 0.1),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1325,10 +1344,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           fit: fit,
           headers: fallbackHeaders,
           errorBuilder: (context, error, stackTrace) {
-            return const ColoredBox(
-              color: Color(0xFFF4F6F9),
+            final ColorScheme scheme = Theme.of(context).colorScheme;
+            return ColoredBox(
+              color: scheme.surfaceContainerHighest,
               child: Center(
-                child: Icon(Icons.broken_image_outlined, color: Colors.black45),
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
+                ),
               ),
             );
           },
@@ -1463,8 +1486,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             width: 130,
             child: Text(
               key,
-              style: const TextStyle(
-                color: Colors.black54,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                 fontWeight: FontWeight.w600,
               ),
             ),

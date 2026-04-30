@@ -16,11 +16,21 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFFF1F7FF), Color(0xFFE8F5F0), Color(0xFFFFF5E6)],
+            colors: isDark
+                ? [
+                    Theme.of(context).colorScheme.surface,
+                    Theme.of(context).scaffoldBackgroundColor,
+                  ]
+                : const [
+                    Color(0xFFF1F7FF),
+                    Color(0xFFE8F5F0),
+                    Color(0xFFFFF5E6),
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -98,6 +108,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   }
 
   Widget _buildHeader() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
       child: Row(
@@ -107,18 +118,21 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
               onPressed: () => Navigator.of(context).maybePop(),
               icon: const Icon(Icons.arrow_back_rounded, size: 22),
             ),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
+                const Text(
                   'My Orders',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
                 Text(
                   'Track your deliveries',
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
               ],
             ),
@@ -129,12 +143,13 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
   }
 
   Widget _buildTabBar() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Container(
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.7),
+          color: scheme.surface.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -156,7 +171,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                       style: TextStyle(
                         color: _selectedTab == 0
                             ? Colors.white
-                            : Colors.black54,
+                            : scheme.onSurface.withValues(alpha: 0.6),
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                       ),
@@ -182,7 +197,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                       style: TextStyle(
                         color: _selectedTab == 1
                             ? Colors.white
-                            : Colors.black54,
+                            : scheme.onSurface.withValues(alpha: 0.6),
                         fontWeight: FontWeight.w600,
                         fontSize: 13,
                       ),
@@ -219,7 +234,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.06),
@@ -374,14 +389,18 @@ class _NavItem extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: isSelected ? AppTheme.oceanBlue : Colors.black54,
+              color: isSelected
+                  ? AppTheme.oceanBlue
+                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
               size: 24,
             ),
             const SizedBox(height: 2),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? AppTheme.oceanBlue : Colors.black54,
+                color: isSelected
+                    ? AppTheme.oceanBlue
+                    : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),
@@ -400,18 +419,24 @@ class _OrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = _getStatusColor(order.orderStatus);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.86),
+        color: scheme.surface.withValues(alpha: 0.86),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
-        boxShadow: const [
+        border: Border.all(
+          color: isDark
+              ? scheme.outline.withValues(alpha: 0.2)
+              : Colors.white.withValues(alpha: 0.7),
+        ),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x140A1D3A),
+            color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.08),
             blurRadius: 12,
-            offset: Offset(0, 6),
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -476,7 +501,10 @@ class _OrderCard extends StatelessWidget {
               const Spacer(),
               Text(
                 '${order.distanceKm.toStringAsFixed(1)} km',
-                style: const TextStyle(color: Colors.black54, fontSize: 12),
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.6),
+                  fontSize: 12,
+                ),
               ),
             ],
           ),
@@ -486,15 +514,24 @@ class _OrderCard extends StatelessWidget {
   }
 
   Widget _buildInfo(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 14, color: Colors.black54),
-          const SizedBox(width: 6),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
-        ],
-      ),
+    return Builder(
+      builder: (context) {
+        final ColorScheme scheme = Theme.of(context).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 4),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: scheme.onSurface.withValues(alpha: 0.6),
+              ),
+              const SizedBox(width: 6),
+              Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -530,11 +567,21 @@ class MoreScreen extends StatefulWidget {
 class _MoreScreenState extends State<MoreScreen> {
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFFF1F7FF), Color(0xFFE8F5F0), Color(0xFFFFF5E6)],
+            colors: isDark
+                ? [
+                    Theme.of(context).colorScheme.surface,
+                    Theme.of(context).scaffoldBackgroundColor,
+                  ]
+                : const [
+                    Color(0xFFF1F7FF),
+                    Color(0xFFE8F5F0),
+                    Color(0xFFFFF5E6),
+                  ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -614,18 +661,21 @@ class _MoreScreenState extends State<MoreScreen> {
             onPressed: () => Navigator.of(context).maybePop(),
             icon: const Icon(Icons.arrow_back_rounded, size: 22),
           ),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
+                const Text(
                   'More',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                 ),
                 Text(
                   'Quick Access',
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
               ],
             ),
@@ -682,6 +732,7 @@ class _MoreScreenState extends State<MoreScreen> {
   }
 
   Widget _menuItem(IconData icon, String label, String route) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -694,12 +745,12 @@ class _MoreScreenState extends State<MoreScreen> {
           child: Icon(icon, color: AppTheme.oceanBlue, size: 20),
         ),
         title: Text(label, style: const TextStyle(fontSize: 14)),
-        trailing: const Icon(
+        trailing: Icon(
           Icons.chevron_right_rounded,
-          color: Colors.black38,
+          color: scheme.onSurface.withValues(alpha: 0.4),
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        tileColor: Colors.white.withValues(alpha: 0.8),
+        tileColor: scheme.surface.withValues(alpha: 0.8),
         onTap: () => Navigator.of(context).pushNamed(route),
       ),
     );
@@ -709,7 +760,7 @@ class _MoreScreenState extends State<MoreScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.06),

@@ -10,6 +10,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/profile_completeness_indicator.dart';
 
@@ -281,7 +282,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       : app.isOnline
                       ? app.t('online_status')
                       : app.t('offline_status'),
-                  style: const TextStyle(color: Colors.black54),
+                  style: TextStyle(color: context.textSecondary),
                 ),
                 if (!app.canGoOnline && !app.isKycComplete) ...[
                   const SizedBox(height: 12),
@@ -340,7 +341,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     StatTile(
                       label: app.t('total'),
                       value: 'Rs. ${app.earnings.total.toStringAsFixed(0)}',
-                      color: AppTheme.nightBlue,
+                      color: context.scheme.primary,
                     ),
                     const SizedBox(width: 10),
                     StatTile(
@@ -371,7 +372,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       label: app.t('acceptance'),
                       value:
                           '${app.performance.acceptanceRate.toStringAsFixed(1)}%',
-                      color: AppTheme.nightBlue,
+                      color: context.scheme.primary,
                     ),
                   ],
                 ),
@@ -430,12 +431,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                           const SizedBox(height: 2),
                           Text(
                             app.t('pick_up_multiple'),
-                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                            style: TextStyle(
+                              color: context.textSecondary,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.chevron_right, color: Colors.grey),
+                    Icon(Icons.chevron_right, color: context.iconMuted),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -513,12 +517,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ),
                           Text(
                             app.t('external_deliveries_desc'),
-                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                            style: TextStyle(
+                              color: context.textSecondary,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.chevron_right, color: Colors.grey),
+                    Icon(Icons.chevron_right, color: context.iconMuted),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -627,11 +634,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ];
 
                         if (rows.isEmpty) {
-                          return const Padding(
-                            padding: EdgeInsets.only(top: 2),
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 2),
                             child: Text(
                               'No notifications yet.',
-                              style: TextStyle(color: Colors.black54),
+                              style: TextStyle(color: context.textSecondary),
                             ),
                           );
                         }
@@ -650,10 +657,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                       error: (err, _) => Row(
                         children: [
-                          const Expanded(
+                          Expanded(
                             child: Text(
                               'Unable to load notifications.',
-                              style: TextStyle(color: Colors.black54),
+                              style: TextStyle(color: context.textSecondary),
                             ),
                           ),
                           TextButton(
@@ -946,6 +953,7 @@ class _DashboardLocationCard extends StatelessWidget {
     final LatLng center = hasLocation
         ? LatLng(app.currentLatitude!, app.currentLongitude!)
         : const LatLng(28.6139, 77.2090);
+    final bool isDark = context.isDark;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),
@@ -966,8 +974,12 @@ class _DashboardLocationCard extends StatelessWidget {
                       ),
                       children: [
                         TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          urlTemplate: isDark
+                              ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+                              : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          subdomains: isDark
+                              ? const ['a', 'b', 'c', 'd']
+                              : const [],
                           userAgentPackageName: 'com.lyncspace.grozfygo',
                         ),
                         MarkerLayer(
@@ -976,10 +988,12 @@ class _DashboardLocationCard extends StatelessWidget {
                               point: center,
                               width: 52,
                               height: 52,
-                              child: const Icon(
+                              child: Icon(
                                 Icons.location_pin,
                                 size: 40,
-                                color: AppTheme.nightBlue,
+                                color: isDark
+                                    ? AppTheme.mint
+                                    : AppTheme.nightBlue,
                               ),
                             ),
                           ],
@@ -1174,7 +1188,7 @@ class _NotificationRow extends StatelessWidget {
                         fontWeight: showUnread
                             ? FontWeight.w800
                             : FontWeight.w700,
-                        color: showUnread ? AppTheme.nightBlue : Colors.black87,
+                        color: showUnread ? context.scheme.primary : context.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -1184,7 +1198,7 @@ class _NotificationRow extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: showUnread ? Colors.black87 : Colors.black54,
+                          color: context.scheme.onSurface.withValues(alpha: showUnread ? 0.85 : 0.6),
                           height: 1.35,
                         ),
                       ),
@@ -1192,8 +1206,8 @@ class _NotificationRow extends StatelessWidget {
                       const SizedBox(height: 1),
                       Text(
                         DashboardScreen._timeAgo(time!),
-                        style: const TextStyle(
-                          color: Colors.black45,
+                        style: TextStyle(
+                          color: context.textTertiary,
                           fontSize: 12,
                         ),
                       ),
