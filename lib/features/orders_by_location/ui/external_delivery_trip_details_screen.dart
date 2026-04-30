@@ -769,7 +769,7 @@ class _ExternalDeliveryTripDetailsScreenState
 
     final orderName = stop.externalDelivery.trim();
     if (photoPath != null && orderName.isNotEmpty) {
-      ExternalDeliveryRepository().uploadProofPhoto(
+      await ExternalDeliveryRepository().uploadProofPhoto(
         orderName: orderName,
         filePath: photoPath,
       );

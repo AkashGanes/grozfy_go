@@ -88,7 +88,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
     final photoPath = await showDeliveryProofSheet(context);
     if (!mounted) return;
     if (photoPath != null) {
-      widget.repository.uploadProofPhoto(
+      await widget.repository.uploadProofPhoto(
         orderName: widget.order.name,
         filePath: photoPath,
       );

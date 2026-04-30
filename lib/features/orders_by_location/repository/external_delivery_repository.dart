@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -145,6 +146,7 @@ class ExternalDeliveryRepository {
 
   static const Set<int> _okCodes = {200, 201};
   static const Duration _networkTimeout = Duration(seconds: 15);
+  static const Duration _fileUploadTimeout = Duration(seconds: 60);
   static const String _returnInitiatedStatus = 'Return Initiated';
   static const String _returnedStatus = 'Returned';
 
@@ -847,9 +849,9 @@ class ExternalDeliveryRepository {
     await _completeTrip(trip);
   }
 
-  /// Uploads a proof photo and attaches it to the [proof_photo] field of the
-  /// External Delivery document. Returns the remote file URL on success, or
-  /// null on failure (best-effort — callers must not throw on null).
+  /// Uploads a proof photo and writes its URL to the [proof_photo] field of
+  /// the External Delivery document. Returns the remote file URL on success,
+  /// or null on failure (best-effort — callers must not throw on null).
   Future<String?> uploadProofPhoto({
     required String orderName,
     required String filePath,
@@ -858,31 +860,10 @@ class ExternalDeliveryRepository {
       final uri = Uri.parse(
         '${ApiConstants.erpBaseUrl}/api/method/upload_file',
       );
-      final headers = await _authHeaders();
-      final req = http.MultipartRequest('POST', uri)
-        ..headers.addAll(headers)
-        ..fields['doctype'] = 'External Delivery'
-        ..fields['docname'] = orderName
-        ..fields['fieldname'] = 'proof_photo'
-        ..fields['is_private'] = '0'
-        ..files.add(
-          await http.MultipartFile.fromPath(
-            'file',
-            filePath,
-            filename: 'proof_$orderName.jpg',
-          ),
-        );
 
-      _logApi('upload_proof_photo request', 'POST $uri order=$orderName');
-      var streamed = await req.send().timeout(_networkTimeout);
-      var resp = await http.Response.fromStream(streamed);
-      _logApi('upload_proof_photo response', '${resp.statusCode}');
-
-      // Retry with refreshed token on auth failure.
-      if (_isAuthFailure(resp.statusCode) && await _refreshSession()) {
-        final refreshedHeaders = await _authHeaders();
-        final retryReq = http.MultipartRequest('POST', uri)
-          ..headers.addAll(refreshedHeaders)
+      Future<http.Response> doUpload(Map<String, String> headers) async {
+        final req = http.MultipartRequest('POST', uri)
+          ..headers.addAll(headers)
           ..fields['doctype'] = 'External Delivery'
           ..fields['docname'] = orderName
           ..fields['fieldname'] = 'proof_photo'
@@ -894,8 +875,45 @@ class ExternalDeliveryRepository {
               filename: 'proof_$orderName.jpg',
             ),
           );
-        streamed = await retryReq.send().timeout(_networkTimeout);
-        resp = await http.Response.fromStream(streamed);
+        return http.Response.fromStream(
+          await req.send().timeout(_fileUploadTimeout),
+        );
+      }
+
+      _logApi('upload_proof_photo request', 'POST $uri order=$orderName');
+      http.Response? resp;
+      try {
+        resp = await doUpload(await _authHeaders());
+        _logApi(
+          'upload_proof_photo response',
+          '${resp.statusCode} body=${resp.body}',
+        );
+      } on TimeoutException catch (e) {
+        _logApi('upload_proof_photo_warn', e.toString());
+        final String? recovered = await _recoverProofPhotoUrl(orderName);
+        if (recovered != null) {
+          try {
+            await _setDocValue(
+              doctype: 'External Delivery',
+              name: orderName,
+              fieldname: 'proof_photo',
+              value: recovered,
+            );
+          } catch (setError) {
+            _logApi('upload_proof_photo_set_warn', setError.toString());
+          }
+          return recovered;
+        }
+        return null;
+      }
+
+      // Retry once on auth failure with a refreshed token.
+      if (_isAuthFailure(resp.statusCode) && await _refreshSession()) {
+        resp = await doUpload(await _authHeaders());
+        _logApi(
+          'upload_proof_photo retry response',
+          '${resp.statusCode} body=${resp.body}',
+        );
       }
 
       if (!_okCodes.contains(resp.statusCode)) {
@@ -903,36 +921,104 @@ class ExternalDeliveryRepository {
         return null;
       }
 
-      final body = jsonDecode(resp.body) as Map<String, dynamic>;
-      final message = body['message'];
-      if (message is Map<String, dynamic>) {
-        final String? fileUrl = message['file_url']?.toString();
-        if (fileUrl != null && fileUrl.isNotEmpty) {
-          try {
-            await _updateExternalDeliveryFields(orderName, {
-              'proof_photo': fileUrl,
-            });
-          } catch (e) {
-            _logApi('upload_proof_photo_put_warn', e.toString());
-            try {
-              await _setDocValue(
-                doctype: 'External Delivery',
-                name: orderName,
-                fieldname: 'proof_photo',
-                value: fileUrl,
-              );
-            } catch (inner) {
-              _logApi('upload_proof_photo_field_warn', inner.toString());
-            }
-          }
-        }
-        return fileUrl;
+      // Frappe may return file_url as a nested map OR as a plain string
+      // depending on the version. Handle both.
+      final String? fileUrl = _extractFileUrl(resp.body);
+      if (fileUrl == null || fileUrl.isEmpty) {
+        _logApi(
+          'upload_proof_photo_warn',
+          'no file_url in response body: ${resp.body}',
+        );
+        return null;
       }
-      return null;
+
+      // upload_file creates the File document (visible in Attachments) but
+      // does NOT always write back to the parent field. Use set_value — the
+      // most reliable single-field update — to explicitly set proof_photo.
+      try {
+        await _setDocValue(
+          doctype: 'External Delivery',
+          name: orderName,
+          fieldname: 'proof_photo',
+          value: fileUrl,
+        );
+        _logApi('upload_proof_photo', 'proof_photo field set → $fileUrl');
+      } catch (e) {
+        _logApi('upload_proof_photo_set_warn', e.toString());
+      }
+
+      return fileUrl;
     } catch (e) {
       _logApi('upload_proof_photo_warn', e.toString());
       return null;
     }
+  }
+
+  Future<String?> _recoverProofPhotoUrl(String orderName) async {
+    for (int attempt = 0; attempt < 3; attempt++) {
+      final String? url = await _fetchLatestAttachedFileUrl(
+        orderName: orderName,
+        attachedField: 'proof_photo',
+      );
+      if (url != null && url.isNotEmpty) {
+        return url;
+      }
+      await Future<void>.delayed(Duration(seconds: attempt + 1));
+    }
+    return null;
+  }
+
+  Future<String?> _fetchLatestAttachedFileUrl({
+    required String orderName,
+    required String attachedField,
+  }) async {
+    final uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/File',
+    ).replace(
+      queryParameters: {
+        'fields': jsonEncode(<String>['file_url']),
+        'filters': jsonEncode([
+          ['File', 'attached_to_doctype', '=', 'External Delivery'],
+          ['File', 'attached_to_name', '=', orderName],
+          ['File', 'attached_to_field', '=', attachedField],
+        ]),
+        'limit_page_length': '1',
+        'order_by': 'creation desc',
+      },
+    );
+
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) {
+      return null;
+    }
+
+    final decoded = jsonDecode(resp.body);
+    if (decoded is! Map<String, dynamic>) return null;
+    final data = decoded['data'];
+    if (data is! List || data.isEmpty) return null;
+    final first = data.first;
+    if (first is! Map<String, dynamic>) return null;
+    final String value = first['file_url']?.toString().trim() ?? '';
+    return value.isEmpty ? null : value;
+  }
+
+  /// Parses the file URL from a Frappe upload_file response body.
+  /// Frappe v13 returns `{"message": "/files/..."}` (string).
+  /// Frappe v14+ returns `{"message": {"file_url": "/files/...", ...}}` (map).
+  String? _extractFileUrl(String responseBody) {
+    try {
+      final decoded = jsonDecode(responseBody);
+      if (decoded is! Map<String, dynamic>) return null;
+      final message = decoded['message'];
+      if (message is Map<String, dynamic>) {
+        final v = message['file_url']?.toString() ?? '';
+        return v.trim().isEmpty ? null : v;
+      }
+      if (message is String) {
+        return message.trim().isEmpty ? null : message;
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<void> clearProofPhoto({required String orderName}) async {
