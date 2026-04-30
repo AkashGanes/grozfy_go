@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
-import '../../core/services/api_service.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
@@ -16,7 +15,6 @@ class OrderStatusScreen extends StatefulWidget {
 }
 
 class _OrderStatusScreenState extends State<OrderStatusScreen> {
-  final ApiService _apiService = ApiService();
   bool _syncing = false;
 
   static const List<OrderProgressStatus> _flow = <OrderProgressStatus>[
@@ -52,21 +50,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
     }
 
-    final bool apiOk = await _apiService.updateDeliveryStatus(
-      order.orderId,
-      _statusApiLabel(next),
-    );
-
-    if (!mounted) return;
-
-    if (!apiOk) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Server sync failed — status saved locally'),
-        ),
-      );
-    }
-
     app.updateOrderStatus(next);
 
     if (!mounted) return;
@@ -98,23 +81,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return OrderStatus.delivered;
       case OrderStatus.cancelled:
         return OrderStatus.cancelled;
-    }
-  }
-
-  String _statusApiLabel(OrderProgressStatus status) {
-    switch (status) {
-      case OrderStatus.accepted:
-        return 'Accepted';
-      case OrderStatus.reachedPickup:
-        return 'Reached Pickup';
-      case OrderStatus.pickedUp:
-        return 'Picked Up';
-      case OrderStatus.outForDelivery:
-        return 'Out For Delivery';
-      case OrderStatus.delivered:
-        return 'Delivered';
-      default:
-        return status.label;
     }
   }
 
