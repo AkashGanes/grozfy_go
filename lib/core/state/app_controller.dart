@@ -470,6 +470,36 @@ class AppController extends ChangeNotifier {
       );
     }
 
+    // Proactively refresh the access token at boot so the first authorised
+    // call doesn't have to bounce off a 401. If we have everything refresh
+    // needs and it still fails, the access/refresh tokens are dead — wipe
+    // local auth state so the splash routes to login instead of leaving a
+    // raw AuthenticationError visible.
+    if (_isLoggedIn &&
+        _refreshToken != null &&
+        _refreshToken!.trim().isNotEmpty &&
+        _clientId != null &&
+        _clientId!.trim().isNotEmpty) {
+      final bool refreshed = await refreshSession();
+      if (!refreshed) {
+        _logApi(
+          'bootstrap',
+          'token refresh failed at boot — clearing auth state',
+        );
+        _isLoggedIn = false;
+        _sessionToken = null;
+        _refreshToken = null;
+        _tokenType = 'Bearer';
+        _clientId = null;
+        _apiKey = null;
+        _apiSecret = null;
+        _profile = null;
+        _profileCompleted = false;
+        _kycCompleted = false;
+        await SecureTokenStorage.deleteAll();
+      }
+    }
+
     if (persistedActiveOrderId != null) {
       unawaited(_restoreActiveOrder(persistedActiveOrderId));
     } else {
@@ -1239,9 +1269,18 @@ class AppController extends ChangeNotifier {
   /// via Frappe's standard OAuth2 `get_token` endpoint.
   /// Returns `true` if the token was refreshed successfully.
   Future<bool> refreshSession() async {
-    if (_isRefreshing) return false;
-    if (_refreshToken == null || _refreshToken!.trim().isEmpty) return false;
-    if (_clientId == null || _clientId!.trim().isEmpty) return false;
+    if (_isRefreshing) {
+      _logApi('refresh_token skip', 'already in flight');
+      return false;
+    }
+    if (_refreshToken == null || _refreshToken!.trim().isEmpty) {
+      _logApi('refresh_token skip', 'refresh_token missing');
+      return false;
+    }
+    if (_clientId == null || _clientId!.trim().isEmpty) {
+      _logApi('refresh_token skip', 'client_id missing');
+      return false;
+    }
 
     _isRefreshing = true;
     try {
