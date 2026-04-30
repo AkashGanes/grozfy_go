@@ -200,6 +200,7 @@ class AppController extends ChangeNotifier {
   String? _orderLoadingError;
   bool _isFetchingActiveOrder = false;
   Timer? _liveLocationTimer;
+  StreamSubscription<Map<String, dynamic>?>? _locationPingSubscription;
   GeoLocation? _partnerLiveLocation;
   String? _activeTripId;
 
@@ -2882,6 +2883,8 @@ class AppController extends ChangeNotifier {
         _acceptedOrders.removeWhere((order) => order.orderId == deliveredOrderId);
         _activeOrder = null;
         _activeTripId = null;
+        _locationPingSubscription?.cancel();
+        _locationPingSubscription = null;
         LocationPingService.stop();
         unawaited(_persistActiveOrderId(null));
         unawaited(_persistActiveTripId(null));
@@ -2911,6 +2914,8 @@ class AppController extends ChangeNotifier {
   void clearActiveOrder() {
     _activeOrder = null;
     _activeTripId = null;
+    _locationPingSubscription?.cancel();
+    _locationPingSubscription = null;
     LocationPingService.stop();
     unawaited(_persistActiveOrderId(null));
     unawaited(_persistActiveTripId(null));
@@ -3273,6 +3278,8 @@ class AppController extends ChangeNotifier {
           status == OrderStatus.pending) {
         _activeOrder = null;
         _activeTripId = null;
+        _locationPingSubscription?.cancel();
+        _locationPingSubscription = null;
         LocationPingService.stop();
         _acceptedOrders.clear();
         await _persistActiveOrderId(null);
@@ -3310,6 +3317,8 @@ class AppController extends ChangeNotifier {
       _logApi('restore_active_order_warn', e.toString());
       _activeOrder = null;
       _activeTripId = null;
+      _locationPingSubscription?.cancel();
+      _locationPingSubscription = null;
       LocationPingService.stop();
       _acceptedOrders.clear();
       await _persistActiveOrderId(null);
@@ -3528,6 +3537,8 @@ class AppController extends ChangeNotifier {
   void stopLiveLocationTracking() {
     _liveLocationTimer?.cancel();
     _liveLocationTimer = null;
+    _locationPingSubscription?.cancel();
+    _locationPingSubscription = null;
     LocationPingService.stop();
   }
 
@@ -3554,6 +3565,15 @@ class AppController extends ChangeNotifier {
       deliveryId: _activeOrder!.orderId,
       authHeader: authHeader,
       baseUrl: ApiConstants.erpBaseUrl,
+    );
+    _locationPingSubscription?.cancel();
+    _locationPingSubscription = LocationPingService.locationUpdates.listen(
+      (data) {
+        if (data == null) return;
+        _currentLatitude = (data['lat'] as num?)?.toDouble();
+        _currentLongitude = (data['lng'] as num?)?.toDouble();
+        _updateLiveLocation();
+      },
     );
   }
 
