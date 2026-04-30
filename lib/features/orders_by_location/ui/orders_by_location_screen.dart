@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../../core/navigation/app_routes.dart';
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
@@ -64,12 +66,25 @@ class _OrdersByLocationScreenState
   }
 
   Future<void> _fetchPage(int pageKey) async {
+    final storeName = ref.read(appControllerProvider).selectedStoreName;
+
+    // Offline: serve all cached orders for the selected store as a single
+    // page. Cache isn't paginated; the dataset is small enough not to be.
+    if (!ConnectivityService().isConnected) {
+      _serveFromCache(pageKey, storeName);
+      return;
+    }
+
     try {
-      final storeName = ref.read(appControllerProvider).selectedStoreName;
       final orders = await _repository.fetchPage(
         limitStart: pageKey,
         storeName: storeName,
       );
+      ConnectivityService().reportNetworkSuccess();
+      // Warm the cache so this list survives a future offline open.
+      await OfflineTripManager()
+          .cacheOrderSummaries(orders.map(_summaryToMap).toList());
+
       final items = <LocationListItem>[];
       for (final order in orders) {
         if (order.storeName != _lastStoreName) {
@@ -85,8 +100,55 @@ class _OrdersByLocationScreenState
         _pagingController.appendPage(items, pageKey + orders.length);
       }
     } catch (e) {
+      if (_isNetworkError(e)) {
+        ConnectivityService().reportNetworkFailure();
+        _serveFromCache(pageKey, storeName);
+        return;
+      }
       _pagingController.error = e;
     }
+  }
+
+  void _serveFromCache(int pageKey, String? storeName) {
+    if (pageKey != 0) {
+      _pagingController.appendLastPage(const []);
+      return;
+    }
+    final cached = OfflineTripManager().getCachedOrderSummaries();
+    final filtered = storeName == null || storeName.isEmpty
+        ? cached
+        : cached.where((o) => o.storeName == storeName).toList();
+    final items = <LocationListItem>[];
+    for (final order in filtered) {
+      if (order.storeName != _lastStoreName) {
+        items.add(StoreHeader(order.storeName));
+        _lastStoreName = order.storeName;
+      }
+      items.add(OrderRow(order));
+    }
+    _pagingController.appendLastPage(items);
+  }
+
+  Map<String, dynamic> _summaryToMap(ExternalDelivery o) => {
+        'name': o.name,
+        'store_url': o.storeUrl,
+        'store_name': o.storeName,
+        'customer_name': o.customerName,
+        'status': o.status,
+        'creation': o.creation,
+        'modified': o.modified,
+      };
+
+  bool _isNetworkError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('socketexception') ||
+        s.contains('network is unreachable') ||
+        s.contains('failed host lookup') ||
+        s.contains('connection failed') ||
+        s.contains('connection refused') ||
+        s.contains('connection closed') ||
+        s.contains('timed out') ||
+        s.contains('clientexception');
   }
 
   Future<void> _refresh() async {
@@ -285,7 +347,7 @@ class _OrdersByLocationScreenState
     final navigator = Navigator.of(context);
 
     try {
-      final tripName = await _repository.createAndSubmitTripForOrders(orders);
+      final tripName = await _repository.createTripForOrders(orders);
       if (!mounted) return;
 
       _exitSelectionMode();

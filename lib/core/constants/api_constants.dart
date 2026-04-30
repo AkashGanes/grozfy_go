@@ -25,8 +25,6 @@ class ApiConstants {
       '$erpBaseUrl/api/resource/External%20Delivery';
   static const String externalDeliveryTripList =
       '$erpBaseUrl/api/resource/External%20Delivery%20Trip';
-  static const String frappeSubmitMethod =
-      '$erpBaseUrl/api/method/frappe.client.submit';
   static const String defaultExternalDeliveryDriver = 'HR-DRI-2026-00001';
 
   // Driver location ping endpoint. Backend exposes a method that accepts

@@ -106,7 +106,7 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
           delivery: delivery,
           scrollController: scrollController,
           apiService: _apiService,
-          onAccept: (name) => _repository.createAndSubmitTripForOrderName(name),
+          onAccept: (name) => _repository.createTripForOrderName(name),
           onNavigateToDelivery: () {
             if (!delivery.hasDropLocation) {
               ScaffoldMessenger.of(context).showSnackBar(

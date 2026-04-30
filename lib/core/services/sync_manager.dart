@@ -59,6 +59,14 @@ class SyncManager {
     });
     _syncTimer?.cancel();
     _syncTimer = Timer.periodic(_syncInterval, (_) => syncAllPendingData());
+
+    // If we boot up online, the connectivity stream's initial event was
+    // already fired before this subscription existed (broadcast streams
+    // don't replay), so kick off an immediate drain. Otherwise queued
+    // items from a previous session would wait up to one _syncInterval.
+    if (await connectivity.checkConnectivity()) {
+      unawaited(syncAllPendingData());
+    }
   }
 
   void _onConnectivityRestored() {
@@ -68,13 +76,22 @@ class SyncManager {
   }
 
   Future<void> syncAllPendingData() async {
+    // Claim the lock synchronously, before any await — otherwise two
+    // concurrent triggers (e.g. boot-time call + connectivity-stream
+    // listener firing at the same moment) both pass the guard, both await
+    // checkConnectivity, then both flip the flag and run the whole flush
+    // in parallel — pushing each pending update twice.
     if (_isSyncing) return;
-    final connectivity = ConnectivityService();
-    if (!await connectivity.checkConnectivity()) return;
-
     _isSyncing = true;
-    _syncStatusController.add(SyncStatus.syncing);
     try {
+      final connectivity = ConnectivityService();
+      if (!await connectivity.checkConnectivity()) return;
+
+      _syncStatusController.add(SyncStatus.syncing);
+      // Recover updates whose previous sync attempt was interrupted (app
+      // kill, network drop) — they're stuck in `syncing` and would be
+      // skipped forever by the per-queue loops without this reset.
+      await _resetStuckSyncingState();
       await _processLocationPingQueue();
       await _processStatusUpdateQueue();
       await _processStopStatusQueue();
@@ -84,6 +101,27 @@ class SyncManager {
       _syncStatusController.add(SyncStatus.error);
     } finally {
       _isSyncing = false;
+    }
+  }
+
+  Future<void> _resetStuckSyncingState() async {
+    int reset = 0;
+    for (final u in _storage.getPendingStatusUpdates()) {
+      if (u.status == SyncStatus.syncing) {
+        await _storage.updateStatusUpdate(u.copyWith(status: SyncStatus.pending));
+        reset++;
+      }
+    }
+    for (final u in _storage.getPendingStopStatusUpdates()) {
+      if (u.status == SyncStatus.syncing) {
+        await _storage.updateStopStatusUpdate(
+          u.copyWith(status: SyncStatus.pending),
+        );
+        reset++;
+      }
+    }
+    if (reset > 0) {
+      debugPrint('[SyncManager] Reset $reset stuck syncing updates to pending');
     }
   }
 
@@ -112,8 +150,14 @@ class SyncManager {
 
     for (final ping in pending) {
       if (ping.retryCount >= _maxRetries) {
-        // Drop after maxRetries — don't let stale pings pile up forever.
-        await _storage.removeLocationPing(ping.id);
+        // Cap retries but never drop silently — keep the ping in storage
+        // marked failed so it stays visible in pendingPingCount instead of
+        // vanishing. UI/metrics can surface stuck pings for manual action.
+        if (ping.status != SyncStatus.failed) {
+          await _storage.addLocationPing(
+            ping.copyWith(status: SyncStatus.failed),
+          );
+        }
         continue;
       }
       try {
@@ -187,9 +231,21 @@ class SyncManager {
           continue;
         }
 
-        await _repository.updateStatus(update.orderName, update.newStatus);
+        // Use set_value rather than PUT /api/resource: External Delivery is
+        // a submittable doctype, and PUT on a submitted (docstatus=1) doc
+        // is rejected by Frappe regardless of the field. set_value works
+        // for any field marked "Allow on Submit" — and silently no-ops
+        // for non-submittable docs too, so it's the safer flush path.
+        await _repository.updateStatusViaSetValue(
+          update.orderName,
+          update.newStatus,
+        );
         await _storage.removeStatusUpdate(update.id);
       } catch (e) {
+        debugPrint(
+          '[SyncManager] Status update flush failed for ${update.orderName} '
+          '(retry ${update.retryCount + 1}/$_maxRetries): $e',
+        );
         await _storage.updateStatusUpdate(
           update.copyWith(
             retryCount: update.retryCount + 1,
@@ -318,6 +374,15 @@ class SyncManager {
       );
 
       try {
+        // Conflict check: if the server already moved this stop into a
+        // terminal state (delivered/failed/etc), drop the local intent
+        // instead of overwriting an authoritative business outcome.
+        final shouldPush = await _checkAndResolveStopConflict(update);
+        if (!shouldPush) {
+          await _storage.removeStopStatusUpdate(update.id);
+          continue;
+        }
+
         await _repository.setStopStatusRaw(
           stopDocType: update.stopDocType,
           stopName: update.stopName,
@@ -326,6 +391,10 @@ class SyncManager {
         );
         await _storage.removeStopStatusUpdate(update.id);
       } catch (e) {
+        debugPrint(
+          '[SyncManager] Stop status flush failed for ${update.stopName} '
+          '(retry ${update.retryCount + 1}/$_maxRetries): $e',
+        );
         await _storage.updateStopStatusUpdate(
           update.copyWith(
             retryCount: update.retryCount + 1,
@@ -335,6 +404,56 @@ class SyncManager {
         );
         await Future.delayed(_backoffFor(update.retryCount));
       }
+    }
+  }
+
+  /// Returns true if the queued stop update should still be pushed; false
+  /// if the server's stop has already reached a terminal status that
+  /// differs from local intent. Mirrors the order-level resolver but
+  /// keyed on the stop's current status rather than a `modified` snapshot
+  /// (the stop child row's modified isn't reliably exposed).
+  Future<bool> _checkAndResolveStopConflict(
+    PendingStopStatusUpdate update,
+  ) async {
+    if (update.parentTripName.isEmpty) return true;
+
+    final trip = await _fetchTripRaw(update.parentTripName);
+    if (trip == null) return true;
+
+    final stops = trip['stops'];
+    if (stops is! List) return true;
+
+    String? serverStatus;
+    for (final s in stops) {
+      if (s is Map && s['name']?.toString() == update.stopName) {
+        serverStatus = s['status']?.toString();
+        break;
+      }
+    }
+    if (serverStatus == null) return true;
+
+    if (_serverAuthoritativeStatuses.contains(serverStatus) &&
+        serverStatus != update.newStatus) {
+      debugPrint(
+        '[SyncManager] Stop conflict on ${update.stopName}: '
+        'local=${update.newStatus} server=$serverStatus serverWon=true',
+      );
+      // Refresh cached trip so the UI reflects the resolved server state.
+      await _storage.cacheTripWithDetails(trip);
+      return false;
+    }
+    return true;
+  }
+
+  Future<Map<String, dynamic>?> _fetchTripRaw(String tripName) async {
+    try {
+      final trip = await _repository.fetchTripDetails(tripName);
+      return <String, dynamic>{
+        ...trip.rawFields,
+        'name': trip.name,
+      };
+    } catch (_) {
+      return null;
     }
   }
 

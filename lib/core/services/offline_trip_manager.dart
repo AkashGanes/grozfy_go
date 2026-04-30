@@ -160,6 +160,47 @@ class OfflineTripManager {
     await _storage.cacheTripWithDetails(_tripToJson(trip));
   }
 
+  /// Caches a freshly-fetched order detail. Used by screens that already
+  /// hold the detail in memory and want to make it available offline.
+  Future<void> cacheOrderDetail(ExternalDeliveryDetail detail) async {
+    await _storage.cacheOrder(_detailToJson(detail));
+  }
+
+  /// Caches order list-summary rows alongside any existing full-detail
+  /// cache. Like cacheTripSummariesPage, this merges to avoid wiping
+  /// rich fields that were cached by the order detail screen.
+  Future<void> cacheOrderSummaries(
+    List<Map<String, dynamic>> summaries,
+  ) async {
+    if (summaries.isEmpty) return;
+    for (final s in summaries) {
+      final name = s['name']?.toString();
+      if (name == null || name.isEmpty) continue;
+      final existing = _storage.getCachedOrder(name) ?? <String, dynamic>{};
+      final merged = <String, dynamic>{
+        ...existing,
+        // Summary fields — these are authoritative when freshly fetched.
+        'name': name,
+        if (s['store_url'] != null) 'store_url': s['store_url'],
+        if (s['store_name'] != null) 'store_name': s['store_name'],
+        if (s['customer_name'] != null) 'customer_name': s['customer_name'],
+        if (s['status'] != null) 'status': s['status'],
+        if (s['creation'] != null) 'creation': s['creation'],
+        if (s['modified'] != null) 'modified': s['modified'],
+      };
+      await _storage.cacheOrder(merged);
+    }
+  }
+
+  /// Returns all cached orders as ExternalDelivery summaries. Suitable
+  /// for list screens that don't need full ExternalDeliveryDetail.
+  List<ExternalDelivery> getCachedOrderSummaries() {
+    return _storage
+        .getCachedOrders()
+        .map((m) => ExternalDelivery.fromJson(m))
+        .toList();
+  }
+
   /// Adds these summaries to the cache without clobbering full trip details
   /// (stops, raw fields) that may have been cached earlier. Summary-only
   /// fields are merged on top of any existing entry — so a list refresh

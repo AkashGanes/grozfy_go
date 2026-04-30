@@ -53,8 +53,7 @@ class _OrderLocationDetailScreenState
       _loading = true;
       _error = null;
     });
-    // Cache-aware: offline → use cached order; online → fetch fresh and
-    // cache; network error → fall back to cache.
+    // Offline first: serve cached order if we have it.
     if (!ConnectivityService().isConnected) {
       final cached = OfflineTripManager().getCachedOrder(widget.order.name);
       setState(() {
@@ -67,27 +66,28 @@ class _OrderLocationDetailScreenState
       });
       return;
     }
+    // Online: hit the repository directly so any error surfaces here.
     try {
-      final detail =
-          await OfflineTripManager().fetchOrder(widget.order.name);
+      final detail = await widget.repository.fetchDetail(widget.order.name);
       ConnectivityService().reportNetworkSuccess();
+      // Persist to the cache so subsequent offline opens succeed.
+      await OfflineTripManager().cacheOrderDetail(detail);
       setState(() {
         _detail = detail;
         _loading = false;
-        _error =
-            detail == null ? 'Order not found.' : null;
       });
     } catch (e) {
       if (_isNetworkError(e)) {
         ConnectivityService().reportNetworkFailure();
         final cached =
             OfflineTripManager().getCachedOrder(widget.order.name);
-        setState(() {
-          _detail = cached;
-          _loading = false;
-          _error = cached == null ? e.toString() : null;
-        });
-        return;
+        if (cached != null) {
+          setState(() {
+            _detail = cached;
+            _loading = false;
+          });
+          return;
+        }
       }
       setState(() {
         _error = e.toString();

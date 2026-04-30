@@ -452,7 +452,7 @@ class ExternalDeliveryRepository {
     }
   }
 
-  Future<String> createAndSubmitTripForOrders(
+  Future<String> createTripForOrders(
     List<ExternalDelivery> orders,
   ) async {
     if (orders.isEmpty) {
@@ -486,30 +486,10 @@ class ExternalDeliveryRepository {
       throw Exception('Trip create API returned unexpected response');
     }
 
-    _logApi(
-      'external_delivery_trip_submit request',
-      'POST ${ApiConstants.frappeSubmitMethod} docname=${createdDoc['name']}',
-    );
-    final submitResp = await _post(
-      Uri.parse(ApiConstants.frappeSubmitMethod),
-      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
-      body: jsonEncode({'doc': createdDoc}),
-    );
-
-    if (!_okCodes.contains(submitResp.statusCode)) {
-      throw Exception(_extractErrorMessage(submitResp));
-    }
-
-    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
-    final submittedDoc = submitData['message'] ?? submitData['data'];
-    if (submittedDoc is! Map<String, dynamic>) {
-      throw Exception('Trip submit API returned unexpected response');
-    }
-
-    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+    return (createdDoc['name'] ?? '').toString();
   }
 
-  Future<String> createAndSubmitTripForOrderName(String orderName) async {
+  Future<String> createTripForOrderName(String orderName) async {
     final createPayload = {
       'driver': await _getLoggedInDriver(),
       'status': 'Draft',
@@ -539,26 +519,10 @@ class ExternalDeliveryRepository {
       throw Exception('Trip create API returned unexpected response');
     }
 
-    final submitResp = await _post(
-      Uri.parse(ApiConstants.frappeSubmitMethod),
-      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
-      body: jsonEncode({'doc': createdDoc}),
-    );
-
-    if (!_okCodes.contains(submitResp.statusCode)) {
-      throw Exception(_extractErrorMessage(submitResp));
-    }
-
-    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
-    final submittedDoc = submitData['message'] ?? submitData['data'];
-    if (submittedDoc is! Map<String, dynamic>) {
-      throw Exception('Trip submit API returned unexpected response');
-    }
-
-    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+    return (createdDoc['name'] ?? '').toString();
   }
 
-  Future<String> createAndSubmitTripForOrder(ExternalDelivery order) async {
+  Future<String> createTripForOrder(ExternalDelivery order) async {
     final createPayload = {
       'driver': await _getLoggedInDriver(),
       'status': 'Draft',
@@ -588,31 +552,13 @@ class ExternalDeliveryRepository {
       throw Exception('Trip create API returned unexpected response');
     }
 
-    _logApi(
-      'external_delivery_trip_submit request',
-      'POST ${ApiConstants.frappeSubmitMethod} docname=${createdDoc['name']}',
-    );
-    final submitResp = await _post(
-      Uri.parse(ApiConstants.frappeSubmitMethod),
-      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
-      body: jsonEncode({'doc': createdDoc}),
-    );
-
-    if (!_okCodes.contains(submitResp.statusCode)) {
-      throw Exception(_extractErrorMessage(submitResp));
-    }
-
-    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
-    final submittedDoc = submitData['message'] ?? submitData['data'];
-    if (submittedDoc is! Map<String, dynamic>) {
-      throw Exception('Trip submit API returned unexpected response');
-    }
-
-    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+    return (createdDoc['name'] ?? '').toString();
   }
 
-  /// Creates and submits a single-stop trip using only the order name string.
-  /// Used by the order acceptance flow in [AppController].
+  /// Creates a single-stop trip using only the order name string.
+  /// Used by the order acceptance flow in [AppController]. The trip lands
+  /// in Draft state — its `status` field carries the lifecycle, since the
+  /// External Delivery Trip doctype is not configured as submittable.
   Future<String> createTripByOrderName(String orderName) async {
     final createPayload = <String, dynamic>{
       'driver': ApiConstants.defaultExternalDeliveryDriver,
@@ -647,31 +593,7 @@ class ExternalDeliveryRepository {
       throw Exception('Trip create API returned unexpected response');
     }
 
-    _logApi(
-      'external_delivery_trip_submit request',
-      'POST ${ApiConstants.frappeSubmitMethod} docname=${createdDoc['name']}',
-    );
-
-    final submitResp = await _post(
-      Uri.parse(ApiConstants.frappeSubmitMethod),
-      headers: <String, String>{
-        ...await _authHeaders(),
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({'doc': createdDoc}),
-    );
-
-    if (!_okCodes.contains(submitResp.statusCode)) {
-      throw Exception(_extractErrorMessage(submitResp));
-    }
-
-    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
-    final submittedDoc = submitData['message'] ?? submitData['data'];
-    if (submittedDoc is! Map<String, dynamic>) {
-      throw Exception('Trip submit API returned unexpected response');
-    }
-
-    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+    return (createdDoc['name'] ?? '').toString();
   }
 
   Future<List<ExternalDeliveryTripSummary>> fetchTripPage({
@@ -799,6 +721,13 @@ class ExternalDeliveryRepository {
       }),
     );
     if (!_okCodes.contains(resp.statusCode)) {
+      // Dump full response body so the server traceback (exc / exc_type)
+      // is visible when set_value is rejected — needed to chase down
+      // server-side hooks/workflows triggered by stop status updates.
+      _logApi(
+        'queued_stop_status_flush_error',
+        'code=${resp.statusCode} body=${resp.body}',
+      );
       throw Exception(_extractErrorMessage(resp));
     }
   }
@@ -1061,8 +990,8 @@ class ExternalDeliveryRepository {
     );
   }
 
-  /// Creates a return trip to the store for the given order and submits it.
-  /// Returns the new trip name.
+  /// Creates a return trip to the store for the given order. Returns the
+  /// new trip name. Lands in Draft — the doctype is not submittable.
   Future<String> createReturnTrip({required String orderName}) async {
     final existingTripName = await _findExistingOpenReturnTrip(orderName);
     if (existingTripName != null) {
@@ -1103,23 +1032,7 @@ class ExternalDeliveryRepository {
       throw Exception('Return trip create API returned unexpected response');
     }
 
-    final submitResp = await _post(
-      Uri.parse(ApiConstants.frappeSubmitMethod),
-      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
-      body: jsonEncode({'doc': createdDoc}),
-    );
-
-    if (!_okCodes.contains(submitResp.statusCode)) {
-      throw Exception(_extractErrorMessage(submitResp));
-    }
-
-    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
-    final submittedDoc = submitData['message'] ?? submitData['data'];
-    if (submittedDoc is! Map<String, dynamic>) {
-      throw Exception('Return trip submit API returned unexpected response');
-    }
-
-    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+    return (createdDoc['name'] ?? '').toString();
   }
 
   Future<String> _languageCode() async {
