@@ -1,11 +1,35 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Secure storage for auth credentials. Wraps `flutter_secure_storage` which
-/// uses the Android Keystore / iOS Keychain. All seven keys here hold
-/// sensitive material and must never live in plain SharedPreferences.
+/// Secure storage for auth credentials. All seven keys here hold sensitive
+/// material and must never live in plain SharedPreferences.
+///
+/// Android: uses `EncryptedSharedPreferences` (AndroidX Security) — survives
+/// app updates and OEM key rotations far better than the raw Keystore. The
+/// `resetOnError` flag drops a corrupt blob silently so callers see a clean
+/// `null` instead of an exception (we'd lose the value either way; better
+/// to fail to "logged out" than to crash).
+///
+/// iOS: `first_unlock_this_device` accessibility means the keychain entry is
+/// readable as soon as the user has unlocked the phone once after boot,
+/// without iCloud sync. Default would be `unlocked` which would fail any
+/// background reads while the screen is locked.
+///
+/// Every read/write/delete is wrapped in try/catch and logged in debug
+/// builds. We never want a flaky platform-side call to silently break the
+/// auth flow — silent nulls are how we ended up with the cold-start
+/// `AuthenticationError` regression.
 class SecureTokenStorage {
-  static const FlutterSecureStorage _storage = FlutterSecureStorage();
+  static const FlutterSecureStorage _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+      resetOnError: true,
+    ),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
 
   static const String accessToken = 'access_token';
   static const String refreshToken = 'refresh_token';
@@ -25,22 +49,45 @@ class SecureTokenStorage {
     clientId,
   ];
 
-  static Future<String?> read(String key) => _storage.read(key: key);
+  static Future<String?> read(String key) async {
+    try {
+      return await _storage.read(key: key);
+    } catch (e, st) {
+      debugPrint('[SecureTokenStorage] read("$key") failed: $e\n$st');
+      return null;
+    }
+  }
 
-  static Future<void> write(String key, String value) =>
-      _storage.write(key: key, value: value);
+  static Future<bool> write(String key, String value) async {
+    try {
+      await _storage.write(key: key, value: value);
+      return true;
+    } catch (e, st) {
+      debugPrint('[SecureTokenStorage] write("$key") failed: $e\n$st');
+      return false;
+    }
+  }
 
-  static Future<void> delete(String key) => _storage.delete(key: key);
+  static Future<void> delete(String key) async {
+    try {
+      await _storage.delete(key: key);
+    } catch (e, st) {
+      debugPrint('[SecureTokenStorage] delete("$key") failed: $e\n$st');
+    }
+  }
 
   static Future<void> deleteAll() async {
     for (final String key in allKeys) {
-      await _storage.delete(key: key);
+      await delete(key);
     }
   }
 
   /// One-time migration: move any of the seven auth keys already present in
   /// plain SharedPreferences into secure storage, then remove them from
-  /// SharedPreferences. Safe to call on every boot.
+  /// SharedPreferences. Safe to call on every boot. Failures during the
+  /// secure-write are logged but don't block the migration — the value
+  /// stays in SharedPreferences for the next attempt instead of being
+  /// orphaned.
   static Future<void> migrateFromPreferences(SharedPreferences prefs) async {
     for (final String key in allKeys) {
       if (!prefs.containsKey(key)) continue;
@@ -50,13 +97,25 @@ class SecureTokenStorage {
         continue;
       }
       final String stringified = existing.toString();
-      if (stringified.isNotEmpty) {
-        final String? already = await _storage.read(key: key);
-        if (already == null || already.isEmpty) {
-          await _storage.write(key: key, value: stringified);
-        }
+      if (stringified.isEmpty) {
+        await prefs.remove(key);
+        continue;
       }
-      await prefs.remove(key);
+      final String? already = await read(key);
+      if (already != null && already.isNotEmpty) {
+        // Secure storage already has a value — drop the plain copy.
+        await prefs.remove(key);
+        continue;
+      }
+      final bool wrote = await write(key, stringified);
+      if (wrote) {
+        await prefs.remove(key);
+      } else {
+        debugPrint(
+          '[SecureTokenStorage] migration kept "$key" in prefs '
+          '(secure write failed; will retry on next boot)',
+        );
+      }
     }
   }
 }
