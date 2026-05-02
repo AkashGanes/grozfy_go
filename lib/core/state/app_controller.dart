@@ -404,6 +404,12 @@ class AppController extends ChangeNotifier {
     _apiKey = _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.apiKey));
     _apiSecret =
         _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.apiSecret));
+    _logApi(
+      'bootstrap',
+      'secure storage hydrate: access=${_sessionToken != null}, '
+          'refresh=${_refreshToken != null}, client=${_clientId != null}, '
+          'apiKey=${_apiKey != null}, apiSecret=${_apiSecret != null}',
+    );
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
