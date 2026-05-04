@@ -93,6 +93,7 @@ class _OrdersByLocationScreenState
   Future<void> _showStorePicker({bool initial = false}) async {
     List<String> stores = [];
     bool loading = true;
+    bool fetchStarted = false;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -103,12 +104,15 @@ class _OrdersByLocationScreenState
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
-            if (loading) {
+            if (loading && !fetchStarted) {
+              fetchStarted = true;
               _repository.fetchStoreNames().then((names) {
                 setModal(() {
                   stores = names;
                   loading = false;
                 });
+              }).catchError((_) {
+                setModal(() => loading = false);
               });
             }
 

@@ -47,6 +47,8 @@ class _OrderLocationDetailScreenState
   double _currentHeading = 0;
   bool _isTracking = false;
   bool _hasArrived = false;
+  bool _followMe = true;
+  bool _arrivalDialogShown = false;
   double _distanceToDestination = 0;
 
   // Route state
@@ -54,7 +56,7 @@ class _OrderLocationDetailScreenState
   bool _isFetchingRoute = false;
   DateTime? _lastRouteFetchAt;
 
-  static const double _arrivalThreshold = 50.0;
+  static const double _arrivalThreshold = 100.0;
   static const String _osrmBaseUrl =
       'https://router.project-osrm.org/route/v1/driving';
   static const Duration _routeRefreshInterval = Duration(seconds: 20);
@@ -68,7 +70,11 @@ class _OrderLocationDetailScreenState
 
   @override
   void dispose() {
+    // Cancel stream FIRST so no more listener callbacks touch _mapController
+    // or call setState after the widget is gone.
     _positionStream?.cancel();
+    _positionStream = null;
+    _isTracking = false;
     _mapController.dispose();
     super.dispose();
   }
@@ -93,6 +99,14 @@ class _OrderLocationDetailScreenState
         }
       });
       await _initializeLocation();
+
+      // If the order is already en route, resume live tracking automatically
+      // so the driver immediately sees their position and distance on reopen.
+      if (mounted &&
+          detail.status.toLowerCase() == 'added to trip' &&
+          _destination != null) {
+        _startTracking();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -145,7 +159,7 @@ class _OrderLocationDetailScreenState
 
   Future<void> _initializeLocation() async {
     final hasPermission = await _checkLocationPermission();
-    if (!hasPermission) return;
+    if (!hasPermission || !mounted) return;
 
     try {
       final position = await Geolocator.getCurrentPosition(
@@ -163,7 +177,7 @@ class _OrderLocationDetailScreenState
         _getRoutePoints();
         _fitMapToPoints();
       } else if (_isMapReady) {
-        _mapController.move(_currentLocation!, 16.0);
+        try { _mapController.move(_currentLocation!, 16.0); } catch (_) {}
       }
     } catch (e) {
       debugPrint('Could not get GPS: $e');
@@ -190,14 +204,13 @@ class _OrderLocationDetailScreenState
     if (_isTracking || _destination == null) return;
 
     final hasPermission = await _checkLocationPermission();
+    if (!mounted) return;
     if (!hasPermission) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Location permission is required to start tracking'),
-          ),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Location permission is required to start tracking'),
+        ),
+      );
       return;
     }
 
@@ -216,10 +229,15 @@ class _OrderLocationDetailScreenState
         });
       } catch (e) {
         debugPrint('Could not get initial GPS for tracking: $e');
+        if (!mounted) return;
       }
     }
 
-    setState(() => _isTracking = true);
+    if (!mounted) return;
+    setState(() {
+      _isTracking = true;
+      _followMe = true;
+    });
 
     if (_currentLocation != null && _polylineCoordinates.isEmpty) {
       _getRoutePoints();
@@ -232,6 +250,8 @@ class _OrderLocationDetailScreenState
       ),
     ).listen(
       (Position position) {
+        if (!mounted) return;
+
         final nextLocation = LatLng(position.latitude, position.longitude);
         final movedMeters = _currentLocation != null
             ? _calculateDistance(
@@ -250,8 +270,10 @@ class _OrderLocationDetailScreenState
 
         _checkArrival();
 
-        if (_isMapReady && _isTracking) {
-          _mapController.move(_currentLocation!, 16.0);
+        if (_isMapReady && _isTracking && _followMe) {
+          try {
+            _mapController.move(_currentLocation!, 16.0);
+          } catch (_) {}
         }
 
         if (_shouldRefreshRoute()) {
@@ -267,7 +289,8 @@ class _OrderLocationDetailScreenState
   void _stopTracking() {
     _positionStream?.cancel();
     _positionStream = null;
-    setState(() => _isTracking = false);
+    _isTracking = false;
+    if (mounted) setState(() {});
   }
 
   // ---------------------------------------------------------------------------
@@ -294,7 +317,7 @@ class _OrderLocationDetailScreenState
           _lastRouteFetchAt = DateTime.now();
           _updateRemainingRoute();
         });
-      } else {
+      } else if (mounted) {
         _setFallbackRoute();
       }
     } catch (e) {
@@ -311,14 +334,10 @@ class _OrderLocationDetailScreenState
     required LatLng from,
     required LatLng to,
   }) async {
+    // Build URL manually to avoid Uri.replace stripping the path
+    final coords = '${from.longitude},${from.latitude};${to.longitude},${to.latitude}';
     final uri = Uri.parse(
-      '$_osrmBaseUrl/${from.longitude},${from.latitude};${to.longitude},${to.latitude}',
-    ).replace(
-      queryParameters: const {
-        'overview': 'full',
-        'geometries': 'geojson',
-        'steps': 'false',
-      },
+      '$_osrmBaseUrl/$coords?overview=full&geometries=geojson&steps=false&alternatives=true',
     );
 
     final response = await http.get(uri).timeout(const Duration(seconds: 12));
@@ -328,10 +347,20 @@ class _OrderLocationDetailScreenState
     final routes = payload['routes'] as List<dynamic>?;
     if (routes == null || routes.isEmpty) return null;
 
-    final firstRoute = routes.first as Map<String, dynamic>;
-    final routeDistance =
-        (firstRoute['distance'] as num?)?.toDouble() ?? 0;
-    final geometry = firstRoute['geometry'] as Map<String, dynamic>?;
+    // Pick the shortest route if alternatives were returned
+    Map<String, dynamic> bestRoute = routes.first as Map<String, dynamic>;
+    double bestDistance = (bestRoute['distance'] as num?)?.toDouble() ?? double.infinity;
+    for (int i = 1; i < routes.length; i++) {
+      final r = routes[i] as Map<String, dynamic>;
+      final d = (r['distance'] as num?)?.toDouble() ?? double.infinity;
+      if (d < bestDistance) {
+        bestRoute = r;
+        bestDistance = d;
+      }
+    }
+
+    final routeDistance = bestDistance;
+    final geometry = bestRoute['geometry'] as Map<String, dynamic>?;
     final coordinates = geometry?['coordinates'] as List<dynamic>?;
     if (coordinates == null || coordinates.length < 2) return null;
 
@@ -361,7 +390,7 @@ class _OrderLocationDetailScreenState
   }
 
   void _setFallbackRoute() {
-    if (_currentLocation == null || _destination == null) return;
+    if (_currentLocation == null || _destination == null || !mounted) return;
     const numPoints = 30;
     final fallback = <LatLng>[];
     for (int i = 0; i <= numPoints; i++) {
@@ -426,33 +455,130 @@ class _OrderLocationDetailScreenState
   // ---------------------------------------------------------------------------
 
   void _fitMapToPoints() {
-    if (!_isMapReady) return;
+    if (!_isMapReady || !mounted) return;
     final points = <LatLng>[];
     if (_currentLocation != null) points.add(_currentLocation!);
     if (_destination != null) points.add(_destination!);
     if (points.length < 2) {
-      if (points.length == 1) _mapController.move(points.first, 16.0);
+      if (points.length == 1) {
+        try { _mapController.move(points.first, 16.0); } catch (_) {}
+      }
       return;
     }
-    _mapController.fitCamera(
-      CameraFit.coordinates(
-        coordinates: points,
-        padding: const EdgeInsets.fromLTRB(48, 80, 48, 300),
-      ),
-    );
+    try {
+      _mapController.fitCamera(
+        CameraFit.coordinates(
+          coordinates: points,
+          padding: const EdgeInsets.fromLTRB(48, 80, 48, 300),
+        ),
+      );
+    } catch (_) {}
   }
 
   void _checkArrival() {
-    if (_destination == null || _currentLocation == null || _hasArrived) return;
+    if (_destination == null || _currentLocation == null) return;
     final distance = _calculateDistance(
       _currentLocation!.latitude, _currentLocation!.longitude,
       _destination!.latitude, _destination!.longitude,
     );
+    final wasArrived = _hasArrived;
+    final nowArrived = distance < _arrivalThreshold;
+
     setState(() {
       _distanceToDestination = distance;
-      _hasArrived = distance < _arrivalThreshold;
+      _hasArrived = nowArrived;
     });
-    if (_hasArrived) _stopTracking();
+
+    // First time crossing the arrival threshold while actively delivering —
+    // auto-show delivery confirmation dialog.
+    if (!wasArrived &&
+        nowArrived &&
+        mounted &&
+        !_arrivalDialogShown &&
+        _isTracking &&
+        _detail != null &&
+        _detail!.status.toLowerCase() == 'added to trip') {
+      _arrivalDialogShown = true;
+      _showDeliveryConfirmationDialog();
+    }
+  }
+
+  Future<void> _showDeliveryConfirmationDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        icon: const Icon(
+          Icons.location_on_rounded,
+          color: Color(0xFF2E7D32),
+          size: 48,
+        ),
+        title: const Text(
+          'You have arrived!',
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${_formatDistance(_distanceToDestination)} from destination',
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.black54,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Have you handed over the order to the customer?',
+              style: TextStyle(fontSize: 15),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.black54,
+              side: const BorderSide(color: Colors.black26),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Not Yet'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.check_circle_rounded, size: 20),
+            label: const Text('Confirm Delivery'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D32),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (confirmed == true) {
+      _onSlideDelivered();
+    }
+    // If "Not Yet" — dialog dismisses, driver continues tracking.
+    // The slide button is still visible as a fallback to confirm later.
   }
 
   // ---------------------------------------------------------------------------
@@ -473,6 +599,13 @@ class _OrderLocationDetailScreenState
 
   double _toRadians(double deg) => deg * pi / 180;
 
+  String _formatDistance(double meters) {
+    if (meters >= 1000) {
+      return '${(meters / 1000).toStringAsFixed(1)} km';
+    }
+    return '${meters.toStringAsFixed(0)} m';
+  }
+
   double _calculateBearing(LatLng from, LatLng to) {
     final lat1 = _toRadians(from.latitude);
     final lat2 = _toRadians(to.latitude);
@@ -486,43 +619,118 @@ class _OrderLocationDetailScreenState
   // Status helpers
   // ---------------------------------------------------------------------------
 
-  void _onSlideStartDelivery() {
-    _updateStatus('Out for Delivery');
+  void _onSlideAcceptAndStart() {
+    _updateStatus('Added to Trip');
     _startTracking();
   }
 
-  void _onSlideReached() {
+  Future<void> _onSlideDelivered() async {
     _stopTracking();
-    // Status stays 'Out for Delivery', just show delivered option
-    setState(() => _hasArrived = true);
+    setState(() => _updating = true);
+
+    try {
+      await widget.repository.updateStatus(widget.order.name, 'Delivered');
+      await _refreshDetail();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _updating = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to mark delivered: $e')),
+        );
+      }
+      return; // Don't show success dialog on failure
+    }
+
+    if (!mounted) return;
+    setState(() => _updating = false);
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        icon: const Icon(
+          Icons.check_circle_rounded,
+          color: Color(0xFF2E7D32),
+          size: 52,
+        ),
+        title: const Text('Delivered!'),
+        content: const Text(
+          'Order has been delivered successfully.',
+          textAlign: TextAlign.center,
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D32),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 32, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
   }
 
-  void _onSlideDelivered() {
-    _updateStatus('Delivered').then((_) {
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 32),
-              SizedBox(width: 8),
-              Text('Delivered!'),
-            ],
-          ),
-          content: const Text('Order delivered successfully!'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pop(context);
-              },
-              child: const Text('OK'),
-            ),
+  Future<void> _onCancelDelivery() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded,
+                color: Color(0xFFE65100), size: 28),
+            SizedBox(width: 10),
+            Text('Cancel Delivery?'),
           ],
         ),
-      );
-    });
+        content: const Text(
+          'Are you sure you want to cancel this delivery? '
+          'This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep Delivery'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFC62828),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancel Delivery'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    _stopTracking();
+    await _updateStatus('Failed');
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Delivery cancelled'),
+        backgroundColor: Color(0xFFC62828),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -607,10 +815,16 @@ class _OrderLocationDetailScreenState
           initialZoom: 15.0,
           onMapReady: () {
             _isMapReady = true;
+            if (!mounted) return;
             if (_currentLocation != null && _destination != null) {
               _fitMapToPoints();
             } else if (_currentLocation != null) {
-              _mapController.move(_currentLocation!, 16.0);
+              try { _mapController.move(_currentLocation!, 16.0); } catch (_) {}
+            }
+          },
+          onPositionChanged: (camera, hasGesture) {
+            if (hasGesture && _isTracking && _followMe) {
+              setState(() => _followMe = false);
             }
           },
         ),
@@ -622,21 +836,28 @@ class _OrderLocationDetailScreenState
           if (_polylineCoordinates.isNotEmpty)
             PolylineLayer(
               polylines: [
+                // Route shadow for depth
                 Polyline(
                   points: _polylineCoordinates,
-                  color: Colors.blue,
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.3),
+                  strokeWidth: 8.0,
+                ),
+                // Main route line
+                Polyline(
+                  points: _polylineCoordinates,
+                  color: AppTheme.oceanBlue,
                   strokeWidth: 5.0,
                 ),
               ],
             ),
           MarkerLayer(
             markers: [
-              // Partner location marker
+              // Partner location marker (two-wheeler)
               if (_currentLocation != null)
                 Marker(
                   point: _currentLocation!,
-                  width: 52,
-                  height: 52,
+                  width: 56,
+                  height: 56,
                   child: Transform.rotate(
                     angle: _toRadians(_currentHeading),
                     child: Container(
@@ -647,15 +868,15 @@ class _OrderLocationDetailScreenState
                         boxShadow: [
                           BoxShadow(
                             color: AppTheme.oceanBlue.withValues(alpha: 0.4),
-                            blurRadius: 8,
+                            blurRadius: 10,
                             spreadRadius: 2,
                           ),
                         ],
                       ),
                       child: const Icon(
-                        Icons.delivery_dining_rounded,
+                        Icons.two_wheeler,
                         color: Colors.white,
-                        size: 26,
+                        size: 28,
                       ),
                     ),
                   ),
@@ -696,27 +917,32 @@ class _OrderLocationDetailScreenState
           child: GestureDetector(
             onTap: () {
               if (_isMapReady && _currentLocation != null) {
-                _mapController.move(_currentLocation!, 16.0);
+                setState(() => _followMe = true);
+                try { _mapController.move(_currentLocation!, 16.0); } catch (_) {}
               }
             },
             child: Container(
-              width: 40,
-              height: 40,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: _followMe && _isTracking
+                    ? AppTheme.oceanBlue
+                    : Colors.white,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
+                    color: Colors.black.withValues(alpha: 0.15),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
                 ],
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.my_location_rounded,
-                color: AppTheme.oceanBlue,
-                size: 20,
+                color: _followMe && _isTracking
+                    ? Colors.white
+                    : AppTheme.oceanBlue,
+                size: 22,
               ),
             ),
           ),
@@ -731,30 +957,40 @@ class _OrderLocationDetailScreenState
             child: Center(
               child: Container(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
+                  color: _hasArrived
+                      ? const Color(0xFF2E7D32)
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(22),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 8,
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 10,
                     ),
                   ],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.directions, size: 16, color: Colors.blue),
+                    Icon(
+                      _hasArrived
+                          ? Icons.check_circle_rounded
+                          : Icons.two_wheeler,
+                      size: 18,
+                      color: _hasArrived ? Colors.white : AppTheme.oceanBlue,
+                    ),
                     const SizedBox(width: 6),
                     Text(
-                      _distanceToDestination >= 1000
-                          ? '${(_distanceToDestination / 1000).toStringAsFixed(1)} km away'
-                          : '${_distanceToDestination.toStringAsFixed(0)} m away',
-                      style: const TextStyle(
+                      _hasArrived
+                          ? 'Arrived · ${_formatDistance(_distanceToDestination)}'
+                          : '${_formatDistance(_distanceToDestination)} away',
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
-                        color: AppTheme.nightBlue,
+                        color: _hasArrived
+                            ? Colors.white
+                            : AppTheme.nightBlue,
                       ),
                     ),
                   ],
@@ -979,8 +1215,10 @@ class _OrderLocationDetailScreenState
                     const SizedBox(height: 14),
                   ],
 
-                  // Action slide buttons
-                  if (s != 'delivered' && s != 'cancelled') ...[
+                  // Action buttons based on ERPNext status:
+                  // Pending → Added to Trip → Delivered / Failed
+                  if (s != 'delivered' && s != 'failed' &&
+                      s != 'returned' && s != 'return initiated') ...[
                     if (_updating)
                       const Padding(
                         padding: EdgeInsets.only(bottom: 12),
@@ -996,42 +1234,32 @@ class _OrderLocationDetailScreenState
                         ),
                       ),
 
-                    // Accept order (pending / added to trip)
-                    if (!_updating &&
-                        (s == 'pending' || s == '' || s == 'added to trip'))
+                    // Accept & start delivery (pending)
+                    if (!_updating && (s == 'pending' || s == ''))
                       _SlideToAction(
                         key: const ValueKey('accept'),
-                        label: 'Slide to Accept Order',
-                        color: AppTheme.oceanBlue,
-                        icon: Icons.check_circle_rounded,
-                        onSlideComplete: () => _updateStatus('Accepted'),
-                      ),
-
-                    // Start delivery (accepted)
-                    if (!_updating && s == 'accepted')
-                      _SlideToAction(
-                        key: const ValueKey('start'),
-                        label: 'Slide to Start Delivery',
+                        label: 'Slide to Accept & Start Delivery',
                         color: const Color(0xFF4CAF50),
                         icon: Icons.local_shipping_rounded,
-                        onSlideComplete: _onSlideStartDelivery,
+                        onSlideComplete: _onSlideAcceptAndStart,
                       ),
 
-                    // Reached (out for delivery, not arrived)
+                    // Added to Trip — en route, waiting to reach destination
                     if (!_updating &&
-                        s == 'out for delivery' &&
+                        s == 'added to trip' &&
                         !_hasArrived)
-                      _SlideToAction(
-                        key: const ValueKey('reached'),
-                        label: 'Slide to Mark Reached',
+                      _InfoPill(
+                        key: const ValueKey('enroute'),
+                        icon: Icons.two_wheeler,
+                        label: _distanceToDestination > 0
+                            ? 'En route — ${_formatDistance(_distanceToDestination)} to destination'
+                            : 'En route to destination',
                         color: const Color(0xFFFF9800),
-                        icon: Icons.flag_rounded,
-                        onSlideComplete: _onSlideReached,
                       ),
 
-                    // Delivered (out for delivery, arrived)
+                    // Arrived near destination (within 100m) — confirm delivered
                     if (!_updating &&
-                        s == 'out for delivery' &&
+                        s == 'added to trip' &&
                         _hasArrived)
                       _SlideToAction(
                         key: const ValueKey('delivered'),
@@ -1039,6 +1267,26 @@ class _OrderLocationDetailScreenState
                         color: const Color(0xFF4CAF50),
                         icon: Icons.done_all_rounded,
                         onSlideComplete: _onSlideDelivered,
+                      ),
+
+                    // Cancel delivery — available while en route
+                    if (!_updating && s == 'added to trip')
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4, bottom: 4),
+                        child: OutlinedButton.icon(
+                          onPressed: _onCancelDelivery,
+                          icon: const Icon(Icons.cancel_outlined, size: 18),
+                          label: const Text('Cancel Delivery'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFC62828),
+                            side: const BorderSide(
+                                color: Color(0xFFC62828), width: 1.2),
+                            minimumSize: const Size.fromHeight(48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                        ),
                       ),
                   ],
 
@@ -1058,6 +1306,28 @@ class _OrderLocationDetailScreenState
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                               color: Colors.green[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  if (s == 'failed')
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.cancel_rounded,
+                              color: Color(0xFFC62828), size: 24),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Delivery Cancelled',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.red[700],
                             ),
                           ),
                         ],
@@ -1210,6 +1480,63 @@ class _SlideToActionState extends State<_SlideToAction> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Info pill — shown while en route, before arriving at the destination
+// =============================================================================
+
+class _InfoPill extends StatelessWidget {
+  const _InfoPill({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        height: 60,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

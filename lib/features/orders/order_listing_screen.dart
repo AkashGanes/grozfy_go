@@ -81,7 +81,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                       options: MapOptions(
                         initialCenter: const LatLng(28.6139, 77.2090),
                         initialZoom: 12.0,
-                        onTap: (_, __) {},
+                        onTap: (_, latLng) {},
                       ),
                       children: [
                         TileLayer(

@@ -2816,14 +2816,6 @@ class AppController extends ChangeNotifier {
     super.dispose();
   }
 
-  void _updateLiveCoordinates() {
-    final double baseLat = 28.6139;
-    final double baseLng = 77.2090;
-    final double lat = baseLat + (_random.nextDouble() - 0.5) / 100;
-    final double lng = baseLng + (_random.nextDouble() - 0.5) / 100;
-    _liveCoordinates = '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}';
-  }
-
   Future<void> fetchLoggedInEmployeeDriverProfile({
     bool forceRefresh = false,
   }) async {
