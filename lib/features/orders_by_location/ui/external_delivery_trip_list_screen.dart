@@ -25,7 +25,6 @@ class _ExternalDeliveryTripListScreenState
   PagingController<int, TripListItem>? _pagingController;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  String? _lastDriver;
 
   @override
   void didChangeDependencies() {
@@ -216,7 +215,6 @@ class _ExternalDeliveryTripListScreenState
       appControllerProvider.select((c) => c.languageCode),
       (previous, next) {
         if (previous != null && previous != next) {
-          _lastDriver = null;
           _pagingController?.refresh();
         }
       },
@@ -290,63 +288,114 @@ class _TripCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    final total = trip.totalStops;
+    final done = trip.completedStops.clamp(0, total > 0 ? total : 0);
+    final progress = total > 0 ? done / total : 0.0;
+    final isComplete = total > 0 && done >= total;
+    final progressColor = isComplete ? const Color(0xFF2E7D32) : colorScheme.primary;
+
+    final Color badgeColor;
+    switch (trip.docstatus) {
+      case 2:
+        badgeColor = Colors.red;
+      case 1:
+        badgeColor = colorScheme.primary;
+      default:
+        badgeColor = Colors.black45;
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: GestureDetector(
         onTap: onTap,
         child: FrostCard(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.local_shipping_outlined,
-                color: colorScheme.primary,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      trip.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: AppTheme.nightBlue,
+              Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.local_shipping_outlined,
+                      color: colorScheme.primary,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          trip.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
+                            color: AppTheme.nightBlue,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _formatDate(trip.tripDate),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: badgeColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
+                    ),
+                    child: Text(
+                      _docstatusLabel(context, trip.docstatus),
+                      style: TextStyle(
+                        color: badgeColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Date: ${_formatDate(trip.tripDate)} • Stops: ${trip.completedStops}/${trip.totalStops}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.black54,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: Colors.black12,
+                        valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                        minHeight: 6,
                       ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: colorScheme.primary.withValues(alpha: 0.35),
                   ),
-                ),
-                child: Text(
-                  _docstatusLabel(context, trip.docstatus),
-                  style: TextStyle(
-                    color: colorScheme.primary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                  const SizedBox(width: 10),
+                  Text(
+                    '$done/$total stops',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isComplete ? const Color(0xFF2E7D32) : Colors.black54,
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),
