@@ -6,7 +6,7 @@ import '../models/app_models.dart';
 import 'widget_data.dart';
 
 class PartnerWidgetManager {
-  static const String _appGroupId = 'com.example.delivery_partner_app.widget';
+  static const String _appGroupId = 'com.lyncspace.grozfygo.widget';
   static const String _androidWidgetName = 'PartnerWidgetProvider';
   static const String _widgetDataKey = 'partner_widget_data';
 
@@ -43,7 +43,7 @@ class PartnerWidgetManager {
         isOnline: isOnline,
         todayEarnings: todayEarnings,
         activeOrderId: activeOrder?.id,
-        activeOrderStatus: activeOrder?.orderStatus.label,
+        activeOrderStatus: activeOrder?.orderStatus.localizationKey,
         lastUpdated: DateTime.now(),
       );
 

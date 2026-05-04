@@ -1,21 +1,29 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/navigation/app_routes.dart';
+import '../../core/state/app_controller.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
 
 class KycDocumentsScreen extends ConsumerStatefulWidget {
-  const KycDocumentsScreen({super.key});
+  const KycDocumentsScreen({super.key, this.licenseReuploadMode = false});
+
+  final bool licenseReuploadMode;
 
   @override
   ConsumerState<KycDocumentsScreen> createState() => _KycDocumentsScreenState();
 }
 
 class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
+  final _formKey = GlobalKey<FormState>();
+
   final TextEditingController _licenseNumberCtrl = TextEditingController();
   final TextEditingController _aadharNoCtrl = TextEditingController();
   final TextEditingController _panNoCtrl = TextEditingController();
@@ -33,7 +41,48 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
   String? _panFilePath;
   String? _panFileName;
 
+  // Existing server-side URLs from a previous submission
+  String? _existingLicenseUrl;
+  String? _existingAadharUrl;
+  String? _existingPanUrl;
+
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _applyExistingValues(ref.read(appControllerProvider));
+
+    // If KYC is done but values aren't in memory yet (e.g. submitted before
+    // this version was deployed), fetch the driver doc from the server.
+    final app = ref.read(appControllerProvider);
+    if (app.kycCompleted && app.existingAadharNo == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await ref
+            .read(appControllerProvider)
+            .fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+        if (!mounted) return;
+        setState(() {
+          _applyExistingValues(ref.read(appControllerProvider));
+        });
+      });
+    }
+  }
+
+  void _applyExistingValues(AppController app) {
+    if (_licenseNumberCtrl.text.isEmpty && app.existingLicenseNo != null) {
+      _licenseNumberCtrl.text = app.existingLicenseNo!;
+    }
+    if (_aadharNoCtrl.text.isEmpty && app.existingAadharNo != null) {
+      _aadharNoCtrl.text = app.existingAadharNo!;
+    }
+    if (_panNoCtrl.text.isEmpty && app.existingPanNo != null) {
+      _panNoCtrl.text = app.existingPanNo!;
+    }
+    _existingLicenseUrl ??= app.existingLicenseUrl;
+    _existingAadharUrl ??= app.existingAadharUrl;
+    _existingPanUrl ??= app.existingPanUrl;
+  }
 
   @override
   void dispose() {
@@ -43,8 +92,10 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     super.dispose();
   }
 
-  bool get _isFormValid =>
-      _aadharNoCtrl.text.trim().isNotEmpty && _aadharFilePath != null;
+  bool get _isFormValid => widget.licenseReuploadMode
+      ? _licenseNumberCtrl.text.trim().isNotEmpty && _licenseFilePath != null
+      : _aadharNoCtrl.text.trim().isNotEmpty &&
+            (_aadharFilePath != null || _existingAadharUrl != null);
 
   Future<void> _pickDate({required bool isIssuing}) async {
     final DateTime now = DateTime.now();
@@ -65,12 +116,78 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     }
   }
 
+  static const int _maxFileSizeBytes = 5 * 1024 * 1024;
+  static const List<String> _allowedExtensions = ['jpg', 'jpeg', 'png'];
+
+  static const Map<String, String> _fieldLabel = {
+    'license': 'Driving License',
+    'aadhar': 'Aadhaar Card',
+    'pan': 'PAN Card',
+  };
+
   Future<void> _pickFile(String field) async {
-    final XFile? file = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 80,
+    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      showDragHandle: true,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Upload ${_fieldLabel[field]}',
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.camera_alt_rounded)),
+                title: const Text('Take Photo'),
+                subtitle: const Text('Use camera to capture document'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.photo_library_rounded)),
+                title: const Text('Choose from Gallery'),
+                subtitle: const Text('Pick an existing image'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
-    if (file == null) return;
+
+    if (source == null || !mounted) return;
+
+    final XFile? file = await _picker.pickImage(
+      source: source,
+      imageQuality: 85,
+      maxWidth: 1500,
+      maxHeight: 1500,
+    );
+    if (file == null || !mounted) return;
+
+    // File type check
+    final String ext = file.name.split('.').last.toLowerCase();
+    if (!_allowedExtensions.contains(ext)) {
+      showInfoSnack(context, 'Only JPG and PNG images are accepted');
+      return;
+    }
+
+    // File size check
+    final int sizeBytes = await File(file.path).length();
+    if (!mounted) return;
+    if (sizeBytes > _maxFileSizeBytes) {
+      showInfoSnack(context, 'Image must be smaller than 5 MB');
+      return;
+    }
+
     setState(() {
       switch (field) {
         case 'license':
@@ -90,11 +207,46 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
   Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
     final app = ref.read(appControllerProvider);
 
     setState(() => _busy = true);
 
-    // Upload files first (driver_name may be null for new users — that's OK)
+    // ── License reupload mode: only upload license and resubmit ──
+    if (widget.licenseReuploadMode) {
+      final String? licenseUrl = await app.uploadFile(
+        filePath: _licenseFilePath!,
+        fileName: _licenseFileName ?? 'license.jpg',
+        doctype: 'Driver',
+        docname: app.driverName,
+        fieldname: 'custom_license_attachment',
+      );
+      if (!mounted) return;
+      if (licenseUrl == null) {
+        setState(() => _busy = false);
+        showInfoSnack(context, 'Failed to upload license attachment');
+        return;
+      }
+
+      final String? error = await app.resubmitLicense(
+        licenseNumber: _licenseNumberCtrl.text.trim(),
+        licenseAttachmentUrl: licenseUrl,
+        issuingDate: _issuingDate != null ? _formatDate(_issuingDate!) : null,
+        expiryDate: _expiryDate != null ? _formatDate(_expiryDate!) : null,
+      );
+      if (!mounted) return;
+      setState(() => _busy = false);
+      if (error != null) {
+        showInfoSnack(context, error);
+        return;
+      }
+      showInfoSnack(context, 'License uploaded successfully');
+      Navigator.of(context)
+          .pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
+      return;
+    }
+
+    // ── Normal KYC mode ──
     String? licenseUrl;
     String? aadharUrl;
     String? panUrl;
@@ -144,18 +296,17 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
       }
     }
 
-    // Submit KYC — creates Driver if it doesn't exist
     final String? error = await app.submitDriverKyc(
       aadharNo: _aadharNoCtrl.text.trim(),
-      aadharAttachmentUrl: aadharUrl ?? '',
+      aadharAttachmentUrl: aadharUrl ?? _existingAadharUrl ?? '',
       licenseNumber: _licenseNumberCtrl.text.trim().isEmpty
           ? null
           : _licenseNumberCtrl.text.trim(),
-      licenseAttachmentUrl: licenseUrl,
+      licenseAttachmentUrl: licenseUrl ?? _existingLicenseUrl,
       issuingDate: _issuingDate != null ? _formatDate(_issuingDate!) : null,
       expiryDate: _expiryDate != null ? _formatDate(_expiryDate!) : null,
       panNo: _panNoCtrl.text.trim().isEmpty ? null : _panNoCtrl.text.trim(),
-      panAttachmentUrl: panUrl,
+      panAttachmentUrl: panUrl ?? _existingPanUrl,
     );
 
     if (!mounted) return;
@@ -173,25 +324,65 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool reupload = widget.licenseReuploadMode;
+    final app = ref.watch(appControllerProvider);
+    final bool kycDone = app.kycCompleted;
+
     return AppShell(
-      title: 'KYC Verification',
-      subtitle: 'Upload identity & license details',
+      title: reupload ? 'Re-upload License' : 'KYC Verification',
+      subtitle: reupload
+          ? 'Update your driving license details'
+          : 'Upload identity & license details',
       loading: _busy,
-      child: Column(
+      child: Form(
+        key: _formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // ---- Warning banner (reupload mode only) ----
+          if (reupload) ...[
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.mango.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: AppTheme.mango.withValues(alpha: 0.30),
+                ),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: AppTheme.mango),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Your driving license is missing or expired. Please upload to continue.',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+
           // ---- License Section ----
           const SectionLabel('Driving License'),
           FrostCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
+                TextFormField(
                   controller: _licenseNumberCtrl,
                   textCapitalization: TextCapitalization.characters,
+                  validator: (v) => validateLicenseNumber(v, required: reupload),
+                  enabled: !kycDone,
+                  onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(
                     labelText: 'License Number',
                     prefixIcon: Icon(Icons.badge_outlined),
+                    helperText: ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -199,6 +390,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   label: 'License Attachment',
                   fileName: _licenseFileName,
                   onPick: () => _pickFile('license'),
+                  existingUrl: _existingLicenseUrl,
+                  enabled: !kycDone,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -207,7 +400,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                       child: _DateTile(
                         label: 'Issuing Date',
                         value: _issuingDate,
-                        onTap: () => _pickDate(isIssuing: true),
+                        onTap: kycDone ? () {} : () => _pickDate(isIssuing: true),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -215,7 +408,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                       child: _DateTile(
                         label: 'Expiry Date',
                         value: _expiryDate,
-                        onTap: () => _pickDate(isIssuing: false),
+                        onTap: kycDone ? () {} : () => _pickDate(isIssuing: false),
                       ),
                     ),
                   ],
@@ -225,22 +418,26 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
           ),
           const SizedBox(height: 20),
 
-          // ---- Aadhar Section ----
+          // ---- Aadhar & PAN (normal KYC mode only) ----
+          if (!reupload) ...[
           const SectionLabel('Aadhar (Required)'),
           FrostCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
+                TextFormField(
                   controller: _aadharNoCtrl,
                   keyboardType: TextInputType.number,
                   maxLength: 12,
+                  enabled: !kycDone,
                   onChanged: (_) => setState(() {}),
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  validator: validateAadhar,
                   decoration: const InputDecoration(
                     labelText: 'Aadhar Number',
                     prefixIcon: Icon(Icons.credit_card_rounded),
                     counterText: '',
+                    helperText: ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -249,6 +446,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   fileName: _aadharFileName,
                   onPick: () => _pickFile('aadhar'),
                   required: true,
+                  existingUrl: _existingAadharUrl,
+                  enabled: !kycDone,
                 ),
               ],
             ),
@@ -261,14 +460,17 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
+                TextFormField(
                   controller: _panNoCtrl,
                   textCapitalization: TextCapitalization.characters,
                   maxLength: 10,
+                  validator: validatePAN,
+                  enabled: !kycDone,
                   decoration: const InputDecoration(
                     labelText: 'PAN Number',
                     prefixIcon: Icon(Icons.account_balance_wallet_outlined),
                     counterText: '',
+                    helperText: ' ',
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -276,22 +478,32 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   label: 'PAN Attachment',
                   fileName: _panFileName,
                   onPick: () => _pickFile('pan'),
+                  existingUrl: _existingPanUrl,
+                  enabled: !kycDone,
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
-
-          // ---- Submit ----
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isFormValid && !_busy ? _submit : null,
-              child: Text(_busy ? 'Submitting...' : 'Submit KYC & Continue'),
+          ], // end if (!reupload)
+          if (!kycDone || reupload) ...[
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isFormValid && !_busy ? _submit : null,
+                child: Text(
+                  _busy
+                      ? 'Submitting...'
+                      : reupload
+                          ? 'Submit License'
+                          : 'Submit KYC & Continue',
+                ),
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 20),
         ],
+      ),
       ),
     );
   }
@@ -355,19 +567,25 @@ class _AttachTile extends StatelessWidget {
     required this.fileName,
     required this.onPick,
     this.required = false,
+    this.existingUrl,
+    this.enabled = true,
   });
 
   final String label;
   final String? fileName;
   final VoidCallback onPick;
   final bool required;
+  final String? existingUrl;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
-    final bool hasFile = fileName != null;
+    final bool hasNewFile = fileName != null;
+    final bool hasExisting = existingUrl != null && !hasNewFile;
+    final bool hasFile = hasNewFile || hasExisting;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
-      onTap: onPick,
+      onTap: enabled ? onPick : null,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
         decoration: BoxDecoration(
@@ -399,7 +617,7 @@ class _AttachTile extends StatelessWidget {
                       fontSize: 13,
                     ),
                   ),
-                  if (hasFile)
+                  if (hasNewFile)
                     Text(
                       fileName!,
                       style: const TextStyle(
@@ -407,6 +625,17 @@ class _AttachTile extends StatelessWidget {
                         color: Colors.black54,
                       ),
                       overflow: TextOverflow.ellipsis,
+                    )
+                  else if (hasExisting)
+                    const Row(
+                      children: [
+                        Icon(Icons.cloud_done_outlined, size: 13, color: Colors.green),
+                        SizedBox(width: 4),
+                        Text(
+                          'Already uploaded',
+                          style: TextStyle(fontSize: 11, color: Colors.green),
+                        ),
+                      ],
                     )
                   else
                     const Text(
@@ -416,7 +645,7 @@ class _AttachTile extends StatelessWidget {
                 ],
               ),
             ),
-            if (hasFile)
+            if (hasFile && enabled)
               const Icon(Icons.edit, size: 16, color: Colors.black38),
           ],
         ),

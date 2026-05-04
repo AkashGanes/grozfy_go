@@ -69,6 +69,17 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
     Navigator.of(context).pushReplacementNamed(AppRoutes.dashboard);
   }
 
+  String _taskSummary(DeliveryOrder order) {
+    final List<String> parts = <String>[
+      if (order.storeName.trim().isNotEmpty) 'Store: ${order.storeName.trim()}',
+      if (order.customerName.trim().isNotEmpty)
+        'Customer: ${order.customerName.trim()}',
+      if (order.deliveryAddress.trim().isNotEmpty)
+        'Address: ${order.deliveryAddress.trim()}',
+    ];
+    return parts.join('\n');
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_order == null) {
@@ -93,8 +104,7 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
               ],
             ),
             const SizedBox(height: 14),
-            _detailRow('Pickup', _order!.pickup),
-            _detailRow('Drop', _order!.drop),
+            _detailRow('Task Summary', _taskSummary(_order!)),
             _detailRow(
               'Distance',
               '${_order!.distanceKm.toStringAsFixed(1)} km',
@@ -139,7 +149,7 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
             ),
           ),
         ],

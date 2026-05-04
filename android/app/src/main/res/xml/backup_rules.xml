@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android < 12 (API 28-30) uses android:fullBackupContent.
+  We exclude flutter_secure_storage's encrypted SharedPreferences file from
+  auto-backup. If the OS were to restore that blob on a different device or
+  after a Keystore master key rotation, the Keystore cipher cannot decrypt
+  it and the user is silently logged out. By excluding it from backup the
+  restore cycle leaves the file alone — first launch on a new device just
+  has no token, the user logs in once, and then it's stable.
+
+  Other shared_prefs (theme, language, profile completeness, etc.) are
+  still backed up.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="FlutterSecureStorage.xml" />
+    <exclude domain="sharedpref" path="VGsyhUc5MgGRAilOwoP0d8.xml" />
+</full-backup-content>

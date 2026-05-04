@@ -12,9 +12,17 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
+import '../localization/app_strings.dart';
+import '../localization/localized_text.dart';
 import '../models/app_models.dart';
+import '../navigation/app_routes.dart';
 import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
+import '../services/secure_token_storage.dart';
+import '../utils/validators.dart' as app_validators;
+import '../../features/orders_by_location/model/external_delivery.dart';
+import '../../features/orders_by_location/model/external_delivery_detail.dart';
+import '../../features/orders_by_location/repository/external_delivery_repository.dart';
 import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
@@ -35,15 +43,21 @@ class AppController extends ChangeNotifier {
   static final Uri _uploadFileUri = Uri.parse(
     'http://209.182.232.35:8004/api/method/frappe.core.api.billing_auth_v4.upload_kyc_file',
   );
+  static final Uri _refreshTokenUri = Uri.parse(
+    'http://209.182.232.35:8004/api/method/frappe.integrations.oauth2.get_token',
+  );
+  static final Uri _revokeTokenUri = Uri.parse(
+    'http://209.182.232.35:8004/api/method/frappe.integrations.oauth2.revoke_token',
+  );
+  static final Uri _serverLogoutUri = Uri.parse(
+    'http://209.182.232.35:8004/api/method/logout',
+  );
   static const String _prefLanguageCode = 'language_code';
-  static const String _prefAccessToken = 'access_token';
-  static const String _prefRefreshToken = 'refresh_token';
-  static const String _prefTokenType = 'token_type';
-  static const String _prefExpiresIn = 'expires_in';
   static const String _prefMobile = 'partner_mobile';
   static const String _prefEmail = 'partner_email';
   static const String _prefFullName = 'partner_full_name';
   static const String _prefProfileImagePath = 'partner_profile_image_path';
+  static const String _prefServerProfileImageUrl = 'server_profile_image_url';
   static const String _prefRememberMe = 'remember_me';
   static const String _prefCurrentLat = 'current_lat';
   static const String _prefCurrentLng = 'current_lng';
@@ -52,14 +66,28 @@ class AppController extends ChangeNotifier {
   static const String _prefProfileCompleted = 'profile_completed';
   static const String _prefDriverName = 'driver_name';
   static const String _prefKycCompleted = 'kyc_completed';
+  static const String _prefKycLicenseNo = 'kyc_license_no';
+  static const String _prefKycAadharNo = 'kyc_aadhar_no';
+  static const String _prefKycPanNo = 'kyc_pan_no';
+  static const String _prefKycLicenseUrl = 'kyc_license_url';
+  static const String _prefKycAadharUrl = 'kyc_aadhar_url';
+  static const String _prefKycPanUrl = 'kyc_pan_url';
   static const String _prefVehicleName = 'vehicle_name';
   static const String _prefVehicleLicensePlate = 'vehicle_license_plate';
+  static const String _prefVehicleRawJson = 'vehicle_raw_json';
   static const String _prefBankDocName = 'bank_doc_name';
   static const String _prefBankAccountName = 'bank_account_name';
+  static const String _prefBankRawJson = 'bank_raw_json';
   static const String _prefIsOnline = 'is_online';
+  static const String _prefPermForeground = 'perm_foreground_location';
+  static const String _prefPermBackground = 'perm_background_location';
+  static const String _prefPermNotification = 'perm_notification';
+  static const String _prefLicenseRequiresReupload =
+      'license_requires_reupload';
   static const String _prefThemeMode = 'theme_mode';
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
+  static const String _prefActiveOrderId = 'active_order_id';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 200;
   static const int _profileImageMaxDimension = 4096;
@@ -101,10 +129,22 @@ class AppController extends ChangeNotifier {
   bool _rememberMe = false;
   bool _profileCompleted = false;
   bool _kycCompleted = false;
+  bool _licenseRequiresReupload = false;
   String? _sessionToken;
   String _tokenType = 'Bearer';
+  String? _refreshToken;
+  String? _clientId;
+  String? _apiKey;
+  String? _apiSecret;
   String? _configVersion;
   String? _driverName;
+  String? _existingLicenseNo;
+  String? _existingAadharNo;
+  String? _existingPanNo;
+  String? _existingLicenseUrl;
+  String? _existingAadharUrl;
+  String? _existingPanUrl;
+  bool _isRefreshing = false;
 
   DateTime? _lastOtpRequestAt;
 
@@ -127,6 +167,7 @@ class AppController extends ChangeNotifier {
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
+  bool _availabilitySyncing = false;
   bool _isTracking = false;
   int _trackingInterval = 10;
   String _liveCoordinates = '28.6139, 77.2090';
@@ -135,6 +176,7 @@ class AppController extends ChangeNotifier {
   String? _currentLocationLabel;
   String? _selectedStoreName;
   String? _profileImagePath;
+  String? _serverProfileImageUrl;
   StreamSubscription<Position>? _positionStream;
 
   ThemeMode _themeMode = ThemeMode.system;
@@ -152,11 +194,11 @@ class AppController extends ChangeNotifier {
   DeliveryOrder? _activeOrder;
   final List<DeliveryOrder> _availableOrders = <DeliveryOrder>[];
   final List<DeliveryOrder> _acceptedOrders = <DeliveryOrder>[];
+  final ExternalDeliveryRepository _orderRepository =
+      ExternalDeliveryRepository();
   bool _isLoadingOrders = false;
   String? _orderLoadingError;
-  int _retryCount = 0;
-  static const int _maxRetries = 3;
-  static const Duration _retryDelay = Duration(seconds: 2);
+  bool _isFetchingActiveOrder = false;
   Timer? _liveLocationTimer;
   GeoLocation? _partnerLiveLocation;
 
@@ -177,6 +219,8 @@ class AppController extends ChangeNotifier {
   bool get bootstrapped => _bootstrapped;
   bool get isLoggedIn => _isLoggedIn;
   String? get sessionToken => _sessionToken;
+  String? get apiKey => _apiKey;
+  String? get apiSecret => _apiSecret;
   bool get rememberMe => _rememberMe;
   bool get profileCompleted => _profileCompleted;
   bool get kycCompleted => _kycCompleted;
@@ -204,6 +248,7 @@ class AppController extends ChangeNotifier {
       Set<String>.unmodifiable(_vehicleRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
+  bool get availabilitySyncing => _availabilitySyncing;
   bool get isTracking => _isTracking;
   int get trackingInterval => _trackingInterval;
   String get liveCoordinates => _liveCoordinates;
@@ -212,6 +257,7 @@ class AppController extends ChangeNotifier {
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
+  String? get serverProfileImageUrl => _serverProfileImageUrl;
   ThemeMode get themeMode => _themeMode;
   Color get backgroundColor => Color(_backgroundColorValue);
   Color get accentColor => Color(_accentColorValue);
@@ -219,6 +265,38 @@ class AppController extends ChangeNotifier {
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
   DeliveryOrder? get activeOrder => _activeOrder;
+
+  void createMockActiveOrder() {
+    if (_activeOrder == null) {
+      _activeOrder = DeliveryOrder(
+        orderId: '#OD${3000 + _random.nextInt(999)}',
+        customerName: 'Sneha Gupta',
+        customerPhone: '9876512345',
+        deliveryAddress: 'Saket, New Delhi - 110017',
+        storeId: 'STORE200',
+        storeName: 'Pizza Palace',
+        storeContact: '9876598765',
+        storeAddress: 'Dwarka, New Delhi - 110075',
+        orderItems: <OrderItem>[
+          const OrderItem(name: 'Pepperoni Pizza', quantity: 2, price: 450),
+          const OrderItem(name: 'Garlic Bread', quantity: 1, price: 120),
+          const OrderItem(name: 'Cola', quantity: 2, price: 60),
+        ],
+        orderStatus: OrderStatus.accepted,
+        latitude: 28.5692,
+        longitude: 77.1538,
+        pickup: 'Dwarka, New Delhi',
+        drop: 'Saket, New Delhi',
+        deliveryInstructions: 'Ring bell twice',
+        paymentMode: 'Online',
+        distanceKm: 5.2,
+        estimatedEarnings: 145,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+      );
+      notifyListeners();
+    }
+  }
+
   EarningsSummary get earnings => _earnings;
   PerformanceMetrics get performance => _performance;
   List<AppNotice> get notices => List<AppNotice>.unmodifiable(_notices);
@@ -229,6 +307,12 @@ class AppController extends ChangeNotifier {
   bool get isInitialized => _isInitialized;
 
   String? get driverName => _driverName;
+  String? get existingLicenseNo => _existingLicenseNo;
+  String? get existingAadharNo => _existingAadharNo;
+  String? get existingPanNo => _existingPanNo;
+  String? get existingLicenseUrl => _existingLicenseUrl;
+  String? get existingAadharUrl => _existingAadharUrl;
+  String? get existingPanUrl => _existingPanUrl;
   String? get registrationToken => _registrationToken;
   String? get pendingRegistrationMobile => _pendingRegistrationMobile;
 
@@ -237,6 +321,7 @@ class AppController extends ChangeNotifier {
   );
 
   bool get isKycComplete => _kycCompleted;
+  bool get licenseRequiresReupload => _licenseRequiresReupload;
 
   bool get canGoOnline =>
       _kycCompleted &&
@@ -248,46 +333,46 @@ class AppController extends ChangeNotifier {
   ProfileCompleteness get profileCompleteness {
     final List<ProfileCompletenessItem> items = <ProfileCompletenessItem>[
       ProfileCompletenessItem(
-        name: 'Basic Profile',
-        description: 'Name, mobile & email',
+        name: 'profile_basic_profile',
+        description: 'profile_basic_profile_desc',
         isCompleted: _profile != null && _profile!.fullName.isNotEmpty,
-        route: null,
+        route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
-        name: 'Profile Photo',
-        description: 'Add a profile picture',
+        name: 'profile_photo',
+        description: 'profile_photo_desc',
         isCompleted: _profileImagePath != null,
-        route: null,
+        route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
-        name: 'KYC Documents',
-        description: 'ID proof & driving license',
+        name: 'kyc_documents',
+        description: 'kyc_documents_desc',
         isCompleted: _kycCompleted,
-        route: '/kyc-documents',
+        route: AppRoutes.kycDocuments,
       ),
       ProfileCompletenessItem(
-        name: 'Vehicle Details',
-        description: 'Register your vehicle',
+        name: 'vehicle_details',
+        description: 'vehicle_details_desc',
         isCompleted: _vehicle != null,
-        route: '/vehicle-details',
+        route: AppRoutes.vehicleDetails,
       ),
       ProfileCompletenessItem(
-        name: 'Bank Account',
-        description: 'Add bank for payouts',
+        name: 'bank_account',
+        description: 'bank_account_desc',
         isCompleted: _bank != null,
-        route: '/bank-setup',
+        route: AppRoutes.bankSetup,
       ),
       ProfileCompletenessItem(
-        name: 'Delivery Zone',
-        description: 'Select your working area',
+        name: 'delivery_zone',
+        description: 'delivery_zone_desc',
         isCompleted: hasSelectedLocation,
-        route: '/current-location',
+        route: AppRoutes.currentLocation,
       ),
       ProfileCompletenessItem(
-        name: 'Permissions',
-        description: 'Location & notifications',
+        name: 'permissions',
+        description: 'permissions_desc',
         isCompleted: _permissionState.allGranted,
-        route: '/permission',
+        route: AppRoutes.permission,
       ),
     ];
 
@@ -308,20 +393,67 @@ class AppController extends ChangeNotifier {
     _configVersion = 'cfg_2026_02_16';
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await SecureTokenStorage.migrateFromPreferences(prefs);
     _languageCode = prefs.getString(_prefLanguageCode) ?? '';
-    _sessionToken = prefs.getString(_prefAccessToken);
-    _tokenType = _nullIfBlank(prefs.getString(_prefTokenType)) ?? 'Bearer';
+    _sessionToken = await SecureTokenStorage.read(
+      SecureTokenStorage.accessToken,
+    );
+    _tokenType =
+        _nullIfBlank(
+          await SecureTokenStorage.read(SecureTokenStorage.tokenType),
+        ) ??
+        'Bearer';
+    _refreshToken = _nullIfBlank(
+      await SecureTokenStorage.read(SecureTokenStorage.refreshToken),
+    );
+    _clientId = _nullIfBlank(
+      await SecureTokenStorage.read(SecureTokenStorage.clientId),
+    );
+    _apiKey = _nullIfBlank(
+      await SecureTokenStorage.read(SecureTokenStorage.apiKey),
+    );
+    _apiSecret = _nullIfBlank(
+      await SecureTokenStorage.read(SecureTokenStorage.apiSecret),
+    );
+    _logApi(
+      'bootstrap',
+      'secure storage hydrate: access=${_sessionToken != null}, '
+          'refresh=${_refreshToken != null}, client=${_clientId != null}, '
+          'apiKey=${_apiKey != null}, apiSecret=${_apiSecret != null}',
+    );
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
+    _existingLicenseNo = _nullIfBlank(prefs.getString(_prefKycLicenseNo));
+    _existingAadharNo = _nullIfBlank(prefs.getString(_prefKycAadharNo));
+    _existingPanNo = _nullIfBlank(prefs.getString(_prefKycPanNo));
+    _existingLicenseUrl = _nullIfBlank(prefs.getString(_prefKycLicenseUrl));
+    _existingAadharUrl = _nullIfBlank(prefs.getString(_prefKycAadharUrl));
+    _existingPanUrl = _nullIfBlank(prefs.getString(_prefKycPanUrl));
+    final String? bankRawJson = _nullIfBlank(prefs.getString(_prefBankRawJson));
+    if (bankRawJson != null) {
+      final Map<String, dynamic> decoded = _decodeJsonMap(bankRawJson);
+      if (decoded.isNotEmpty) {
+        _submittedBankRaw = decoded;
+        _bank = _bankFromApiData(decoded);
+      }
+    }
+    final String? vehicleRawJson = _nullIfBlank(
+      prefs.getString(_prefVehicleRawJson),
+    );
+    if (vehicleRawJson != null) {
+      final Map<String, dynamic> decoded = _decodeJsonMap(vehicleRawJson);
+      if (decoded.isNotEmpty) {
+        _submittedVehicleRaw = decoded;
+        _vehicle = _vehicleFromApiData(decoded);
+      }
+    }
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
+    final String? persistedActiveOrderId = _nullIfBlank(
+      prefs.getString(_prefActiveOrderId),
+    );
 
     await PartnerWidgetManager.initialize();
-    await PartnerWidgetManager.updateWidget(
-      isOnline: _isOnline,
-      todayEarnings: _earnings.today,
-      activeOrder: _activeOrder,
-    );
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
     _currentLongitude = prefs.getDouble(_prefCurrentLng);
     _currentLocationLabel = _nullIfBlank(
@@ -330,12 +462,22 @@ class AppController extends ChangeNotifier {
     _selectedStoreName = _nullIfBlank(prefs.getString(_prefSelectedStore));
     _driverName = _nullIfBlank(prefs.getString(_prefDriverName));
     _profileImagePath = _nullIfBlank(prefs.getString(_prefProfileImagePath));
+    _serverProfileImageUrl = _nullIfBlank(
+      prefs.getString(_prefServerProfileImageUrl),
+    );
     final int themeModeIndex =
         prefs.getInt(_prefThemeMode) ?? ThemeMode.system.index;
     _themeMode =
         ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)];
     _backgroundColorValue = prefs.getInt(_prefBackgroundColor) ?? 0xFFF0F4FA;
     _accentColorValue = prefs.getInt(_prefAccentColor) ?? 0xFF1C4E80;
+    _permissionState = PermissionState(
+      foregroundLocation: prefs.getBool(_prefPermForeground) ?? false,
+      backgroundLocation: prefs.getBool(_prefPermBackground) ?? false,
+      notification: prefs.getBool(_prefPermNotification) ?? false,
+    );
+    _licenseRequiresReupload =
+        prefs.getBool(_prefLicenseRequiresReupload) ?? false;
     _isLoggedIn = _sessionToken != null;
     if (_isLoggedIn) {
       final String fullName =
@@ -349,6 +491,49 @@ class AppController extends ChangeNotifier {
       );
     }
 
+    // Proactively refresh the access token at boot so the first authorised
+    // call doesn't have to bounce off a 401. If we have everything refresh
+    // needs and it still fails, the access/refresh tokens are dead — wipe
+    // local auth state so the splash routes to login instead of leaving a
+    // raw AuthenticationError visible.
+    if (_isLoggedIn &&
+        _refreshToken != null &&
+        _refreshToken!.trim().isNotEmpty &&
+        _clientId != null &&
+        _clientId!.trim().isNotEmpty) {
+      final bool refreshed = await refreshSession();
+      if (!refreshed) {
+        _logApi(
+          'bootstrap',
+          'token refresh failed at boot — clearing auth state',
+        );
+        _isLoggedIn = false;
+        _sessionToken = null;
+        _refreshToken = null;
+        _tokenType = 'Bearer';
+        _clientId = null;
+        _apiKey = null;
+        _apiSecret = null;
+        _profile = null;
+        _profileCompleted = false;
+        _kycCompleted = false;
+        await SecureTokenStorage.deleteAll();
+      }
+    }
+
+    if (persistedActiveOrderId != null) {
+      unawaited(_restoreActiveOrder(persistedActiveOrderId));
+    } else {
+      _activeOrder = null;
+      _acceptedOrders.clear();
+    }
+
+    await PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
+
     await syncPermissionsFromOS();
 
     _bootstrapped = true;
@@ -357,6 +542,22 @@ class AppController extends ChangeNotifier {
     unawaited(FCMService().subscribe(this));
 
     notifyListeners();
+
+    // Background-fetch backend data so profile completeness is correct on open
+    if (_isLoggedIn) {
+      unawaited(_backgroundSync());
+    }
+  }
+
+  /// Fetches profile first (so _driverName is set), then hydrates vehicle
+  /// and bank in parallel. Used on bootstrap, login, and registration so the
+  /// profile completeness section is correct without a manual refresh.
+  Future<void> _backgroundSync() async {
+    await fetchLoggedInEmployeeDriverProfile();
+    await Future.wait(<Future<void>>[
+      hydrateVehicleFromBackend(),
+      hydrateBankFromBackend(),
+    ]);
   }
 
   Future<void> initializeConnectivity() async {
@@ -411,9 +612,12 @@ class AppController extends ChangeNotifier {
   }
 
   void setLanguage(String code) {
-    _languageCode = code;
+    final String normalized = AppStrings.isSupportedLanguageCode(code)
+        ? code
+        : 'en';
+    _languageCode = normalized;
     _writePref((SharedPreferences prefs) {
-      return prefs.setString(_prefLanguageCode, code);
+      return prefs.setString(_prefLanguageCode, normalized);
     });
     notifyListeners();
   }
@@ -492,6 +696,107 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<String?> updateProfileAndSync({
+    String? fullName,
+    String? email,
+    String? mobile,
+  }) async {
+    await updateProfile(fullName: fullName, email: email, mobile: mobile);
+
+    final String? normalizedName = _nullIfBlank(fullName);
+    final String? normalizedEmail = _nullIfBlank(email);
+    final String? normalizedMobile = _nullIfBlank(mobile);
+
+    try {
+      if (_loggedProfileDetails?.driver == null) {
+        await fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+      }
+
+      final String? driverName = _nullIfBlank(
+        _loggedProfileDetails?.driver?['name']?.toString(),
+      );
+      if (driverName == null) {
+        return 'Basic information saved on this device. Driver link missing for backend sync.';
+      }
+
+      final Map<String, dynamic> driverPayload = <String, dynamic>{};
+      if (normalizedName != null) {
+        driverPayload['full_name'] = normalizedName;
+      }
+      if (normalizedMobile != null) {
+        driverPayload['cell_number'] = normalizedMobile;
+      }
+      if (email != null) {
+        driverPayload['email'] = normalizedEmail ?? '';
+      }
+
+      if (driverPayload.isNotEmpty) {
+        final Uri driverUri = Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/Driver/${Uri.encodeComponent(driverName)}',
+        );
+        final Map<String, dynamic> updatedDriver = await authorizedPutJson(
+          driverUri,
+          driverPayload,
+        );
+        final Map<String, dynamic>? refreshedDriver = _extractResourceData(
+          updatedDriver,
+        );
+        if (refreshedDriver != null) {
+          _loggedProfileDetails = LoggedPartnerProfileDetails(
+            loggedUser: _loggedProfileDetails?.loggedUser,
+            employee: _loggedProfileDetails?.employee,
+            driver: refreshedDriver,
+          );
+          notifyListeners();
+        }
+      }
+
+      final String? employeeName = await _resolveEmployeeNameForProfileSync();
+      if (employeeName != null) {
+        final Map<String, dynamic> employeePayload =
+            await _buildEmployeeProfileUpdatePayload(
+              fullName: normalizedName,
+              email: email != null ? normalizedEmail : '',
+              mobile: normalizedMobile,
+            );
+        if (employeePayload.isNotEmpty) {
+          final Uri employeeUri = Uri.parse(
+            '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
+          );
+          final Map<String, dynamic> updatedEmployee = await authorizedPutJson(
+            employeeUri,
+            employeePayload,
+          );
+          final Map<String, dynamic>? refreshedEmployee = _extractResourceData(
+            updatedEmployee,
+          );
+          if (refreshedEmployee != null) {
+            _loggedProfileDetails = LoggedPartnerProfileDetails(
+              loggedUser: _loggedProfileDetails?.loggedUser,
+              employee: refreshedEmployee,
+              driver: _loggedProfileDetails?.driver,
+            );
+            notifyListeners();
+          }
+        }
+      }
+
+      final String? userName = _resolveUserNameForProfileSync();
+      if (userName != null) {
+        await _updateUserProfileAndMaybeRename(
+          currentUserName: userName,
+          fullName: normalizedName,
+          email: email != null ? normalizedEmail : null,
+          mobile: normalizedMobile,
+        );
+      }
+
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
+  }
+
   Future<void> setProfileImagePath(String? path) async {
     _profileImagePath = _nullIfBlank(path);
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -501,6 +806,57 @@ class AppController extends ChangeNotifier {
       await prefs.remove(_prefProfileImagePath);
     }
     notifyListeners();
+  }
+
+  Future<String?> removeProfileImageAndSync() async {
+    if (_profileImageSyncing) {
+      return 'Profile image update is already in progress';
+    }
+
+    _profileImageSyncing = true;
+    _profileImageSyncError = null;
+    notifyListeners();
+
+    try {
+      await setProfileImagePath(null);
+
+      final String? employeeName = await _resolveEmployeeNameForProfileSync();
+      if (employeeName != null) {
+        final Uri employeeUri = Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
+        );
+        final Map<String, dynamic> payload = await authorizedPutJson(
+          employeeUri,
+          <String, dynamic>{'image': ''},
+        );
+        final Map<String, dynamic>? refreshedEmployee = _extractResourceData(
+          payload,
+        );
+        _loggedProfileDetails = LoggedPartnerProfileDetails(
+          loggedUser: _loggedProfileDetails?.loggedUser,
+          employee: refreshedEmployee ?? _loggedProfileDetails?.employee,
+          driver: _loggedProfileDetails?.driver,
+        );
+      }
+
+      await _persistServerProfileImageUrl(null);
+
+      String? userName = _resolveUserNameForProfileSync();
+      if (userName == null) {
+        try {
+          userName = await _fetchLoggedUser();
+        } catch (_) {}
+      }
+      await _syncUserImageField(userName: userName, imageUrl: null);
+      _profileImageSyncError = null;
+      return null;
+    } catch (e) {
+      _profileImageSyncError = e.toString().replaceFirst('Exception: ', '');
+      return _profileImageSyncError;
+    } finally {
+      _profileImageSyncing = false;
+      notifyListeners();
+    }
   }
 
   Future<String?> updateProfileImageAndSync({
@@ -529,45 +885,84 @@ class AppController extends ChangeNotifier {
       final String localPath = await _copyProfileImageToAppStorage(sourcePath);
       await setProfileImagePath(localPath);
 
-      if (_loggedProfileDetails?.driver == null) {
-        await fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
-      }
-      final String? employeeName = _nullIfBlank(
-        _loggedProfileDetails?.driver?['employee']?.toString(),
-      );
-      if (employeeName == null) {
-        _profileImageSyncError =
-            'Image saved on this device. Employee link missing for web sync.';
-        return _profileImageSyncError;
+      // Resolve identifiers (force-fetches profile if not yet loaded).
+      final String? employeeName = await _resolveEmployeeNameForProfileSync();
+      String? userName = _resolveUserNameForProfileSync();
+      if (userName == null) {
+        try {
+          userName = await _fetchLoggedUser();
+        } catch (_) {}
       }
 
       final Uri uploadUri = Uri.parse(
         '${ApiConstants.erpBaseUrl}/api/method/upload_file',
       );
-      final Map<String, dynamic> uploadPayload = await _authorizedUploadFile(
-        uri: uploadUri,
-        filePath: localPath,
-        fields: <String, String>{
-          'is_private': '0',
-          'doctype': 'Employee',
-          'docname': employeeName,
-          'fieldname': 'image',
-        },
-      );
 
-      final String? fileUrl = _extractUploadedFileUrl(uploadPayload);
-      if (fileUrl == null) {
+      String? fileUrl;
+
+      if (employeeName != null) {
+        final Map<String, dynamic> uploadPayload = await _authorizedUploadFile(
+          uri: uploadUri,
+          filePath: localPath,
+          fields: <String, String>{
+            'is_private': '0',
+            'doctype': 'Employee',
+            'docname': employeeName,
+            'fieldname': 'image',
+            'attached_to_doctype': 'Employee',
+            'attached_to_name': employeeName,
+            'attached_to_field': 'image',
+          },
+        );
+        fileUrl = _extractUploadedFileUrl(uploadPayload);
+        if (fileUrl == null) {
+          throw Exception(
+            'Image uploaded but file URL missing in server response',
+          );
+        }
+        await _updateEmployeeImage(
+          employeeName: employeeName,
+          imageUrl: fileUrl,
+        );
+      } else if (userName != null) {
+        final Map<String, dynamic> uploadPayload = await _authorizedUploadFile(
+          uri: uploadUri,
+          filePath: localPath,
+          fields: <String, String>{
+            'is_private': '0',
+            'doctype': 'User',
+            'docname': userName,
+            'fieldname': 'user_image',
+            'attached_to_doctype': 'User',
+            'attached_to_name': userName,
+            'attached_to_field': 'user_image',
+          },
+        );
+        fileUrl = _extractUploadedFileUrl(uploadPayload);
+        if (fileUrl == null) {
+          throw Exception(
+            'Image uploaded but file URL missing in server response',
+          );
+        }
+      } else {
         throw Exception(
-          'Image uploaded but file URL missing in server response',
+          'No employee or user account linked — cannot sync image to web',
         );
       }
 
-      final Uri employeeUri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
+      // Always cache the server URL locally so the avatar can fall back to it
+      // even if the web-sync call below fails.
+      await _persistServerProfileImageUrl(fileUrl);
+
+      // Sync to User.user_image — errors here are non-fatal (local image works).
+      final String? syncError = await _syncUserImageField(
+        userName: userName,
+        imageUrl: fileUrl,
       );
-      await authorizedPutJson(employeeUri, <String, dynamic>{'image': fileUrl});
-      _profileImageSyncError = null;
-      return null;
+      _profileImageSyncError = syncError;
+      // Return the sync error so the UI snack bar shows it.
+      // The local image is already saved — only web sync may have failed.
+      return syncError;
     } catch (e) {
       _profileImageSyncError = e.toString().replaceFirst('Exception: ', '');
       return _profileImageSyncError;
@@ -716,10 +1111,7 @@ class AppController extends ChangeNotifier {
   }
 
   String? validateMobile(String mobile) {
-    if (!RegExp(r'^[6-9]\d{9}$').hasMatch(mobile.trim())) {
-      return 'Enter a valid 10-digit mobile number';
-    }
-    return null;
+    return app_validators.validateMobile(mobile);
   }
 
   Future<String> sendOtp(String mobile) async {
@@ -748,7 +1140,7 @@ class AppController extends ChangeNotifier {
       final http.Response response = await http
           .post(
             _sendOtpUri,
-            headers: const <String, String>{'Accept': 'application/json'},
+            headers: _requestHeaders(),
             body: <String, String>{
               'mobile_no': mobile.trim(),
               'store_id': _storeId,
@@ -818,7 +1210,7 @@ class AppController extends ChangeNotifier {
       final http.Response response = await http
           .post(
             _verifyOtpUri,
-            headers: const <String, String>{'Accept': 'application/json'},
+            headers: _requestHeaders(),
             body: <String, String>{
               'mobile_no': mobile.trim(),
               'otp': otp.trim(),
@@ -893,6 +1285,8 @@ class AppController extends ChangeNotifier {
       unawaited(FCMService().subscribe(this));
 
       notifyListeners();
+      unawaited(_backgroundSync());
+
       return null;
     } catch (e) {
       _logApi('verify_whatsapp_otp error', e.toString());
@@ -900,6 +1294,91 @@ class AppController extends ChangeNotifier {
         return 'Request timed out. Please try again.';
       }
       return 'Unable to connect. Check internet and try again.';
+    }
+  }
+
+  /// Attempts to refresh the session using the stored refresh token
+  /// via Frappe's standard OAuth2 `get_token` endpoint.
+  /// Returns `true` if the token was refreshed successfully.
+  Future<bool> refreshSession() async {
+    if (_isRefreshing) {
+      _logApi('refresh_token skip', 'already in flight');
+      return false;
+    }
+    if (_refreshToken == null || _refreshToken!.trim().isEmpty) {
+      _logApi('refresh_token skip', 'refresh_token missing');
+      return false;
+    }
+    if (_clientId == null || _clientId!.trim().isEmpty) {
+      _logApi('refresh_token skip', 'client_id missing');
+      return false;
+    }
+
+    _isRefreshing = true;
+    try {
+      _logApi('refresh_token request', 'POST $_refreshTokenUri');
+      final http.Response response = await http
+          .post(
+            _refreshTokenUri,
+            headers: _requestHeaders(
+              contentType: 'application/x-www-form-urlencoded',
+            ),
+            body: <String, String>{
+              'grant_type': 'refresh_token',
+              'refresh_token': _refreshToken!,
+              'client_id': _clientId!,
+            },
+          )
+          .timeout(_networkTimeout);
+
+      _logApi(
+        'refresh_token response',
+        'status=${response.statusCode} body=${response.body}',
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return false;
+      }
+
+      final Map<String, dynamic> data = _decodeJsonMap(response.body);
+
+      final String? newToken = _nullIfBlank(data['access_token']?.toString());
+      if (newToken == null) return false;
+
+      _sessionToken = newToken;
+      _tokenType = _nullIfBlank(data['token_type']?.toString()) ?? _tokenType;
+      final String? newRefresh = _nullIfBlank(
+        data['refresh_token']?.toString(),
+      );
+      if (newRefresh != null) {
+        _refreshToken = newRefresh;
+      }
+
+      // Persist new tokens to secure storage
+      await SecureTokenStorage.write(
+        SecureTokenStorage.accessToken,
+        _sessionToken!,
+      );
+      if (_tokenType.isNotEmpty) {
+        await SecureTokenStorage.write(
+          SecureTokenStorage.tokenType,
+          _tokenType,
+        );
+      }
+      if (newRefresh != null) {
+        await SecureTokenStorage.write(
+          SecureTokenStorage.refreshToken,
+          newRefresh,
+        );
+      }
+
+      _logApi('refresh_token', 'session refreshed successfully');
+      return true;
+    } catch (e) {
+      _logApi('refresh_token error', e.toString());
+      return false;
+    } finally {
+      _isRefreshing = false;
     }
   }
 
@@ -928,7 +1407,7 @@ class AppController extends ChangeNotifier {
       _logApi('register_delivery_partner request', body.toString());
       final http.Response response = await http.post(
         _registerPartnerUri,
-        headers: const <String, String>{'Accept': 'application/json'},
+        headers: _requestHeaders(),
         body: body,
       );
       _logApi(
@@ -995,6 +1474,8 @@ class AppController extends ChangeNotifier {
 
       await _persistSession(responseData);
       notifyListeners();
+      unawaited(_backgroundSync());
+
       return null;
     } catch (e) {
       _logApi('register_delivery_partner error', e.toString());
@@ -1002,11 +1483,67 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<void> _revokeTokenOnServer(String token) async {
+    try {
+      _logApi('revoke_token request', 'POST $_revokeTokenUri');
+      final http.Response response = await http
+          .post(
+            _revokeTokenUri,
+            headers: const <String, String>{
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: <String, String>{
+              'token': token,
+              if (_clientId != null && _clientId!.isNotEmpty)
+                'client_id': _clientId!,
+            },
+          )
+          .timeout(_networkTimeout);
+      _logApi('revoke_token response', 'status=${response.statusCode}');
+    } catch (e) {
+      _logApi('revoke_token error', e.toString());
+    }
+  }
+
+  /// Calls Frappe's /api/method/logout so LoginManager.logout_log() writes an
+  /// Activity Log entry for the session. `revoke_token` alone only kills the
+  /// OAuth bearer token; it does not create the audit row.
+  Future<void> _serverSideLogout(String bearerToken, String tokenType) async {
+    try {
+      _logApi('server logout request', 'POST $_serverLogoutUri');
+      final http.Response response = await http
+          .post(
+            _serverLogoutUri,
+            headers: <String, String>{
+              'Authorization':
+                  '${tokenType.isEmpty ? 'Bearer' : tokenType} $bearerToken',
+            },
+          )
+          .timeout(_networkTimeout);
+      _logApi('server logout response', 'status=${response.statusCode}');
+    } catch (e) {
+      _logApi('server logout error', e.toString());
+    }
+  }
+
   Future<void> logout() async {
-    unawaited(FCMService().unsubscribe(this));
+    // Snapshot credentials before we clear them — needed by the background
+    // server-side cleanup below.
+    final String? accessToRevoke = _sessionToken;
+    final String? refreshToRevoke = _refreshToken;
+    final String tokenTypeSnapshot = _tokenType;
+
+    // Clear in-memory state first. notifyListeners() runs synchronously so
+    // any listener that routes on auth state (or the login route below)
+    // sees the logged-out state immediately.
     _isLoggedIn = false;
     _sessionToken = null;
     _tokenType = 'Bearer';
+    _refreshToken = null;
+    _clientId = null;
+    _apiKey = null;
+    _apiSecret = null;
+    _isRefreshing = false;
     _isOnline = false;
     _isTracking = false;
     _incomingOrder = null;
@@ -1028,15 +1565,16 @@ class AppController extends ChangeNotifier {
     _uomOptions = <String>[];
     _vehicleFuelOptions = <String>[];
     _vehicleRequiredFields = <String>{};
+    _rememberMe = false;
+    notifyListeners();
 
+    // Local persistence — Keystore and SharedPreferences writes are fast
+    // (<100ms), keep them awaited so the next login doesn't race them.
     await PartnerWidgetManager.clearWidget();
+    await SecureTokenStorage.deleteAll();
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await Future.wait(<Future<bool>>[
-      prefs.remove(_prefAccessToken),
-      prefs.remove(_prefRefreshToken),
-      prefs.remove(_prefTokenType),
-      prefs.remove(_prefExpiresIn),
       prefs.remove(_prefFullName),
       prefs.remove(_prefEmail),
       prefs.remove(_prefMobile),
@@ -1048,12 +1586,50 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefDriverName),
       prefs.remove(_prefVehicleName),
       prefs.remove(_prefVehicleLicensePlate),
+      prefs.remove(_prefVehicleRawJson),
       prefs.remove(_prefBankDocName),
       prefs.remove(_prefBankAccountName),
+      prefs.remove(_prefBankRawJson),
+      prefs.remove(_prefActiveOrderId),
       prefs.setBool(_prefRememberMe, false),
+      prefs.remove(_prefPermForeground),
+      prefs.remove(_prefPermBackground),
+      prefs.remove(_prefPermNotification),
+      prefs.remove(_prefLicenseRequiresReupload),
     ]);
-    _rememberMe = false;
-    notifyListeners();
+
+    // Server-side cleanup — fire-and-forget so the caller's navigation
+    // happens instantly instead of waiting on 2-3 sequential HTTP calls.
+    // IMPORTANT: /api/method/logout must run before revoke_token. Otherwise
+    // the bearer token is already invalidated on the server and logout
+    // responds 401 (no activity-log entry + noisy exception).
+    if (accessToRevoke != null && accessToRevoke.isNotEmpty) {
+      unawaited(
+        _serverCleanupAfterLogout(
+          accessToken: accessToRevoke,
+          refreshToken: refreshToRevoke,
+          tokenType: tokenTypeSnapshot,
+        ),
+      );
+      unawaited(FCMService().unsubscribeWithToken(bearerToken: accessToRevoke));
+    }
+  }
+
+  /// Sequenced HTTP calls that must happen in order: write the activity-log
+  /// entry via /api/method/logout while the bearer is still valid, then
+  /// revoke the access and refresh tokens.
+  Future<void> _serverCleanupAfterLogout({
+    required String accessToken,
+    required String? refreshToken,
+    required String tokenType,
+  }) async {
+    await _serverSideLogout(accessToken, tokenType);
+    await _revokeTokenOnServer(accessToken);
+    if (refreshToken != null &&
+        refreshToken.isNotEmpty &&
+        refreshToken != accessToken) {
+      await _revokeTokenOnServer(refreshToken);
+    }
   }
 
   /// Upload a file to the Driver record via custom upload_kyc_file API.
@@ -1156,8 +1732,31 @@ class AppController extends ChangeNotifier {
           await prefs.setString(_prefDriverName, newDriverName);
         }
         _kycCompleted = true;
+        _licenseRequiresReupload = false;
+        _existingAadharNo = aadharNo;
+        _existingAadharUrl = aadharAttachmentUrl.isNotEmpty
+            ? aadharAttachmentUrl
+            : _existingAadharUrl;
+        _existingLicenseNo = licenseNumber ?? _existingLicenseNo;
+        _existingLicenseUrl = licenseAttachmentUrl ?? _existingLicenseUrl;
+        _existingPanNo = panNo ?? _existingPanNo;
+        _existingPanUrl = panAttachmentUrl ?? _existingPanUrl;
         final SharedPreferences prefs = await SharedPreferences.getInstance();
-        await prefs.setBool(_prefKycCompleted, true);
+        await Future.wait(<Future<bool>>[
+          prefs.setBool(_prefKycCompleted, true),
+          if (_existingLicenseNo != null)
+            prefs.setString(_prefKycLicenseNo, _existingLicenseNo!),
+          if (_existingAadharNo != null)
+            prefs.setString(_prefKycAadharNo, _existingAadharNo!),
+          if (_existingPanNo != null)
+            prefs.setString(_prefKycPanNo, _existingPanNo!),
+          if (_existingLicenseUrl != null)
+            prefs.setString(_prefKycLicenseUrl, _existingLicenseUrl!),
+          if (_existingAadharUrl != null)
+            prefs.setString(_prefKycAadharUrl, _existingAadharUrl!),
+          if (_existingPanUrl != null)
+            prefs.setString(_prefKycPanUrl, _existingPanUrl!),
+        ]);
         notifyListeners();
         return null;
       }
@@ -1185,6 +1784,67 @@ class AppController extends ChangeNotifier {
 
     _kycStatus[key] = VerificationStatus.pending;
     notifyListeners();
+  }
+
+  void _checkLicenseStatus(Map<String, dynamic> driverDoc) {
+    if (!_kycCompleted) return;
+    final licenseNumber = _nullIfBlank(driverDoc['license_number']?.toString());
+    final licenseAttachment = _nullIfBlank(
+      driverDoc['custom_license_attachment']?.toString(),
+    );
+    final removed = licenseNumber == null && licenseAttachment == null;
+    if (_licenseRequiresReupload != removed) {
+      _licenseRequiresReupload = removed;
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.setBool(_prefLicenseRequiresReupload, removed),
+      );
+      notifyListeners();
+    }
+  }
+
+  void clearLicenseReuploadFlag() {
+    if (_licenseRequiresReupload) {
+      _licenseRequiresReupload = false;
+      _writePref(
+        (SharedPreferences prefs) => prefs.remove(_prefLicenseRequiresReupload),
+      );
+      notifyListeners();
+    }
+  }
+
+  Future<String?> resubmitLicense({
+    required String licenseNumber,
+    required String licenseAttachmentUrl,
+    String? issuingDate,
+    String? expiryDate,
+  }) async {
+    if (_sessionToken == null) return 'Not authenticated';
+
+    final String? driverName = _driverName;
+    if (driverName == null || driverName.isEmpty) {
+      return 'Driver profile not found. Please try again.';
+    }
+
+    try {
+      final Map<String, dynamic> fields = <String, dynamic>{
+        'license_number': licenseNumber,
+        'custom_license_attachment': licenseAttachmentUrl,
+      };
+      if (issuingDate != null) fields['issuing_date'] = issuingDate;
+      if (expiryDate != null) fields['expiry_date'] = expiryDate;
+
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Driver/${Uri.encodeComponent(driverName)}',
+      );
+
+      await authorizedPutJson(uri, fields);
+      _licenseRequiresReupload = false;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
   void simulateKycApproval() {
@@ -1367,8 +2027,35 @@ class AppController extends ChangeNotifier {
       }
       if (data == null && licensePlate != null) {
         _logApi('vehicle.hydrate', 'fetch by license_plate=$licensePlate');
+        data = await fetchVehicleByLicensePlate(licensePlate);
       }
-      data ??= await fetchVehicleByLicensePlate(licensePlate ?? '');
+      // Fallback: vehicle linked directly in driver profile doc
+      if (data == null) {
+        final String? vehicleFromDriver = _nullIfBlank(
+          _loggedProfileDetails?.driver?['vehicle']?.toString(),
+        );
+        if (vehicleFromDriver != null) {
+          _logApi(
+            'vehicle.hydrate',
+            'fetch by driver.vehicle=$vehicleFromDriver',
+          );
+          data = await fetchVehicleByName(vehicleFromDriver);
+        }
+      }
+      // Fallback: search by driver name
+      if (data == null && _driverName != null) {
+        _logApi('vehicle.hydrate', 'search by driver=$_driverName');
+        final String? name = await _findResourceName(
+          doctype: 'Vehicle',
+          filters: <List<String>>[
+            <String>['Vehicle', 'driver', '=', _driverName!],
+          ],
+          fields: <String>['name'],
+        );
+        if (name != null) {
+          data = await _fetchResourceDoc('Vehicle', name);
+        }
+      }
       if (data == null) {
         _logApi('vehicle.hydrate', 'no vehicle found');
         return;
@@ -1380,6 +2067,12 @@ class AppController extends ChangeNotifier {
         'vehicle.hydrate',
         'loaded vehicle name=${_vehicle?.name} plate=${_vehicle?.licensePlate}',
       );
+      final SharedPreferences vehicleHydratePrefs =
+          await SharedPreferences.getInstance();
+      await vehicleHydratePrefs.setString(
+        _prefVehicleRawJson,
+        jsonEncode(data),
+      );
       notifyListeners();
     } catch (e) {
       _logApi('vehicle.hydrate', 'error: $e');
@@ -1388,57 +2081,12 @@ class AppController extends ChangeNotifier {
   }
 
   Future<List<String>> fetchVehicleEmployeeOptions({String query = ''}) async {
-    try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.search.search_link',
-      );
-      final Map<String, String> body = <String, String>{
-        'doctype': 'Employee',
-        'ignore_user_permissions': '0',
-        'reference_doctype': 'Vehicle',
-        'page_length': '10',
-        'start': '0',
-        'txt': query.trim(),
-      };
-      _logApi('vehicle.search_link', 'payload=$body');
-      final Map<String, dynamic> payload = await _authorizedPostForm(
-        uri: uri,
-        body: body,
-      );
-      final dynamic responseRows =
-          payload['message'] ?? payload['results'] ?? payload['data'];
-      if (responseRows is! List) {
-        return <String>[];
-      }
-
-      final List<String> values = <String>[];
-      for (final dynamic item in responseRows) {
-        if (item is Map<String, dynamic>) {
-          final String? value =
-              _nullIfBlank(item['value']?.toString()) ??
-              _nullIfBlank(item['name']?.toString()) ??
-              _nullIfBlank(item['description']?.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
-          }
-        } else if (item is List && item.isNotEmpty) {
-          final String? value = _nullIfBlank(item.first?.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
-          }
-        } else if (item != null) {
-          final String? value = _nullIfBlank(item.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
-          }
-        }
-      }
-      _logApi('vehicle.search_link', 'result_count=${values.length}');
-      return values;
-    } catch (e) {
-      _logApi('vehicle.search_link', 'error: $e');
-      return <String>[];
-    }
+    return _fetchDocListOptions(
+      doctype: 'Employee',
+      searchFields: const <String>['name', 'employee_name'],
+      query: query,
+      pageLength: 10,
+    );
   }
 
   Future<List<String>> fetchLinkOptions({
@@ -1448,60 +2096,88 @@ class AppController extends ChangeNotifier {
     int pageLength = 10,
     Map<String, dynamic>? filters,
   }) async {
+    // Convert {field: value} map to [[field, '=', value], ...] list format
+    // that frappe.client.get_list expects.
+    final List<List<dynamic>> filterList = <List<dynamic>>[];
+    if (filters != null) {
+      filters.forEach((String field, dynamic value) {
+        filterList.add(<dynamic>[field, '=', value]);
+      });
+    }
+    return _fetchDocListOptions(
+      doctype: doctype,
+      query: query,
+      pageLength: pageLength,
+      extraFilters: filterList,
+    );
+  }
+
+  /// Replaces `frappe.desk.search.search_link` (which requires Desk access)
+  /// with `frappe.client.get_list`, accessible to non-desk partner users.
+  Future<List<String>> _fetchDocListOptions({
+    required String doctype,
+    String query = '',
+    int pageLength = 10,
+    List<String> searchFields = const <String>['name'],
+    List<List<dynamic>> extraFilters = const <List<dynamic>>[],
+  }) async {
     try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.search.search_link',
-      );
-      final Map<String, String> body = <String, String>{
-        'doctype': doctype,
-        'ignore_user_permissions': '0',
-        'reference_doctype': referenceDoctype,
-        'page_length': '$pageLength',
-        'start': '0',
-        'txt': query.trim(),
-      };
-      if (filters != null && filters.isNotEmpty) {
-        body['filters'] = jsonEncode(filters);
+      // Build filters: name/search-field LIKE '%query%' + any extra filters.
+      final List<List<dynamic>> filterList = <List<dynamic>>[...extraFilters];
+      final String trimmed = query.trim();
+      if (trimmed.isNotEmpty) {
+        // Search across all provided search fields (OR logic via OR operator).
+        // frappe.client.get_list only supports AND between top-level filters,
+        // so we search on 'name' which is the primary key and always works.
+        filterList.add(<dynamic>['name', 'like', '%$trimmed%']);
       }
-      _logApi('generic.search_link', 'payload=$body');
-      final Map<String, dynamic> payload = await _authorizedPostForm(
-        uri: uri,
-        body: body,
-      );
+
+      final Map<String, String> queryParams = <String, String>{
+        'doctype': doctype,
+        'fields': jsonEncode(searchFields),
+        'limit_page_length': '$pageLength',
+        'limit_start': '0',
+        'order_by': 'name asc',
+      };
+      if (filterList.isNotEmpty) {
+        queryParams['filters'] = jsonEncode(filterList);
+      }
+
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.get_list',
+      ).replace(queryParameters: queryParams);
+
+      _logApi('get_list', 'doctype=$doctype query=$trimmed');
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+
       final dynamic responseRows =
-          payload['message'] ?? payload['results'] ?? payload['data'];
+          payload['message'] ?? payload['data'] ?? payload['results'];
       if (responseRows is! List) {
         return <String>[];
       }
 
       final List<String> values = <String>[];
       for (final dynamic item in responseRows) {
+        String? value;
         if (item is Map<String, dynamic>) {
-          final String? value =
-              _nullIfBlank(item['value']?.toString()) ??
-              _nullIfBlank(item['name']?.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
+          // Prefer the first search field, fall back to 'name'.
+          for (final String field in searchFields) {
+            value = _nullIfBlank(item[field]?.toString());
+            if (value != null) break;
           }
-        } else if (item is List && item.isNotEmpty) {
-          final String? value = _nullIfBlank(item.first?.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
-          }
-        } else if (item != null) {
-          final String? value = _nullIfBlank(item.toString());
-          if (value != null && !values.contains(value)) {
-            values.add(value);
-          }
+          value ??= _nullIfBlank(item['name']?.toString());
+        } else if (item is String) {
+          value = _nullIfBlank(item);
+        }
+        if (value != null && !values.contains(value)) {
+          values.add(value);
         }
       }
-      _logApi(
-        'generic.search_link',
-        'doctype=$doctype result_count=${values.length}',
-      );
+
+      _logApi('get_list', 'doctype=$doctype result_count=${values.length}');
       return values;
     } catch (e) {
-      _logApi('generic.search_link', 'error: $e');
+      _logApi('get_list', 'error doctype=$doctype: $e');
       return <String>[];
     }
   }
@@ -1582,6 +2258,21 @@ class AppController extends ChangeNotifier {
           data = await _fetchResourceDoc('Bank Account', name);
         }
       }
+      // Fallback: search by driver as party
+      if (data == null && _driverName != null) {
+        _logApi('bank.hydrate', 'search by party=Driver/$_driverName');
+        final String? name = await _findResourceName(
+          doctype: 'Bank Account',
+          filters: <List<String>>[
+            <String>['Bank Account', 'party_type', '=', 'Driver'],
+            <String>['Bank Account', 'party', '=', _driverName!],
+          ],
+          fields: <String>['name'],
+        );
+        if (name != null) {
+          data = await _fetchResourceDoc('Bank Account', name);
+        }
+      }
       if (data == null) {
         _logApi('bank.hydrate', 'no bank account found');
         return;
@@ -1593,6 +2284,9 @@ class AppController extends ChangeNotifier {
         'bank.hydrate',
         'loaded bank account=${_submittedBankRaw?['name']} holder=${_bank?.accountHolder}',
       );
+      final SharedPreferences hydratePrefs =
+          await SharedPreferences.getInstance();
+      await hydratePrefs.setString(_prefBankRawJson, jsonEncode(data));
       notifyListeners();
     } catch (e) {
       _logApi('bank.hydrate', 'error: $e');
@@ -1772,6 +2466,12 @@ class AppController extends ChangeNotifier {
         vehicleName: _nullIfBlank(finalData['name']?.toString()) ?? finalName,
         licensePlate: plate,
       );
+      final SharedPreferences vehicleSubmitPrefs =
+          await SharedPreferences.getInstance();
+      await vehicleSubmitPrefs.setString(
+        _prefVehicleRawJson,
+        jsonEncode(finalData),
+      );
       notifyListeners();
       _logApi(
         'vehicle.submit',
@@ -1845,15 +2545,13 @@ class AppController extends ChangeNotifier {
       return 'Branch code is required';
     }
     if (!RegExp(
-      r'^[A-Z0-9-]{2,20}$',
+      r'^[A-Z]{4}0[A-Z0-9]{6}$',
     ).hasMatch(normalizedBranchCode.toUpperCase())) {
-      return 'Branch code should be 2-20 characters (A-Z, 0-9, -)';
+      return 'Enter a valid IFSC code (e.g. SBIN0001234)';
     }
     if (normalizedBankAccountNo != null &&
-        !RegExp(
-          r'^[A-Z0-9-]{6,34}$',
-        ).hasMatch(normalizedBankAccountNo.toUpperCase())) {
-      return 'Bank account no should be 6-34 characters (A-Z, 0-9, -)';
+        !RegExp(r'^\d{9,18}$').hasMatch(normalizedBankAccountNo)) {
+      return 'Enter a valid account number (9–18 digits)';
     }
 
     String? normalizedIban = _nullIfBlank(iban);
@@ -1950,6 +2648,14 @@ class AppController extends ChangeNotifier {
             _nullIfBlank(_submittedBankRaw?['name']?.toString()) ?? bankName,
         accountName: normalizedAccountName,
       );
+      if (_submittedBankRaw != null) {
+        final SharedPreferences submitPrefs =
+            await SharedPreferences.getInstance();
+        await submitPrefs.setString(
+          _prefBankRawJson,
+          jsonEncode(_submittedBankRaw),
+        );
+      }
       notifyListeners();
       _logApi(
         'bank.submit',
@@ -1968,6 +2674,42 @@ class AppController extends ChangeNotifier {
     bool? notification,
   }) {
     _permissionState = _permissionState.copyWith(
+      foregroundLocation: foreground,
+      backgroundLocation: background,
+      notification: notification,
+    );
+    if (foreground != null) {
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.setBool(_prefPermForeground, foreground),
+      );
+    }
+    if (background != null) {
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.setBool(_prefPermBackground, background),
+      );
+    }
+    if (notification != null) {
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.setBool(_prefPermNotification, notification),
+      );
+    }
+    notifyListeners();
+  }
+
+  Future<void> syncPermissionsFromOS() async {
+    final locationPerm = await Geolocator.checkPermission();
+    final notifStatus = await ph.Permission.notification.status;
+
+    final foreground =
+        locationPerm == LocationPermission.whileInUse ||
+        locationPerm == LocationPermission.always;
+    final background = locationPerm == LocationPermission.always;
+    final notification = notifStatus.isGranted;
+
+    _permissionState = PermissionState(
       foregroundLocation: foreground,
       backgroundLocation: background,
       notification: notification,
@@ -1998,7 +2740,7 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String? setOnline(bool value) {
+  Future<String?> setOnline(bool value) async {
     if (value && !canGoOnline) {
       final List<String> missing = [];
       if (!_kycCompleted) missing.add('KYC submission');
@@ -2009,7 +2751,22 @@ class AppController extends ChangeNotifier {
       return 'Please complete: ${missing.join(', ')}';
     }
 
+    if (_availabilitySyncing) return null;
+    if (_isOnline == value) return null;
+
+    _availabilitySyncing = true;
+    final bool previous = _isOnline;
     _isOnline = value;
+    notifyListeners();
+
+    final String? syncError = await _syncAvailabilityToBackend(value);
+    if (syncError != null) {
+      _isOnline = previous;
+      _availabilitySyncing = false;
+      notifyListeners();
+      return syncError;
+    }
+
     _writePref((SharedPreferences prefs) {
       return prefs.setBool(_prefIsOnline, _isOnline);
     });
@@ -2033,8 +2790,43 @@ class AppController extends ChangeNotifier {
       activeOrder: _activeOrder,
     );
 
+    _availabilitySyncing = false;
     notifyListeners();
     return null;
+  }
+
+  Future<String?> _syncAvailabilityToBackend(bool value) async {
+    if (_driverName == null || _driverName!.trim().isEmpty) {
+      return null; // No driver record yet — skip backend sync silently
+    }
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Driver/${Uri.encodeComponent(_driverName!)}',
+      );
+      await authorizedPutJson(uri, <String, dynamic>{
+        'custom_custom_is_online': value ? 1 : 0,
+      });
+      return null;
+    } catch (e) {
+      return 'Failed to sync availability: ${e.toString().replaceAll('Exception: ', '')}';
+    }
+  }
+
+  Future<String?> _syncAvailabilityToBackend(bool value) async {
+    if (_driverName == null || _driverName!.trim().isEmpty) {
+      return null; // No driver record yet — skip backend sync silently
+    }
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/Driver/${Uri.encodeComponent(_driverName!)}',
+      );
+      await authorizedPutJson(uri, <String, dynamic>{
+        'custom_custom_is_online': value ? 1 : 0,
+      });
+      return null;
+    } catch (e) {
+      return 'Failed to sync availability: ${e.toString().replaceAll('Exception: ', '')}';
+    }
   }
 
   Future<String?> startTracking() async {
@@ -2143,6 +2935,7 @@ class AppController extends ChangeNotifier {
 
     if (accept) {
       _activeOrder = _incomingOrder;
+      unawaited(_persistActiveOrderId(_activeOrder?.orderId));
       _performance = _performance.copyWith(
         acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
       );
@@ -2170,59 +2963,177 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateOrderStatus(OrderProgressStatus status) {
+  Future<String?> updateOrderStatus(OrderProgressStatus status) async {
     if (_activeOrder == null) {
-      return;
+      return 'No active order found';
     }
 
-    _activeOrder = _activeOrder!.copyWith(orderStatus: status);
+    try {
+      final String? frappeStatus = _toFrappeStatus(status);
+      if (frappeStatus != null) {
+        try {
+          await _orderRepository.updateStatus(
+            _activeOrder!.orderId,
+            frappeStatus,
+          );
+          _logApi(
+            'update_order_status',
+            'synced ${_activeOrder!.orderId} → $frappeStatus',
+          );
+        } catch (e) {
+          _logApi('update_order_status_warn', 'Frappe sync failed: $e');
+        }
+      }
 
-    if (status == OrderStatus.delivered) {
-      final double payout = _activeOrder!.estimatedEarnings;
-      _earnings = _earnings.copyWith(
-        today: _earnings.today + payout,
-        week: _earnings.week + payout,
-        total: _earnings.total + payout,
-        pendingPayout: _earnings.pendingPayout + payout,
+      _activeOrder = _activeOrder!.copyWith(
+        orderStatus: status,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+        reachedStoreAt: status == OrderStatus.reachedPickup
+            ? DateTime.now()
+            : _activeOrder!.reachedStoreAt,
+        deliveryPartnerLocation: status == OrderStatus.reachedPickup
+            ? _partnerLiveLocation ??
+                  GeoLocation(
+                    latitude: _currentLatitude ?? 28.6139,
+                    longitude: _currentLongitude ?? 77.2090,
+                  )
+            : _activeOrder!.deliveryPartnerLocation,
       );
-      _performance = _performance.copyWith(
-        completionRate: min(100, _performance.completionRate + 0.2),
-        totalDeliveries: _performance.totalDeliveries + 1,
+      _replaceAcceptedOrder(_activeOrder!);
+
+      if (status == OrderStatus.delivered) {
+        final String deliveredOrderId = _activeOrder!.orderId;
+        final double payout = _activeOrder!.estimatedEarnings;
+        _earnings = _earnings.copyWith(
+          today: _earnings.today + payout,
+          week: _earnings.week + payout,
+          total: _earnings.total + payout,
+          pendingPayout: _earnings.pendingPayout + payout,
+        );
+        _performance = _performance.copyWith(
+          completionRate: min(100, _performance.completionRate + 0.2),
+          totalDeliveries: _performance.totalDeliveries + 1,
+        );
+        _notices.insert(
+          0,
+          AppNotice(
+            title: 'Delivery completed',
+            message: 'Order $deliveredOrderId delivered successfully.',
+            time: DateTime.now(),
+          ),
+        );
+        _acceptedOrders.removeWhere(
+          (order) => order.orderId == deliveredOrderId,
+        );
+        _activeOrder = null;
+        unawaited(_persistActiveOrderId(null));
+      } else if (status == OrderStatus.reachedPickup) {
+        _notices.insert(
+          0,
+          AppNotice(
+            title: 'Store Notified',
+            message: 'Store has been informed that you have arrived.',
+            time: DateTime.now(),
+          ),
+        );
+      }
+
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
       );
-      _notices.insert(
-        0,
-        AppNotice(
-          title: 'Delivery completed',
-          message: 'Order ${_activeOrder!.orderId} delivered successfully.',
-          time: DateTime.now(),
-        ),
-      );
-      _activeOrder = null;
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
     }
-
-    PartnerWidgetManager.updateWidget(
-      isOnline: _isOnline,
-      todayEarnings: _earnings.today,
-      activeOrder: _activeOrder,
-    );
-
-    notifyListeners();
   }
 
   void clearActiveOrder() {
     _activeOrder = null;
+    unawaited(_persistActiveOrderId(null));
+    unawaited(
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
+      ),
+    );
     notifyListeners();
   }
 
   List<DeliveryOrder> get availableOrders =>
       List<DeliveryOrder>.unmodifiable(_availableOrders);
 
-  List<DeliveryOrder> get acceptedOrders =>
-      List<DeliveryOrder>.unmodifiable(_acceptedOrders);
+  List<DeliveryOrder> get acceptedOrders {
+    if (_acceptedOrders.isEmpty) {
+      _populateMockAcceptedOrders();
+    }
+    return List<DeliveryOrder>.unmodifiable(_acceptedOrders);
+  }
+
+  void _populateMockAcceptedOrders() {
+    final List<String> customerNames = <String>[
+      'Riya Sharma',
+      'Amit Kumar',
+      'Priya Singh',
+    ];
+    final List<String> storeNames = <String>[
+      'Fresh Bites Kitchen',
+      'Tasty Treats',
+      'Burger Barn',
+    ];
+    final List<String> addresses = <String>[
+      'Connaught Place, New Delhi',
+      'Karol Bagh, New Delhi',
+      'Lajpat Nagar, New Delhi',
+    ];
+    final List<OrderStatus> statuses = <OrderStatus>[
+      OrderStatus.delivered,
+      OrderStatus.delivered,
+      OrderStatus.cancelled,
+    ];
+
+    for (int i = 0; i < 3; i++) {
+      _acceptedOrders.add(
+        DeliveryOrder(
+          orderId: '#OD${2000 + i}',
+          customerName: customerNames[i],
+          customerPhone: '98765${1000 + i}',
+          deliveryAddress: '${addresses[i]} - ${110001 + i * 10}',
+          storeId: 'STORE${100 + i}',
+          storeName: storeNames[i],
+          storeContact: '98765${43210 + i}',
+          storeAddress: addresses[(i + 1) % addresses.length],
+          orderItems: <OrderItem>[
+            OrderItem(
+              name: 'Combo Meal ${i + 1}',
+              quantity: 1 + i,
+              price: (150 + i * 50).toDouble(),
+            ),
+          ],
+          orderStatus: statuses[i],
+          latitude: 28.6139 + i * 0.02,
+          longitude: 77.2090 + i * 0.02,
+          pickup: addresses[(i + 1) % addresses.length],
+          drop: addresses[i],
+          deliveryInstructions: 'Call before arrival',
+          paymentMode: 'COD',
+          distanceKm: (3 + i).toDouble(),
+          estimatedEarnings: (60 + i * 20).toDouble(),
+          assignmentStatus: OrderAssignmentStatus.assigned,
+        ),
+      );
+    }
+    notifyListeners();
+  }
 
   bool get isLoadingOrders => _isLoadingOrders;
 
   String? get orderLoadingError => _orderLoadingError;
+
+  bool get isFetchingActiveOrder => _isFetchingActiveOrder;
 
   GeoLocation? get partnerLiveLocation => _partnerLiveLocation;
 
@@ -2232,7 +3143,43 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _fetchOrdersWithRetry();
+      final List<ExternalDelivery> summaries = await _orderRepository
+          .fetchAllByStatus('Pending');
+      final List<DeliveryOrder> orders = <DeliveryOrder>[];
+
+      const int batchSize = 6;
+      for (int index = 0; index < summaries.length; index += batchSize) {
+        final List<ExternalDelivery> batch = summaries
+            .skip(index)
+            .take(batchSize)
+            .toList();
+        final List<DeliveryOrder?> batchOrders = await Future.wait(
+          batch.map((ExternalDelivery summary) async {
+            try {
+              final ExternalDeliveryDetail detail = await _orderRepository
+                  .fetchDetail(summary.name);
+              return _deliveryOrderFromDetail(detail);
+            } catch (e) {
+              _logApi('fetch_available_order_detail_warn', e.toString());
+              return null;
+            }
+          }),
+        );
+        orders.addAll(batchOrders.whereType<DeliveryOrder>());
+      }
+
+      orders.sort((DeliveryOrder a, DeliveryOrder b) {
+        final int compareDistance = a.distanceKm.compareTo(b.distanceKm);
+        if (compareDistance != 0) {
+          return compareDistance;
+        }
+        return a.orderId.compareTo(b.orderId);
+      });
+
+      _availableOrders
+        ..clear()
+        ..addAll(orders);
+      _orderLoadingError = null;
     } catch (e) {
       _orderLoadingError = 'Failed to fetch orders: $e';
     } finally {
@@ -2241,146 +3188,163 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> _fetchOrdersWithRetry() async {
-    _retryCount = 0;
-    while (_retryCount < _maxRetries) {
-      try {
-        await _fetchOrders();
-        return;
-      } catch (e) {
-        _retryCount++;
-        if (_retryCount >= _maxRetries) {
-          rethrow;
-        }
-        await Future<void>.delayed(_retryDelay * _retryCount);
-      }
-    }
-  }
-
-  Future<void> _fetchOrders() async {
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    if (_random.nextBool()) {
-      throw Exception('Network error');
-    }
-    _availableOrders.clear();
-    _availableOrders.addAll(_generateMockAvailableOrders());
+  Future<void> fetchActiveOrder() async {
+    _isFetchingActiveOrder = true;
     notifyListeners();
-  }
-
-  List<DeliveryOrder> _generateMockAvailableOrders() {
-    final List<DeliveryOrder> orders = <DeliveryOrder>[];
-    final List<String> customerNames = <String>[
-      'Riya Sharma',
-      'Amit Kumar',
-      'Priya Singh',
-      'Rahul Verma',
-      'Sneha Gupta',
-    ];
-    final List<String> storeNames = <String>[
-      'Fresh Bites Kitchen',
-      'Tasty Treats',
-      'Burger Barn',
-      'Pizza Palace',
-      'Sushi Station',
-    ];
-    final List<String> addresses = <String>[
-      'Connaught Place, New Delhi',
-      'Karol Bagh, New Delhi',
-      'Lajpat Nagar, New Delhi',
-      'Saket, New Delhi',
-      'Dwarka, New Delhi',
-    ];
-
-    for (int i = 0; i < 5; i++) {
-      orders.add(
-        DeliveryOrder(
-          orderId: '#OD${1000 + _random.nextInt(8999)}',
-          customerName: customerNames[i],
-          customerPhone: '98765${1000 + _random.nextInt(8999)}',
-          deliveryAddress: '${addresses[i]} - ${110001 + i * 10}',
-          storeId: 'STORE${100 + _random.nextInt(899)}',
-          storeName: storeNames[i],
-          storeContact: '98765${43210 + _random.nextInt(10000)}',
-          storeAddress: addresses[(i + 2) % addresses.length],
-          orderItems: <OrderItem>[
-            OrderItem(
-              name: 'Item ${i + 1}',
-              quantity: 1 + _random.nextInt(3),
-              price: (50 + _random.nextInt(200)).toDouble(),
-            ),
-            if (_random.nextBool())
-              OrderItem(
-                name: 'Drink ${i + 1}',
-                quantity: 1,
-                price: 30 + _random.nextInt(50).toDouble(),
-              ),
-          ],
-          orderStatus: OrderStatus.pending,
-          latitude: 28.6139 + (_random.nextDouble() - 0.5) * 0.2,
-          longitude: 77.2090 + (_random.nextDouble() - 0.5) * 0.2,
-          pickup: addresses[(i + 2) % addresses.length],
-          drop: addresses[i],
-          deliveryInstructions: _random.nextBool()
-              ? 'Call before arrival'
-              : 'Leave at door',
-          paymentMode: _random.nextBool() ? 'COD' : 'Online',
-          distanceKm: (3 + _random.nextDouble() * 7).roundToDouble(),
-          estimatedEarnings: (50 + _random.nextInt(100)).toDouble(),
-          assignmentStatus: OrderAssignmentStatus.unassigned,
-        ),
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? activeOrderId = _nullIfBlank(
+        prefs.getString(_prefActiveOrderId),
       );
+
+      if (activeOrderId == null) {
+        _activeOrder = null;
+        _acceptedOrders.clear();
+        await _persistActiveOrderId(null);
+        PartnerWidgetManager.updateWidget(
+          isOnline: _isOnline,
+          todayEarnings: _earnings.today,
+          activeOrder: _activeOrder,
+        );
+        notifyListeners();
+        return;
+      }
+
+      final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
+        activeOrderId,
+      );
+      final OrderStatus status = _mapExternalStatus(detail.status);
+      if (status == OrderStatus.delivered ||
+          status == OrderStatus.cancelled ||
+          status == OrderStatus.rejected ||
+          status == OrderStatus.pending) {
+        _activeOrder = null;
+        _acceptedOrders.removeWhere((order) => order.orderId == activeOrderId);
+        await _persistActiveOrderId(null);
+        PartnerWidgetManager.updateWidget(
+          isOnline: _isOnline,
+          todayEarnings: _earnings.today,
+          activeOrder: _activeOrder,
+        );
+        notifyListeners();
+        return;
+      }
+      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
+        orderStatus: status,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+        assignedDeliveryPartnerId:
+            _profile?.mobile ??
+            _activeOrder?.assignedDeliveryPartnerId ??
+            'PARTNER001',
+        reachedStoreAt: status == OrderStatus.reachedPickup
+            ? DateTime.now()
+            : null,
+        deliveryPartnerLocation: _partnerLiveLocation,
+      );
+      _replaceAcceptedOrder(_activeOrder!);
+      await _persistActiveOrderId(_activeOrder!.orderId);
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
+      );
+      notifyListeners();
+    } catch (e) {
+      _logApi('fetch_active_order_warn', e.toString());
+      _activeOrder = null;
+      notifyListeners();
+    } finally {
+      _isFetchingActiveOrder = false;
+      notifyListeners();
     }
-    notifyListeners();
-    return orders;
   }
 
-  String? acceptOrder(String orderId) {
+  Future<String?> acceptOrder(String orderId) async {
     final int index = _availableOrders.indexWhere(
       (order) => order.orderId == orderId,
     );
-    if (index == -1) {
-      return 'Order not found';
+    DeliveryOrder? cachedOrder = index >= 0 ? _availableOrders[index] : null;
+
+    if (cachedOrder == null) {
+      try {
+        final ExternalDeliveryDetail detail = await _orderRepository
+            .fetchDetail(orderId);
+        cachedOrder = _deliveryOrderFromDetail(detail);
+      } catch (e) {
+        _logApi('accept_order_lookup_warn', e.toString());
+        return 'Order not found';
+      }
     }
 
-    final DeliveryOrder order = _availableOrders[index];
-
-    if (order.assignmentStatus == OrderAssignmentStatus.assigned) {
+    if (cachedOrder.assignmentStatus == OrderAssignmentStatus.assigned) {
       return 'Order already assigned to another partner';
     }
 
-    _availableOrders.removeAt(index);
+    try {
+      await _orderRepository.updateStatus(orderId, 'Added to Trip');
 
-    _activeOrder = order.copyWith(
-      assignmentStatus: OrderAssignmentStatus.assigned,
-      assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
-      orderStatus: OrderStatus.accepted,
-    );
+      // Create and submit an External Delivery Trip in Frappe so the web
+      // dashboard reflects the accepted order immediately.
+      try {
+        final String tripName = await _orderRepository.createTripByOrderName(
+          orderId,
+        );
+        _logApi(
+          'accept_order_trip',
+          'trip $tripName created for order $orderId',
+        );
+      } catch (e) {
+        _logApi(
+          'accept_order_trip_warn',
+          'trip creation failed (non-fatal): $e',
+        );
+      }
 
-    _acceptedOrders.add(_activeOrder!);
-
-    _performance = _performance.copyWith(
-      acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
-    );
-
-    _notices.insert(
-      0,
-      AppNotice(
-        title: 'Order Accepted',
-        message: 'Order $orderId has been accepted by you.',
-        time: DateTime.now(),
-      ),
-    );
-
-    notifyListeners();
-    return null;
+      _availableOrders.removeWhere((order) => order.orderId == orderId);
+      final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
+        orderId,
+      );
+      final OrderStatus fetchedStatus = _mapExternalStatus(detail.status);
+      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
+        orderStatus: fetchedStatus == OrderStatus.pending
+            ? OrderStatus.accepted
+            : fetchedStatus,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+        assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+      );
+      _replaceAcceptedOrder(_activeOrder!);
+      unawaited(_persistActiveOrderId(_activeOrder!.orderId));
+      _performance = _performance.copyWith(
+        acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
+      );
+      _notices.insert(
+        0,
+        AppNotice(
+          title: 'Order Accepted',
+          message: 'Order $orderId has been accepted by you.',
+          time: DateTime.now(),
+        ),
+      );
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
+      );
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return e.toString().replaceFirst('Exception: ', '');
+    }
   }
 
-  void rejectOrder(String orderId) {
-    final int index = _availableOrders.indexWhere(
-      (order) => order.orderId == orderId,
-    );
-    if (index != -1) {
-      _availableOrders.removeAt(index);
+  Future<String?> rejectOrder(String orderId) async {
+    // "Rejected" is not a valid Frappe status — leave the order as Pending
+    // so another delivery partner can still pick it up.
+    _availableOrders.removeWhere((order) => order.orderId == orderId);
+    _acceptedOrders.removeWhere((order) => order.orderId == orderId);
+    if (_activeOrder?.orderId == orderId) {
+      _activeOrder = null;
+      unawaited(_persistActiveOrderId(null));
     }
 
     _performance = _performance.copyWith(
@@ -2396,10 +3360,16 @@ class AppController extends ChangeNotifier {
       ),
     );
 
+    PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: _activeOrder,
+    );
     notifyListeners();
+    return null;
   }
 
-  String? reachedPickup(String orderId) {
+  Future<String?> reachedPickup(String orderId) async {
     if (_activeOrder == null || _activeOrder!.orderId != orderId) {
       return 'No active order found';
     }
@@ -2408,35 +3378,174 @@ class AppController extends ChangeNotifier {
       return 'Order must be accepted first';
     }
 
-    _activeOrder = _activeOrder!.copyWith(
-      orderStatus: OrderStatus.reachedPickup,
-      reachedStoreAt: DateTime.now(),
-      deliveryPartnerLocation:
-          _partnerLiveLocation ??
-          GeoLocation(
-            latitude: _currentLatitude ?? 28.6139,
-            longitude: _currentLongitude ?? 77.2090,
-          ),
-    );
+    return updateOrderStatus(OrderStatus.reachedPickup);
+  }
 
+  void _replaceAcceptedOrder(DeliveryOrder order) {
     final int acceptedIndex = _acceptedOrders.indexWhere(
-      (order) => order.orderId == orderId,
+      (item) => item.orderId == order.orderId,
     );
-    if (acceptedIndex != -1) {
-      _acceptedOrders[acceptedIndex] = _activeOrder!;
+    if (acceptedIndex == -1) {
+      _acceptedOrders.add(order);
+      return;
     }
+    _acceptedOrders[acceptedIndex] = order;
+  }
 
-    _notices.insert(
+  Future<void> _persistActiveOrderId(String? orderId) async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String normalized = _nullIfBlank(orderId) ?? '';
+    if (normalized.isEmpty) {
+      await prefs.remove(_prefActiveOrderId);
+    } else {
+      await prefs.setString(_prefActiveOrderId, normalized);
+    }
+  }
+
+  Future<void> _restoreActiveOrder(String orderId) async {
+    try {
+      final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
+        orderId,
+      );
+      final OrderStatus status = _mapExternalStatus(detail.status);
+      if (status == OrderStatus.delivered ||
+          status == OrderStatus.cancelled ||
+          status == OrderStatus.rejected ||
+          status == OrderStatus.pending) {
+        _activeOrder = null;
+        _acceptedOrders.clear();
+        await _persistActiveOrderId(null);
+        notifyListeners();
+        return;
+      }
+
+      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
+        orderStatus: status,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+        assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+        reachedStoreAt: status == OrderStatus.reachedPickup
+            ? DateTime.now()
+            : null,
+        deliveryPartnerLocation: _partnerLiveLocation,
+      );
+      _replaceAcceptedOrder(_activeOrder!);
+      await _persistActiveOrderId(_activeOrder!.orderId);
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
+      );
+      notifyListeners();
+    } catch (e) {
+      _logApi('restore_active_order_warn', e.toString());
+      _activeOrder = null;
+      _acceptedOrders.clear();
+      await _persistActiveOrderId(null);
+      notifyListeners();
+    }
+  }
+
+  String? _toFrappeStatus(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.reachedPickup:
+        return 'Reached Pickup';
+      case OrderStatus.pickedUp:
+        return 'Picked Up';
+      case OrderStatus.outForDelivery:
+        return 'Out for Delivery';
+      case OrderStatus.delivered:
+        return 'Delivered';
+      default:
+        return null;
+    }
+  }
+
+  OrderStatus _mapExternalStatus(String status) {
+    switch (status.trim().toLowerCase()) {
+      case 'accepted':
+      case 'added to trip':
+        return OrderStatus.accepted;
+      case 'rejected':
+        return OrderStatus.rejected;
+      case 'reached pickup':
+      case 'reachedpickup':
+        return OrderStatus.reachedPickup;
+      case 'picked up':
+      case 'pickedup':
+        return OrderStatus.pickedUp;
+      case 'out for delivery':
+      case 'outfordelivery':
+        return OrderStatus.outForDelivery;
+      case 'delivered':
+        return OrderStatus.delivered;
+      case 'cancelled':
+      case 'canceled':
+        return OrderStatus.cancelled;
+      case 'pending':
+      default:
+        return OrderStatus.pending;
+    }
+  }
+
+  DeliveryOrder _deliveryOrderFromDetail(ExternalDeliveryDetail detail) {
+    final List<OrderItem> items = detail.items
+        .map(
+          (DeliveryItem item) => OrderItem(
+            name: item.itemName.isNotEmpty ? item.itemName : 'Item',
+            quantity: item.qty.isFinite && item.qty > 0 ? item.qty.round() : 1,
+            price: item.amount ?? item.rate ?? 0,
+          ),
+        )
+        .toList();
+
+    final double totalAmount = items.fold<double>(
       0,
-      AppNotice(
-        title: 'Store Notified',
-        message: 'Store has been informed that you have arrived.',
-        time: DateTime.now(),
-      ),
+      (double sum, OrderItem item) => sum + (item.price * item.quantity),
     );
 
-    notifyListeners();
-    return null;
+    final double latitude = detail.latitude ?? _currentLatitude ?? 28.6139;
+    final double longitude = detail.longitude ?? _currentLongitude ?? 77.2090;
+    final OrderStatus status = _mapExternalStatus(detail.status);
+
+    return DeliveryOrder(
+      id: detail.name,
+      orderId: detail.name,
+      customerName: detail.customerName,
+      customerPhone: detail.contactMobile ?? '',
+      deliveryAddress: detail.deliveryAddress ?? '',
+      storeId: detail.storeUrl.isNotEmpty ? detail.storeUrl : detail.storeName,
+      storeName: detail.storeName,
+      storeContact: detail.contactMobile ?? '',
+      storeAddress: detail.pickupAddress ?? detail.storeUrl,
+      orderItems: items,
+      orderStatus: status,
+      latitude: latitude,
+      longitude: longitude,
+      contactNumber: detail.contactMobile ?? '',
+      pickup: detail.pickupAddress ?? detail.storeUrl,
+      drop: detail.deliveryAddress ?? '',
+      deliveryInstructions: '',
+      paymentMode: detail.paymentMode ?? '',
+      distanceKm: _calculateDistance(
+        _currentLatitude ?? latitude,
+        _currentLongitude ?? longitude,
+        latitude,
+        longitude,
+      ),
+      estimatedEarnings: detail.grandTotal ?? totalAmount,
+      assignmentStatus: status == OrderStatus.pending
+          ? OrderAssignmentStatus.unassigned
+          : OrderAssignmentStatus.assigned,
+      assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+      reachedStoreAt: status == OrderStatus.reachedPickup
+          ? DateTime.now()
+          : null,
+      deliveryPartnerLocation: _partnerLiveLocation,
+    );
+  }
+
+  DeliveryOrder buildDeliveryOrderFromDetail(ExternalDeliveryDetail detail) {
+    return _deliveryOrderFromDetail(detail);
   }
 
   bool validateProximityToStore(
@@ -2548,14 +3657,12 @@ class AppController extends ChangeNotifier {
   }
 
   void _updateLiveLocation() {
-    final double baseLat = _currentLatitude ?? 28.6139;
-    final double baseLng = _currentLongitude ?? 77.2090;
+    if (_currentLatitude == null || _currentLongitude == null) return;
     _partnerLiveLocation = GeoLocation(
-      latitude: baseLat + (_random.nextDouble() - 0.5) / 100,
-      longitude: baseLng + (_random.nextDouble() - 0.5) / 100,
+      latitude: _currentLatitude!,
+      longitude: _currentLongitude!,
     );
-    if (_activeOrder != null &&
-        _activeOrder!.orderStatus == OrderStatus.reachedPickup) {
+    if (_activeOrder != null) {
       _activeOrder = _activeOrder!.copyWith(
         deliveryPartnerLocation: _partnerLiveLocation,
       );
@@ -2563,24 +3670,43 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String t(String key) {
-    const Map<String, Map<String, String>> dictionary = {
-      'en': {
-        'app_title': 'FlowFleet Partner',
-        'login': 'Login',
-        'register': 'Register',
-        'dashboard': 'Dashboard',
-      },
-      'hi': {
-        'app_title': 'FlowFleet पार्टनर',
-        'login': 'लॉगिन',
-        'register': 'रजिस्टर',
-        'dashboard': 'डैशबोर्ड',
-      },
-    };
+  String t(
+    String key, [
+    Map<String, String> params = const <String, String>{},
+  ]) {
+    return AppStrings.format(
+      _languageCode.isEmpty ? 'en' : _languageCode,
+      key,
+      params,
+    );
+  }
 
-    final String selected = _languageCode.isEmpty ? 'en' : _languageCode;
-    return dictionary[selected]?[key] ?? dictionary['en']![key] ?? key;
+  String orderStatusLabel(OrderProgressStatus status) {
+    return LocalizedText.orderStatus(
+      _languageCode.isEmpty ? 'en' : _languageCode,
+      status,
+    );
+  }
+
+  String verificationStatusLabel(VerificationStatus status) {
+    return LocalizedText.verificationStatus(
+      _languageCode.isEmpty ? 'en' : _languageCode,
+      status,
+    );
+  }
+
+  String externalDeliveryStatusLabel(ExternalDeliveryStatus status) {
+    return LocalizedText.externalDeliveryStatus(
+      _languageCode.isEmpty ? 'en' : _languageCode,
+      status,
+    );
+  }
+
+  String aiMessage(dynamic value) {
+    return LocalizedText.resolveAiMessage(
+      _languageCode.isEmpty ? 'en' : _languageCode,
+      value,
+    );
   }
 
   Future<void> _persistSession(Map<String, dynamic> message) async {
@@ -2593,6 +3719,11 @@ class AppController extends ChangeNotifier {
     final String? mobile = _nullIfBlank(message['mobile_no']?.toString());
     final String? email = _nullIfBlank(message['email']?.toString());
     final String? driverName = _nullIfBlank(message['driver_name']?.toString());
+    final String? clientId = _nullIfBlank(message['client_id']?.toString());
+    final String? apiKey = _nullIfBlank(message['api_key']?.toString());
+    final String? apiSecretVal = _nullIfBlank(
+      message['api_secret']?.toString(),
+    );
     final int? expiresIn = int.tryParse(
       message['expires_in']?.toString() ?? '',
     );
@@ -2605,22 +3736,58 @@ class AppController extends ChangeNotifier {
     if (driverName != null) {
       _driverName = driverName;
     }
+    if (clientId != null) {
+      _clientId = clientId;
+    }
+    if (apiKey != null) {
+      _apiKey = apiKey;
+    }
+    if (apiSecretVal != null) {
+      _apiSecret = apiSecretVal;
+    }
     if (backendProfileCompleted) {
       _profileCompleted = true;
     }
     _kycCompleted = backendKycCompleted;
     _tokenType = tokenType ?? _tokenType;
 
+    await SecureTokenStorage.write(
+      SecureTokenStorage.accessToken,
+      _sessionToken!,
+    );
+    if (refreshToken != null) {
+      await SecureTokenStorage.write(
+        SecureTokenStorage.refreshToken,
+        refreshToken,
+      );
+    }
+    if (tokenType != null) {
+      await SecureTokenStorage.write(SecureTokenStorage.tokenType, tokenType);
+    }
+    if (expiresIn != null) {
+      await SecureTokenStorage.write(
+        SecureTokenStorage.expiresIn,
+        expiresIn.toString(),
+      );
+    }
+    if (clientId != null) {
+      await SecureTokenStorage.write(SecureTokenStorage.clientId, clientId);
+    }
+    if (apiKey != null) {
+      await SecureTokenStorage.write(SecureTokenStorage.apiKey, apiKey);
+    }
+    if (apiSecretVal != null) {
+      await SecureTokenStorage.write(
+        SecureTokenStorage.apiSecret,
+        apiSecretVal,
+      );
+    }
+
     await Future.wait(<Future<bool>>[
-      prefs.setString(_prefAccessToken, _sessionToken!),
       prefs.setBool(_prefRememberMe, _rememberMe),
       prefs.remove(_prefCurrentLat),
       prefs.remove(_prefCurrentLng),
       prefs.remove(_prefCurrentLocationLabel),
-      if (refreshToken != null)
-        prefs.setString(_prefRefreshToken, refreshToken),
-      if (tokenType != null) prefs.setString(_prefTokenType, tokenType),
-      if (expiresIn != null) prefs.setInt(_prefExpiresIn, expiresIn),
       if (fullName != null) prefs.setString(_prefFullName, fullName),
       if (mobile != null) prefs.setString(_prefMobile, mobile),
       if (email != null) prefs.setString(_prefEmail, email),
@@ -2836,9 +4003,16 @@ class AppController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final String? loggedUser = await _fetchLoggedUser();
+      final String? fetchedLoggedUser = await _fetchLoggedUser();
+      final String? loggedUser =
+          fetchedLoggedUser != null &&
+              fetchedLoggedUser.trim().toLowerCase() == 'administrator'
+          ? null
+          : fetchedLoggedUser;
       String? driverName;
+      String? employeeName;
       Map<String, dynamic>? driverDoc;
+      Map<String, dynamic>? employeeDoc;
 
       // Login identity is best mapped through mobile returned in OTP login flow.
       driverName = await _findDriverByMobile();
@@ -2847,18 +4021,19 @@ class AppController extends ChangeNotifier {
       if (driverName == null &&
           loggedUser != null &&
           loggedUser.toLowerCase() != 'administrator') {
-        final String? employeeName = await _findResourceName(
+        final String? linkedEmployeeName = await _findResourceName(
           doctype: 'Employee',
           filters: <List<String>>[
             <String>['Employee', 'user_id', '=', loggedUser],
           ],
           fields: <String>['name'],
         );
-        if (employeeName != null) {
+        if (linkedEmployeeName != null) {
+          employeeName = linkedEmployeeName;
           driverName = await _findResourceName(
             doctype: 'Driver',
             filters: <List<String>>[
-              <String>['Driver', 'employee', '=', employeeName],
+              <String>['Driver', 'employee', '=', linkedEmployeeName],
             ],
             fields: <String>['name'],
           );
@@ -2868,17 +4043,69 @@ class AppController extends ChangeNotifier {
 
       if (driverName != null) {
         driverDoc = await _fetchResourceDoc('Driver', driverName);
+        employeeName ??= _nullIfBlank(driverDoc?['employee']?.toString());
+        _existingLicenseNo = _nullIfBlank(
+          driverDoc?['license_number']?.toString(),
+        );
+        _existingAadharNo = _nullIfBlank(
+          driverDoc?['custom_aadhar_no']?.toString(),
+        );
+        _existingPanNo = _nullIfBlank(driverDoc?['custom_pan_no']?.toString());
+        _existingLicenseUrl = _nullIfBlank(
+          driverDoc?['custom_license_attachment']?.toString(),
+        );
+        _existingAadharUrl = _nullIfBlank(
+          driverDoc?['custom_aadhar_attachment']?.toString(),
+        );
+        _existingPanUrl = _nullIfBlank(
+          driverDoc?['custom_pan_attachment']?.toString(),
+        );
+      }
+      if (employeeName != null) {
+        employeeDoc = await _fetchResourceDoc('Employee', employeeName);
       }
 
       _loggedProfileDetails = LoggedPartnerProfileDetails(
         loggedUser: loggedUser,
-        employee: null,
+        employee: employeeDoc,
         driver: driverDoc,
       );
+
+      if (driverDoc != null) {
+        _checkLicenseStatus(driverDoc);
+        final dynamic onlineRaw = driverDoc['custom_custom_is_online'];
+        if (onlineRaw != null) {
+          final bool backendOnline =
+              onlineRaw == 1 ||
+              onlineRaw == true ||
+              onlineRaw.toString() == '1';
+          if (_isOnline != backendOnline) {
+            _isOnline = backendOnline;
+            _writePref(
+              (SharedPreferences prefs) =>
+                  prefs.setBool(_prefIsOnline, _isOnline),
+            );
+          }
+        }
+        if (_driverName == null || _driverName!.isEmpty) {
+          final String? fetchedName = _nullIfBlank(
+            driverDoc['name']?.toString(),
+          );
+          if (fetchedName != null) {
+            _driverName = fetchedName;
+            _writePref(
+              (SharedPreferences prefs) =>
+                  prefs.setString(_prefDriverName, fetchedName),
+            );
+          }
+        }
+      }
 
       if (!(_loggedProfileDetails?.hasData ?? false)) {
         _profileDetailsError = 'No driver profile linked to this login account';
       }
+
+      await _syncServerProfileImageFromEmployee(employeeDoc);
     } catch (e) {
       _profileDetailsError = e.toString().replaceFirst('Exception: ', '');
     } finally {
@@ -2893,6 +4120,37 @@ class AppController extends ChangeNotifier {
     );
     final Map<String, dynamic> payload = await _authorizedGet(uri);
     return _nullIfBlank(payload['message']?.toString());
+  }
+
+  Future<void> _syncServerProfileImageFromEmployee(
+    Map<String, dynamic>? employeeDoc,
+  ) async {
+    if (employeeDoc == null) {
+      // No employee record — we can't infer server state from Employee.
+      // Leave local cache and _serverProfileImageUrl untouched.
+      return;
+    }
+
+    final String? serverUrl = _nullIfBlank(employeeDoc['image']?.toString());
+    _serverProfileImageUrl = serverUrl;
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (serverUrl != null) {
+      await prefs.setString(_prefServerProfileImageUrl, serverUrl);
+    } else {
+      await prefs.remove(_prefServerProfileImageUrl);
+      // Employee exists but its image field is empty → deleted from web.
+      // Clear the stale local file to reflect that.
+      if (_profileImagePath != null) {
+        final File localFile = File(_profileImagePath!);
+        if (localFile.existsSync()) {
+          try {
+            localFile.deleteSync();
+          } catch (_) {}
+        }
+        _profileImagePath = null;
+        await prefs.remove(_prefProfileImagePath);
+      }
+    }
   }
 
   Future<String?> _findDriverByMobile() async {
@@ -3006,6 +4264,19 @@ class AppController extends ChangeNotifier {
         throw Exception(message);
       }
     }
+
+    // All header candidates failed with 401/403 — try refreshing the token.
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final http.Response retryResp = await http
+          .get(uri, headers: refreshedHeaders)
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
+      }
+    }
     throw Exception(lastError ?? 'Authentication failed for GET $uri');
   }
 
@@ -3041,7 +4312,27 @@ class AppController extends ChangeNotifier {
         throw Exception(message);
       }
     }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders = _authorizationHeaders(
+        contentType: 'application/json',
+      ).first;
+      final http.Response retryResp = await http
+          .put(uri, headers: refreshedHeaders, body: encodedBody)
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
+      }
+    }
     throw Exception(lastError ?? 'Authentication failed for PUT $uri');
+  }
+
+  Future<Map<String, dynamic>> authorizedPostJson(
+    Uri uri,
+    Map<String, dynamic> body,
+  ) async {
+    return _authorizedPostJson(uri, body);
   }
 
   Future<Map<String, dynamic>> _authorizedPostJson(
@@ -3076,6 +4367,19 @@ class AppController extends ChangeNotifier {
         throw Exception(message);
       }
     }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders = _authorizationHeaders(
+        contentType: 'application/json',
+      ).first;
+      final http.Response retryResp = await http
+          .post(uri, headers: refreshedHeaders, body: encodedBody)
+          .timeout(_networkTimeout);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
+      }
+    }
     throw Exception(lastError ?? 'Authentication failed for POST $uri');
   }
 
@@ -3106,38 +4410,19 @@ class AppController extends ChangeNotifier {
         throw Exception(message);
       }
     }
-    throw Exception(lastError ?? 'Authentication failed for GET $uri');
-  }
 
-  Future<Map<String, dynamic>> _authorizedPostForm({
-    required Uri uri,
-    required Map<String, String> body,
-  }) async {
-    final List<Map<String, String>> authHeaders = _authorizationHeaders();
-    String? lastError;
-    for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'POST $uri form=$body');
-      final http.Response response = await http
-          .post(uri, headers: headers, body: body)
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final http.Response retryResp = await http
+          .get(uri, headers: refreshedHeaders)
           .timeout(_networkTimeout);
-      _logApi(
-        'http',
-        'POST $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
-      );
-      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        return payload;
-      }
-
-      final String message =
-          _extractServerError(payload) ??
-          'Request failed (${response.statusCode})';
-      lastError = message;
-      if (response.statusCode != 401 && response.statusCode != 403) {
-        throw Exception(message);
+      final Map<String, dynamic> retryPayload = _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
       }
     }
-    throw Exception(lastError ?? 'Authentication failed for POST $uri');
+    throw Exception(lastError ?? 'Authentication failed for GET $uri');
   }
 
   Future<Map<String, dynamic>> _authorizedUploadFile({
@@ -3168,6 +4453,21 @@ class AppController extends ChangeNotifier {
       lastError = message;
       if (response.statusCode != 401 && response.statusCode != 403) {
         throw Exception(message);
+      }
+    }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final retryRequest = http.MultipartRequest('POST', uri)
+        ..headers.addAll(refreshedHeaders)
+        ..fields.addAll(fields)
+        ..files.add(await http.MultipartFile.fromPath('file', filePath));
+      final retryStreamed = await retryRequest.send().timeout(_networkTimeout);
+      final retryResp = await http.Response.fromStream(retryStreamed);
+      final retryPayload = _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
       }
     }
     throw Exception(lastError ?? 'Authentication failed for POST $uri');
@@ -3211,6 +4511,27 @@ class AppController extends ChangeNotifier {
         throw Exception(lastError);
       }
     }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final retryRequest = http.MultipartRequest('POST', uri)
+        ..headers.addAll(refreshedHeaders)
+        ..fields.addAll(fields)
+        ..files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            filename: fileName,
+          ),
+        );
+      final retryStreamed = await retryRequest.send().timeout(_networkTimeout);
+      final retryResp = await http.Response.fromStream(retryStreamed);
+      final retryPayload = _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
+      }
+    }
     throw Exception(lastError ?? 'Authentication failed');
   }
 
@@ -3241,6 +4562,18 @@ class AppController extends ChangeNotifier {
         throw Exception(lastError);
       }
     }
+
+    if (await refreshSession()) {
+      final Map<String, String> refreshedHeaders =
+          _authorizationHeaders().first;
+      final http.Response retryResp = await http
+          .post(uri, headers: refreshedHeaders, body: body)
+          .timeout(_networkTimeout);
+      final retryPayload = _decodeJsonMap(retryResp.body);
+      if (retryResp.statusCode >= 200 && retryResp.statusCode < 300) {
+        return retryPayload;
+      }
+    }
     throw Exception(lastError ?? 'Authentication failed');
   }
 
@@ -3261,11 +4594,336 @@ class AppController extends ChangeNotifier {
     return null;
   }
 
+  Future<String?> _resolveEmployeeNameForProfileSync() async {
+    if (_loggedProfileDetails?.driver == null) {
+      await fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+    }
+
+    return _nullIfBlank(_loggedProfileDetails?.employee?['name']?.toString()) ??
+        _nullIfBlank(_loggedProfileDetails?.driver?['employee']?.toString());
+  }
+
+  Future<void> _updateEmployeeImage({
+    required String employeeName,
+    required String imageUrl,
+  }) async {
+    final Uri employeeUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/Employee/${Uri.encodeComponent(employeeName)}',
+    );
+    final Map<String, dynamic> payload = await authorizedPutJson(
+      employeeUri,
+      <String, dynamic>{'image': imageUrl},
+    );
+    final Map<String, dynamic>? refreshedEmployee = _extractResourceData(
+      payload,
+    );
+    _loggedProfileDetails = LoggedPartnerProfileDetails(
+      loggedUser: _loggedProfileDetails?.loggedUser,
+      employee: refreshedEmployee ?? _loggedProfileDetails?.employee,
+      driver: _loggedProfileDetails?.driver,
+    );
+  }
+
+  Future<void> _persistServerProfileImageUrl(String? url) async {
+    _serverProfileImageUrl = _nullIfBlank(url);
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (_serverProfileImageUrl != null) {
+      await prefs.setString(
+        _prefServerProfileImageUrl,
+        _serverProfileImageUrl!,
+      );
+    } else {
+      await prefs.remove(_prefServerProfileImageUrl);
+    }
+  }
+
+  /// Tries three approaches to set User.user_image.
+  /// Returns null on success, or the last error string if all fail.
+  Future<String?> _syncUserImageField({
+    required String? userName,
+    required String? imageUrl,
+  }) async {
+    final String? effectiveUser = _nullIfBlank(userName);
+    if (effectiveUser == null ||
+        effectiveUser.toLowerCase() == 'administrator') {
+      return 'Could not resolve Frappe user name — web sync skipped';
+    }
+
+    final String value = imageUrl ?? '';
+
+    // Approach 1: PUT /api/resource/User/{name}
+    try {
+      final Uri userUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/User/${Uri.encodeComponent(effectiveUser)}',
+      );
+      await authorizedPutJson(userUri, <String, dynamic>{'user_image': value});
+      _logApi('profile', 'user_image set via PUT for $effectiveUser');
+      return null;
+    } catch (e) {
+      _logApi('profile', 'PUT user_image failed: $e');
+    }
+
+    // Approach 2: frappe.client.set_value with JSON body
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+      );
+      await authorizedPostJson(uri, <String, dynamic>{
+        'doctype': 'User',
+        'name': effectiveUser,
+        'fieldname': 'user_image',
+        'value': value,
+      });
+      _logApi(
+        'profile',
+        'user_image set via set_value (JSON) for $effectiveUser',
+      );
+      return null;
+    } catch (e) {
+      _logApi('profile', 'set_value JSON failed: $e');
+    }
+
+    // Approach 3: frappe.client.set_value with form-encoded body
+    // Some Frappe versions require multipart/form-data for whitelisted methods.
+    try {
+      final List<Map<String, String>> authHeaders = _authorizationHeaders();
+      final Map<String, String> headers = authHeaders.isNotEmpty
+          ? authHeaders.first
+          : <String, String>{};
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+      );
+      final http.Response response = await http
+          .post(
+            uri,
+            headers: headers,
+            body: <String, String>{
+              'doctype': 'User',
+              'name': effectiveUser,
+              'fieldname': 'user_image',
+              'value': value,
+            },
+          )
+          .timeout(_networkTimeout);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        _logApi(
+          'profile',
+          'user_image set via set_value (form) for $effectiveUser',
+        );
+        return null;
+      }
+      final String formErr =
+          _extractServerError(_decodeJsonMap(response.body)) ??
+          'set_value form failed (${response.statusCode})';
+      _logApi('profile', formErr);
+      return 'user_image web sync failed: $formErr\n(User: $effectiveUser, URL: $value)';
+    } catch (e) {
+      final String msg = e.toString().replaceFirst('Exception: ', '');
+      return 'user_image web sync failed: $msg\n(User: $effectiveUser, URL: $value)';
+    }
+  }
+
+  Map<String, dynamic>? _extractResourceData(Map<String, dynamic> payload) {
+    final dynamic data = payload['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    final dynamic message = payload['message'];
+    if (message is Map<String, dynamic>) {
+      return message;
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>> _buildEmployeeProfileUpdatePayload({
+    String? fullName,
+    required String? email,
+    String? mobile,
+  }) async {
+    final Map<String, String> employeeFields = await _fetchDoctypeFieldTypes(
+      'Employee',
+    );
+    final Map<String, dynamic> payload = <String, dynamic>{};
+
+    void setIfEditable(String fieldname, dynamic value) {
+      if (!employeeFields.containsKey(fieldname)) {
+        return;
+      }
+      payload[fieldname] = value;
+    }
+
+    if (fullName != null) {
+      setIfEditable('employee_name', fullName);
+      final List<String> nameParts = fullName
+          .split(RegExp(r'\s+'))
+          .where((part) => part.isNotEmpty)
+          .toList();
+      if (nameParts.isNotEmpty) {
+        setIfEditable('first_name', nameParts.first);
+        if (nameParts.length > 1) {
+          setIfEditable('last_name', nameParts.skip(1).join(' '));
+        } else {
+          setIfEditable('last_name', '');
+        }
+      }
+    }
+
+    if (mobile != null) {
+      if (employeeFields.containsKey('cell_number')) {
+        payload['cell_number'] = mobile;
+      } else if (employeeFields.containsKey('mobile_no')) {
+        payload['mobile_no'] = mobile;
+      }
+    }
+
+    if (email != null) {
+      if (employeeFields.containsKey('personal_email')) {
+        payload['personal_email'] = email;
+      } else if (employeeFields.containsKey('company_email')) {
+        payload['company_email'] = email;
+      } else if (employeeFields.containsKey('email')) {
+        payload['email'] = email;
+      }
+    }
+
+    return payload;
+  }
+
+  String? _resolveUserNameForProfileSync() {
+    return _nullIfBlank(
+          _loggedProfileDetails?.driver?['user_id']?.toString(),
+        ) ??
+        _nullIfBlank(_loggedProfileDetails?.loggedUser);
+  }
+
+  Future<void> _updateUserProfileAndMaybeRename({
+    required String currentUserName,
+    String? fullName,
+    String? email,
+    String? mobile,
+  }) async {
+    String effectiveUserName = currentUserName;
+
+    if (email != null &&
+        email.isNotEmpty &&
+        currentUserName.toLowerCase() != email.toLowerCase()) {
+      final Uri renameUri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.rename_doc',
+      );
+      await authorizedPostJson(renameUri, <String, dynamic>{
+        'doctype': 'User',
+        'old_name': currentUserName,
+        'new_name': email,
+        'merge': false,
+      });
+      effectiveUserName = email;
+    }
+
+    final Map<String, String> userFields = await _fetchDoctypeFieldTypes(
+      'User',
+    );
+    final Map<String, dynamic> payload = <String, dynamic>{};
+
+    if (fullName != null) {
+      final List<String> nameParts = fullName
+          .split(RegExp(r'\s+'))
+          .where((part) => part.isNotEmpty)
+          .toList();
+      if (userFields.containsKey('full_name')) {
+        payload['full_name'] = fullName;
+      }
+      if (nameParts.isNotEmpty) {
+        if (userFields.containsKey('first_name')) {
+          payload['first_name'] = nameParts.first;
+        }
+        if (userFields.containsKey('last_name')) {
+          payload['last_name'] = nameParts.length > 1
+              ? nameParts.skip(1).join(' ')
+              : '';
+        }
+      }
+    }
+
+    if (email != null) {
+      if (userFields.containsKey('username')) {
+        payload['username'] = email;
+      }
+      if (userFields.containsKey('email')) {
+        payload['email'] = email;
+      }
+    }
+
+    if (mobile != null && userFields.containsKey('mobile_no')) {
+      payload['mobile_no'] = mobile;
+    }
+
+    if (payload.isEmpty) {
+      _loggedProfileDetails = LoggedPartnerProfileDetails(
+        loggedUser: effectiveUserName,
+        employee: _loggedProfileDetails?.employee,
+        driver: _loggedProfileDetails?.driver,
+      );
+      return;
+    }
+
+    final Uri userUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/User/${Uri.encodeComponent(effectiveUserName)}',
+    );
+    await authorizedPutJson(userUri, payload);
+    _loggedProfileDetails = LoggedPartnerProfileDetails(
+      loggedUser: effectiveUserName,
+      employee: _loggedProfileDetails?.employee,
+      driver: _loggedProfileDetails?.driver,
+    );
+  }
+
+  Future<Map<String, String>> _fetchDoctypeFieldTypes(String doctype) async {
+    try {
+      final Uri uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/resource/DocType/${Uri.encodeComponent(doctype)}',
+      );
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+      final dynamic data = payload['data'];
+      if (data is! Map<String, dynamic>) {
+        return <String, String>{};
+      }
+      final dynamic fields = data['fields'];
+      if (fields is! List) {
+        return <String, String>{};
+      }
+
+      final Map<String, String> fieldTypes = <String, String>{};
+      for (final dynamic row in fields) {
+        if (row is! Map<String, dynamic>) {
+          continue;
+        }
+        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
+        final String? fieldtype = _nullIfBlank(row['fieldtype']?.toString());
+        final int readOnly =
+            int.tryParse(row['read_only']?.toString() ?? '0') ?? 0;
+        if (fieldname == null || fieldtype == null || readOnly == 1) {
+          continue;
+        }
+        fieldTypes[fieldname] = fieldtype;
+      }
+      return fieldTypes;
+    } catch (_) {
+      return <String, String>{};
+    }
+  }
+
+  /// Returns the primary auth header for use outside AppController (e.g. image loading).
+  Map<String, String> buildAuthHeaders() {
+    final headers = _authorizationHeaders();
+    return headers.isNotEmpty ? headers.first : <String, String>{};
+  }
+
   List<Map<String, String>> _authorizationHeaders({String? contentType}) {
     final List<Map<String, String>> authHeaders = <Map<String, String>>[];
     if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
       final Map<String, String> bearerHeaders = <String, String>{
         'Accept': 'application/json',
+        'Accept-Language': _languageHeaderValue(),
         'Authorization': '${_tokenType.trim()} ${_sessionToken!.trim()}',
       };
       if (contentType != null) {
@@ -3273,15 +4931,37 @@ class AppController extends ChangeNotifier {
       }
       authHeaders.add(bearerHeaders);
     }
-    final Map<String, String> tokenHeaders = <String, String>{
+    if (_sessionToken != null && _sessionToken!.trim().isNotEmpty) {
+      final String altType = _tokenType.trim().toLowerCase() == 'token'
+          ? 'Bearer'
+          : 'token';
+      final Map<String, String> tokenHeaders = <String, String>{
+        'Accept': 'application/json',
+        'Accept-Language': _languageHeaderValue(),
+        'Authorization': '$altType ${_sessionToken!.trim()}',
+      };
+      if (contentType != null) {
+        tokenHeaders['Content-Type'] = contentType;
+      }
+      authHeaders.add(tokenHeaders);
+    }
+    return authHeaders;
+  }
+
+  Map<String, String> _requestHeaders({String? contentType}) {
+    final Map<String, String> headers = <String, String>{
       'Accept': 'application/json',
-      'Authorization': 'token ${ApiConstants.apiKey}:${ApiConstants.apiSecret}',
+      'Accept-Language': _languageHeaderValue(),
     };
     if (contentType != null) {
-      tokenHeaders['Content-Type'] = contentType;
+      headers['Content-Type'] = contentType;
     }
-    authHeaders.add(tokenHeaders);
-    return authHeaders;
+    return headers;
+  }
+
+  String _languageHeaderValue() {
+    final String language = _languageCode.isEmpty ? 'en' : _languageCode;
+    return AppStrings.isSupportedLanguageCode(language) ? language : 'en';
   }
 
   String? _normalizedMobileForSearch(String? raw) {
@@ -3398,30 +5078,5 @@ class AppController extends ChangeNotifier {
       return null;
     }
     return double.tryParse(normalized);
-  }
-
-  Future<void> updateFcmToken(String token) async {
-    if (!_isLoggedIn || _sessionToken == null) return;
-
-    final String? userEmail = _profile?.email;
-    if (userEmail == null || userEmail.isEmpty) {
-      debugPrint('Cannot update FCM token: User email missing');
-      return;
-    }
-
-    try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
-      );
-      await _authorizedPostJson(uri, <String, dynamic>{
-        'doctype': 'User',
-        'name': userEmail,
-        'fieldname': 'fcm_token',
-        'value': token,
-      });
-      debugPrint('FCM Token synced with server for $userEmail');
-    } catch (e) {
-      debugPrint('Failed to sync FCM token: $e');
-    }
   }
 }

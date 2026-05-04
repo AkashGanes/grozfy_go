@@ -2,100 +2,61 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
+import '../../core/services/api_service.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
 
-class OrderStatusScreen extends StatelessWidget {
+class OrderStatusScreen extends StatefulWidget {
   const OrderStatusScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  State<OrderStatusScreen> createState() => _OrderStatusScreenState();
+}
+
+class _OrderStatusScreenState extends State<OrderStatusScreen> {
+  final ApiService _apiService = ApiService();
+  bool _syncing = false;
+
+  static const List<OrderProgressStatus> _flow = <OrderProgressStatus>[
+    OrderStatus.accepted,
+    OrderStatus.reachedPickup,
+    OrderStatus.pickedUp,
+    OrderStatus.outForDelivery,
+    OrderStatus.delivered,
+  ];
+
+  Future<void> _advanceStatus(BuildContext context) async {
     final app = AppScope.of(context);
     final order = app.activeOrder;
+    if (order == null || _syncing) return;
 
-    if (order == null) {
-      return AppShell(
-        title: 'Order Status',
-        subtitle: 'No active delivery',
-        child: ElevatedButton(
-          onPressed: () => Navigator.of(
-            context,
-          ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false),
-          child: const Text('Back to Dashboard'),
-        ),
-      );
+    final OrderProgressStatus next = _nextStatus(order.orderStatus);
+    if (next == order.orderStatus) return;
+
+    setState(() => _syncing = true);
+
+    final bool apiOk = await _apiService.updateDeliveryStatus(
+      order.orderId,
+      _statusApiLabel(next),
+    );
+
+    if (!mounted) return;
+
+    if (!apiOk) {
+      showInfoSnack(context, 'Server sync failed — status saved locally');
     }
 
-    final List<OrderProgressStatus> flow = <OrderProgressStatus>[
-      OrderProgressStatus.accepted,
-      OrderProgressStatus.reachedPickup,
-      OrderProgressStatus.pickedUp,
-      OrderProgressStatus.outForDelivery,
-      OrderProgressStatus.delivered,
-    ];
+    app.updateOrderStatus(next);
 
-    final int currentIndex = flow.indexOf(order.orderStatus);
+    if (!mounted) return;
+    setState(() => _syncing = false);
 
-    return AppShell(
-      title: 'Order Progress',
-      subtitle: 'Real-time status sync with customer app',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          FrostCard(
-            child: Column(
-              children: flow.asMap().entries.map((entry) {
-                final int index = entry.key;
-                final OrderProgressStatus status = entry.value;
-                final bool done = index <= currentIndex;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        done
-                            ? Icons.check_circle_rounded
-                            : Icons.radio_button_unchecked,
-                        color: done ? Colors.green : Colors.grey,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          status.label,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: done ? Colors.black87 : Colors.black45,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (order.orderStatus != OrderProgressStatus.delivered)
-            ElevatedButton(
-              onPressed: () {
-                final OrderProgressStatus next = _nextStatus(order.orderStatus);
-                app.updateOrderStatus(next);
-                if (next == OrderProgressStatus.delivered) {
-                  showInfoSnack(
-                    context,
-                    'Order delivered and earnings updated',
-                  );
-                  Navigator.of(context).pushNamedAndRemoveUntil(
-                    AppRoutes.dashboard,
-                    (route) => false,
-                  );
-                }
-              },
-              child: Text(_nextButtonLabel(order.orderStatus)),
-            ),
-        ],
-      ),
-    );
+    if (next == OrderStatus.delivered) {
+      showInfoSnack(context, 'Order delivered and earnings updated');
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
+    }
   }
 
   OrderProgressStatus _nextStatus(OrderProgressStatus current) {
@@ -119,6 +80,23 @@ class OrderStatusScreen extends StatelessWidget {
     }
   }
 
+  String _statusApiLabel(OrderProgressStatus status) {
+    switch (status) {
+      case OrderStatus.accepted:
+        return 'Accepted';
+      case OrderStatus.reachedPickup:
+        return 'Reached Pickup';
+      case OrderStatus.pickedUp:
+        return 'Picked Up';
+      case OrderStatus.outForDelivery:
+        return 'Out For Delivery';
+      case OrderStatus.delivered:
+        return 'Delivered';
+      default:
+        return status.label;
+    }
+  }
+
   String _nextButtonLabel(OrderProgressStatus current) {
     switch (current) {
       case OrderStatus.pending:
@@ -138,5 +116,83 @@ class OrderStatusScreen extends StatelessWidget {
       case OrderStatus.cancelled:
         return 'Cancelled';
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = AppScope.of(context);
+    final order = app.activeOrder;
+
+    if (order == null) {
+      return AppShell(
+        title: 'Order Status',
+        subtitle: 'No active delivery',
+        child: ElevatedButton(
+          onPressed: () => Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false),
+          child: const Text('Back to Dashboard'),
+        ),
+      );
+    }
+
+    final int currentIndex = _flow.indexOf(order.orderStatus);
+
+    return AppShell(
+      title: 'Order Progress',
+      subtitle: 'Real-time status sync with customer app',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FrostCard(
+            child: Column(
+              children: _flow.asMap().entries.map((entry) {
+                final int index = entry.key;
+                final OrderProgressStatus status = entry.value;
+                final bool done = index <= currentIndex;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        done
+                            ? Icons.check_circle_rounded
+                            : Icons.radio_button_unchecked,
+                        color: done ? Colors.green : Colors.grey,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          app.orderStatusLabel(status),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: done ? Colors.black87 : Colors.black45,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (order.orderStatus != OrderProgressStatus.delivered)
+            ElevatedButton(
+              onPressed: _syncing ? null : () => _advanceStatus(context),
+              child: _syncing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(_nextButtonLabel(order.orderStatus)),
+            ),
+        ],
+      ),
+    );
   }
 }

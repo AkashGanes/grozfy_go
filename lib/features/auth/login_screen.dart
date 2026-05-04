@@ -106,7 +106,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     return AppShell(
       title: app.t('login'),
-      subtitle: 'Enter your mobile number to continue',
+      subtitle: app.t('login_subtitle'),
       loading: _busy,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -116,7 +116,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Mobile Number',
+                  app.t('mobile_number'),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -129,7 +129,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   enabled: !_otpSent || !_busy,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
-                    hintText: 'Enter 10-digit mobile number',
+                    hintText: app.t('enter_mobile'),
                     prefixIcon: const Icon(Icons.phone_android_rounded),
                     prefixText: '+91  ',
                     counterText: '',
@@ -144,7 +144,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _isMobileValid && !_busy ? _sendOtp : null,
-                      child: Text(_busy ? 'Sending OTP...' : 'Send OTP'),
+                      child: Text(_busy ? app.t('sending_otp') : app.t('send_otp')),
                     ),
                   ),
                 if (_otpSent) ...[
@@ -152,7 +152,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'OTP',
+                        app.t('otp'),
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
@@ -165,7 +165,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   _otpCtrl.clear();
                                 }),
                         icon: const Icon(Icons.edit, size: 16),
-                        label: const Text('Change Number'),
+                        label: Text(app.t('change_number')),
                       ),
                     ],
                   ),
@@ -175,9 +175,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     keyboardType: TextInputType.number,
                     autofocus: true,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: const InputDecoration(
-                      hintText: 'Enter OTP',
-                      prefixIcon: Icon(Icons.shield_rounded),
+                    decoration: InputDecoration(
+                      hintText: app.t('enter_otp'),
+                      prefixIcon: const Icon(Icons.shield_rounded),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -185,7 +185,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: _busy ? null : _sendOtp,
-                      child: const Text('Resend OTP'),
+                      child: Text(app.t('resend_otp')),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -193,7 +193,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _busy ? null : _login,
-                      child: Text(_busy ? 'Verifying...' : 'Verify & Login'),
+                      child: Text(_busy ? app.t('verifying') : app.t('verify_login')),
                     ),
                   ),
                 ],

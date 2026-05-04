@@ -94,8 +94,12 @@ class SkeletonLoader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: List.generate(itemCount, (index) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      itemCount: itemCount,
+      itemBuilder: (context, index) {
         return Padding(
           padding: EdgeInsets.only(bottom: spacing),
           child: _SkeletonItem(
@@ -103,7 +107,7 @@ class SkeletonLoader extends StatelessWidget {
             shimmerColor: shimmerColor,
           ),
         );
-      }),
+      },
     );
   }
 }

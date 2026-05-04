@@ -1,4 +1,4 @@
-package com.example.delivery_partner_app;
+package com.lyncspace.grozfygo;
 
 import io.flutter.embedding.android.FlutterActivity;
 

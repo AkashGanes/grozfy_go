@@ -1,4 +1,4 @@
-# FlowFleet Partner App
+# Grozfy Go
 
 A stylish Flutter delivery-partner app scaffold covering complete onboarding,
 KYC, permissions, order flow, and operational dashboard.

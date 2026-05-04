@@ -1,31 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
-
-class _SplashLoader extends StatelessWidget {
-  const _SplashLoader();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 28,
-      height: 4,
-      decoration: BoxDecoration(
-        color: AppTheme.mango.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(2),
-      ),
-    )
-        .animate(onPlay: (controller) => controller.repeat())
-        .shimmer(
-          duration: 800.ms,
-          color: AppTheme.mango.withValues(alpha: 0.6),
-        );
-  }
-}
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -112,25 +90,25 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   end: 1.05,
                 ).animate(_controller),
                 child: Container(
-                  width: 112,
-                  height: 112,
+                  width: 160,
+                  height: 160,
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(28),
+                    borderRadius: BorderRadius.circular(36),
                     border: Border.all(
                       color: Colors.white.withValues(alpha: 0.3),
                     ),
                   ),
-                  child: const Icon(
-                    Icons.local_shipping_rounded,
-                    size: 56,
-                    color: Colors.white,
+                  child: const Image(
+                    image: AssetImage('assets/images/logo.png'),
+                    fit: BoxFit.contain,
                   ),
                 ),
               ),
               const SizedBox(height: 24),
               Text(
-                'FlowFleet Partner',
+                'Grozfy Go',
                 style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w800,
@@ -144,10 +122,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                 ).textTheme.bodyLarge?.copyWith(color: Colors.white70),
               ),
               const SizedBox(height: 34),
-              const SizedBox(
+              SizedBox(
                 width: 28,
                 height: 28,
-                child: _SplashLoader(),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    AppTheme.mango.withValues(alpha: 0.85),
+                  ),
+                ),
               ),
             ],
           ),

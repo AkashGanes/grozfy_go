@@ -2,8 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/localization/localized_text.dart';
+import '../../../core/services/secure_token_storage.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 
@@ -26,13 +29,97 @@ class ReturnProcessResult {
 }
 
 class ExternalDeliveryRepository {
-  ExternalDeliveryRepository({
-    this.apiKey = ApiConstants.apiKey,
-    this.apiSecret = ApiConstants.apiSecret,
-  });
+  ExternalDeliveryRepository();
 
-  final String apiKey;
-  final String apiSecret;
+  static const String _prefLanguageCode = 'language_code';
+  static final Uri _refreshTokenUri = Uri.parse(
+    '${ApiConstants.erpBaseUrl}/api/method/frappe.integrations.oauth2.get_token',
+  );
+
+  static const String _prefDriverName = 'driver_name';
+
+  Future<String> _getLoggedInDriver() async {
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString(_prefDriverName)?.trim() ?? '';
+    return name.isNotEmpty ? name : ApiConstants.defaultExternalDeliveryDriver;
+  }
+
+  Future<Map<String, String>> _authHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? token =
+        await SecureTokenStorage.read(SecureTokenStorage.accessToken);
+    final String tokenType =
+        (await SecureTokenStorage.read(SecureTokenStorage.tokenType) ?? 'token')
+            .trim();
+    final String language =
+        prefs.getString(_prefLanguageCode)?.trim().isNotEmpty == true
+            ? prefs.getString(_prefLanguageCode)!.trim()
+            : 'en';
+    if (token != null && token.isNotEmpty) {
+      return {
+        'Accept': 'application/json',
+        'Accept-Language': language,
+        'Authorization': '$tokenType $token',
+      };
+    }
+    return {'Accept': 'application/json', 'Accept-Language': language};
+  }
+
+  /// Refreshes the session token using Frappe's OAuth2 get_token endpoint.
+  Future<bool> _refreshSession() async {
+    try {
+      final String? refreshToken =
+          await SecureTokenStorage.read(SecureTokenStorage.refreshToken);
+      final String? clientId =
+          await SecureTokenStorage.read(SecureTokenStorage.clientId);
+      if (refreshToken == null || refreshToken.trim().isEmpty) return false;
+      if (clientId == null || clientId.trim().isEmpty) return false;
+
+      _logApi('refresh_token', 'POST $_refreshTokenUri');
+      final resp = await http
+          .post(
+            _refreshTokenUri,
+            headers: {
+              'Accept': 'application/json',
+              'Accept-Language': await _languageHeader(),
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: {
+              'grant_type': 'refresh_token',
+              'refresh_token': refreshToken,
+              'client_id': clientId,
+            },
+          )
+          .timeout(_networkTimeout);
+
+      if (resp.statusCode < 200 || resp.statusCode >= 300) return false;
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final String? newToken = data['access_token']?.toString();
+      if (newToken == null || newToken.trim().isEmpty) return false;
+
+      final String? newType = data['token_type']?.toString();
+      final String? newRefresh = data['refresh_token']?.toString();
+      await SecureTokenStorage.write(
+        SecureTokenStorage.accessToken,
+        newToken,
+      );
+      if (newType != null && newType.isNotEmpty) {
+        await SecureTokenStorage.write(SecureTokenStorage.tokenType, newType);
+      }
+      if (newRefresh != null && newRefresh.isNotEmpty) {
+        await SecureTokenStorage.write(
+          SecureTokenStorage.refreshToken,
+          newRefresh,
+        );
+      }
+      _logApi('refresh_token', 'session refreshed successfully');
+      return true;
+    } catch (e) {
+      _logApi('refresh_token error', e.toString());
+      return false;
+    }
+  }
 
   static const int pageSize = 20;
 
@@ -40,7 +127,6 @@ class ExternalDeliveryRepository {
     'name',
     'creation',
     'modified',
-    'store_url',
     'store_name',
     'customer_name',
     'status',
@@ -66,19 +152,16 @@ class ExternalDeliveryRepository {
     final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
       queryParameters: {
         'fields': jsonEncode(['store_name']),
+        'filters': jsonEncode([
+          ['External Delivery', 'status', '=', 'Pending'],
+        ]),
         'limit_page_length': '500',
         'order_by': 'store_name asc',
       },
     );
 
     _logApi('fetch_store_names request', uri.toString());
-    final resp = await _get(
-      uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
-    );
+    final resp = await _get(uri, headers: await _authHeaders());
 
     _logApi('fetch_store_names response', '${resp.statusCode}');
     if (resp.statusCode != 200) return [];
@@ -99,18 +182,28 @@ class ExternalDeliveryRepository {
 
   Future<List<ExternalDelivery>> fetchPage({
     int limitStart = 0,
+    int limitPageLength = pageSize,
     String? storeName,
+    String orderBy = 'store_name asc, modified desc',
+    List<List<dynamic>>? filters,
+    List<List<dynamic>>? orFilters,
   }) async {
     final params = <String, String>{
       'fields': jsonEncode(_fields),
       'limit_start': '$limitStart',
-      'limit_page_length': '$pageSize',
-      'order_by': 'store_name asc, modified desc',
+      'limit_page_length': '$limitPageLength',
+      'order_by': orderBy,
     };
-    if (storeName != null && storeName.isNotEmpty) {
-      params['filters'] = jsonEncode([
-        ['External Delivery', 'store_name', '=', storeName],
-      ]);
+    final List<List<dynamic>> effectiveFilters = <List<dynamic>>[
+      if (filters != null) ...filters,
+      if (storeName != null && storeName.isNotEmpty)
+        <dynamic>['External Delivery', 'store_name', '=', storeName],
+    ];
+    if (effectiveFilters.isNotEmpty) {
+      params['filters'] = jsonEncode(effectiveFilters);
+    }
+    if (orFilters != null && orFilters.isNotEmpty) {
+      params['or_filters'] = jsonEncode(orFilters);
     }
 
     final uri = Uri.parse(
@@ -118,13 +211,7 @@ class ExternalDeliveryRepository {
     ).replace(queryParameters: params);
 
     _logApi('external_delivery_list request', uri.toString());
-    final resp = await _get(
-      uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
-    );
+    final resp = await _get(uri, headers: await _authHeaders());
 
     if (resp.statusCode == 401) {
       throw Exception('401: Invalid API credentials.');
@@ -142,19 +229,75 @@ class ExternalDeliveryRepository {
         .toList();
   }
 
+  Future<List<ExternalDelivery>> fetchActiveSummaries({
+    int limitPageLength = 5,
+  }) async {
+    return fetchPage(
+      limitStart: 0,
+      limitPageLength: limitPageLength,
+      orderBy: 'modified desc',
+      filters: <List<dynamic>>[
+        <dynamic>[
+          'External Delivery',
+          'status',
+          'in',
+          <String>[
+            'Accepted',
+            'Added to Trip',
+            'Picked Up',
+            'Out for Delivery',
+          ],
+        ],
+      ],
+    );
+  }
+
+  /// Fetches all External Delivery records with [status] using server-side
+  /// filtering so no records are missed due to pagination limits.
+  Future<List<ExternalDelivery>> fetchAllByStatus(String status) async {
+    final params = <String, String>{
+      'fields': jsonEncode(_fields),
+      'filters': jsonEncode([
+        ['External Delivery', 'status', '=', status],
+      ]),
+      'limit_page_length': '500',
+      'order_by': 'creation desc',
+    };
+
+    final uri = Uri.parse(
+      ApiConstants.externalDeliveryList,
+    ).replace(queryParameters: params);
+
+    _logApi('external_delivery_pending_list request', uri.toString());
+    final resp = await _get(uri, headers: await _authHeaders());
+
+    if (resp.statusCode == 401) {
+      throw Exception('401: Invalid API credentials.');
+    }
+    if (resp.statusCode == 403) {
+      throw Exception('403: Access denied. Check API permissions.');
+    }
+    if (resp.statusCode != 200) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+
+    final data = (jsonDecode(resp.body)['data']) as List;
+    _logApi(
+      'external_delivery_pending_list',
+      'fetched ${data.length} records with status=$status',
+    );
+    return data
+        .map((row) => ExternalDelivery.fromJson(row as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<ExternalDeliveryDetail> fetchDetail(String name) async {
     final uri = Uri.parse(
       '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
     );
     _logApi('external_delivery_detail request', uri.toString());
 
-    final resp = await _get(
-      uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
-    );
+    final resp = await _get(uri, headers: await _authHeaders());
 
     if (resp.statusCode == 401) {
       throw Exception('401: Invalid API credentials.');
@@ -186,40 +329,120 @@ class ExternalDeliveryRepository {
 
     final resp = await _put(
       uri,
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
       body: jsonEncode({'status': status}),
     );
 
+    if (!_okCodes.contains(resp.statusCode)) {
+      _logApi(
+        'external_delivery_status_update error',
+        'code=${resp.statusCode} body=${resp.body}',
+      );
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
+  Future<void> updateStatusViaSetValue(String name, String status) async {
+    _logApi('external_delivery_set_value request', 'name=$name status=$status');
+    final uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    final resp = await _post(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'doctype': 'External Delivery',
+        'name': name,
+        'fieldname': 'status',
+        'value': status,
+      }),
+    );
+    _logApi(
+      'external_delivery_set_value response',
+      'code=${resp.statusCode} body=${resp.body}',
+    );
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));
     }
   }
 
-  Future<String> createAndSubmitTripForOrder(ExternalDelivery order) async {
+  Future<void> acceptOrderWithPartner(String name, String partnerMobile) async {
+    final uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
+    );
+    _logApi(
+      'accept_order_with_partner request',
+      'name=$name partner=$partnerMobile',
+    );
+    final resp = await _put(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'status': 'Accepted',
+        'delivery_partner': partnerMobile,
+        'driver': partnerMobile,
+        'assigned_to': partnerMobile,
+      }),
+    );
+    _logApi(
+      'accept_order_with_partner response',
+      'code=${resp.statusCode} body=${resp.body}',
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
+  Future<void> applyWorkflowAccept(String name) async {
+    final detailUri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
+    );
+    final detailResp = await _get(detailUri, headers: await _authHeaders());
+    if (!_okCodes.contains(detailResp.statusCode)) {
+      throw Exception(_extractErrorMessage(detailResp));
+    }
+    final docData =
+        (jsonDecode(detailResp.body)['data']) as Map<String, dynamic>;
+
+    final uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.model.workflow.apply_workflow',
+    );
+    _logApi('apply_workflow_accept request', 'name=$name');
+    final resp = await _post(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'doc': docData, 'action': 'Accept'}),
+    );
+    _logApi(
+      'apply_workflow_accept response',
+      'code=${resp.statusCode} body=${resp.body}',
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
+  Future<String> createAndSubmitTripForOrders(
+    List<ExternalDelivery> orders,
+  ) async {
+    if (orders.isEmpty) {
+      throw Exception('No orders provided for trip creation');
+    }
+
     final createPayload = {
-      'driver': ApiConstants.defaultExternalDeliveryDriver,
+      'driver': await _getLoggedInDriver(),
       'status': 'Draft',
       'trip_date': DateTime.now().toIso8601String().split('T').first,
-      'stops': [
-        {'external_delivery': order.name},
-      ],
+      'stops': orders.map((o) => {'external_delivery': o.name}).toList(),
     };
     _logApi(
-      'external_delivery_trip_create request',
-      'POST ${ApiConstants.externalDeliveryTripList} body=$createPayload',
+      'external_delivery_trip_create_batch request',
+      'POST ${ApiConstants.externalDeliveryTripList} stops=${orders.length}',
     );
 
     final createResp = await _post(
       Uri.parse(ApiConstants.externalDeliveryTripList),
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
       body: jsonEncode(createPayload),
     );
 
@@ -239,10 +462,171 @@ class ExternalDeliveryRepository {
     );
     final submitResp = await _post(
       Uri.parse(ApiConstants.frappeSubmitMethod),
-      headers: {
-        'Accept': 'application/json',
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'doc': createdDoc}),
+    );
+
+    if (!_okCodes.contains(submitResp.statusCode)) {
+      throw Exception(_extractErrorMessage(submitResp));
+    }
+
+    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
+    final submittedDoc = submitData['message'] ?? submitData['data'];
+    if (submittedDoc is! Map<String, dynamic>) {
+      throw Exception('Trip submit API returned unexpected response');
+    }
+
+    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+  }
+
+  Future<String> createAndSubmitTripForOrderName(String orderName) async {
+    final createPayload = {
+      'driver': await _getLoggedInDriver(),
+      'status': 'Draft',
+      'trip_date': DateTime.now().toIso8601String().split('T').first,
+      'stops': [
+        {'external_delivery': orderName},
+      ],
+    };
+    _logApi(
+      'external_delivery_trip_create request',
+      'POST ${ApiConstants.externalDeliveryTripList} body=$createPayload',
+    );
+
+    final createResp = await _post(
+      Uri.parse(ApiConstants.externalDeliveryTripList),
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode(createPayload),
+    );
+
+    if (!_okCodes.contains(createResp.statusCode)) {
+      throw Exception(_extractErrorMessage(createResp));
+    }
+
+    final createData = jsonDecode(createResp.body) as Map<String, dynamic>;
+    final createdDoc = createData['data'];
+    if (createdDoc is! Map<String, dynamic>) {
+      throw Exception('Trip create API returned unexpected response');
+    }
+
+    final submitResp = await _post(
+      Uri.parse(ApiConstants.frappeSubmitMethod),
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'doc': createdDoc}),
+    );
+
+    if (!_okCodes.contains(submitResp.statusCode)) {
+      throw Exception(_extractErrorMessage(submitResp));
+    }
+
+    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
+    final submittedDoc = submitData['message'] ?? submitData['data'];
+    if (submittedDoc is! Map<String, dynamic>) {
+      throw Exception('Trip submit API returned unexpected response');
+    }
+
+    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+  }
+
+  Future<String> createAndSubmitTripForOrder(ExternalDelivery order) async {
+    final createPayload = {
+      'driver': await _getLoggedInDriver(),
+      'status': 'Draft',
+      'trip_date': DateTime.now().toIso8601String().split('T').first,
+      'stops': [
+        {'external_delivery': order.name},
+      ],
+    };
+    _logApi(
+      'external_delivery_trip_create request',
+      'POST ${ApiConstants.externalDeliveryTripList} body=$createPayload',
+    );
+
+    final createResp = await _post(
+      Uri.parse(ApiConstants.externalDeliveryTripList),
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode(createPayload),
+    );
+
+    if (!_okCodes.contains(createResp.statusCode)) {
+      throw Exception(_extractErrorMessage(createResp));
+    }
+
+    final createData = jsonDecode(createResp.body) as Map<String, dynamic>;
+    final createdDoc = createData['data'];
+    if (createdDoc is! Map<String, dynamic>) {
+      throw Exception('Trip create API returned unexpected response');
+    }
+
+    _logApi(
+      'external_delivery_trip_submit request',
+      'POST ${ApiConstants.frappeSubmitMethod} docname=${createdDoc['name']}',
+    );
+    final submitResp = await _post(
+      Uri.parse(ApiConstants.frappeSubmitMethod),
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'doc': createdDoc}),
+    );
+
+    if (!_okCodes.contains(submitResp.statusCode)) {
+      throw Exception(_extractErrorMessage(submitResp));
+    }
+
+    final submitData = jsonDecode(submitResp.body) as Map<String, dynamic>;
+    final submittedDoc = submitData['message'] ?? submitData['data'];
+    if (submittedDoc is! Map<String, dynamic>) {
+      throw Exception('Trip submit API returned unexpected response');
+    }
+
+    return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+  }
+
+  /// Creates and submits a single-stop trip using only the order name string.
+  /// Used by the order acceptance flow in [AppController].
+  Future<String> createTripByOrderName(String orderName) async {
+    final createPayload = <String, dynamic>{
+      'driver': ApiConstants.defaultExternalDeliveryDriver,
+      'status': 'Draft',
+      'trip_date': DateTime.now().toIso8601String().split('T').first,
+      'stops': <Map<String, String>>[
+        {'external_delivery': orderName},
+      ],
+    };
+
+    _logApi(
+      'external_delivery_trip_create request',
+      'POST ${ApiConstants.externalDeliveryTripList} order=$orderName',
+    );
+
+    final createResp = await _post(
+      Uri.parse(ApiConstants.externalDeliveryTripList),
+      headers: <String, String>{
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
+      },
+      body: jsonEncode(createPayload),
+    );
+
+    if (!_okCodes.contains(createResp.statusCode)) {
+      throw Exception(_extractErrorMessage(createResp));
+    }
+
+    final createData = jsonDecode(createResp.body) as Map<String, dynamic>;
+    final createdDoc = createData['data'];
+    if (createdDoc is! Map<String, dynamic>) {
+      throw Exception('Trip create API returned unexpected response');
+    }
+
+    _logApi(
+      'external_delivery_trip_submit request',
+      'POST ${ApiConstants.frappeSubmitMethod} docname=${createdDoc['name']}',
+    );
+
+    final submitResp = await _post(
+      Uri.parse(ApiConstants.frappeSubmitMethod),
+      headers: <String, String>{
+        ...await _authHeaders(),
+        'Content-Type': 'application/json',
       },
       body: jsonEncode({'doc': createdDoc}),
     );
@@ -263,23 +647,21 @@ class ExternalDeliveryRepository {
   Future<List<ExternalDeliveryTripSummary>> fetchTripPage({
     int limitStart = 0,
   }) async {
+    final driver = await _getLoggedInDriver();
     final uri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
       queryParameters: {
         'fields': jsonEncode(_tripFields),
+        'filters': jsonEncode([
+          ['External Delivery Trip', 'driver', '=', driver],
+        ]),
         'limit_start': '$limitStart',
         'limit_page_length': '$pageSize',
-        'order_by': 'driver asc, modified desc',
+        'order_by': 'modified desc',
       },
     );
     _logApi('external_delivery_trip_list request', uri.toString());
 
-    final resp = await _get(
-      uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
-    );
+    final resp = await _get(uri, headers: await _authHeaders());
 
     if (resp.statusCode == 401) {
       throw Exception('401: Invalid API credentials.');
@@ -305,13 +687,7 @@ class ExternalDeliveryRepository {
         '${ApiConstants.externalDeliveryTripList}/${Uri.encodeComponent(tripName)}';
     _logApi('external_delivery_trip_details request', 'GET $url');
 
-    final resp = await _get(
-      Uri.parse(url),
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
-    );
+    final resp = await _get(Uri.parse(url), headers: await _authHeaders());
 
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));
@@ -332,13 +708,7 @@ class ExternalDeliveryRepository {
     _logApi('fetch_address request', uri.toString());
 
     try {
-      final resp = await _get(
-        uri,
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': 'token $apiKey:$apiSecret',
-        },
-      );
+      final resp = await _get(uri, headers: await _authHeaders());
 
       if (resp.statusCode != 200) return null;
 
@@ -386,11 +756,7 @@ class ExternalDeliveryRepository {
 
     final statusResp = await _post(
       setValueUrl,
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
       body: jsonEncode({
         'doctype': stopDocType,
         'name': stopName,
@@ -407,9 +773,8 @@ class ExternalDeliveryRepository {
       // Best-effort: stamp delivered_at and increment completes_stops on parent trip.
       final parentTripName = (stop.rawFields['parent'] ?? '').toString().trim();
       final authHeaders = {
-        'Accept': 'application/json',
+        ...await _authHeaders(),
         'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
       };
 
       if (stop.deliveredAt.trim().isEmpty) {
@@ -425,7 +790,10 @@ class ExternalDeliveryRepository {
             }),
           );
         } catch (e) {
-          _logApi('external_delivery_trip_stop_delivered_at_warn', e.toString());
+          _logApi(
+            'external_delivery_trip_stop_delivered_at_warn',
+            e.toString(),
+          );
         }
       }
 
@@ -440,8 +808,7 @@ class ExternalDeliveryRepository {
           if (_okCodes.contains(tripResp.statusCode)) {
             final tripData =
                 (jsonDecode(tripResp.body)['data']) as Map<String, dynamic>;
-            final current =
-                (tripData['completes_stops'] as num?)?.toInt() ?? 0;
+            final current = (tripData['completes_stops'] as num?)?.toInt() ?? 0;
             await _post(
               setValueUrl,
               headers: authHeaders,
@@ -467,9 +834,7 @@ class ExternalDeliveryRepository {
   /// Called when the delivery partner arrives back at the store with a
   /// returned order. Marks all stops as Delivered and sets trip status to
   /// Completed.
-  Future<void> markReturnedToStore({
-    required ExternalDeliveryTrip trip,
-  }) async {
+  Future<void> markReturnedToStore({required ExternalDeliveryTrip trip}) async {
     for (final stop in trip.stops) {
       final orderName = stop.externalDelivery.trim();
       if (orderName.isEmpty) {
@@ -490,9 +855,12 @@ class ExternalDeliveryRepository {
     required String filePath,
   }) async {
     try {
-      final uri = Uri.parse('${ApiConstants.erpBaseUrl}/api/method/upload_file');
+      final uri = Uri.parse(
+        '${ApiConstants.erpBaseUrl}/api/method/upload_file',
+      );
+      final headers = await _authHeaders();
       final req = http.MultipartRequest('POST', uri)
-        ..headers['Authorization'] = 'token $apiKey:$apiSecret'
+        ..headers.addAll(headers)
         ..fields['doctype'] = 'External Delivery'
         ..fields['docname'] = orderName
         ..fields['fieldname'] = 'proof_photo'
@@ -506,9 +874,29 @@ class ExternalDeliveryRepository {
         );
 
       _logApi('upload_proof_photo request', 'POST $uri order=$orderName');
-      final streamed = await req.send().timeout(_networkTimeout);
-      final resp = await http.Response.fromStream(streamed);
+      var streamed = await req.send().timeout(_networkTimeout);
+      var resp = await http.Response.fromStream(streamed);
       _logApi('upload_proof_photo response', '${resp.statusCode}');
+
+      // Retry with refreshed token on auth failure.
+      if (_isAuthFailure(resp.statusCode) && await _refreshSession()) {
+        final refreshedHeaders = await _authHeaders();
+        final retryReq = http.MultipartRequest('POST', uri)
+          ..headers.addAll(refreshedHeaders)
+          ..fields['doctype'] = 'External Delivery'
+          ..fields['docname'] = orderName
+          ..fields['fieldname'] = 'proof_photo'
+          ..fields['is_private'] = '0'
+          ..files.add(
+            await http.MultipartFile.fromPath(
+              'file',
+              filePath,
+              filename: 'proof_$orderName.jpg',
+            ),
+          );
+        streamed = await retryReq.send().timeout(_networkTimeout);
+        resp = await http.Response.fromStream(streamed);
+      }
 
       if (!_okCodes.contains(resp.statusCode)) {
         _logApi('upload_proof_photo_warn', _extractErrorMessage(resp));
@@ -554,6 +942,8 @@ class ExternalDeliveryRepository {
     String? photoPath,
     bool shouldCreateReturnTrip = true,
   }) async {
+    final String languageCode = await _languageCode();
+
     await updateTripStopStatus(stop: stop, newStatus: 'Failed');
     await _tryMarkParentTripFailed(stop);
     await _tryWriteStopNotes(stop: stop, reason: reason);
@@ -569,13 +959,13 @@ class ExternalDeliveryRepository {
     }
 
     if (!shouldCreateReturnTrip) {
-      return const ReturnProcessResult(
+      return ReturnProcessResult(
         success: true,
         orderUpdated: true,
         tripCreated: false,
         tripSubmitted: false,
         tripName: null,
-        message: 'Delivery marked as failed.',
+        message: LocalizedText.t(languageCode, 'delivery_failed'),
       );
     }
 
@@ -587,7 +977,8 @@ class ExternalDeliveryRepository {
         tripCreated: false,
         tripSubmitted: false,
         tripName: existingTripName,
-        message: 'Return trip already exists: $existingTripName',
+        message:
+            '${LocalizedText.t(languageCode, 'return_trip')} already exists: $existingTripName',
       );
     }
 
@@ -598,7 +989,8 @@ class ExternalDeliveryRepository {
       tripCreated: true,
       tripSubmitted: true,
       tripName: tripName,
-      message: 'Return trip created: $tripName',
+      message:
+          '${LocalizedText.t(languageCode, 'return_trip')} created: $tripName',
     );
   }
 
@@ -607,15 +999,18 @@ class ExternalDeliveryRepository {
   Future<String> createReturnTrip({required String orderName}) async {
     final existingTripName = await _findExistingOpenReturnTrip(orderName);
     if (existingTripName != null) {
-      _logApi('create_return_trip reuse', 'order=$orderName trip=$existingTripName');
+      _logApi(
+        'create_return_trip reuse',
+        'order=$orderName trip=$existingTripName',
+      );
       return existingTripName;
     }
 
     final createPayload = {
-      'driver': ApiConstants.defaultExternalDeliveryDriver,
+      'driver': await _getLoggedInDriver(),
       'status': 'Draft',
       'trip_date': DateTime.now().toIso8601String().split('T').first,
-      'trip_notes': 'Return Trip for $orderName',
+      'trip_notes': LocalizedText.returnTripMarker(orderName),
       'stops': [
         {'external_delivery': orderName},
       ],
@@ -627,11 +1022,7 @@ class ExternalDeliveryRepository {
 
     final createResp = await _post(
       Uri.parse(ApiConstants.externalDeliveryTripList),
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
       body: jsonEncode(createPayload),
     );
 
@@ -647,11 +1038,7 @@ class ExternalDeliveryRepository {
 
     final submitResp = await _post(
       Uri.parse(ApiConstants.frappeSubmitMethod),
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
       body: jsonEncode({'doc': createdDoc}),
     );
 
@@ -666,6 +1053,12 @@ class ExternalDeliveryRepository {
     }
 
     return (submittedDoc['name'] ?? createdDoc['name'] ?? '').toString();
+  }
+
+  Future<String> _languageCode() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String code = (prefs.getString(_prefLanguageCode) ?? 'en').trim();
+    return code.isEmpty ? 'en' : code;
   }
 
   Future<void> _completeTrip(ExternalDeliveryTrip trip) async {
@@ -705,11 +1098,7 @@ class ExternalDeliveryRepository {
     _logApi('external_delivery_update request', '$uri body=$body');
     final resp = await _put(
       uri,
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
       body: jsonEncode(body),
     );
     if (!_okCodes.contains(resp.statusCode)) {
@@ -790,11 +1179,7 @@ class ExternalDeliveryRepository {
     );
     final resp = await _post(
       setValueUrl,
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
       body: jsonEncode({
         'doctype': doctype,
         'name': name,
@@ -812,7 +1197,12 @@ class ExternalDeliveryRepository {
       queryParameters: {
         'fields': jsonEncode(['name', 'status']),
         'filters': jsonEncode([
-          ['External Delivery Trip', 'trip_notes', '=', 'Return Trip for $orderName'],
+          [
+            'External Delivery Trip',
+            'trip_notes',
+            '=',
+            LocalizedText.returnTripMarker(orderName),
+          ],
           [
             'External Delivery Trip',
             'status',
@@ -824,13 +1214,7 @@ class ExternalDeliveryRepository {
         'order_by': 'modified desc',
       },
     );
-    final resp = await _get(
-      uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'token $apiKey:$apiSecret',
-      },
-    );
+    final resp = await _get(uri, headers: await _authHeaders());
     if (!_okCodes.contains(resp.statusCode)) {
       return null;
     }
@@ -897,28 +1281,68 @@ class ExternalDeliveryRepository {
     print(line);
   }
 
-  Future<http.Response> _get(Uri uri, {required Map<String, String> headers}) {
+  Future<http.Response> _get(
+    Uri uri, {
+    required Map<String, String> headers,
+  }) async {
     _logApi('http', 'GET $uri');
-    return http.get(uri, headers: headers).timeout(_networkTimeout);
+    final resp = await http.get(uri, headers: headers).timeout(_networkTimeout);
+    if (_isAuthFailure(resp.statusCode) && await _refreshSession()) {
+      final refreshedHeaders = await _authHeaders();
+      return http.get(uri, headers: refreshedHeaders).timeout(_networkTimeout);
+    }
+    return resp;
   }
 
   Future<http.Response> _post(
     Uri uri, {
     required Map<String, String> headers,
     Object? body,
-  }) {
+  }) async {
     _logApi('http', 'POST $uri');
-    return http
+    final resp = await http
         .post(uri, headers: headers, body: body)
         .timeout(_networkTimeout);
+    if (_isAuthFailure(resp.statusCode) && await _refreshSession()) {
+      final refreshedHeaders = {
+        ...await _authHeaders(),
+        if (headers.containsKey('Content-Type'))
+          'Content-Type': headers['Content-Type']!,
+      };
+      return http
+          .post(uri, headers: refreshedHeaders, body: body)
+          .timeout(_networkTimeout);
+    }
+    return resp;
   }
 
   Future<http.Response> _put(
     Uri uri, {
     required Map<String, String> headers,
     Object? body,
-  }) {
+  }) async {
     _logApi('http', 'PUT $uri');
-    return http.put(uri, headers: headers, body: body).timeout(_networkTimeout);
+    final resp = await http
+        .put(uri, headers: headers, body: body)
+        .timeout(_networkTimeout);
+    if (_isAuthFailure(resp.statusCode) && await _refreshSession()) {
+      final refreshedHeaders = {
+        ...await _authHeaders(),
+        if (headers.containsKey('Content-Type'))
+          'Content-Type': headers['Content-Type']!,
+      };
+      return http
+          .put(uri, headers: refreshedHeaders, body: body)
+          .timeout(_networkTimeout);
+    }
+    return resp;
   }
+
+  Future<String> _languageHeader() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String language = (prefs.getString(_prefLanguageCode) ?? 'en').trim();
+    return language.isEmpty ? 'en' : language;
+  }
+
+  bool _isAuthFailure(int statusCode) => statusCode == 401 || statusCode == 403;
 }

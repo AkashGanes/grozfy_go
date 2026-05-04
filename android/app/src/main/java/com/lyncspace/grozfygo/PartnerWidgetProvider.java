@@ -1,4 +1,4 @@
-package com.example.delivery_partner_app;
+package com.lyncspace.grozfygo;
 
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;

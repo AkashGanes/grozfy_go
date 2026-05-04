@@ -4,25 +4,19 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_models.dart';
+import 'secure_token_storage.dart';
 
 class ApiService {
   static const String baseUrl = 'http://209.182.232.35:8004';
-  static const String _prefAccessToken = 'access_token';
-  static const String _prefTokenType = 'token_type';
   static const String _prefSid = 'sid';
+  static final Uri _refreshTokenUri = Uri.parse(
+    '$baseUrl/api/method/frappe.integrations.oauth2.get_token',
+  );
   static const List<String> _deliveryFields = <String>[
     'name',
     'store_name',
-    'store_url',
     'customer_name',
     'status',
-    'pickup_lat',
-    'pickup_lng',
-    'drop_lat',
-    'drop_lng',
-    'pickup_address',
-    'drop_address',
-    'contact_number',
     'creation',
     'modified',
   ];
@@ -105,15 +99,29 @@ class ApiService {
     }
   }
 
+  Future<ExternalDeliveryOrder?> getExternalDelivery(String name) async {
+    try {
+      final uri = _resourceUri(doctype: 'External Delivery', name: name);
+      final response = await _sendWithAuthRetry(
+        (headers) => http.get(uri, headers: headers),
+      );
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = _decodeJsonMap(response.body);
+        final dynamic doc = data['data'] ?? data['message'];
+        if (doc is Map<String, dynamic>) {
+          return ExternalDeliveryOrder.fromJson(doc);
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[ApiService] Error fetching delivery $name: $e');
+      return null;
+    }
+  }
+
   Future<bool> updateDeliveryStatus(String deliveryName, String status) async {
     try {
-      final body = jsonEncode({
-        'doc': {
-          'doctype': 'External Delivery',
-          'name': deliveryName,
-          'status': status,
-        },
-      });
+      final body = jsonEncode({'status': status});
 
       final uri = _resourceUri(
         doctype: 'External Delivery',
@@ -154,6 +162,23 @@ class ApiService {
 
       final bool isLastCandidate = i == headerCandidates.length - 1;
       if (!_isAuthFailure(response.statusCode) || isLastCandidate) {
+        // Last candidate also failed with auth error — try refreshing.
+        if (_isAuthFailure(response.statusCode) && isLastCandidate) {
+          if (await _refreshSession()) {
+            final List<Map<String, String>> refreshedHeaders =
+                await _buildHeaderCandidates();
+            if (refreshedHeaders.isNotEmpty) {
+              try {
+                final http.Response retryResp = await request(
+                  refreshedHeaders.first,
+                ).timeout(const Duration(seconds: 30));
+                return retryResp;
+              } on TimeoutException {
+                // Fall through and return the original failed response.
+              }
+            }
+          }
+        }
         return response;
       }
     }
@@ -161,13 +186,80 @@ class ApiService {
     return response;
   }
 
+  /// Refreshes the session token using Frappe's OAuth2 get_token endpoint.
+  Future<bool> _refreshSession() async {
+    try {
+      final String? refreshToken =
+          await SecureTokenStorage.read(SecureTokenStorage.refreshToken);
+      final String? clientId =
+          await SecureTokenStorage.read(SecureTokenStorage.clientId);
+      if (refreshToken == null || refreshToken.trim().isEmpty) return false;
+      if (clientId == null || clientId.trim().isEmpty) return false;
+
+      debugPrint('[ApiService] Attempting token refresh');
+      final http.Response response = await http
+          .post(
+            _refreshTokenUri,
+            headers: const <String, String>{
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: <String, String>{
+              'grant_type': 'refresh_token',
+              'refresh_token': refreshToken,
+              'client_id': clientId,
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        debugPrint('[ApiService] Token refresh failed: ${response.statusCode}');
+        return false;
+      }
+
+      final Map<String, dynamic> data = _decodeJsonMap(response.body);
+
+      final String? newToken =
+          _nullIfBlank(data['access_token']?.toString());
+      if (newToken == null) return false;
+
+      _sessionToken = newToken;
+      final String? newType = _nullIfBlank(data['token_type']?.toString());
+      if (newType != null) _tokenType = newType;
+      final String? newRefresh =
+          _nullIfBlank(data['refresh_token']?.toString());
+
+      await SecureTokenStorage.write(
+        SecureTokenStorage.accessToken,
+        newToken,
+      );
+      if (newType != null) {
+        await SecureTokenStorage.write(SecureTokenStorage.tokenType, newType);
+      }
+      if (newRefresh != null) {
+        await SecureTokenStorage.write(
+          SecureTokenStorage.refreshToken,
+          newRefresh,
+        );
+      }
+
+      debugPrint('[ApiService] Token refreshed successfully');
+      return true;
+    } catch (e) {
+      debugPrint('[ApiService] Token refresh error: $e');
+      return false;
+    }
+  }
+
   Future<List<Map<String, String>>> _buildHeaderCandidates() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-    final String? token = _sessionToken ?? prefs.getString(_prefAccessToken);
+    final String? token = _sessionToken ??
+        await SecureTokenStorage.read(SecureTokenStorage.accessToken);
     final String? sid = _sid ?? prefs.getString(_prefSid);
-    final String tokenType =
-        (_tokenType ?? prefs.getString(_prefTokenType) ?? '').trim();
+    final String tokenType = (_tokenType ??
+            await SecureTokenStorage.read(SecureTokenStorage.tokenType) ??
+            '')
+        .trim();
 
     final Map<String, String> baseHeaders = <String, String>{
       'Content-Type': 'application/json',

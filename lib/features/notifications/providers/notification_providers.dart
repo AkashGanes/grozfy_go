@@ -16,36 +16,58 @@ DateTime? _lastFetchTime;
 bool _isFetching = false;
 const _minFetchInterval = Duration(seconds: 30);
 
-final notificationsProvider = FutureProvider<List<NotificationLog>>(
-  (ref) async {
-    final repository = ref.watch(notificationRepositoryProvider);
+final notificationsProvider = FutureProvider<List<NotificationLog>>((
+  ref,
+) async {
+  final repository = ref.watch(notificationRepositoryProvider);
 
-    // Throttle: don't fetch if we already fetched recently
-    final now = DateTime.now();
-    if (_lastFetchTime != null &&
-        now.difference(_lastFetchTime!) < _minFetchInterval) {
-      return _cachedNotifications;
-    }
+  // Throttle: don't fetch if we already fetched recently
+  final now = DateTime.now();
+  if (_lastFetchTime != null &&
+      now.difference(_lastFetchTime!) < _minFetchInterval) {
+    return _cachedNotifications;
+  }
 
-    // Prevent concurrent fetches
-    if (_isFetching) return _cachedNotifications;
-    _isFetching = true;
+  // Prevent concurrent fetches
+  if (_isFetching) return _cachedNotifications;
+  _isFetching = true;
 
-    try {
-      final result = await repository.getNotifications();
-      _cachedNotifications = result;
-      _lastFetchTime = now;
-      return result;
-    } catch (_) {
-      // On failure, return cached data instead of retrying immediately
-      return _cachedNotifications;
-    } finally {
-      _isFetching = false;
-    }
-  },
-);
+  try {
+    final result = await repository.getNotifications();
+    _cachedNotifications = result;
+    _lastFetchTime = now;
+    return result;
+  } catch (_) {
+    // On failure, return cached data instead of retrying immediately
+    return _cachedNotifications;
+  } finally {
+    _isFetching = false;
+  }
+});
 
-final unreadNotificationCountProvider = Provider<int>((ref) {
-  final notifications = ref.watch(notificationsProvider).value ?? [];
-  return notifications.where((n) => !n.read).length;
+final recentNotificationsProvider =
+    FutureProvider.autoDispose<List<NotificationLog>>((ref) async {
+      final repository = ref.watch(notificationRepositoryProvider);
+      return await repository.getNotifications(limit: 2, offset: 0);
+    });
+
+final notificationCountsProvider =
+    FutureProvider.autoDispose<({int all, int unread, int read})>((ref) async {
+      final repository = ref.watch(notificationRepositoryProvider);
+      return await repository.getNotificationCounts();
+    });
+
+enum NotificationListFilter { all, unread, read }
+
+final notificationListFilterProvider =
+    StateProvider.autoDispose<NotificationListFilter>(
+      (ref) => NotificationListFilter.all,
+    );
+
+final notificationReadOverridesProvider =
+    StateProvider.autoDispose<Set<String>>((ref) => <String>{});
+
+final unreadNotificationCountProvider = FutureProvider.autoDispose<int>((ref) {
+  final repository = ref.watch(notificationRepositoryProvider);
+  return repository.getUnreadCount();
 });

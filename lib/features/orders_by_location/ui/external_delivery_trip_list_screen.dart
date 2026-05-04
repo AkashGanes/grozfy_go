@@ -1,28 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../../core/navigation/app_routes.dart';
+import '../../../core/state/app_scope.dart';
+import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../repository/external_delivery_repository.dart';
 
-class ExternalDeliveryTripListScreen extends StatefulWidget {
+class ExternalDeliveryTripListScreen extends ConsumerStatefulWidget {
   const ExternalDeliveryTripListScreen({super.key});
 
   @override
-  State<ExternalDeliveryTripListScreen> createState() =>
+  ConsumerState<ExternalDeliveryTripListScreen> createState() =>
       _ExternalDeliveryTripListScreenState();
 }
 
 class _ExternalDeliveryTripListScreenState
-    extends State<ExternalDeliveryTripListScreen> {
+    extends ConsumerState<ExternalDeliveryTripListScreen> {
   ExternalDeliveryRepository? _repository;
   PagingController<int, TripListItem>? _pagingController;
   final TextEditingController _searchController = TextEditingController();
-  String? _lastDriver;
   String _searchQuery = '';
+  String? _lastDriver;
 
   @override
   void didChangeDependencies() {
@@ -43,14 +46,7 @@ class _ExternalDeliveryTripListScreenState
   Future<void> _fetchPage(int pageKey) async {
     try {
       final trips = await _repository!.fetchTripPage(limitStart: pageKey);
-      final items = <TripListItem>[];
-      for (final trip in trips) {
-        if (trip.driver != _lastDriver) {
-          items.add(DriverHeader(trip.driver));
-          _lastDriver = trip.driver;
-        }
-        items.add(TripRow(trip));
-      }
+      final items = trips.map((t) => TripRow(t) as TripListItem).toList();
       final isLast = trips.length < ExternalDeliveryRepository.pageSize;
       if (isLast) {
         _pagingController!.appendLastPage(items);
@@ -63,7 +59,6 @@ class _ExternalDeliveryTripListScreenState
   }
 
   Future<void> _refresh() async {
-    _lastDriver = null;
     _pagingController!.refresh();
   }
 
@@ -127,25 +122,6 @@ class _ExternalDeliveryTripListScreenState
       builderDelegate: PagedChildBuilderDelegate<TripListItem>(
         itemBuilder: (context, item, index) {
           final delay = (index * 45).clamp(0, 320);
-          if (item is DriverHeader) {
-            return Padding(
-                  padding: const EdgeInsets.only(top: 18, bottom: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.badge_outlined,
-                        size: 18,
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.9),
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(child: SectionLabel(item.driver)),
-                    ],
-                  ),
-                )
-                .animate()
-                .fadeIn(delay: delay.ms, duration: 220.ms)
-                .slideX(begin: 0.03, end: 0);
-          }
           if (item is TripRow) {
             return _TripCard(
                   trip: item.trip,
@@ -234,18 +210,32 @@ class _ExternalDeliveryTripListScreenState
 
   @override
   Widget build(BuildContext context) {
+    final app = ref.watch(appControllerProvider);
+
+    ref.listen(
+      appControllerProvider.select((c) => c.languageCode),
+      (previous, next) {
+        if (previous != null && previous != next) {
+          _lastDriver = null;
+          _pagingController?.refresh();
+        }
+      },
+    );
+
     final controller = _pagingController;
     if (controller == null) return const SizedBox.shrink();
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return AppShell(
-      title: 'External Delivery Trips',
-      subtitle: 'All trips grouped by driver',
-      actions: const [
+      title: app.t('external_delivery_trips'),
+      subtitle: app.t('trips_grouped_by_driver'),
+      actions: [
         Padding(
-          padding: EdgeInsets.only(right: 10),
+          padding: const EdgeInsets.only(right: 10),
           child: Icon(
             Icons.local_shipping_outlined,
-            color: AppTheme.oceanBlue,
+            color: colorScheme.primary,
             size: 22,
           ),
         ),
@@ -257,7 +247,7 @@ class _ExternalDeliveryTripListScreenState
           _buildSearchBar(),
           Expanded(
             child: RefreshIndicator(
-              color: AppTheme.oceanBlue,
+              color: colorScheme.primary,
               onRefresh: _refresh,
               child: _searchQuery.trim().isEmpty
                   ? _buildPagedList(controller)
@@ -283,21 +273,23 @@ class _TripCard extends StatelessWidget {
     return '${parts[2]}/${parts[1]}/${parts[0]}';
   }
 
-  String _docstatusLabel(int docstatus) {
+  String _docstatusLabel(BuildContext context, int docstatus) {
+    final app = AppScope.of(context);
     switch (docstatus) {
       case 0:
-        return 'Draft';
+        return app.t('draft');
       case 1:
-        return 'Submitted';
+        return app.t('submitted');
       case 2:
-        return 'Cancelled';
+        return app.t('cancelled');
       default:
-        return 'Unknown';
+        return app.t('unknown');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: GestureDetector(
@@ -306,9 +298,9 @@ class _TripCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.local_shipping_outlined,
-                color: AppTheme.oceanBlue,
+                color: colorScheme.primary,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -341,16 +333,16 @@ class _TripCard extends StatelessWidget {
                   vertical: 5,
                 ),
                 decoration: BoxDecoration(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+                  color: colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.35),
+                    color: colorScheme.primary.withValues(alpha: 0.35),
                   ),
                 ),
                 child: Text(
-                  _docstatusLabel(trip.docstatus),
-                  style: const TextStyle(
-                    color: AppTheme.oceanBlue,
+                  _docstatusLabel(context, trip.docstatus),
+                  style: TextStyle(
+                    color: colorScheme.primary,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),

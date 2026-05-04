@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'core/models/app_models.dart';
+import 'core/localization/app_localizations.dart';
 import 'core/services/fcm_initializer.dart';
 import 'core/navigation/app_routes.dart';
 import 'core/state/providers.dart';
@@ -10,6 +13,7 @@ import 'features/auth/login_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/notifications/ui/screens/notifications_screen.dart';
+import 'features/orders/my_orders_screen.dart';
 import 'features/kyc/bank_setup_screen.dart';
 import 'features/kyc/bank_submitted_details_screen.dart';
 import 'features/kyc/kyc_documents_screen.dart';
@@ -52,21 +56,18 @@ void main() async {
   }
 
   runApp(
-    UncontrolledProviderScope(
-      container: container,
-      child: const DeliveryPartnerApp(),
-    ),
+    UncontrolledProviderScope(container: container, child: const GrozfyGoApp()),
   );
 }
 
-class DeliveryPartnerApp extends ConsumerStatefulWidget {
-  const DeliveryPartnerApp({super.key});
+class GrozfyGoApp extends ConsumerStatefulWidget {
+  const GrozfyGoApp({super.key});
 
   @override
-  ConsumerState<DeliveryPartnerApp> createState() => _DeliveryPartnerAppState();
+  ConsumerState<GrozfyGoApp> createState() => _GrozfyGoAppState();
 }
 
-class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
+class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
     with WidgetsBindingObserver {
   @override
   void initState() {
@@ -89,11 +90,12 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    
+
     if (state == AppLifecycleState.resumed) {
       ref.read(appControllerProvider.notifier).setAppResumed(true);
       ref.read(appControllerProvider.notifier).checkConnectivity();
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
       ref.read(appControllerProvider.notifier).setAppResumed(false);
     }
   }
@@ -106,12 +108,25 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
       child: MaterialApp(
         navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
-        title: 'FlowFleet Partner',
-        theme: AppTheme.getTheme(
-          mode: controller.themeMode,
+        title: controller.t('app_title'),
+        theme: AppTheme.getLightTheme(
           scaffoldBackgroundColor: controller.backgroundColor,
           primaryColor: controller.accentColor,
         ),
+        darkTheme: AppTheme.getDarkTheme(
+          primaryColor: controller.accentColor,
+        ),
+        themeMode: controller.themeMode,
+        locale: controller.languageCode.isNotEmpty
+            ? Locale(controller.languageCode)
+            : null,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          AppLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
         initialRoute: AppRoutes.splash,
         builder: (context, child) {
           return NoInternetWrapper(child: child ?? const SizedBox.shrink());
@@ -135,8 +150,14 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
                 builder: (_) => const RegisterScreen(),
               );
             case AppRoutes.kycDocuments:
+              final dynamic kycArgs = settings.arguments;
+              final bool licenseReupload =
+                  kycArgs is Map<String, dynamic> &&
+                  kycArgs['license_reupload'] == true;
               return MaterialPageRoute<void>(
-                builder: (_) => const KycDocumentsScreen(),
+                builder: (_) => KycDocumentsScreen(
+                  licenseReuploadMode: licenseReupload,
+                ),
               );
             case AppRoutes.vehicleDetails:
               final dynamic vehicleArgs = settings.arguments;
@@ -223,8 +244,10 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
                 builder: (_) => const OrderRequestScreen(),
               );
             case AppRoutes.orderDetails:
+              final dynamic orderArgs = settings.arguments;
+              final order = orderArgs is DeliveryOrder ? orderArgs : null;
               return MaterialPageRoute<void>(
-                builder: (_) => const OrderDetailsScreen(),
+                builder: (_) => OrderDetailsScreen(order: order),
               );
             case AppRoutes.navigation:
               return MaterialPageRoute<void>(
@@ -298,6 +321,18 @@ class _DeliveryPartnerAppState extends ConsumerState<DeliveryPartnerApp>
               return MaterialPageRoute<void>(
                 builder: (_) => const NotificationsScreen(),
               );
+            case AppRoutes.myOrders:
+              return MaterialPageRoute<void>(
+                builder: (_) => const MyOrdersScreen(),
+              );
+            case AppRoutes.more:
+              return MaterialPageRoute<void>(
+                builder: (_) => const MoreScreen(),
+              );
+            case AppRoutes.earnings:
+              return MaterialPageRoute<void>(
+                builder: (_) => const MoreScreen(),
+              );
             default:
               return MaterialPageRoute<void>(
                 builder: (_) => const SplashScreen(),
@@ -356,8 +391,7 @@ class NoInternetOverlayWithRetry extends StatefulWidget {
       _NoInternetOverlayWithRetryState();
 }
 
-class _NoInternetOverlayWithRetryState
-    extends State<NoInternetOverlayWithRetry>
+class _NoInternetOverlayWithRetryState extends State<NoInternetOverlayWithRetry>
     with TickerProviderStateMixin {
   bool _isRetrying = false;
   late AnimationController _retryScaleController;
@@ -566,11 +600,7 @@ class _NoInternetOverlayWithRetryState
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.refresh_rounded,
-              color: AppTheme.oceanBlue,
-              size: 18,
-            ),
+            Icon(Icons.refresh_rounded, color: AppTheme.oceanBlue, size: 18),
             SizedBox(width: 8),
             Text(
               'Retry',
@@ -588,5 +618,4 @@ class _NoInternetOverlayWithRetryState
       ),
     );
   }
-
 }

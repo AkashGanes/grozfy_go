@@ -8,9 +8,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/call_utils.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
@@ -31,8 +31,7 @@ class OrderLocationDetailScreen extends StatefulWidget {
       _OrderLocationDetailScreenState();
 }
 
-class _OrderLocationDetailScreenState
-    extends State<OrderLocationDetailScreen> {
+class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   ExternalDeliveryDetail? _detail;
   bool _loading = true;
   String? _error;
@@ -130,9 +129,9 @@ class _OrderLocationDetailScreenState
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Refresh failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Refresh failed: $e')));
       }
     }
   }
@@ -144,9 +143,9 @@ class _OrderLocationDetailScreenState
       await _refreshDetail();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     } finally {
       if (mounted) setState(() => _updating = false);
@@ -177,7 +176,9 @@ class _OrderLocationDetailScreenState
         _getRoutePoints();
         _fitMapToPoints();
       } else if (_isMapReady) {
-        try { _mapController.move(_currentLocation!, 16.0); } catch (_) {}
+        try {
+          _mapController.move(_currentLocation!, 16.0);
+        } catch (_) {}
       }
     } catch (e) {
       debugPrint('Could not get GPS: $e');
@@ -243,45 +244,46 @@ class _OrderLocationDetailScreenState
       _getRoutePoints();
     }
 
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
-      ),
-    ).listen(
-      (Position position) {
-        if (!mounted) return;
+    _positionStream =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          ),
+        ).listen((Position position) {
+          if (!mounted) return;
 
-        final nextLocation = LatLng(position.latitude, position.longitude);
-        final movedMeters = _currentLocation != null
-            ? _calculateDistance(
-                _currentLocation!.latitude, _currentLocation!.longitude,
-                nextLocation.latitude, nextLocation.longitude)
-            : 0.0;
-        final nextHeading = movedMeters > 2 && _currentLocation != null
-            ? _calculateBearing(_currentLocation!, nextLocation)
-            : _currentHeading;
+          final nextLocation = LatLng(position.latitude, position.longitude);
+          final movedMeters = _currentLocation != null
+              ? _calculateDistance(
+                  _currentLocation!.latitude,
+                  _currentLocation!.longitude,
+                  nextLocation.latitude,
+                  nextLocation.longitude,
+                )
+              : 0.0;
+          final nextHeading = movedMeters > 2 && _currentLocation != null
+              ? _calculateBearing(_currentLocation!, nextLocation)
+              : _currentHeading;
 
-        setState(() {
-          _currentLocation = nextLocation;
-          _currentHeading = nextHeading;
-          _updateRemainingRoute();
-        });
+          setState(() {
+            _currentLocation = nextLocation;
+            _currentHeading = nextHeading;
+            _updateRemainingRoute();
+          });
 
-        _checkArrival();
+          _checkArrival();
 
-        if (_isMapReady && _isTracking && _followMe) {
-          try {
-            _mapController.move(_currentLocation!, 16.0);
-          } catch (_) {}
-        }
+          if (_isMapReady && _isTracking && _followMe) {
+            try {
+              _mapController.move(_currentLocation!, 16.0);
+            } catch (_) {}
+          }
 
-        if (_shouldRefreshRoute()) {
-          _getRoutePoints();
-        }
-      },
-      onError: (e) => debugPrint('Location stream error: $e'),
-    );
+          if (_shouldRefreshRoute()) {
+            _getRoutePoints();
+          }
+        }, onError: (e) => debugPrint('Location stream error: $e'));
 
     _fitMapToPoints();
   }
@@ -335,7 +337,8 @@ class _OrderLocationDetailScreenState
     required LatLng to,
   }) async {
     // Build URL manually to avoid Uri.replace stripping the path
-    final coords = '${from.longitude},${from.latitude};${to.longitude},${to.latitude}';
+    final coords =
+        '${from.longitude},${from.latitude};${to.longitude},${to.latitude}';
     final uri = Uri.parse(
       '$_osrmBaseUrl/$coords?overview=full&geometries=geojson&steps=false&alternatives=true',
     );
@@ -349,7 +352,8 @@ class _OrderLocationDetailScreenState
 
     // Pick the shortest route if alternatives were returned
     Map<String, dynamic> bestRoute = routes.first as Map<String, dynamic>;
-    double bestDistance = (bestRoute['distance'] as num?)?.toDouble() ?? double.infinity;
+    double bestDistance =
+        (bestRoute['distance'] as num?)?.toDouble() ?? double.infinity;
     for (int i = 1; i < routes.length; i++) {
       final r = routes[i] as Map<String, dynamic>;
       final d = (r['distance'] as num?)?.toDouble() ?? double.infinity;
@@ -366,7 +370,10 @@ class _OrderLocationDetailScreenState
 
     final routePoints = <LatLng>[
       for (final pair in coordinates)
-        if (pair is List && pair.length >= 2 && pair[0] is num && pair[1] is num)
+        if (pair is List &&
+            pair.length >= 2 &&
+            pair[0] is num &&
+            pair[1] is num)
           LatLng((pair[1] as num).toDouble(), (pair[0] as num).toDouble()),
     ];
 
@@ -394,9 +401,11 @@ class _OrderLocationDetailScreenState
     const numPoints = 30;
     final fallback = <LatLng>[];
     for (int i = 0; i <= numPoints; i++) {
-      final lat = _currentLocation!.latitude +
+      final lat =
+          _currentLocation!.latitude +
           (_destination!.latitude - _currentLocation!.latitude) * i / numPoints;
-      final lng = _currentLocation!.longitude +
+      final lng =
+          _currentLocation!.longitude +
           (_destination!.longitude - _currentLocation!.longitude) *
               i /
               numPoints;
@@ -405,8 +414,10 @@ class _OrderLocationDetailScreenState
     setState(() {
       _polylineCoordinates = fallback;
       _distanceToDestination = _calculateDistance(
-        _currentLocation!.latitude, _currentLocation!.longitude,
-        _destination!.latitude, _destination!.longitude,
+        _currentLocation!.latitude,
+        _currentLocation!.longitude,
+        _destination!.latitude,
+        _destination!.longitude,
       );
       _lastRouteFetchAt = DateTime.now();
     });
@@ -416,12 +427,17 @@ class _OrderLocationDetailScreenState
     if (_polylineCoordinates.length < 2 || _currentLocation == null) return;
     final nearestIdx = _findNearestRoutePointIndex(_currentLocation!);
     final nextIdx = min(nearestIdx + 1, _polylineCoordinates.length - 1);
-    final remaining = <LatLng>[_currentLocation!, ..._polylineCoordinates.sublist(nextIdx)];
+    final remaining = <LatLng>[
+      _currentLocation!,
+      ..._polylineCoordinates.sublist(nextIdx),
+    ];
     if (_destination != null) {
       final last = remaining.last;
       final d = _calculateDistance(
-        last.latitude, last.longitude,
-        _destination!.latitude, _destination!.longitude,
+        last.latitude,
+        last.longitude,
+        _destination!.latitude,
+        _destination!.longitude,
       );
       if (d > 3) remaining.add(_destination!);
     }
@@ -433,8 +449,10 @@ class _OrderLocationDetailScreenState
     double nearestDist = double.infinity;
     for (int i = 0; i < _polylineCoordinates.length; i++) {
       final d = _calculateDistance(
-        from.latitude, from.longitude,
-        _polylineCoordinates[i].latitude, _polylineCoordinates[i].longitude,
+        from.latitude,
+        from.longitude,
+        _polylineCoordinates[i].latitude,
+        _polylineCoordinates[i].longitude,
       );
       if (d < nearestDist) {
         nearestDist = d;
@@ -447,7 +465,8 @@ class _OrderLocationDetailScreenState
   bool _shouldRefreshRoute() {
     if (_destination == null || _isFetchingRoute) return false;
     if (_lastRouteFetchAt == null) return true;
-    return DateTime.now().difference(_lastRouteFetchAt!) >= _routeRefreshInterval;
+    return DateTime.now().difference(_lastRouteFetchAt!) >=
+        _routeRefreshInterval;
   }
 
   // ---------------------------------------------------------------------------
@@ -461,7 +480,9 @@ class _OrderLocationDetailScreenState
     if (_destination != null) points.add(_destination!);
     if (points.length < 2) {
       if (points.length == 1) {
-        try { _mapController.move(points.first, 16.0); } catch (_) {}
+        try {
+          _mapController.move(points.first, 16.0);
+        } catch (_) {}
       }
       return;
     }
@@ -478,8 +499,10 @@ class _OrderLocationDetailScreenState
   void _checkArrival() {
     if (_destination == null || _currentLocation == null) return;
     final distance = _calculateDistance(
-      _currentLocation!.latitude, _currentLocation!.longitude,
-      _destination!.latitude, _destination!.longitude,
+      _currentLocation!.latitude,
+      _currentLocation!.longitude,
+      _destination!.latitude,
+      _destination!.longitude,
     );
     final wasArrived = _hasArrived;
     final nowArrived = distance < _arrivalThreshold;
@@ -508,27 +531,19 @@ class _OrderLocationDetailScreenState
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         icon: const Icon(
           Icons.location_on_rounded,
           color: Color(0xFF2E7D32),
           size: 48,
         ),
-        title: const Text(
-          'You have arrived!',
-          textAlign: TextAlign.center,
-        ),
+        title: const Text('You have arrived!', textAlign: TextAlign.center),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               '${_formatDistance(_distanceToDestination)} from destination',
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.black54,
-              ),
+              style: const TextStyle(fontSize: 14, color: Colors.black54),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -546,8 +561,7 @@ class _OrderLocationDetailScreenState
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.black54,
               side: const BorderSide(color: Colors.black26),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -561,8 +575,7 @@ class _OrderLocationDetailScreenState
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2E7D32),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -585,11 +598,17 @@ class _OrderLocationDetailScreenState
   // Math
   // ---------------------------------------------------------------------------
 
-  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+  double _calculateDistance(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
     const earthRadius = 6371000.0;
     final dLat = _toRadians(lat2 - lat1);
     final dLon = _toRadians(lon2 - lon1);
-    final a = sin(dLat / 2) * sin(dLat / 2) +
+    final a =
+        sin(dLat / 2) * sin(dLat / 2) +
         cos(_toRadians(lat1)) *
             cos(_toRadians(lat2)) *
             sin(dLon / 2) *
@@ -634,9 +653,9 @@ class _OrderLocationDetailScreenState
     } catch (e) {
       if (mounted) {
         setState(() => _updating = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to mark delivered: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to mark delivered: $e')));
       }
       return; // Don't show success dialog on failure
     }
@@ -648,9 +667,7 @@ class _OrderLocationDetailScreenState
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         icon: const Icon(
           Icons.check_circle_rounded,
           color: Color(0xFF2E7D32),
@@ -671,8 +688,7 @@ class _OrderLocationDetailScreenState
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF2E7D32),
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 32, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -688,13 +704,14 @@ class _OrderLocationDetailScreenState
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.warning_amber_rounded,
-                color: Color(0xFFE65100), size: 28),
+            Icon(
+              Icons.warning_amber_rounded,
+              color: Color(0xFFE65100),
+              size: 28,
+            ),
             SizedBox(width: 10),
             Text('Cancel Delivery?'),
           ],
@@ -743,8 +760,8 @@ class _OrderLocationDetailScreenState
       body: _loading
           ? _buildLoading()
           : _error != null
-              ? _buildError()
-              : _buildContent(),
+          ? _buildError()
+          : _buildContent(),
     );
   }
 
@@ -780,8 +797,11 @@ class _OrderLocationDetailScreenState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline_rounded,
-                    color: Colors.redAccent, size: 36),
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: Colors.redAccent,
+                  size: 36,
+                ),
                 const SizedBox(height: 8),
                 Text(
                   _error ?? 'Something went wrong',
@@ -803,9 +823,8 @@ class _OrderLocationDetailScreenState
   }
 
   Widget _buildMap() {
-    final initialCenter = _currentLocation ??
-        _destination ??
-        const LatLng(11.1271, 78.6569);
+    final initialCenter =
+        _currentLocation ?? _destination ?? const LatLng(11.1271, 78.6569);
 
     return SafeMap(
       child: FlutterMap(
@@ -819,7 +838,9 @@ class _OrderLocationDetailScreenState
             if (_currentLocation != null && _destination != null) {
               _fitMapToPoints();
             } else if (_currentLocation != null) {
-              try { _mapController.move(_currentLocation!, 16.0); } catch (_) {}
+              try {
+                _mapController.move(_currentLocation!, 16.0);
+              } catch (_) {}
             }
           },
           onPositionChanged: (camera, hasGesture) {
@@ -918,7 +939,9 @@ class _OrderLocationDetailScreenState
             onTap: () {
               if (_isMapReady && _currentLocation != null) {
                 setState(() => _followMe = true);
-                try { _mapController.move(_currentLocation!, 16.0); } catch (_) {}
+                try {
+                  _mapController.move(_currentLocation!, 16.0);
+                } catch (_) {}
               }
             },
             child: Container(
@@ -956,12 +979,12 @@ class _OrderLocationDetailScreenState
             right: 0,
             child: Center(
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
-                  color: _hasArrived
-                      ? const Color(0xFF2E7D32)
-                      : Colors.white,
+                  color: _hasArrived ? const Color(0xFF2E7D32) : Colors.white,
                   borderRadius: BorderRadius.circular(22),
                   boxShadow: [
                     BoxShadow(
@@ -988,9 +1011,7 @@ class _OrderLocationDetailScreenState
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
-                        color: _hasArrived
-                            ? Colors.white
-                            : AppTheme.nightBlue,
+                        color: _hasArrived ? Colors.white : AppTheme.nightBlue,
                       ),
                     ),
                   ],
@@ -1010,8 +1031,7 @@ class _OrderLocationDetailScreenState
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 boxShadow: [
                   BoxShadow(
                     color: Color(0x22000000),
@@ -1023,7 +1043,9 @@ class _OrderLocationDetailScreenState
               child: ListView(
                 controller: scrollController,
                 padding: EdgeInsets.fromLTRB(
-                  20, 0, 20,
+                  20,
+                  0,
+                  20,
                   MediaQuery.of(context).padding.bottom + 16,
                 ),
                 children: [
@@ -1058,13 +1080,18 @@ class _OrderLocationDetailScreenState
                             const SizedBox(height: 2),
                             Row(
                               children: [
-                                const Icon(Icons.store_rounded,
-                                    size: 13, color: Colors.black38),
+                                const Icon(
+                                  Icons.store_rounded,
+                                  size: 13,
+                                  color: Colors.black38,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   detail.storeName,
                                   style: const TextStyle(
-                                      fontSize: 12, color: Colors.black54),
+                                    fontSize: 12,
+                                    color: Colors.black54,
+                                  ),
                                 ),
                               ],
                             ),
@@ -1073,12 +1100,15 @@ class _OrderLocationDetailScreenState
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: statusColor.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                              color: statusColor.withValues(alpha: 0.35)),
+                            color: statusColor.withValues(alpha: 0.35),
+                          ),
                         ),
                         child: Text(
                           detail.status,
@@ -1129,14 +1159,16 @@ class _OrderLocationDetailScreenState
                               Text(
                                 detail.contactMobile!,
                                 style: const TextStyle(
-                                    fontSize: 13, color: Colors.black45),
+                                  fontSize: 13,
+                                  color: Colors.black45,
+                                ),
                               ),
                             ],
                           ],
                         ),
                       ),
                       if (detail.contactMobile != null)
-                        _CallButton(mobile: detail.contactMobile!),
+                        CallButton(phoneNumber: detail.contactMobile!),
                     ],
                   ),
                   const SizedBox(height: 14),
@@ -1146,8 +1178,7 @@ class _OrderLocationDetailScreenState
                     icon: Icons.location_on_rounded,
                     iconColor: Colors.redAccent,
                     label: 'Delivery',
-                    address:
-                        detail.deliveryAddress ?? 'Address not available',
+                    address: detail.deliveryAddress ?? 'Address not available',
                   ),
                   if (detail.pickupAddress != null) ...[
                     const SizedBox(height: 12),
@@ -1165,7 +1196,9 @@ class _OrderLocationDetailScreenState
                   // Items
                   if (detail.items.isNotEmpty) ...[
                     const _SheetSectionLabel(
-                        icon: Icons.shopping_bag_rounded, label: 'Items'),
+                      icon: Icons.shopping_bag_rounded,
+                      label: 'Items',
+                    ),
                     const SizedBox(height: 10),
                     ...detail.items.map(
                       (item) => Padding(
@@ -1203,7 +1236,9 @@ class _OrderLocationDetailScreenState
                               Text(
                                 '₹${item.amount!.toStringAsFixed(0)}',
                                 style: const TextStyle(
-                                    fontSize: 13, color: Colors.black45),
+                                  fontSize: 13,
+                                  color: Colors.black45,
+                                ),
                               ),
                             ],
                           ],
@@ -1217,8 +1252,10 @@ class _OrderLocationDetailScreenState
 
                   // Action buttons based on ERPNext status:
                   // Pending → Added to Trip → Delivered / Failed
-                  if (s != 'delivered' && s != 'failed' &&
-                      s != 'returned' && s != 'return initiated') ...[
+                  if (s != 'delivered' &&
+                      s != 'failed' &&
+                      s != 'returned' &&
+                      s != 'return initiated') ...[
                     if (_updating)
                       const Padding(
                         padding: EdgeInsets.only(bottom: 12),
@@ -1245,9 +1282,7 @@ class _OrderLocationDetailScreenState
                       ),
 
                     // Added to Trip — en route, waiting to reach destination
-                    if (!_updating &&
-                        s == 'added to trip' &&
-                        !_hasArrived)
+                    if (!_updating && s == 'added to trip' && !_hasArrived)
                       _InfoPill(
                         key: const ValueKey('enroute'),
                         icon: Icons.two_wheeler,
@@ -1258,9 +1293,7 @@ class _OrderLocationDetailScreenState
                       ),
 
                     // Arrived near destination (within 100m) — confirm delivered
-                    if (!_updating &&
-                        s == 'added to trip' &&
-                        _hasArrived)
+                    if (!_updating && s == 'added to trip' && _hasArrived)
                       _SlideToAction(
                         key: const ValueKey('delivered'),
                         label: 'Slide to Confirm Delivered',
@@ -1280,7 +1313,9 @@ class _OrderLocationDetailScreenState
                           style: OutlinedButton.styleFrom(
                             foregroundColor: const Color(0xFFC62828),
                             side: const BorderSide(
-                                color: Color(0xFFC62828), width: 1.2),
+                              color: Color(0xFFC62828),
+                              width: 1.2,
+                            ),
                             minimumSize: const Size.fromHeight(48),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
@@ -1297,8 +1332,11 @@ class _OrderLocationDetailScreenState
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.check_circle,
-                              color: Colors.green, size: 24),
+                          const Icon(
+                            Icons.check_circle,
+                            color: Colors.green,
+                            size: 24,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             'Delivered Successfully',
@@ -1319,8 +1357,11 @@ class _OrderLocationDetailScreenState
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.cancel_rounded,
-                              color: Color(0xFFC62828), size: 24),
+                          const Icon(
+                            Icons.cancel_rounded,
+                            color: Color(0xFFC62828),
+                            size: 24,
+                          ),
                           const SizedBox(width: 8),
                           Text(
                             'Delivery Cancelled',
@@ -1402,7 +1443,8 @@ class _SlideToActionState extends State<_SlideToAction> {
                     color: widget.color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(30),
                     border: Border.all(
-                        color: widget.color.withValues(alpha: 0.3)),
+                      color: widget.color.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Center(
                     child: Padding(
@@ -1431,9 +1473,8 @@ class _SlideToActionState extends State<_SlideToAction> {
                     onHorizontalDragUpdate: (details) {
                       if (_completed || !_isDragging) return;
                       setState(() {
-                        _dragPosition =
-                            (_dragPosition + details.delta.dx)
-                                .clamp(0.0, maxDrag);
+                        _dragPosition = (_dragPosition + details.delta.dx)
+                            .clamp(0.0, maxDrag);
                       });
                     },
                     onHorizontalDragEnd: (details) {
@@ -1518,10 +1559,7 @@ class _InfoPill extends StatelessWidget {
             Container(
               width: 40,
               height: 40,
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-              ),
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               child: Icon(icon, color: Colors.white, size: 22),
             ),
             const SizedBox(width: 14),
@@ -1594,9 +1632,10 @@ class _SheetShell extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-              color: Color(0x22000000),
-              blurRadius: 20,
-              offset: Offset(0, -4)),
+            color: Color(0x22000000),
+            blurRadius: 20,
+            offset: Offset(0, -4),
+          ),
         ],
       ),
       child: ListView(
@@ -1715,11 +1754,15 @@ class _CallButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFFE8F5E9),
           shape: BoxShape.circle,
-          border:
-              Border.all(color: const Color(0xFF4CAF50).withValues(alpha: 0.3)),
+          border: Border.all(
+            color: const Color(0xFF4CAF50).withValues(alpha: 0.3),
+          ),
         ),
-        child: const Icon(Icons.phone_rounded,
-            color: Color(0xFF4CAF50), size: 18),
+        child: const Icon(
+          Icons.phone_rounded,
+          color: Color(0xFF4CAF50),
+          size: 18,
+        ),
       ),
     );
   }
@@ -1746,13 +1789,13 @@ class _LoadingSkeleton extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: double.infinity,
-            height: 18,
-            decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-          )
+                width: double.infinity,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              )
               .animate(onPlay: (controller) => controller.repeat())
               .shimmer(
                 duration: 1000.ms,
@@ -1762,13 +1805,13 @@ class _LoadingSkeleton extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-              )
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                  )
                   .animate(onPlay: (controller) => controller.repeat())
                   .shimmer(
                     duration: 1000.ms,
@@ -1780,13 +1823,13 @@ class _LoadingSkeleton extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: double.infinity,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    )
+                          width: double.infinity,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        )
                         .animate(onPlay: (controller) => controller.repeat())
                         .shimmer(
                           duration: 1000.ms,
@@ -1794,13 +1837,13 @@ class _LoadingSkeleton extends StatelessWidget {
                         ),
                     const SizedBox(height: 8),
                     Container(
-                      width: 150,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    )
+                          width: 150,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        )
                         .animate(onPlay: (controller) => controller.repeat())
                         .shimmer(
                           duration: 1000.ms,

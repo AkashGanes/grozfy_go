@@ -1,6 +1,6 @@
-import 'package:delivery_partner_app/core/state/app_controller.dart';
-import 'package:delivery_partner_app/core/state/providers.dart';
-import 'package:delivery_partner_app/features/auth/login_screen.dart';
+import 'package:grozfy_go/core/state/app_controller.dart';
+import 'package:grozfy_go/core/state/providers.dart';
+import 'package:grozfy_go/features/auth/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,7 +18,8 @@ void main() {
       ),
     );
 
-    expect(find.text('Mobile + OTP'), findsOneWidget);
-    expect(find.text('Create New Account'), findsOneWidget);
+    expect(find.text('Mobile Number'), findsOneWidget);
+    expect(find.text('Enter your mobile number to continue'), findsOneWidget);
+    expect(find.text('Send OTP'), findsOneWidget);
   });
 }

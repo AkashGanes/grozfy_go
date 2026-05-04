@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
 import '../theme/app_theme.dart';
+import 'app_bottom_nav.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -13,6 +13,13 @@ class AppShell extends StatelessWidget {
     this.scrollable = true,
     this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 20),
     this.loading = false,
+    this.loadingMessage = 'Please wait...',
+    this.onRefresh,
+    this.footer,
+    this.showBottomNav = false,
+    this.bottomNavIndex = 0,
+    this.onBottomNavTap,
+    this.noBottomPadding = true,
   });
 
   final String title;
@@ -22,16 +29,38 @@ class AppShell extends StatelessWidget {
   final bool scrollable;
   final EdgeInsets padding;
   final bool loading;
+  final String loadingMessage;
+  final Future<void> Function()? onRefresh;
+  final Widget? footer;
+  final bool showBottomNav;
+  final int bottomNavIndex;
+  final ValueChanged<int>? onBottomNavTap;
+  final bool noBottomPadding;
 
   @override
   Widget build(BuildContext context) {
-    final Widget body = Padding(padding: padding, child: child);
+    final theme = Theme.of(context);
+    final bgColor = theme.scaffoldBackgroundColor;
+    final effectivePadding = (footer != null && noBottomPadding)
+        ? EdgeInsets.fromLTRB(padding.left, padding.top, padding.right, 0)
+        : padding;
+    final Widget body = Padding(padding: effectivePadding, child: child);
 
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [Color(0xFFF1F7FF), Color(0xFFE8F5F0), Color(0xFFFFF5E6)],
+            colors: [
+              bgColor,
+              Color.alphaBlend(
+                theme.colorScheme.secondary.withValues(alpha: 0.08),
+                bgColor,
+              ),
+              Color.alphaBlend(
+                theme.colorScheme.tertiary.withValues(alpha: 0.06),
+                bgColor,
+              ),
+            ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -58,13 +87,15 @@ class AppShell extends StatelessWidget {
                             children: [
                               Text(
                                 title,
-                                style: Theme.of(context).textTheme.titleLarge,
+                                style: theme.textTheme.titleLarge,
                               ),
                               if (subtitle != null)
                                 Text(
                                   subtitle!,
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(color: Colors.black54),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.6),
+                                  ),
                                 ),
                             ],
                           ),
@@ -73,15 +104,46 @@ class AppShell extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  if (footer == null) const SizedBox(height: 12),
                   Expanded(
                     child: scrollable
-                        ? SingleChildScrollView(
-                            physics: const BouncingScrollPhysics(),
-                            child: body,
-                          )
+                        ? onRefresh != null
+                              ? RefreshIndicator(
+                                  onRefresh: onRefresh!,
+                                  child: SingleChildScrollView(
+                                    physics:
+                                        const AlwaysScrollableScrollPhysics(
+                                          parent: BouncingScrollPhysics(),
+                                        ),
+                                    child: body,
+                                  ),
+                                )
+                              : SingleChildScrollView(
+                                  physics: const BouncingScrollPhysics(),
+                                  child: body,
+                                )
                         : body,
                   ),
+                  if (footer != null) ...[
+                    padding == const EdgeInsets.fromLTRB(20, 12, 20, 20)
+                        ? Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              20,
+                              0,
+                              20,
+                              noBottomPadding ? 0 : 20,
+                            ),
+                            child: footer,
+                          )
+                        : footer!,
+                  ],
+                  if (showBottomNav) ...[
+                    const SizedBox(height: 8),
+                    AppBottomNav(
+                      currentIndex: bottomNavIndex,
+                      onTap: onBottomNavTap ?? (_) {},
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -99,7 +161,7 @@ class AppShell extends StatelessWidget {
                             const _ShellLoadingIndicator(),
                             const SizedBox(height: 16),
                             Text(
-                              'Please wait...',
+                              loadingMessage,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ],
@@ -128,17 +190,27 @@ class FrostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.86),
+        color: isDark
+            ? theme.colorScheme.surface.withValues(alpha: 0.9)
+            : Colors.white.withValues(alpha: 0.86),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
-        boxShadow: const [
+        border: Border.all(
+          color: isDark
+              ? theme.colorScheme.outline.withValues(alpha: 0.2)
+              : Colors.white.withValues(alpha: 0.7),
+        ),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x140A1D3A),
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.2)
+                : const Color(0x140A1D3A),
             blurRadius: 18,
-            offset: Offset(0, 10),
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -160,7 +232,6 @@ class SectionLabel extends StatelessWidget {
         text,
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.w700,
-          color: AppTheme.nightBlue,
         ),
       ),
     );
@@ -172,32 +243,39 @@ class StatTile extends StatelessWidget {
     super.key,
     required this.label,
     required this.value,
-    this.color = AppTheme.oceanBlue,
+    this.color,
   });
 
   final String label;
   final String value;
-  final Color color;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
+    final effectiveColor =
+        color ?? Theme.of(context).colorScheme.primary;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
+          color: effectiveColor.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withValues(alpha: 0.22)),
+          border: Border.all(color: effectiveColor.withValues(alpha: 0.22)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(color: Colors.black54)),
+            Text(
+              label,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
             const SizedBox(height: 6),
             Text(
               value,
               style: TextStyle(
-                color: color,
+                color: effectiveColor,
                 fontWeight: FontWeight.w700,
                 fontSize: 18,
               ),
@@ -214,6 +292,7 @@ class _BackdropShapes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return IgnorePointer(
       child: Stack(
         children: [
@@ -224,7 +303,7 @@ class _BackdropShapes extends StatelessWidget {
               width: 180,
               height: 180,
               decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.16),
+                color: colorScheme.primary.withValues(alpha: 0.16),
                 shape: BoxShape.circle,
               ),
             ),
@@ -238,7 +317,7 @@ class _BackdropShapes extends StatelessWidget {
                 width: 120,
                 height: 120,
                 decoration: BoxDecoration(
-                  color: AppTheme.mango.withValues(alpha: 0.18),
+                  color: colorScheme.tertiary.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(30),
                 ),
               ),
@@ -251,7 +330,7 @@ class _BackdropShapes extends StatelessWidget {
               width: 210,
               height: 210,
               decoration: BoxDecoration(
-                color: AppTheme.mint.withValues(alpha: 0.1),
+                color: colorScheme.secondary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
             ),
@@ -346,45 +425,88 @@ void showInfoSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
 
-class _ShellLoadingIndicator extends StatelessWidget {
+class _ShellLoadingIndicator extends StatefulWidget {
   const _ShellLoadingIndicator();
+
+  @override
+  State<_ShellLoadingIndicator> createState() => _ShellLoadingIndicatorState();
+}
+
+class _ShellLoadingIndicatorState extends State<_ShellLoadingIndicator>
+    with TickerProviderStateMixin {
+  late List<AnimationController> _controllers;
+  late List<Animation<double>> _animations;
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = List.generate(
+      3,
+      (index) => AnimationController(
+        duration: const Duration(milliseconds: 600),
+        vsync: this,
+      ),
+    );
+
+    _animations = _controllers.map((controller) {
+      return Tween<double>(
+        begin: 0,
+        end: -12,
+      ).animate(CurvedAnimation(parent: controller, curve: Curves.easeInOut));
+    }).toList();
+
+    _startAnimation();
+  }
+
+  void _startAnimation() async {
+    while (mounted) {
+      for (int i = 0; i < 3; i++) {
+        if (!mounted) return;
+        _controllers[i].forward().then((_) {
+          if (mounted) _controllers[i].reverse();
+        });
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 32,
-      height: 32,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-          )
-              .animate(onPlay: (controller) => controller.repeat())
-              .shimmer(
-                duration: 1000.ms,
-                color: AppTheme.oceanBlue.withValues(alpha: 0.25),
-              ),
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-          )
-              .animate(onPlay: (controller) => controller.repeat())
-              .shimmer(
-                duration: 800.ms,
-                delay: 200.ms,
-                color: AppTheme.oceanBlue.withValues(alpha: 0.3),
-              ),
-        ],
+      width: 60,
+      height: 40,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(3, (index) {
+          return AnimatedBuilder(
+            animation: _animations[index],
+            builder: (context, child) {
+              return Transform.translate(
+                offset: Offset(0, _animations[index].value),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: AppTheme.oceanBlue.withValues(
+                      alpha: 0.3 + (index * 0.2),
+                    ),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              );
+            },
+          );
+        }),
       ),
     );
   }

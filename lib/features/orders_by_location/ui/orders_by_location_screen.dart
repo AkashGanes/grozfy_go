@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,8 +10,12 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/skeleton_loader.dart';
 import '../model/external_delivery.dart';
+import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
+import '../../orders/delivery_tracking_screen.dart';
 import 'order_location_detail_screen.dart';
+
+const double _maxDistanceWarningKm = 3.0;
 
 class OrdersByLocationScreen extends ConsumerStatefulWidget {
   const OrdersByLocationScreen({super.key});
@@ -24,6 +30,15 @@ class _OrdersByLocationScreenState
   late final ExternalDeliveryRepository _repository;
   late final PagingController<int, LocationListItem> _pagingController;
   String? _lastStoreName;
+  final Set<String> _submittingOrderIds = <String>{};
+
+  bool _selectionMode = false;
+  final Set<String> _selectedOrderIds = <String>{};
+  bool _creatingTrip = false;
+  final List<ExternalDeliveryDetail> _orderDetailsCache = [];
+
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -32,7 +47,6 @@ class _OrdersByLocationScreenState
     _pagingController = PagingController(firstPageKey: 0)
       ..addPageRequestListener(_fetchPage);
 
-    // Show store picker on first open if no store selected
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final app = ref.read(appControllerProvider);
       if (app.selectedStoreName == null) {
@@ -44,6 +58,7 @@ class _OrdersByLocationScreenState
   @override
   void dispose() {
     _pagingController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -78,7 +93,282 @@ class _OrdersByLocationScreenState
     _pagingController.refresh();
   }
 
+  bool _isEligibleForTrip(ExternalDelivery order) => order.status == 'Pending';
+
+  void _enterSelectionMode() {
+    setState(() {
+      _selectionMode = true;
+    });
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _selectionMode = false;
+      _selectedOrderIds.clear();
+    });
+  }
+
+  void _toggleSelection(ExternalDelivery order) {
+    if (!_selectionMode) return;
+    setState(() {
+      if (_selectedOrderIds.contains(order.name)) {
+        _selectedOrderIds.remove(order.name);
+      } else {
+        _selectedOrderIds.add(order.name);
+      }
+      if (_selectedOrderIds.isEmpty) {
+        _selectionMode = false;
+      }
+    });
+  }
+
+  double _calculateDistanceKm(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const double earthRadiusKm = 6371.0;
+    final double dLat = _toRadians(lat2 - lat1);
+    final double dLon = _toRadians(lon2 - lon1);
+    final double a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_toRadians(lat1)) *
+            math.cos(_toRadians(lat2)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadiusKm * c;
+  }
+
+  double _toRadians(double degrees) => degrees * math.pi / 180.0;
+
+  Future<List<ExternalDeliveryDetail>> _fetchOrderDetails(
+    List<ExternalDelivery> orders,
+  ) async {
+    final details = <ExternalDeliveryDetail>[];
+    for (final order in orders) {
+      final cached = _orderDetailsCache.firstWhere(
+        (d) => d.name == order.name,
+        orElse: () => ExternalDeliveryDetail(
+          name: '',
+          storeName: '',
+          storeUrl: '',
+          customerName: '',
+          status: '',
+        ),
+      );
+      if (cached.name.isNotEmpty) {
+        details.add(cached);
+      } else {
+        try {
+          final detail = await _repository.fetchDetail(order.name);
+          details.add(detail);
+          _orderDetailsCache.add(detail);
+        } catch (_) {
+          // Skip orders we can't get details for
+        }
+      }
+    }
+    return details;
+  }
+
+  (bool hasWarning, String message) _checkDistanceWarning(
+    List<ExternalDeliveryDetail> details,
+  ) {
+    for (int i = 0; i < details.length; i++) {
+      for (int j = i + 1; j < details.length; j++) {
+        final d1 = details[i];
+        final d2 = details[j];
+        if (d1.latitude != null &&
+            d1.longitude != null &&
+            d2.latitude != null &&
+            d2.longitude != null) {
+          final distance = _calculateDistanceKm(
+            d1.latitude!,
+            d1.longitude!,
+            d2.latitude!,
+            d2.longitude!,
+          );
+          if (distance > _maxDistanceWarningKm) {
+            return (
+              true,
+              '${d1.customerName} and ${d2.customerName} are ${distance.toStringAsFixed(1)} km apart. Consider creating separate trips.',
+            );
+          }
+        }
+      }
+    }
+    return (false, '');
+  }
+
+  Future<void> _showDistanceWarningDialog(
+    List<ExternalDelivery> selectedOrders,
+  ) async {
+    final details = await _fetchOrderDetails(selectedOrders);
+    if (!mounted) return;
+
+    final (hasWarning, message) = _checkDistanceWarning(details);
+    if (!hasWarning) {
+      await _createBatchTrip(selectedOrders);
+      return;
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppTheme.mango, size: 28),
+            const SizedBox(width: 10),
+            const Text('Distance Warning'),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.oceanBlue,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Create Anyway'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      await _createBatchTrip(selectedOrders);
+    }
+  }
+
+  Future<void> _handleCreateTrip() async {
+    if (_selectedOrderIds.isEmpty) return;
+
+    final allItems = _pagingController.itemList ?? [];
+    final selectedOrders = allItems
+        .whereType<OrderRow>()
+        .where((r) => _selectedOrderIds.contains(r.order.name))
+        .map((r) => r.order)
+        .toList();
+
+    final stale = selectedOrders
+        .where((o) => !_isEligibleForTrip(o))
+        .map((o) => o.name)
+        .toList();
+    if (stale.isNotEmpty) {
+      showInfoSnack(
+        context,
+        '${stale.length} order${stale.length == 1 ? ' is' : 's are'} no longer available. Refreshing list.',
+      );
+      _exitSelectionMode();
+      await _refresh();
+      return;
+    }
+
+    await _showDistanceWarningDialog(selectedOrders);
+  }
+
+  Future<void> _createBatchTrip(List<ExternalDelivery> orders) async {
+    if (_creatingTrip) return;
+    setState(() => _creatingTrip = true);
+
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    try {
+      final tripName = await _repository.createAndSubmitTripForOrders(orders);
+      if (!mounted) return;
+
+      _exitSelectionMode();
+      await _refresh();
+
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Trip created with ${orders.length} orders'),
+          action: SnackBarAction(
+            label: 'View Trip',
+            onPressed: () {
+              navigator.pushNamed(
+                AppRoutes.externalDeliveryTripDetails,
+                arguments: tripName,
+              );
+            },
+          ),
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _creatingTrip = false);
+      }
+    }
+  }
+
   Future<void> _handleOrderTap(ExternalDelivery order) async {
+    if (_submittingOrderIds.contains(order.name)) return;
+
+    if (_selectionMode) {
+      _toggleSelection(order);
+      return;
+    }
+
+    if (_isEligibleForTrip(order)) {
+      setState(() => _submittingOrderIds.add(order.name));
+      try {
+        final app = ref.read(appControllerProvider);
+        // acceptOrder: updates Frappe status → 'Added to Trip', creates the
+        // External Delivery Trip document, and sets app.activeOrder so the
+        // full tracking + cancel/confirm/earnings flow works correctly.
+        final error = await app.acceptOrder(order.name);
+        if (!mounted) return;
+
+        if (error != null) {
+          showInfoSnack(context, error);
+          return;
+        }
+
+        final active = app.activeOrder;
+        if (active == null || !mounted) return;
+
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => DeliveryTrackingScreen(
+              deliveryName: active.orderId,
+              customerName: active.customerName,
+              storeName: active.storeName,
+              contactNumber: active.customerPhone.isNotEmpty
+                  ? active.customerPhone
+                  : active.contactNumber,
+              dropAddress: active.deliveryAddress,
+              dropLat: active.latitude,
+              dropLng: active.longitude,
+            ),
+          ),
+        );
+        if (!mounted) return;
+        await _refresh();
+      } catch (e) {
+        if (!mounted) return;
+        showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+      } finally {
+        if (mounted) {
+          setState(() => _submittingOrderIds.remove(order.name));
+        }
+      }
+      return;
+    }
+
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -88,6 +378,14 @@ class _OrdersByLocationScreenState
     );
     if (!mounted) return;
     await _refresh();
+  }
+
+  void _handleOrderLongPress(ExternalDelivery order) {
+    if (!_isEligibleForTrip(order)) return;
+    if (!_selectionMode) {
+      _enterSelectionMode();
+    }
+    _toggleSelection(order);
   }
 
   Future<void> _showStorePicker({bool initial = false}) async {
@@ -340,9 +638,15 @@ class _OrderCard extends StatelessWidget {
   const _OrderCard({
     required this.order,
     required this.onTap,
+    required this.selected,
+    required this.selectionMode,
+    required this.onLongPress,
   });
   final ExternalDelivery order;
   final VoidCallback onTap;
+  final bool selected;
+  final bool selectionMode;
+  final VoidCallback onLongPress;
 
   String _formatDate(String raw) {
     if (raw.length < 10) return raw;
@@ -356,22 +660,47 @@ class _OrderCard extends StatelessWidget {
     final statusColor = order.status.statusColor;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: GestureDetector(
-          onTap: onTap,
+      child: Opacity(
+        opacity: busy ? 0.7 : 1,
+        child: GestureDetector(
+          onTap: busy ? null : onTap,
+          onLongPress: busy ? null : onLongPress,
           child: FrostCard(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             child: Row(
               children: [
-                // Status dot
-                Container(
-                  width: 10,
-                  height: 10,
-                  margin: const EdgeInsets.only(right: 14, top: 2),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: statusColor,
+                if (selectionMode) ...[
+                  Container(
+                    width: 24,
+                    height: 24,
+                    margin: const EdgeInsets.only(right: 12),
+                    decoration: BoxDecoration(
+                      color: selected ? AppTheme.oceanBlue : Colors.transparent,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: selected ? AppTheme.oceanBlue : Colors.black38,
+                        width: 2,
+                      ),
+                    ),
+                    child: selected
+                        ? const Icon(
+                            Icons.check_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          )
+                        : null,
                   ),
-                ),
+                ] else ...[
+                  Container(
+                    width: 10,
+                    height: 10,
+                    margin: const EdgeInsets.only(right: 14, top: 2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: statusColor,
+                    ),
+                  ),
+                ],
                 // Order info
                 Expanded(
                   child: Column(
@@ -528,6 +857,63 @@ class _ErrorState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Backdrop shapes
+// ---------------------------------------------------------------------------
+
+class _LocationBackdropShapes extends StatelessWidget {
+  const _LocationBackdropShapes();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            left: -60,
+            top: -70,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                color: AppTheme.oceanBlue.withValues(alpha: 0.16),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          Positioned(
+            right: -35,
+            top: 110,
+            child: Transform.rotate(
+              angle: 0.8,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  color: AppTheme.mango.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 40,
+            bottom: -60,
+            child: Container(
+              width: 210,
+              height: 210,
+              decoration: BoxDecoration(
+                color: AppTheme.mint.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

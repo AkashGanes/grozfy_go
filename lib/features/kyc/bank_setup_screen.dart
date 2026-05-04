@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/skeleton_loader.dart';
+import 'bank_submitted_details_screen.dart';
 
 class BankSetupScreen extends StatefulWidget {
   const BankSetupScreen({super.key});
@@ -33,12 +35,13 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   String? _selectedPartyType;
   String? _selectedParty;
 
+  final _formKey = GlobalKey<FormState>();
+
   bool _disabled = false;
   bool _isDefault = false;
   bool _isCompanyAccount = false;
   bool _busy = false;
   bool _ready = false;
-  bool _editMode = false;
 
   bool get _canSubmit =>
       _ready &&
@@ -93,9 +96,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
         _bankAccountNoCtrl.text = bankData['bank_account_no']?.toString() ?? '';
         _lastIntegrationDateCtrl.text =
             bankData['last_integration_date']?.toString() ?? '';
-        _disabled = bankData['disabled']?.toString() == '1';
-        _isDefault = bankData['is_default']?.toString() == '1';
-        _isCompanyAccount = bankData['is_company_account']?.toString() == '1';
       }
       _ready = true;
     });
@@ -161,6 +161,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   }
 
   Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
     final app = AppScope.of(context);
     setState(() => _busy = true);
     final String? error = await app.submitBankDetails(
@@ -169,9 +170,9 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       account: _selectedCompanyAccount,
       accountType: _selectedAccountType,
       accountSubtype: _selectedAccountSubtype,
-      disabled: _disabled,
-      isDefault: _isDefault,
-      isCompanyAccount: _isCompanyAccount,
+      disabled: false,
+      isDefault: false,
+      isCompanyAccount: false,
       company: _selectedCompany,
       partyType: _selectedPartyType,
       party: _selectedParty,
@@ -197,61 +198,39 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_ready) {
+      return AppShell(
+        title: 'Bank Account Setup',
+        subtitle: 'Loading bank details…',
+        child: FrostCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: List.generate(8, (_) => const SkeletonFormField()),
+          ),
+        ),
+      );
+    }
+
     final dynamic args = ModalRoute.of(context)?.settings.arguments;
     final bool forceEdit =
         args is Map<String, dynamic> && args['force_edit'] == true;
     final app = AppScope.of(context);
     final Map<String, dynamic>? bankData = app.submittedBankRaw;
-    final bool showSubmittedDetails =
-        !_editMode && !forceEdit && bankData != null && bankData.isNotEmpty;
-    if (showSubmittedDetails) {
-      final Map<String, String> displayData = _buildDisplayData(bankData);
-      final String title =
-          bankData['account_name']?.toString().trim().isNotEmpty == true
-          ? bankData['account_name']!.toString().trim()
-          : 'Bank Account Details';
+
+    // Bank already submitted — show read-only details screen immediately.
+    // bankData is populated from SharedPreferences on boot, so this works
+    // without any network call after the first submission.
+    if (!forceEdit && bankData != null && bankData.isNotEmpty) {
+      return BankSubmittedDetailsScreen(bankData: bankData);
+    }
+
+    // No persisted data yet — show loading while fetching from backend
+    if (!_ready) {
       return AppShell(
-        title: title,
-        subtitle: 'Submitted bank account details',
-        child: FrostCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final entry in displayData.entries) ...[
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 150,
-                      child: Text(
-                        entry.key,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.bodyMedium?.copyWith(color: Colors.black54),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        entry.value,
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-              ],
-              const SizedBox(height: 8),
-              ElevatedButton.icon(
-                onPressed: () {
-                  setState(() => _editMode = true);
-                },
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Edit Bank Details'),
-              ),
-            ],
-          ),
-        ),
+        title: 'Bank Account',
+        subtitle: 'Loading details...',
+        loading: true,
+        child: const SizedBox.shrink(),
       );
     }
 
@@ -259,16 +238,21 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       title: 'Bank Account Setup',
       subtitle: 'Bank Account DocType fields from ERP',
       loading: _busy,
-      child: FrostCard(
+      child: Form(
+        key: _formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: FrostCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
+            TextFormField(
               controller: _accountNameCtrl,
               onChanged: (_) => setState(() {}),
+              validator: requiredField,
               decoration: const InputDecoration(
                 labelText: 'Account Name *',
                 prefixIcon: Icon(Icons.person_outline_rounded),
+                helperText: ' ',
               ),
             ),
             const SizedBox(height: 12),
@@ -345,7 +329,9 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
             TextField(
               controller: _partyCtrl,
               onChanged: (String value) {
-                setState(() => _selectedParty = value.trim().isEmpty ? null : value);
+                setState(
+                  () => _selectedParty = value.trim().isEmpty ? null : value,
+                );
               },
               decoration: const InputDecoration(
                 labelText: 'Party',
@@ -353,9 +339,10 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            TextField(
+            TextFormField(
               controller: _ibanCtrl,
               textCapitalization: TextCapitalization.characters,
+              validator: validateIBAN,
               inputFormatters: <TextInputFormatter>[
                 FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 ]')),
                 LengthLimitingTextInputFormatter(34),
@@ -363,35 +350,41 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
               decoration: const InputDecoration(
                 labelText: 'IBAN',
                 prefixIcon: Icon(Icons.credit_card_outlined),
+                helperText: ' ',
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
+            TextFormField(
               controller: _branchCodeCtrl,
               onChanged: (_) => setState(() {}),
               textCapitalization: TextCapitalization.characters,
+              validator: validateBranchCode,
               inputFormatters: <TextInputFormatter>[
-                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
-                LengthLimitingTextInputFormatter(20),
+                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+                LengthLimitingTextInputFormatter(11),
               ],
               decoration: const InputDecoration(
-                labelText: 'Branch Code *',
+                labelText: 'Branch Code (IFSC) *',
                 prefixIcon: Icon(Icons.qr_code_rounded),
+                helperText: ' ',
+                counterText: '',
               ),
             ),
-            const SizedBox(height: 12),
-            TextField(
+            TextFormField(
               controller: _bankAccountNoCtrl,
-              textCapitalization: TextCapitalization.characters,
+              keyboardType: TextInputType.number,
+              validator: validateBankAccountNo,
               inputFormatters: <TextInputFormatter>[
-                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9-]')),
-                LengthLimitingTextInputFormatter(34),
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(18),
               ],
               decoration: const InputDecoration(
                 labelText: 'Bank Account No',
                 prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                helperText: ' ',
+                counterText: '',
               ),
             ),
+            const SizedBox(height: 4),
             const SizedBox(height: 12),
             TextField(
               controller: _lastIntegrationDateCtrl,
@@ -403,24 +396,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Disabled'),
-              value: _disabled,
-              onChanged: (value) => setState(() => _disabled = value),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Is Default'),
-              value: _isDefault,
-              onChanged: (value) => setState(() => _isDefault = value),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Is Company Account'),
-              value: _isCompanyAccount,
-              onChanged: (value) => setState(() => _isCompanyAccount = value),
-            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _canSubmit ? _submit : null,
@@ -428,6 +403,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -442,7 +418,8 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     Map<String, dynamic>? filters,
     int pageLength = 10,
   }) {
-    final bool canOpen = enabled && doctype != null && doctype.trim().isNotEmpty;
+    final bool canOpen =
+        enabled && doctype != null && doctype.trim().isNotEmpty;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: !canOpen
@@ -484,37 +461,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     );
   }
 
-  Map<String, String> _buildDisplayData(Map<String, dynamic> raw) {
-    final Map<String, String> data = <String, String>{};
-
-    void put(String label, String key) {
-      final String value = (raw[key]?.toString() ?? '').trim();
-      if (value.isNotEmpty) {
-        data[label] = value;
-      }
-    }
-
-    put('Account Name', 'account_name');
-    put('Bank', 'bank');
-    put('Company Account', 'account');
-    put('Account Type', 'account_type');
-    put('Account Subtype', 'account_subtype');
-    put('Company', 'company');
-    put('Party Type', 'party_type');
-    put('Party', 'party');
-    put('IBAN', 'iban');
-    put('Branch Code', 'branch_code');
-    put('Bank Account No', 'bank_account_no');
-    put('Last Integration Date', 'last_integration_date');
-
-    data['Disabled'] = raw['disabled']?.toString() == '1' ? 'Yes' : 'No';
-    data['Is Default'] = raw['is_default']?.toString() == '1' ? 'Yes' : 'No';
-    data['Is Company Account'] = raw['is_company_account']?.toString() == '1'
-        ? 'Yes'
-        : 'No';
-
-    return data;
-  }
 }
 
 class _LinkSearchBottomSheet extends StatefulWidget {
@@ -552,6 +498,50 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
     super.dispose();
   }
 
+  Widget _buildResults(BuildContext context) {
+    final String typed = _queryCtrl.text.trim();
+    if (_results.isNotEmpty) {
+      return ListView.builder(
+        itemCount: _results.length,
+        itemBuilder: (BuildContext context, int index) {
+          final String item = _results[index];
+          return ListTile(
+            dense: true,
+            title: Text(item, maxLines: 1, overflow: TextOverflow.ellipsis),
+            onTap: () => Navigator.of(context).pop(item),
+          );
+        },
+      );
+    }
+    // No results from API (possibly 403 or genuinely empty).
+    // Let the user confirm whatever they've typed as a free-text value.
+    if (typed.isNotEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.check_circle_outline),
+            title: Text(
+              'Use "$typed"',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onTap: () => Navigator.of(context).pop(typed),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              'No matching records found. You can use the typed value above.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ),
+        ],
+      );
+    }
+    return const Center(child: Text('No results found'));
+  }
+
   Future<void> _load(String query, {bool showLoading = true}) async {
     if (showLoading) {
       setState(() => _loading = true);
@@ -582,7 +572,10 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(widget.title, style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                widget.title,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: _queryCtrl,
@@ -602,23 +595,7 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
               Expanded(
                 child: _loading
                     ? const _BankSearchLoading()
-                    : _results.isEmpty
-                    ? const Center(child: Text('No results found'))
-                    : ListView.builder(
-                        itemCount: _results.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final String item = _results[index];
-                          return ListTile(
-                            dense: true,
-                            title: Text(
-                              item,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onTap: () => Navigator.of(context).pop(item),
-                          );
-                        },
-                      ),
+                    : _buildResults(context),
               ),
             ],
           ),
@@ -633,9 +610,8 @@ class _BankSearchLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SkeletonLoader(
-      itemCount: 5,
-      spacing: 4,
+    return SingleChildScrollView(
+      child: SkeletonLoader(itemCount: 5, spacing: 4),
     );
   }
 }
