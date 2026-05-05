@@ -2778,11 +2778,18 @@ class AppController extends ChangeNotifier {
 
     try {
       Map<String, dynamic>? responsePayload;
+      // Scope the lookup to this driver's accounts so a shared account_name
+      // across different parties doesn't accidentally match the wrong record.
+      final List<List<String>> bankLookupFilters = <List<String>>[
+        <String>['Bank Account', 'account_name', '=', normalizedAccountName],
+        if (_driverName != null) ...<List<String>>[
+          <String>['Bank Account', 'party_type', '=', 'Driver'],
+          <String>['Bank Account', 'party', '=', _driverName!],
+        ],
+      ];
       final String? existingName = await _findResourceName(
         doctype: 'Bank Account',
-        filters: <List<String>>[
-          <String>['Bank Account', 'account_name', '=', normalizedAccountName],
-        ],
+        filters: bankLookupFilters,
         fields: <String>['name'],
       );
       if (existingName != null) {
@@ -2813,13 +2820,15 @@ class AppController extends ChangeNotifier {
         _submittedBankRaw = raw;
       }
 
-      _bank = BankDetails(
-        accountNumber: normalizedBankAccountNo ?? normalizedAccountName,
-        ifsc: normalizedBranchCode.toUpperCase(),
-        accountHolder: normalizedAccountName,
-        upiId: normalizedIban,
-        verified: true,
-      );
+      _bank = _submittedBankRaw != null
+          ? _bankFromApiData(_submittedBankRaw!)
+          : BankDetails(
+              accountNumber: normalizedBankAccountNo ?? normalizedAccountName,
+              ifsc: normalizedBranchCode.toUpperCase(),
+              accountHolder: normalizedAccountName,
+              upiId: normalizedIban,
+              verified: true,
+            );
       await _persistBankIdentity(
         bankDocName:
             _nullIfBlank(_submittedBankRaw?['name']?.toString()) ?? bankName,
