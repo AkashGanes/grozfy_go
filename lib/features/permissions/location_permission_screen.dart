@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -30,7 +30,7 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
   bool _backgroundRequesting = false;
   bool _notificationRequesting = false;
 
-  bool _checking = true;
+  bool _initialized = false;
 
   @override
   void initState() {
@@ -45,7 +45,10 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
     super.dispose();
   }
 
-  // Re-check when user returns from system settings
+  // Same pattern as CurrentLocationPickerScreen — re-check on every resume,
+  // no flag needed. The surface-destroyed logs in flutter run are the debug
+  // runner losing its socket when the activity goes to background; the app
+  // itself stays alive and resumes correctly.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -54,110 +57,148 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
   }
 
   Future<void> _checkAll() async {
-    setState(() => _checking = true);
-
-    final LocationPermission locPerm = await Geolocator.checkPermission();
-    final PermissionStatus notifStatus = await Permission.notification.status;
+    final results = await Future.wait([
+      Geolocator.checkPermission(),
+      Permission.notification.status,
+    ]);
 
     if (!mounted) return;
+
+    final LocationPermission locPerm = results[0] as LocationPermission;
+    final PermissionStatus notifStatus = results[1] as PermissionStatus;
 
     final bool foreground = locPerm == LocationPermission.whileInUse ||
         locPerm == LocationPermission.always;
     final bool background = locPerm == LocationPermission.always;
     final bool locForeverDenied = locPerm == LocationPermission.deniedForever;
 
-    // On Android 11+, upgrading from whileInUse → always requires the user
-    // to go to settings manually; treat it as "open settings needed".
-    final bool backgroundNeedsSettings = Platform.isAndroid &&
-        locPerm == LocationPermission.whileInUse;
-
     setState(() {
       _foregroundGranted = foreground;
       _backgroundGranted = background;
       _notificationGranted = notifStatus.isGranted;
-
       _foregroundPermanentlyDenied = locForeverDenied;
-      _backgroundPermanentlyDenied = locForeverDenied || backgroundNeedsSettings;
+      // Only mark background as permanently denied when location is fully
+      // blocked. The whileInUse case is handled by an in-app request first,
+      // so it shows "Allow" not "Open Settings".
+      _backgroundPermanentlyDenied = locForeverDenied;
       _notificationPermanentlyDenied = notifStatus.isPermanentlyDenied;
-
-      _checking = false;
+      _initialized = true;
+      // Clear any stuck requesting spinners
+      _foregroundRequesting = false;
+      _backgroundRequesting = false;
+      _notificationRequesting = false;
     });
 
-    // Keep AppController state in sync with real OS state
-    if (mounted) {
-      AppScope.of(context).setPermissionState(
-        foreground: foreground,
-        background: background,
-        notification: notifStatus.isGranted,
-      );
+    if (!mounted) return;
+    AppScope.of(context).setPermissionState(
+      foreground: foreground,
+      background: background,
+      notification: notifStatus.isGranted,
+    );
+  }
+
+  // Shows guidance then opens app settings.
+  // Uses await like CurrentLocationPickerScreen does for openLocationSettings.
+  Future<void> _goToSettings(
+    String permissionLabel, {
+    required bool isLocation,
+  }) async {
+    if (!mounted) return;
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Open App Settings'),
+        content: Text(
+          'Grant "$permissionLabel" in Settings.\n\n'
+          'After allowing it, press the Recent Apps button '
+          'and tap this app to return.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Go to Settings'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    if (isLocation) {
+      await Geolocator.openAppSettings();
+    } else {
+      await openAppSettings();
     }
+    // _checkAll() will be called by didChangeAppLifecycleState(resumed)
+    // when the user returns from settings — same as CurrentLocationPickerScreen.
   }
 
   Future<void> _requestForeground() async {
     setState(() => _foregroundRequesting = true);
 
     LocationPermission perm = await Geolocator.checkPermission();
+    if (!mounted) return;
 
     if (perm == LocationPermission.denied) {
       perm = await Geolocator.requestPermission();
+      if (!mounted) return;
     }
-
-    if (!mounted) return;
 
     if (perm == LocationPermission.deniedForever) {
-      // Permanently denied — send to system settings
-      await Geolocator.openAppSettings();
+      setState(() => _foregroundRequesting = false);
+      await _goToSettings('Location (Foreground)', isLocation: true);
+      return;
     }
 
-    setState(() => _foregroundRequesting = false);
     await _checkAll();
   }
 
   Future<void> _requestBackground() async {
     if (!_foregroundGranted) {
-      showInfoSnack(context, 'Allow foreground location first');
+      if (mounted) showInfoSnack(context, 'Allow foreground location first');
       return;
     }
 
     setState(() => _backgroundRequesting = true);
 
-    final LocationPermission perm = await Geolocator.checkPermission();
+    // Try requesting background location in-app first.
+    // On Android 11+ this shows the "Allow all the time" system dialog
+    // inside the app — no external settings, no process kill.
+    final PermissionStatus bgStatus =
+        await Permission.locationAlways.request();
+    if (!mounted) return;
 
-    if (perm == LocationPermission.always) {
-      // Already granted
-      setState(() => _backgroundRequesting = false);
+    if (bgStatus.isGranted) {
+      // Granted via in-app dialog — process stays alive.
       await _checkAll();
       return;
     }
 
-    if (perm == LocationPermission.deniedForever) {
-      await Geolocator.openAppSettings();
-    } else if (perm == LocationPermission.whileInUse) {
-      // On Android 11+ the OS may not show a dialog for "always"; it redirects
-      // to settings. We request and fall back to settings if still not granted.
-      final LocationPermission result = await Geolocator.requestPermission();
-      if (mounted && result != LocationPermission.always) {
-        await Geolocator.openAppSettings();
-      }
-    }
-
-    if (!mounted) return;
     setState(() => _backgroundRequesting = false);
-    await _checkAll();
+
+    // In-app request failed: permanently denied or system redirected to
+    // settings. Open settings as last resort.
+    await _goToSettings('Location (All the time)', isLocation: true);
   }
 
   Future<void> _requestNotification() async {
     setState(() => _notificationRequesting = true);
 
     final PermissionStatus status = await Permission.notification.request();
-
     if (!mounted) return;
 
     if (status.isPermanentlyDenied) {
-      await openAppSettings();
+      setState(() => _notificationRequesting = false);
+      await _goToSettings('Notifications', isLocation: false);
+      return;
     }
 
-    setState(() => _notificationRequesting = false);
     await _checkAll();
   }
 
@@ -169,7 +210,7 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
     return AppShell(
       title: 'Permission Setup',
       subtitle: 'Location + notifications are mandatory for order matching',
-      child: _checking
+      child: !_initialized
           ? const Center(child: CircularProgressIndicator())
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -183,7 +224,10 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                 ),
                 const SizedBox(height: 12),
                 FrostCard(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 8,
+                    horizontal: 12,
+                  ),
                   child: Column(
                     children: [
                       _PermissionRow(
@@ -196,7 +240,9 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                         onTap: _foregroundGranted
                             ? null
                             : _foregroundPermanentlyDenied
-                                ? Geolocator.openAppSettings
+                                ? () => _goToSettings(
+                                    'Location (Foreground)',
+                                    isLocation: true)
                                 : _requestForeground,
                       ),
                       const Divider(height: 1),
@@ -210,7 +256,9 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                         onTap: _backgroundGranted
                             ? null
                             : _backgroundPermanentlyDenied
-                                ? Geolocator.openAppSettings
+                                ? () => _goToSettings(
+                                    'Location (All the time)',
+                                    isLocation: true)
                                 : _requestBackground,
                       ),
                       const Divider(height: 1),
@@ -224,7 +272,9 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                         onTap: _notificationGranted
                             ? null
                             : _notificationPermanentlyDenied
-                                ? openAppSettings
+                                ? () => _goToSettings(
+                                    'Notifications',
+                                    isLocation: false)
                                 : _requestNotification,
                       ),
                     ],
@@ -233,7 +283,8 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: allGranted
-                      ? () => Navigator.of(context).pushNamed(AppRoutes.tracking)
+                      ? () =>
+                          Navigator.of(context).pushNamed(AppRoutes.tracking)
                       : null,
                   child: const Text('Continue to Tracking Setup'),
                 ),

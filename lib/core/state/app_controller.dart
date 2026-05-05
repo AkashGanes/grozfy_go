@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -468,6 +469,31 @@ class AppController extends ChangeNotifier {
       backgroundLocation: prefs.getBool(_prefPermBackground) ?? false,
       notification: prefs.getBool(_prefPermNotification) ?? false,
     );
+
+    // Android kills the app process when a permission changes while it is in
+    // the background, so SharedPreferences can be stale on the next launch.
+    // Always reconcile with real OS state during bootstrap.
+    try {
+      final LocationPermission locPerm = await Geolocator.checkPermission();
+      final PermissionStatus notifStatus =
+          await Permission.notification.status;
+      final bool realForeground =
+          locPerm == LocationPermission.whileInUse ||
+          locPerm == LocationPermission.always;
+      final bool realBackground = locPerm == LocationPermission.always;
+      final bool realNotification = notifStatus.isGranted;
+      _permissionState = PermissionState(
+        foregroundLocation: realForeground,
+        backgroundLocation: realBackground,
+        notification: realNotification,
+      );
+      await prefs.setBool(_prefPermForeground, realForeground);
+      await prefs.setBool(_prefPermBackground, realBackground);
+      await prefs.setBool(_prefPermNotification, realNotification);
+    } catch (_) {
+      // Keep cached values if the OS check fails (e.g. on first cold boot).
+    }
+
     _licenseRequiresReupload =
         prefs.getBool(_prefLicenseRequiresReupload) ?? false;
     _isLoggedIn = _sessionToken != null;
