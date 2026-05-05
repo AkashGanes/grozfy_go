@@ -201,8 +201,13 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: _getActiveOrders().length,
-      itemBuilder: (context, index) =>
-          _OrderCard(order: _getActiveOrders()[index]),
+      itemBuilder: (context, index) => _OrderCard(
+        order: _getActiveOrders()[index],
+        onTap: () => Navigator.of(context).pushNamed(
+          AppRoutes.orderDetails,
+          arguments: _getActiveOrders()[index],
+        ),
+      ),
     );
   }
 
@@ -210,8 +215,12 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       itemCount: _getPastOrders().length,
-      itemBuilder: (context, index) =>
-          _OrderCard(order: _getPastOrders()[index]),
+      itemBuilder: (context, index) => _OrderCard(
+        order: _getPastOrders()[index],
+        onTap: () => Navigator.of(
+          context,
+        ).pushNamed(AppRoutes.orderDetails, arguments: _getPastOrders()[index]),
+      ),
     );
   }
 
@@ -394,93 +403,100 @@ class _NavItem extends StatelessWidget {
 }
 
 class _OrderCard extends StatelessWidget {
-  const _OrderCard({required this.order});
+  const _OrderCard({required this.order, this.onTap});
   final DeliveryOrder order;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final statusColor = _getStatusColor(order.orderStatus);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.86),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x140A1D3A),
-            blurRadius: 12,
-            offset: Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  order.orderStatus.label,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 11,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.86),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x140A1D3A),
+              blurRadius: 12,
+              offset: Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    order.orderStatus.label,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
                   ),
                 ),
-              ),
-              const Spacer(),
-              Text(
-                order.orderId,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _buildInfo(Icons.store_rounded, order.storeName),
-          _buildInfo(Icons.more_horiz_rounded, order.customerName),
-          _buildInfo(
-            Icons.location_on_rounded,
-            order.drop.isNotEmpty ? order.drop : order.deliveryAddress,
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.mint.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
+                const Spacer(),
+                Text(
+                  order.orderId,
                   style: const TextStyle(
-                    color: AppTheme.mint,
                     fontWeight: FontWeight.w700,
                     fontSize: 14,
                   ),
                 ),
-              ),
-              const Spacer(),
-              Text(
-                '${order.distanceKm.toStringAsFixed(1)} km',
-                style: const TextStyle(color: Colors.black54, fontSize: 12),
-              ),
-            ],
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            _buildInfo(Icons.store_rounded, order.storeName),
+            _buildInfo(Icons.more_horiz_rounded, order.customerName),
+            _buildInfo(
+              Icons.location_on_rounded,
+              order.drop.isNotEmpty ? order.drop : order.deliveryAddress,
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.mint.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                      color: AppTheme.mint,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${order.distanceKm.toStringAsFixed(1)} km',
+                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
