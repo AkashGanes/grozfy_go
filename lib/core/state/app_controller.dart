@@ -2242,20 +2242,6 @@ class AppController extends ChangeNotifier {
           data = await fetchVehicleByName(vehicleFromDriver);
         }
       }
-      // Fallback: search by driver name
-      if (data == null && _driverName != null) {
-        _logApi('vehicle.hydrate', 'search by driver=$_driverName');
-        final String? name = await _findResourceName(
-          doctype: 'Vehicle',
-          filters: <List<String>>[
-            <String>['Vehicle', 'driver', '=', _driverName!],
-          ],
-          fields: <String>['name'],
-        );
-        if (name != null) {
-          data = await _fetchResourceDoc('Vehicle', name);
-        }
-      }
       if (data == null) {
         _logApi('vehicle.hydrate', 'no vehicle found');
         return;
