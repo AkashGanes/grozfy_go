@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/navigation/app_routes.dart';
+import '../../core/services/fcm_service.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
 
@@ -21,14 +23,17 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
   bool _foregroundGranted = false;
   bool _backgroundGranted = false;
   bool _notificationGranted = false;
+  bool _callGranted = false;
 
   bool _foregroundPermanentlyDenied = false;
   bool _backgroundPermanentlyDenied = false;
   bool _notificationPermanentlyDenied = false;
+  bool _callPermanentlyDenied = false;
 
   bool _foregroundRequesting = false;
   bool _backgroundRequesting = false;
   bool _notificationRequesting = false;
+  bool _callRequesting = false;
 
   bool _initialized = false;
 
@@ -60,12 +65,14 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
     final results = await Future.wait([
       Geolocator.checkPermission(),
       Permission.notification.status,
+      Permission.phone.status,
     ]);
 
     if (!mounted) return;
 
     final LocationPermission locPerm = results[0] as LocationPermission;
     final PermissionStatus notifStatus = results[1] as PermissionStatus;
+    final PermissionStatus callStatus = results[2] as PermissionStatus;
 
     final bool foreground = locPerm == LocationPermission.whileInUse ||
         locPerm == LocationPermission.always;
@@ -76,17 +83,20 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
       _foregroundGranted = foreground;
       _backgroundGranted = background;
       _notificationGranted = notifStatus.isGranted;
+      _callGranted = callStatus.isGranted;
       _foregroundPermanentlyDenied = locForeverDenied;
       // Only mark background as permanently denied when location is fully
       // blocked. The whileInUse case is handled by an in-app request first,
       // so it shows "Allow" not "Open Settings".
       _backgroundPermanentlyDenied = locForeverDenied;
       _notificationPermanentlyDenied = notifStatus.isPermanentlyDenied;
+      _callPermanentlyDenied = callStatus.isPermanentlyDenied;
       _initialized = true;
       // Clear any stuck requesting spinners
       _foregroundRequesting = false;
       _backgroundRequesting = false;
       _notificationRequesting = false;
+      _callRequesting = false;
     });
 
     if (!mounted) return;
@@ -94,6 +104,7 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
       foreground: foreground,
       background: background,
       notification: notifStatus.isGranted,
+      phoneCall: callStatus.isGranted,
     );
   }
 
@@ -190,12 +201,62 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
   Future<void> _requestNotification() async {
     setState(() => _notificationRequesting = true);
 
+    // Step 1: Request Android 13+ POST_NOTIFICATIONS OS permission.
     final PermissionStatus status = await Permission.notification.request();
     if (!mounted) return;
 
-    if (status.isPermanentlyDenied) {
+    // isPermanentlyDenied catches the normal case. The shouldShowRequestRationale
+    // check catches the case where the permission is blocked in system settings
+    // but status came back as denied (can happen after data clear / reinstall).
+    final bool blocked = status.isPermanentlyDenied ||
+        (status.isDenied &&
+            !await Permission.notification.shouldShowRequestRationale);
+    if (!mounted) return;
+
+    if (blocked) {
       setState(() => _notificationRequesting = false);
       await _goToSettings('Notifications', isLocation: false);
+      return;
+    }
+
+    if (status.isGranted) {
+      // Step 2: Request FCM permission so Firebase is aware the OS granted
+      // notification access (critical on iOS; also needed on Android 13+).
+      try {
+        await FirebaseMessaging.instance.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+      } catch (_) {
+        // Non-fatal — OS permission is already granted above.
+      }
+
+      // Step 3: Register FCM token with the backend so push notifications
+      // are delivered. This is a no-op if already subscribed.
+      if (mounted) {
+        unawaited(FCMService().subscribe(AppScope.of(context)));
+      }
+    }
+
+    if (!mounted) return;
+    await _checkAll();
+  }
+
+  Future<void> _requestCall() async {
+    setState(() => _callRequesting = true);
+
+    final PermissionStatus status = await Permission.phone.request();
+    if (!mounted) return;
+
+    final bool blocked = status.isPermanentlyDenied ||
+        (status.isDenied &&
+            !await Permission.phone.shouldShowRequestRationale);
+    if (!mounted) return;
+
+    if (blocked) {
+      setState(() => _callRequesting = false);
+      await _goToSettings('Phone calls', isLocation: false);
       return;
     }
 
@@ -204,8 +265,10 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
 
   @override
   Widget build(BuildContext context) {
-    final bool allGranted =
-        _foregroundGranted && _backgroundGranted && _notificationGranted;
+    final bool allGranted = _foregroundGranted &&
+        _backgroundGranted &&
+        _notificationGranted &&
+        _callGranted;
 
     return AppShell(
       title: 'Permission Setup',
@@ -244,6 +307,9 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                                     'Location (Foreground)',
                                     isLocation: true)
                                 : _requestForeground,
+                        onEdit: () => _goToSettings(
+                            'Location (Foreground)',
+                            isLocation: true),
                       ),
                       const Divider(height: 1),
                       _PermissionRow(
@@ -260,6 +326,9 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                                     'Location (All the time)',
                                     isLocation: true)
                                 : _requestBackground,
+                        onEdit: () => _goToSettings(
+                            'Location (All the time)',
+                            isLocation: true),
                       ),
                       const Divider(height: 1),
                       _PermissionRow(
@@ -276,6 +345,28 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                                     'Notifications',
                                     isLocation: false)
                                 : _requestNotification,
+                        onEdit: () => _goToSettings(
+                            'Notifications',
+                            isLocation: false),
+                      ),
+                      const Divider(height: 1),
+                      _PermissionRow(
+                        icon: Icons.phone_rounded,
+                        title: 'Phone calls',
+                        subtitle: 'Required to call customers and support',
+                        granted: _callGranted,
+                        permanentlyDenied: _callPermanentlyDenied,
+                        loading: _callRequesting,
+                        onTap: _callGranted
+                            ? null
+                            : _callPermanentlyDenied
+                                ? () => _goToSettings(
+                                    'Phone calls',
+                                    isLocation: false)
+                                : _requestCall,
+                        onEdit: () => _goToSettings(
+                            'Phone calls',
+                            isLocation: false),
                       ),
                     ],
                   ),
@@ -303,6 +394,7 @@ class _PermissionRow extends StatelessWidget {
     required this.permanentlyDenied,
     required this.loading,
     required this.onTap,
+    required this.onEdit,
   });
 
   final IconData icon;
@@ -312,6 +404,7 @@ class _PermissionRow extends StatelessWidget {
   final bool permanentlyDenied;
   final bool loading;
   final VoidCallback? onTap;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -321,11 +414,7 @@ class _PermissionRow extends StatelessWidget {
             ? Colors.red
             : Colors.orange;
 
-    final String actionLabel = granted
-        ? 'Granted'
-        : permanentlyDenied
-            ? 'Open Settings'
-            : 'Allow';
+    final String actionLabel = permanentlyDenied ? 'Open Settings' : 'Allow';
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -342,7 +431,25 @@ class _PermissionRow extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : granted
-              ? Icon(Icons.check_circle_rounded, color: accent, size: 22)
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_rounded,
+                        color: accent, size: 22),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      color: Colors.grey,
+                      tooltip: 'Change in Settings',
+                      onPressed: onEdit,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
+                    ),
+                  ],
+                )
               : TextButton(
                   onPressed: onTap,
                   style: TextButton.styleFrom(foregroundColor: accent),

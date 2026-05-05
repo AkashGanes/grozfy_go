@@ -89,6 +89,7 @@ class AppController extends ChangeNotifier {
   static const String _prefPermForeground = 'perm_foreground_location';
   static const String _prefPermBackground = 'perm_background_location';
   static const String _prefPermNotification = 'perm_notification';
+  static const String _prefPermCall = 'perm_phone_call';
   static const String _prefLicenseRequiresReupload = 'license_requires_reupload';
   static const String _prefThemeMode = 'theme_mode';
   static const String _prefBackgroundColor = 'background_color';
@@ -468,28 +469,37 @@ class AppController extends ChangeNotifier {
       foregroundLocation: prefs.getBool(_prefPermForeground) ?? false,
       backgroundLocation: prefs.getBool(_prefPermBackground) ?? false,
       notification: prefs.getBool(_prefPermNotification) ?? false,
+      phoneCall: prefs.getBool(_prefPermCall) ?? false,
     );
 
     // Android kills the app process when a permission changes while it is in
     // the background, so SharedPreferences can be stale on the next launch.
     // Always reconcile with real OS state during bootstrap.
     try {
-      final LocationPermission locPerm = await Geolocator.checkPermission();
-      final PermissionStatus notifStatus =
-          await Permission.notification.status;
+      final results = await Future.wait([
+        Geolocator.checkPermission(),
+        Permission.notification.status,
+        Permission.phone.status,
+      ]);
+      final LocationPermission locPerm = results[0] as LocationPermission;
+      final PermissionStatus notifStatus = results[1] as PermissionStatus;
+      final PermissionStatus callStatus = results[2] as PermissionStatus;
       final bool realForeground =
           locPerm == LocationPermission.whileInUse ||
           locPerm == LocationPermission.always;
       final bool realBackground = locPerm == LocationPermission.always;
       final bool realNotification = notifStatus.isGranted;
+      final bool realCall = callStatus.isGranted;
       _permissionState = PermissionState(
         foregroundLocation: realForeground,
         backgroundLocation: realBackground,
         notification: realNotification,
+        phoneCall: realCall,
       );
       await prefs.setBool(_prefPermForeground, realForeground);
       await prefs.setBool(_prefPermBackground, realBackground);
       await prefs.setBool(_prefPermNotification, realNotification);
+      await prefs.setBool(_prefPermCall, realCall);
     } catch (_) {
       // Keep cached values if the OS check fails (e.g. on first cold boot).
     }
@@ -1780,6 +1790,7 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefPermForeground),
       prefs.remove(_prefPermBackground),
       prefs.remove(_prefPermNotification),
+      prefs.remove(_prefPermCall),
       prefs.remove(_prefLicenseRequiresReupload),
     ]);
 
@@ -2848,11 +2859,13 @@ class AppController extends ChangeNotifier {
     bool? foreground,
     bool? background,
     bool? notification,
+    bool? phoneCall,
   }) {
     _permissionState = _permissionState.copyWith(
       foregroundLocation: foreground,
       backgroundLocation: background,
       notification: notification,
+      phoneCall: phoneCall,
     );
     if (foreground != null) {
       _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermForeground, foreground));
@@ -2862,6 +2875,9 @@ class AppController extends ChangeNotifier {
     }
     if (notification != null) {
       _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermNotification, notification));
+    }
+    if (phoneCall != null) {
+      _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermCall, phoneCall));
     }
     notifyListeners();
   }

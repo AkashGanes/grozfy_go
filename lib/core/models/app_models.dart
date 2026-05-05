@@ -503,24 +503,28 @@ class PermissionState {
     this.foregroundLocation = false,
     this.backgroundLocation = false,
     this.notification = false,
+    this.phoneCall = false,
   });
 
   final bool foregroundLocation;
   final bool backgroundLocation;
   final bool notification;
+  final bool phoneCall;
 
   bool get allGranted =>
-      foregroundLocation && backgroundLocation && notification;
+      foregroundLocation && backgroundLocation && notification && phoneCall;
 
   PermissionState copyWith({
     bool? foregroundLocation,
     bool? backgroundLocation,
     bool? notification,
+    bool? phoneCall,
   }) {
     return PermissionState(
       foregroundLocation: foregroundLocation ?? this.foregroundLocation,
       backgroundLocation: backgroundLocation ?? this.backgroundLocation,
       notification: notification ?? this.notification,
+      phoneCall: phoneCall ?? this.phoneCall,
     );
   }
 }
