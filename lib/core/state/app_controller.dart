@@ -16,7 +16,6 @@ import '../localization/localized_text.dart';
 import '../models/app_models.dart';
 import '../navigation/app_routes.dart';
 import '../services/connectivity_service.dart';
-import '../services/device_session_storage.dart';
 import '../services/fcm_service.dart';
 import '../services/secure_token_storage.dart';
 import '../utils/validators.dart' as app_validators;
@@ -51,12 +50,6 @@ class AppController extends ChangeNotifier {
   );
   static final Uri _serverLogoutUri = Uri.parse(
     'http://209.182.232.35:8004/api/method/logout',
-  );
-  static final Uri _exchangeDeviceCredentialUri = Uri.parse(
-    'http://209.182.232.35:8004/api/method/frappe.core.api.device_credential_auth.exchange_device_credential',
-  );
-  static final Uri _revokeDeviceSessionUri = Uri.parse(
-    'http://209.182.232.35:8004/api/method/frappe.core.api.device_credential_auth.revoke_device_session',
   );
   static const String _prefLanguageCode = 'language_code';
   static const String _prefMobile = 'partner_mobile';
@@ -486,7 +479,8 @@ class AppController extends ChangeNotifier {
     // Proactively refresh the access token at boot so the first authorised
     // call doesn't have to bounce off a 401. If we have everything refresh
     // needs and it still fails, the access/refresh tokens are dead — wipe
-    // local auth state and try the device-credential fallback below.
+    // local auth state so the splash routes to login instead of leaving a
+    // raw AuthenticationError visible.
     if (_isLoggedIn &&
         _refreshToken != null &&
         _refreshToken!.trim().isNotEmpty &&
@@ -496,7 +490,7 @@ class AppController extends ChangeNotifier {
       if (!refreshed) {
         _logApi(
           'bootstrap',
-          'token refresh failed at boot — clearing OAuth state',
+          'token refresh failed at boot — clearing auth state',
         );
         _isLoggedIn = false;
         _sessionToken = null;
@@ -509,17 +503,6 @@ class AppController extends ChangeNotifier {
         _profileCompleted = false;
         _kycCompleted = false;
         await SecureTokenStorage.deleteAll();
-      }
-    }
-
-    // Last-resort recovery: if we don't have a working OAuth session
-    // but the device credential is still on disk, exchange it for a
-    // fresh token pair. This is what saves the user from re-logging
-    // in after an OEM data wipe.
-    if (!_isLoggedIn) {
-      final bool exchanged = await _tryExchangeDeviceCredential();
-      if (exchanged) {
-        _logApi('bootstrap', 'recovered session via device credential');
       }
     }
 
@@ -1198,7 +1181,6 @@ class AppController extends ChangeNotifier {
         }.toString(),
       );
       _logApi('http', 'POST $_verifyOtpUri');
-      final String deviceId = await DeviceSessionStorage.getOrCreateDeviceId();
       final http.Response response = await http
           .post(
             _verifyOtpUri,
@@ -1207,7 +1189,6 @@ class AppController extends ChangeNotifier {
               'mobile_no': mobile.trim(),
               'otp': otp.trim(),
               'store_id': _storeId,
-              'device_id': deviceId,
             },
           )
           .timeout(_networkTimeout);
@@ -1375,137 +1356,6 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  /// Last-line-of-defense recovery when both the access and refresh
-  /// tokens are gone (typical on aggressive Android OEMs that wipe
-  /// app data while idle). Trades the locally-persisted device
-  /// credential for a fresh OAuth token pair via the server's
-  /// device_credential_auth endpoint.
-  ///
-  /// Returns `true` if it recovered a usable session and updated
-  /// in-memory + persisted state. Safe to call when no credential
-  /// exists — it just returns `false` quietly.
-  Future<bool> _tryExchangeDeviceCredential() async {
-    final String? deviceCredential =
-        await DeviceSessionStorage.getCredential();
-    if (deviceCredential == null || deviceCredential.isEmpty) {
-      return false;
-    }
-    final String deviceId = await DeviceSessionStorage.getOrCreateDeviceId();
-    try {
-      _logApi(
-        'exchange_device_credential request',
-        'POST $_exchangeDeviceCredentialUri',
-      );
-      final http.Response response = await http
-          .post(
-            _exchangeDeviceCredentialUri,
-            headers: _requestHeaders(
-              contentType: 'application/x-www-form-urlencoded',
-            ),
-            body: <String, String>{
-              'device_id': deviceId,
-              'device_credential': deviceCredential,
-              'store_id': _storeId,
-            },
-          )
-          .timeout(_networkTimeout);
-
-      _logApi(
-        'exchange_device_credential response',
-        'status=${response.statusCode}',
-      );
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        // 401/403 means our credential is stale or revoked. Wipe so
-        // we don't keep retrying on every boot.
-        if (response.statusCode == 401 || response.statusCode == 403) {
-          await DeviceSessionStorage.clearCredential();
-        }
-        return false;
-      }
-
-      final Map<String, dynamic> payload = _decodeJsonMap(response.body);
-      // Frappe wraps method results in a top-level `message` key when
-      // called via /api/method/...; fall back to the root if not.
-      final Map<String, dynamic> data =
-          payload['message'] is Map<String, dynamic>
-          ? payload['message'] as Map<String, dynamic>
-          : payload;
-
-      if ((data['status']?.toString() ?? '').toLowerCase() != 'success') {
-        return false;
-      }
-
-      // Apply the fresh session — same path as a successful login.
-      final String? newAccess = _nullIfBlank(
-        data['access_token']?.toString(),
-      );
-      if (newAccess == null) return false;
-      _sessionToken = newAccess;
-      _tokenType =
-          _nullIfBlank(data['token_type']?.toString()) ?? 'Bearer';
-      _refreshToken = _nullIfBlank(data['refresh_token']?.toString());
-      _clientId = _nullIfBlank(data['client_id']?.toString());
-      _isLoggedIn = true;
-
-      // Restore profile snapshot from the response so the UI can
-      // render immediately without an extra round-trip.
-      final String fullName =
-          _nullIfBlank(data['full_name']?.toString()) ??
-              (_profile?.fullName ?? 'Delivery Partner');
-      final String mobile =
-          _nullIfBlank(data['mobile_no']?.toString()) ??
-              (_profile?.mobile ?? '');
-      final String? email = _nullIfBlank(data['email']?.toString());
-      _profile = PartnerProfile(
-        fullName: fullName,
-        mobile: mobile,
-        email: email,
-      );
-      final String? driverName =
-          _nullIfBlank(data['driver_name']?.toString());
-      if (driverName != null) {
-        _driverName = driverName;
-      }
-      _profileCompleted = data['profile_completed']?.toString() == '1';
-      _kycCompleted = data['kyc_completed']?.toString() == '1';
-
-      // Persist the rotated credential + new tokens.
-      final String? rotatedCredential = _nullIfBlank(
-        data['device_credential']?.toString(),
-      );
-      if (rotatedCredential != null) {
-        await DeviceSessionStorage.setCredential(rotatedCredential);
-      }
-      await SecureTokenStorage.write(
-        SecureTokenStorage.accessToken,
-        newAccess,
-      );
-      if (_tokenType.isNotEmpty) {
-        await SecureTokenStorage.write(
-          SecureTokenStorage.tokenType,
-          _tokenType,
-        );
-      }
-      if (_refreshToken != null && _refreshToken!.isNotEmpty) {
-        await SecureTokenStorage.write(
-          SecureTokenStorage.refreshToken,
-          _refreshToken!,
-        );
-      }
-      if (_clientId != null && _clientId!.isNotEmpty) {
-        await SecureTokenStorage.write(
-          SecureTokenStorage.clientId,
-          _clientId!,
-        );
-      }
-
-      return true;
-    } catch (e) {
-      _logApi('exchange_device_credential error', e.toString());
-      return false;
-    }
-  }
-
   Future<String?> registerNewPartner({
     required String fullName,
     String? email,
@@ -1527,7 +1377,6 @@ class AppController extends ChangeNotifier {
       if (email != null && email.trim().isNotEmpty) {
         body['email'] = email.trim();
       }
-      body['device_id'] = await DeviceSessionStorage.getOrCreateDeviceId();
 
       _logApi('register_delivery_partner request', body.toString());
       final http.Response response = await http.post(
@@ -1655,36 +1504,6 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> _revokeDeviceSession(
-    String deviceId,
-    String bearerToken,
-    String tokenType,
-  ) async {
-    try {
-      _logApi(
-        'revoke_device_session request',
-        'POST $_revokeDeviceSessionUri',
-      );
-      final http.Response response = await http
-          .post(
-            _revokeDeviceSessionUri,
-            headers: <String, String>{
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Authorization':
-                  '${tokenType.isEmpty ? 'Bearer' : tokenType} $bearerToken',
-            },
-            body: <String, String>{'device_id': deviceId},
-          )
-          .timeout(_networkTimeout);
-      _logApi(
-        'revoke_device_session response',
-        'status=${response.statusCode}',
-      );
-    } catch (e) {
-      _logApi('revoke_device_session error', e.toString());
-    }
-  }
-
   Future<void> logout() async {
     // Snapshot credentials before we clear them — needed by the background
     // server-side cleanup below.
@@ -1757,26 +1576,17 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefLicenseRequiresReupload),
     ]);
 
-    // Drop the local device credential immediately so this device
-    // can't use it to recover the session after the user explicitly
-    // logged out. Server-side revocation is best-effort below.
-    final String deviceIdSnapshot =
-        await DeviceSessionStorage.getOrCreateDeviceId();
-    await DeviceSessionStorage.clearCredential();
-
     // Server-side cleanup — fire-and-forget so the caller's navigation
-    // happens instantly instead of waiting on multiple sequential HTTP
-    // calls. IMPORTANT: /api/method/logout must run before revoke_token,
-    // otherwise the bearer token is already invalidated on the server
-    // and logout responds 401 (no activity-log entry, noisy exception).
-    // Device-session revocation also needs the bearer to be alive.
+    // happens instantly instead of waiting on 2-3 sequential HTTP calls.
+    // IMPORTANT: /api/method/logout must run before revoke_token. Otherwise
+    // the bearer token is already invalidated on the server and logout
+    // responds 401 (no activity-log entry + noisy exception).
     if (accessToRevoke != null && accessToRevoke.isNotEmpty) {
       unawaited(
         _serverCleanupAfterLogout(
           accessToken: accessToRevoke,
           refreshToken: refreshToRevoke,
           tokenType: tokenTypeSnapshot,
-          deviceId: deviceIdSnapshot,
         ),
       );
       unawaited(
@@ -1786,17 +1596,14 @@ class AppController extends ChangeNotifier {
   }
 
   /// Sequenced HTTP calls that must happen in order: write the activity-log
-  /// entry via /api/method/logout while the bearer is still valid, revoke
-  /// the device session (also needs a live bearer), then revoke the OAuth
-  /// access and refresh tokens.
+  /// entry via /api/method/logout while the bearer is still valid, then
+  /// revoke the access and refresh tokens.
   Future<void> _serverCleanupAfterLogout({
     required String accessToken,
     required String? refreshToken,
     required String tokenType,
-    required String deviceId,
   }) async {
     await _serverSideLogout(accessToken, tokenType);
-    await _revokeDeviceSession(deviceId, accessToken, tokenType);
     await _revokeTokenOnServer(accessToken);
     if (refreshToken != null &&
         refreshToken.isNotEmpty &&
@@ -3806,16 +3613,9 @@ class AppController extends ChangeNotifier {
     final String? apiSecretVal = _nullIfBlank(
       message['api_secret']?.toString(),
     );
-    final String? deviceCredential = _nullIfBlank(
-      message['device_credential']?.toString(),
-    );
     final int? expiresIn = int.tryParse(
       message['expires_in']?.toString() ?? '',
     );
-
-    if (deviceCredential != null) {
-      await DeviceSessionStorage.setCredential(deviceCredential);
-    }
 
     final bool backendProfileCompleted =
         message['profile_completed']?.toString() == '1';
