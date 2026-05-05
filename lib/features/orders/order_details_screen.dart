@@ -5,6 +5,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/utils/call_utils.dart';
 import '../../core/widgets/app_shell.dart';
+import 'widgets/order_timer_widget.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
   const OrderDetailsScreen({super.key, this.order});
@@ -63,114 +64,121 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       subtitle: isPending
           ? 'Review and accept this order'
           : 'Active order details',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          FrostCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Customer Details',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const Divider(),
-                _info('Name', order.customerName),
-                _info('Phone', order.customerPhone),
-                _info('Address', order.deliveryAddress),
-                _info('Order ID', order.orderId),
-                _info('Status', app.orderStatusLabel(order.orderStatus)),
-                if (order.deliveryInstructions.isNotEmpty)
-                  _info('Instructions', order.deliveryInstructions),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          FrostCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Store Details',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const Divider(),
-                _info('Store Name', order.storeName),
-                _info('Store ID', order.storeId),
-                _info('Contact', order.storeContact),
-                _info('Address', order.storeAddress),
-                _info('Distance', '${order.distanceKm} km'),
-                _info(
-                  'Earnings',
-                  'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          FrostCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Order Items',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                const Divider(),
-                ...order.orderItems.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(child: Text('${item.name} x${item.quantity}')),
-                        Text(
-                          'Rs. ${(item.price * item.quantity).toStringAsFixed(0)}',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (app.isOrderTimerRunning) ...[
+              const Center(child: OrderTimerWidget()),
+              const SizedBox(height: 12),
+            ],
+            FrostCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Customer Details',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                ),
-                const Divider(),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Total Amount',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      'Rs. ${order.totalAmount.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
+                  const Divider(),
+                  _info('Name', order.customerName),
+                  _info('Phone', order.customerPhone),
+                  _info('Address', order.deliveryAddress),
+                  _info('Order ID', order.orderId),
+                  _info('Status', order.orderStatus.label),
+                  if (order.deliveryInstructions.isNotEmpty)
+                    _info('Instructions', order.deliveryInstructions),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            FrostCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Store Details',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const Divider(),
+                  _info('Store Name', order.storeName),
+                  _info('Store ID', order.storeId),
+                  _info('Contact', order.storeContact),
+                  _info('Address', order.storeAddress),
+                  _info('Distance', '${order.distanceKm} km'),
+                  _info(
+                    'Earnings',
+                    'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            FrostCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Order Items',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const Divider(),
+                  ...order.orderItems.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text('${item.name} x${item.quantity}'),
+                          ),
+                          Text(
+                            'Rs. ${(item.price * item.quantity).toStringAsFixed(0)}',
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
+                  const Divider(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Total Amount',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'Rs. ${order.totalAmount.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _info('Payment Mode', order.paymentMode),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            CallButtonRow(
+              calls: [
+                CallEntry(
+                  phoneNumber: order.customerPhone,
+                  label: 'Customer',
+                  icon: Icons.person_rounded,
                 ),
-                const SizedBox(height: 8),
-                _info('Payment Mode', order.paymentMode),
+                CallEntry(
+                  phoneNumber: order.storeContact,
+                  label: 'Store',
+                  icon: Icons.store_rounded,
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 12),
-          CallButtonRow(
-            calls: [
-              CallEntry(
-                phoneNumber: order.customerPhone,
-                label: 'Customer',
-                icon: Icons.person_rounded,
-              ),
-              CallEntry(
-                phoneNumber: order.storeContact,
-                label: 'Store',
-                icon: Icons.store_rounded,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (isPending) ...[
+            const SizedBox(height: 12),
+            if (isPending) ...[
             Row(
               children: [
                 Expanded(
@@ -219,6 +227,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             ],
           ],
         ],
+      ),
       ),
     );
   }

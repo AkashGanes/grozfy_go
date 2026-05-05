@@ -14,6 +14,8 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/call_utils.dart';
+import '../../core/widgets/app_shell.dart';
+import 'widgets/order_timer_widget.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
   const OrderTrackingScreen({super.key});
@@ -330,8 +332,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           )
         : _distanceMeters;
 
-    return Scaffold(
-      body: Stack(
+    return AppShell(
+      title: 'Track Order ${order.orderId}',
+      subtitle: 'Real-time tracking visible to customer & admin',
+      actions: [
+        if (app.isOrderTimerRunning)
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: OrderTimerWidget(),
+          ),
+      ],
+      child: Stack(
         children: [
           // ── Full-screen map ──────────────────────────────────────────
           FlutterMap(

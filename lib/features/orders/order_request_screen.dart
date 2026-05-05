@@ -58,6 +58,7 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
     app.respondToOrderRequest(accept: accept);
 
     if (accept) {
+      app.startOrderTimer();
       Navigator.of(context).pushReplacementNamed(AppRoutes.orderDetails);
       return;
     }
