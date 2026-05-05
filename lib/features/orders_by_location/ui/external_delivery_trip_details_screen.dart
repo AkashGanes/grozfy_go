@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
@@ -37,7 +39,48 @@ class _ExternalDeliveryTripDetailsScreenState
   @override
   void initState() {
     super.initState();
-    _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+    _future = _loadTrip();
+  }
+
+  /// Cache-aware trip fetch. Online → fetch + cache; Offline → cache only;
+  /// Network error mid-call → flip connectivity flag and serve cache. Only
+  /// throws when both network and cache fail.
+  Future<ExternalDeliveryTrip> _loadTrip() async {
+    if (!ConnectivityService().isConnected) {
+      final cached = OfflineTripManager().getCachedTrip(widget.tripName);
+      if (cached != null) return cached;
+      throw Exception(
+        'No internet and no cached copy of this trip. '
+        'Open it once online to enable offline access.',
+      );
+    }
+    try {
+      final trip =
+          await ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+      ConnectivityService().reportNetworkSuccess();
+      // Cache the fresh trip so subsequent offline opens succeed.
+      await OfflineTripManager().cacheTrip(trip);
+      return trip;
+    } catch (e) {
+      if (_isNetworkError(e)) {
+        ConnectivityService().reportNetworkFailure();
+        final cached = OfflineTripManager().getCachedTrip(widget.tripName);
+        if (cached != null) return cached;
+      }
+      rethrow;
+    }
+  }
+
+  bool _isNetworkError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('socketexception') ||
+        s.contains('network is unreachable') ||
+        s.contains('failed host lookup') ||
+        s.contains('connection failed') ||
+        s.contains('connection refused') ||
+        s.contains('connection closed') ||
+        s.contains('timed out') ||
+        s.contains('clientexception');
   }
 
   String _valueOrDash(String value) => value.trim().isEmpty ? '-' : value;
@@ -54,6 +97,7 @@ class _ExternalDeliveryTripDetailsScreenState
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return AppShell(
       title: 'External Delivery Trip',
       subtitle: widget.tripName,
@@ -80,15 +124,15 @@ class _ExternalDeliveryTripDetailsScreenState
                     Text(
                       snapshot.error.toString().replaceFirst('Exception: ', ''),
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.black54),
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.6),
+                      ),
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
                       onPressed: () {
                         setState(() {
-                          _future = ExternalDeliveryRepository().fetchTripDetails(
-                            widget.tripName,
-                          );
+                          _future = _loadTrip();
                         });
                       },
                       child: const Text('Retry'),
@@ -109,13 +153,14 @@ class _ExternalDeliveryTripDetailsScreenState
                     .fadeIn(duration: 220.ms)
                     .slideY(begin: 0.04, end: 0),
                 const SizedBox(height: 10),
-                const TabBar(
-                  indicatorColor: AppTheme.oceanBlue,
-                  labelColor: AppTheme.nightBlue,
-                  unselectedLabelColor: Colors.black54,
+                TabBar(
+                  indicatorColor: scheme.primary,
+                  labelColor: scheme.primary,
+                  unselectedLabelColor:
+                      scheme.onSurface.withValues(alpha: 0.6),
                   indicatorSize: TabBarIndicatorSize.tab,
                   dividerColor: Colors.transparent,
-                  tabs: [
+                  tabs: const [
                     Tab(
                       icon: Icon(Icons.local_shipping_outlined, size: 18),
                       text: 'Trip',
@@ -349,6 +394,7 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _loadingView() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     Widget line({double widthFactor = 1}) {
       return FractionallySizedBox(
         widthFactor: widthFactor,
@@ -367,7 +413,7 @@ class _ExternalDeliveryTripDetailsScreenState
         Container(
           height: 44,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.72),
+            color: scheme.surface.withValues(alpha: 0.72),
             borderRadius: BorderRadius.circular(12),
           ),
         )
@@ -423,6 +469,7 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _tripIdentityHeader(ExternalDeliveryTrip trip) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return FrostCard(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
@@ -444,8 +491,8 @@ class _ExternalDeliveryTripDetailsScreenState
           Expanded(
             child: Text(
               'Trip ID: ${trip.name}',
-              style: const TextStyle(
-                color: AppTheme.nightBlue,
+              style: TextStyle(
+                color: scheme.onSurface,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -456,6 +503,7 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _tripInfoRow(IconData icon, String label, String value) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -476,16 +524,16 @@ class _ExternalDeliveryTripDetailsScreenState
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.black54,
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.6),
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(
-                    color: AppTheme.nightBlue,
+                  style: TextStyle(
+                    color: scheme.onSurface,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -500,6 +548,7 @@ class _ExternalDeliveryTripDetailsScreenState
   bool _returningToStore = false;
 
   Widget _returnTripBanner(ExternalDeliveryTrip trip) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final alreadyCompleted =
         trip.status.trim().toLowerCase() == 'completed' ||
         trip.stops.every(
@@ -539,14 +588,14 @@ class _ExternalDeliveryTripDetailsScreenState
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.undo_rounded, color: AppTheme.mango, size: 20),
-                    SizedBox(width: 8),
+                    const Icon(Icons.undo_rounded, color: AppTheme.mango, size: 20),
+                    const SizedBox(width: 8),
                     Text(
                       'Return Trip',
                       style: TextStyle(
-                        color: AppTheme.nightBlue,
+                        color: scheme.onSurface,
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
                       ),
@@ -554,9 +603,12 @@ class _ExternalDeliveryTripDetailsScreenState
                   ],
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Once you arrive at the store, confirm the package has been handed back.',
-                  style: TextStyle(color: Colors.black54, fontSize: 12),
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(
@@ -599,27 +651,30 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Future<void> _handleReturnedToStore(ExternalDeliveryTrip trip) async {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.store_outlined, color: AppTheme.oceanBlue),
-            SizedBox(width: 8),
+            const Icon(Icons.store_outlined, color: AppTheme.oceanBlue),
+            const SizedBox(width: 8),
             Text(
               'Returned to Store?',
               style: TextStyle(
-                color: AppTheme.nightBlue,
+                color: scheme.onSurface,
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
               ),
             ),
           ],
         ),
-        content: const Text(
+        content: Text(
           'Confirm that you have handed the package back to the store.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(
+            color: scheme.onSurface.withValues(alpha: 0.6),
+          ),
         ),
         actions: [
           TextButton(
@@ -643,13 +698,25 @@ class _ExternalDeliveryTripDetailsScreenState
 
     if (confirmed != true || !mounted) return;
 
+    // markReturnedToStore is a multi-step flow that mutates several docs
+    // (stop status, parent trip status, completes_stops counter, completed_at
+    // stamp). It can't run offline cleanly — gate it.
+    if (!ConnectivityService().isConnected) {
+      showInfoSnack(
+        context,
+        'You are offline. Mark each stop Returned individually, '
+        'or try again when back online.',
+      );
+      return;
+    }
+
     setState(() => _returningToStore = true);
     try {
       await ExternalDeliveryRepository().markReturnedToStore(trip: trip);
       if (!mounted) return;
       showInfoSnack(context, 'Order marked Returned. Trip completed.');
       setState(() {
-        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+        _future = _loadTrip();
       });
     } catch (e) {
       if (!mounted) return;
@@ -660,6 +727,7 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _stopsTab(ExternalDeliveryTrip trip) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final orderedStops = trip.stops.asMap().entries.toList();
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -670,10 +738,12 @@ class _ExternalDeliveryTripDetailsScreenState
             const SizedBox(height: 10),
           ],
           if (trip.stops.isEmpty)
-            const FrostCard(
+            FrostCard(
               child: Text(
                 'No stops found',
-                style: TextStyle(color: Colors.black54),
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
             )
                 .animate()
@@ -772,14 +842,30 @@ class _ExternalDeliveryTripDetailsScreenState
     final stopKey = _stopKey(stop);
     setState(() => _updatingStops.add(stopKey));
     try {
-      await ExternalDeliveryRepository().updateTripStopStatus(
-        stop: stop,
+      final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
+      final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+      final parentTripName =
+          (stop.rawFields['parent'] ?? '').toString().trim();
+      // Always go through the offline-aware path: it queues + flushes
+      // when online, and queues + updates the local cache when offline.
+      // The user gets immediate visual feedback either way.
+      await OfflineTripManager().updateStopStatusOffline(
+        stopDocType: stopDocType,
+        stopName: stopName,
+        parentTripName: parentTripName,
+        orderName: stop.externalDelivery.trim(),
         newStatus: newStatus,
       );
       if (!mounted) return;
-      showInfoSnack(context, 'Stop status updated to $newStatus');
+      final isConnected = ConnectivityService().isConnected;
+      showInfoSnack(
+        context,
+        isConnected
+            ? 'Stop status updated to $newStatus'
+            : 'Saved offline. Will sync when reconnected.',
+      );
       setState(() {
-        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+        _future = _loadTrip();
       });
     } catch (e) {
       if (!mounted) return;
@@ -833,18 +919,19 @@ class _ExternalDeliveryTripDetailsScreenState
         ? result.reason
         : '${result.reason} — ${result.notes}';
 
+    final scheme = Theme.of(context).colorScheme;
     final createReturn = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.undo_rounded, color: AppTheme.oceanBlue),
-            SizedBox(width: 8),
+            const Icon(Icons.undo_rounded, color: AppTheme.oceanBlue),
+            const SizedBox(width: 8),
             Text(
               'Return to Store?',
               style: TextStyle(
-                color: AppTheme.nightBlue,
+                color: scheme.onSurface,
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
               ),
@@ -853,7 +940,7 @@ class _ExternalDeliveryTripDetailsScreenState
         ),
         content: Text(
           'Create a return trip to bring "$orderName" back to the store?',
-          style: const TextStyle(color: Colors.black54),
+          style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.6)),
         ),
         actions: [
           TextButton(
@@ -876,6 +963,44 @@ class _ExternalDeliveryTripDetailsScreenState
     );
     if (!mounted) return;
 
+    // The full failed-delivery flow uploads a photo, mutates the order,
+    // and (optionally) creates a server-side return trip. None of that
+    // can run offline. If we're offline, fall back to a queued stop
+    // status update so the driver can still mark Failed locally; the
+    // photo + return-trip steps will need to be redone online.
+    if (!ConnectivityService().isConnected) {
+      setState(() => _updatingStops.add(stopKey));
+      try {
+        final stopDocType =
+            (stop.rawFields['doctype'] ?? '').toString().trim();
+        final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+        final parentTripName =
+            (stop.rawFields['parent'] ?? '').toString().trim();
+        await OfflineTripManager().updateStopStatusOffline(
+          stopDocType: stopDocType,
+          stopName: stopName,
+          parentTripName: parentTripName,
+          orderName: orderName,
+          newStatus: 'Failed',
+        );
+        if (!mounted) return;
+        showInfoSnack(
+          context,
+          'Marked Failed offline. Photo upload and return trip will need '
+          'to be done when back online.',
+        );
+        setState(() {
+          _future = _loadTrip();
+        });
+      } catch (e) {
+        if (!mounted) return;
+        showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+      } finally {
+        if (mounted) setState(() => _updatingStops.remove(stopKey));
+      }
+      return;
+    }
+
     setState(() => _updatingStops.add(stopKey));
     try {
       final processResult = await ExternalDeliveryRepository()
@@ -889,7 +1014,7 @@ class _ExternalDeliveryTripDetailsScreenState
       if (!mounted) return;
       showInfoSnack(context, processResult.message);
       setState(() {
-        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+        _future = _loadTrip();
       });
       if (processResult.tripName != null && createReturn == true) {
         Navigator.of(context).push(

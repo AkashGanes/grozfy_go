@@ -16,51 +16,44 @@ class AppBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: _height,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: _NavItem(
-                    icon: Icons.home_rounded,
-                    label: 'Home',
-                    isSelected: currentIndex == 0,
-                    onTap: () => onTap(0),
-                  ),
-                ),
-                Expanded(
-                  child: _NavItem(
-                    icon: Icons.local_shipping_rounded,
-                    label: 'My Orders',
-                    isSelected: currentIndex == 1,
-                    onTap: () => onTap(1),
-                  ),
-                ),
-                Expanded(
-                  child: _NavItem(
-                    icon: Icons.more_horiz_rounded,
-                    label: 'More',
-                    isSelected: currentIndex == 2,
-                    onTap: () => onTap(2),
-                  ),
-                ),
-              ],
-            ),
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _NavItem(
+                icon: Icons.home_rounded,
+                label: 'Home',
+                isSelected: currentIndex == 0,
+                onTap: () => onTap(0),
+              ),
+              _NavItem(
+                icon: Icons.local_shipping_rounded,
+                label: 'My Orders',
+                isSelected: currentIndex == 1,
+                onTap: () => onTap(1),
+              ),
+              _NavItem(
+                icon: Icons.more_horiz_rounded,
+                label: 'More',
+                isSelected: currentIndex == 2,
+                onTap: () => onTap(2),
+              ),
+            ],
           ),
         ),
       ),
@@ -83,6 +76,8 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Color inactive =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -93,15 +88,15 @@ class _NavItem extends StatelessWidget {
           children: [
             Icon(
               icon,
-              color: isSelected ? AppTheme.oceanBlue : Colors.black45,
-              size: 24,
+              color: isSelected ? AppTheme.oceanBlue : inactive,
+              size: 26,
             ),
             const SizedBox(height: 3),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? AppTheme.oceanBlue : Colors.black45,
-                fontSize: 11.5,
+                color: isSelected ? AppTheme.oceanBlue : inactive,
+                fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),
             ),

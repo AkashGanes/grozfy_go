@@ -529,11 +529,14 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
             ),
             onTap: () => Navigator.of(context).pop(typed),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
               'No matching records found. You can use the typed value above.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
           ),
         ],

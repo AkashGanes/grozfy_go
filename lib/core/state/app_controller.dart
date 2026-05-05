@@ -20,6 +20,7 @@ import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
 import '../services/location_ping_service.dart';
 import '../services/secure_token_storage.dart';
+import '../services/sync_manager.dart';
 import '../utils/validators.dart' as app_validators;
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
@@ -305,8 +306,12 @@ class AppController extends ChangeNotifier {
   PerformanceMetrics get performance => _performance;
   List<AppNotice> get notices => List<AppNotice>.unmodifiable(_notices);
   bool get isConnected => _isConnected;
-  bool get showNoInternetOverlay =>
-      !_isConnected && _isInitialized && _appIsResumed && _firstFrameBuilt;
+  // Offline mode: app works without internet. The full-screen "Oops" overlay
+  // is replaced by the slim banner in AppShell (OfflineStatusIndicator).
+  // Screens that genuinely require internet (e.g. OTP login) should gate
+  // their actions on `isConnected` themselves rather than relying on a
+  // global overlay.
+  bool get showNoInternetOverlay => false;
   bool get showRetryButton => _showRetryButton;
   bool get isInitialized => _isInitialized;
 
@@ -2912,6 +2917,13 @@ class AppController extends ChangeNotifier {
     if (!_isTracking) {
       return;
     }
+    final lat = _currentLatitude;
+    final lng = _currentLongitude;
+    if (lat != null && lng != null) {
+      // Route every tick through the offline queue. Online: it flushes
+      // immediately. Offline: it persists to Hive and drains on reconnect.
+      unawaited(SyncManager().queueLocationPing(lat, lng));
+    }
     notifyListeners();
   }
 
@@ -3723,6 +3735,9 @@ class AppController extends ChangeNotifier {
         deliveryPartnerLocation: _partnerLiveLocation,
       );
     }
+    unawaited(
+      SyncManager().queueLocationPing(_currentLatitude!, _currentLongitude!),
+    );
     notifyListeners();
   }
 

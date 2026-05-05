@@ -597,6 +597,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
 
   void _updateMarkers() {
     if (!mounted) return;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     setState(() {
       _markers = [
         Marker(
@@ -607,7 +608,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
             angle: _toRadians(_currentHeading),
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: scheme.surface,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
@@ -632,7 +633,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
             height: 52,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: scheme.surface,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
@@ -652,7 +653,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
             height: 52,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: scheme.surface,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
@@ -890,6 +891,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Stack(
         children: [
@@ -981,7 +984,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                 children: [
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: scheme.surface,
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
@@ -999,7 +1002,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                   const Spacer(),
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: scheme.surface,
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
@@ -1037,7 +1040,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
             maxChildSize: 0.7,
             builder: (context, scrollController) => Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: scheme.surface,
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(24),
                 ),
@@ -1061,7 +1064,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                           width: 40,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: Colors.grey[300],
+                            color: scheme.onSurface.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -1117,7 +1120,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                                           Text(
                                             'Order $_deliveryName',
                                             style: TextStyle(
-                                              color: Colors.grey[600],
+                                              color: scheme.onSurface
+                                                  .withValues(alpha: 0.6),
                                               fontSize: 12,
                                             ),
                                           ),
@@ -1129,9 +1133,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                               const SizedBox(height: 12),
                               Row(
                                 children: [
-                                  const Icon(
+                                  Icon(
                                     Icons.person,
-                                    color: Colors.grey,
+                                    color: scheme.onSurface
+                                        .withValues(alpha: 0.6),
                                     size: 18,
                                   ),
                                   const SizedBox(width: 8),
@@ -1141,9 +1146,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                                         : 'Customer',
                                   ),
                                   const Spacer(),
-                                  const Icon(
+                                  Icon(
                                     Icons.location_on,
-                                    color: Colors.grey,
+                                    color: scheme.onSurface
+                                        .withValues(alpha: 0.6),
                                     size: 18,
                                   ),
                                   const SizedBox(width: 4),
@@ -1167,7 +1173,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.grey[50],
+                          color: scheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Row(
@@ -1180,14 +1186,16 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                                     children: [
                                       Icon(
                                         Icons.social_distance,
-                                        color: Colors.grey[600],
+                                        color: scheme.onSurface
+                                            .withValues(alpha: 0.6),
                                         size: 16,
                                       ),
                                       const SizedBox(width: 4),
                                       Text(
                                         'Distance',
                                         style: TextStyle(
-                                          color: Colors.grey[600],
+                                          color: scheme.onSurface
+                                              .withValues(alpha: 0.6),
                                           fontSize: 12,
                                         ),
                                       ),
@@ -1209,7 +1217,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                             Container(
                               width: 1,
                               height: 50,
-                              color: Colors.grey[300],
+                              color: scheme.onSurface.withValues(alpha: 0.12),
                             ),
                             Expanded(
                               child: Padding(
@@ -1221,14 +1229,16 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                                       children: [
                                         Icon(
                                           Icons.directions_car,
-                                          color: Colors.grey[600],
+                                          color: scheme.onSurface
+                                              .withValues(alpha: 0.6),
                                           size: 16,
                                         ),
                                         const SizedBox(width: 4),
                                         Text(
                                           'Status',
                                           style: TextStyle(
-                                            color: Colors.grey[600],
+                                            color: scheme.onSurface
+                                                .withValues(alpha: 0.6),
                                             fontSize: 12,
                                           ),
                                         ),
@@ -1417,7 +1427,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
             left: 16,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: scheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
@@ -1431,7 +1441,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                 onPressed: () => setState(() => _isMinimized = !_isMinimized),
                 icon: Icon(
                   _isMinimized ? Icons.fullscreen : Icons.minimize,
-                  color: Colors.black,
+                  color: scheme.onSurface,
                 ),
               ),
             ),

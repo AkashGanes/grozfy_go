@@ -419,6 +419,8 @@ class _CurrentLocationPickerScreenState
 
   @override
   Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Scaffold(
       body: Stack(
         children: [
@@ -433,7 +435,10 @@ class _CurrentLocationPickerScreenState
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: isDark
+                    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+                    : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains: isDark ? const ['a', 'b', 'c', 'd'] : const [],
                 userAgentPackageName: 'com.lyncspace.grozfygo',
               ),
               MarkerLayer(
@@ -442,10 +447,10 @@ class _CurrentLocationPickerScreenState
                     point: _selectedPoint,
                     width: 56,
                     height: 56,
-                    child: const Icon(
+                    child: Icon(
                       Icons.location_pin,
                       size: 48,
-                      color: AppTheme.nightBlue,
+                      color: isDark ? AppTheme.mint : AppTheme.nightBlue,
                     ),
                   ),
                 ],
@@ -507,14 +512,14 @@ class _CurrentLocationPickerScreenState
                       hintText: 'Search area or location...',
                       prefixIcon: const Icon(Icons.search_rounded),
                       suffixIcon: _searching
-                          ? const Padding(
-                              padding: EdgeInsets.all(12),
+                          ? Padding(
+                              padding: const EdgeInsets.all(12),
                               child: SizedBox(
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: AppTheme.nightBlue,
+                                  color: scheme.primary,
                                 ),
                               ),
                             )
@@ -545,9 +550,9 @@ class _CurrentLocationPickerScreenState
                       itemBuilder: (context, index) {
                         final result = _searchResults[index];
                         return ListTile(
-                          leading: const Icon(
+                          leading: Icon(
                             Icons.location_on_outlined,
-                            color: AppTheme.nightBlue,
+                            color: scheme.primary,
                           ),
                           title: Text(
                             result.displayName,
@@ -572,11 +577,11 @@ class _CurrentLocationPickerScreenState
             child: FloatingActionButton(
               heroTag: 'myLocation',
               mini: true,
-              backgroundColor: Colors.white,
+              backgroundColor: scheme.surface,
               onPressed: _loading || _saving ? null : _loadCurrentLocation,
-              child: const Icon(
+              child: Icon(
                 Icons.my_location_rounded,
-                color: AppTheme.nightBlue,
+                color: scheme.primary,
               ),
             ),
           ),
@@ -588,15 +593,15 @@ class _CurrentLocationPickerScreenState
             child: FloatingActionButton(
               heroTag: 'settings',
               mini: true,
-              backgroundColor: Colors.white,
+              backgroundColor: scheme.surface,
               onPressed: _saving
                   ? null
                   : () async {
                       await Geolocator.openLocationSettings();
                     },
-              child: const Icon(
+              child: Icon(
                 Icons.settings_rounded,
-                color: AppTheme.nightBlue,
+                color: scheme.primary,
               ),
             ),
           ),
@@ -797,8 +802,8 @@ class _CurrentLocationPickerScreenState
                               : _confirmSelection,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _error != null
-                                ? Colors.grey
-                                : AppTheme.nightBlue,
+                                ? scheme.onSurface.withValues(alpha: 0.3)
+                                : scheme.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
@@ -873,6 +878,8 @@ class _MapOverlayCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final BorderRadius resolvedRadius =
         borderRadius ?? BorderRadius.circular(16);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       margin: margin,
@@ -894,11 +901,16 @@ class _MapOverlayCard extends StatelessWidget {
           child: Container(
             padding: padding,
             decoration: BoxDecoration(
-              color:
-                  backgroundColor ?? Colors.white.withValues(alpha: 0.78),
+              color: backgroundColor ??
+                  (isDark
+                      ? scheme.surface.withValues(alpha: 0.78)
+                      : Colors.white.withValues(alpha: 0.78)),
               borderRadius: resolvedRadius,
               border: Border.all(
-                color: borderColor ?? Colors.white.withValues(alpha: 0.42),
+                color: borderColor ??
+                    (isDark
+                        ? scheme.onSurface.withValues(alpha: 0.18)
+                        : Colors.white.withValues(alpha: 0.42)),
               ),
             ),
             child: child,
@@ -950,7 +962,7 @@ class _LocationPickerLoading extends StatelessWidget {
           Text(
             'Loading location...',
             style: TextStyle(
-              color: AppTheme.nightBlue.withValues(alpha: 0.7),
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
               fontSize: 13,
             ),
           ),

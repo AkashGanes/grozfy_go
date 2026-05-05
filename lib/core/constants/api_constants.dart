@@ -25,7 +25,12 @@ class ApiConstants {
       '$erpBaseUrl/api/resource/External%20Delivery';
   static const String externalDeliveryTripList =
       '$erpBaseUrl/api/resource/External%20Delivery%20Trip';
-  static const String frappeSubmitMethod =
-      '$erpBaseUrl/api/method/frappe.client.submit';
   static const String defaultExternalDeliveryDriver = 'HR-DRI-2026-00001';
+
+  // Driver location ping endpoint. Backend exposes a method that accepts
+  // {driver, latitude, longitude, recorded_at} and persists a Driver Location
+  // Ping record. Server is responsible for de-duplicating by recorded_at so
+  // retries from the offline queue are idempotent.
+  static const String driverLocationPing =
+      '$erpBaseUrl/api/method/grozfy.api.driver.record_location_ping';
 }

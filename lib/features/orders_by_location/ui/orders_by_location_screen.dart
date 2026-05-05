@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../../core/navigation/app_routes.dart';
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
@@ -61,12 +63,25 @@ class _OrdersByLocationScreenState
   }
 
   Future<void> _fetchPage(int pageKey) async {
+    final storeName = ref.read(appControllerProvider).selectedStoreName;
+
+    // Offline: serve all cached orders for the selected store as a single
+    // page. Cache isn't paginated; the dataset is small enough not to be.
+    if (!ConnectivityService().isConnected) {
+      _serveFromCache(pageKey, storeName);
+      return;
+    }
+
     try {
-      final storeName = ref.read(appControllerProvider).selectedStoreName;
       final orders = await _repository.fetchPage(
         limitStart: pageKey,
         storeName: storeName,
       );
+      ConnectivityService().reportNetworkSuccess();
+      // Warm the cache so this list survives a future offline open.
+      await OfflineTripManager()
+          .cacheOrderSummaries(orders.map(_summaryToMap).toList());
+
       final items = <LocationListItem>[];
       for (final order in orders) {
         if (order.storeName != _lastStoreName) {
@@ -82,8 +97,55 @@ class _OrdersByLocationScreenState
         _pagingController.appendPage(items, pageKey + orders.length);
       }
     } catch (e) {
+      if (_isNetworkError(e)) {
+        ConnectivityService().reportNetworkFailure();
+        _serveFromCache(pageKey, storeName);
+        return;
+      }
       _pagingController.error = e;
     }
+  }
+
+  void _serveFromCache(int pageKey, String? storeName) {
+    if (pageKey != 0) {
+      _pagingController.appendLastPage(const []);
+      return;
+    }
+    final cached = OfflineTripManager().getCachedOrderSummaries();
+    final filtered = storeName == null || storeName.isEmpty
+        ? cached
+        : cached.where((o) => o.storeName == storeName).toList();
+    final items = <LocationListItem>[];
+    for (final order in filtered) {
+      if (order.storeName != _lastStoreName) {
+        items.add(StoreHeader(order.storeName));
+        _lastStoreName = order.storeName;
+      }
+      items.add(OrderRow(order));
+    }
+    _pagingController.appendLastPage(items);
+  }
+
+  Map<String, dynamic> _summaryToMap(ExternalDelivery o) => {
+        'name': o.name,
+        'store_url': o.storeUrl,
+        'store_name': o.storeName,
+        'customer_name': o.customerName,
+        'status': o.status,
+        'creation': o.creation,
+        'modified': o.modified,
+      };
+
+  bool _isNetworkError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('socketexception') ||
+        s.contains('network is unreachable') ||
+        s.contains('failed host lookup') ||
+        s.contains('connection failed') ||
+        s.contains('connection refused') ||
+        s.contains('connection closed') ||
+        s.contains('timed out') ||
+        s.contains('clientexception');
   }
 
   Future<void> _refresh() async {
@@ -217,11 +279,11 @@ class _OrdersByLocationScreenState
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Row(
+        title: const Row(
           children: [
             Icon(Icons.warning_amber_rounded, color: AppTheme.mango, size: 28),
-            const SizedBox(width: 10),
-            const Text('Distance Warning'),
+            SizedBox(width: 10),
+            Text('Distance Warning'),
           ],
         ),
         content: Text(message),
@@ -282,7 +344,7 @@ class _OrdersByLocationScreenState
     final navigator = Navigator.of(context);
 
     try {
-      final tripName = await _repository.createAndSubmitTripForOrders(orders);
+      final tripName = await _repository.createTripForOrders(orders);
       if (!mounted) return;
 
       _exitSelectionMode();
@@ -398,6 +460,7 @@ class _OrdersByLocationScreenState
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
+            final ColorScheme scheme = Theme.of(ctx).colorScheme;
             if (loading && !fetchStarted) {
               fetchStarted = true;
               _repository.fetchStoreNames().then((names) {
@@ -414,9 +477,9 @@ class _OrdersByLocationScreenState
                 ref.read(appControllerProvider).selectedStoreName;
 
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               padding: EdgeInsets.fromLTRB(
                 20,
@@ -434,23 +497,26 @@ class _OrdersByLocationScreenState
                       height: 4,
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: Colors.black12,
+                        color: scheme.onSurface.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
                   ),
-                  const Text(
-                    'Filter by Store',
+                  Text(
+                    'Select Your Location',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.nightBlue,
+                      color: scheme.onSurface,
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    'Select a store to filter orders, or choose All Stores.',
-                    style: TextStyle(fontSize: 13, color: Colors.black45),
+                  Text(
+                    'Orders will be filtered by your selected store.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: scheme.onSurface.withValues(alpha: 0.5),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   if (loading)
@@ -459,6 +525,18 @@ class _OrdersByLocationScreenState
                       child: Center(
                         child: CircularProgressIndicator(
                           color: AppTheme.oceanBlue,
+                        ),
+                      ),
+                    )
+                  else if (stores.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'No stores found',
+                          style: TextStyle(
+                            color: scheme.onSurface.withValues(alpha: 0.5),
+                          ),
                         ),
                       ),
                     )
@@ -517,7 +595,7 @@ class _OrdersByLocationScreenState
                               Icons.store_rounded,
                               color: selected
                                   ? AppTheme.oceanBlue
-                                  : Colors.black38,
+                                  : scheme.onSurface.withValues(alpha: 0.4),
                             ),
                             title: Text(
                               store,
@@ -527,7 +605,7 @@ class _OrdersByLocationScreenState
                                     : FontWeight.w500,
                                 color: selected
                                     ? AppTheme.oceanBlue
-                                    : AppTheme.nightBlue,
+                                    : scheme.onSurface,
                               ),
                             ),
                             trailing: selected
@@ -635,6 +713,269 @@ class _OrdersByLocationScreenState
       ),
     );
   }
+
+  List<LocationListItem> _filteredItems() {
+    final query = _searchQuery.toLowerCase().trim();
+    if (query.isEmpty) return _pagingController.itemList ?? [];
+    final result = <LocationListItem>[];
+    StoreHeader? pendingHeader;
+    for (final item in _pagingController.itemList ?? <LocationListItem>[]) {
+      if (item is StoreHeader) {
+        pendingHeader = item;
+      } else if (item is OrderRow) {
+        final o = item.order;
+        final matches = o.name.toLowerCase().contains(query) ||
+            o.customerName.toLowerCase().contains(query) ||
+            o.storeName.toLowerCase().contains(query);
+        if (matches) {
+          if (pendingHeader != null) {
+            result.add(pendingHeader);
+            pendingHeader = null;
+          }
+          result.add(item);
+        }
+      }
+    }
+    return result;
+  }
+
+  Widget _buildSearchResults() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final items = _filteredItems();
+    if (items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+        child: FrostCard(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.search_off_rounded,
+                size: 48,
+                color: AppTheme.mango.withValues(alpha: 0.7),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'No orders found',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'No results for "$_searchQuery"',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return ListView.builder(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(20, 4, 20, _selectionMode ? 100 : 20),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        if (item is StoreHeader) {
+          return _StoreHeaderTile(storeName: item.storeName);
+        }
+        if (item is OrderRow) {
+          return _OrderCard(
+            order: item.order,
+            busy: _submittingOrderIds.contains(item.order.name) || _creatingTrip,
+            selected: _selectedOrderIds.contains(item.order.name),
+            selectionMode: _selectionMode,
+            onTap: () => _handleOrderTap(item.order),
+            onLongPress: () => _handleOrderLongPress(item.order),
+          );
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
+  Widget _buildSearchBar() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Container(
+        height: 44,
+        decoration: BoxDecoration(
+          color: scheme.surface.withValues(alpha: 0.86),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: scheme.surface.withValues(alpha: 0.7)),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A0A1D3A),
+              blurRadius: 10,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: TextField(
+          controller: _searchController,
+          onChanged: (v) => setState(() => _searchQuery = v),
+          style: TextStyle(fontSize: 14, color: scheme.onSurface),
+          decoration: InputDecoration(
+            hintText: 'Search by order ID or customer…',
+            hintStyle: TextStyle(
+              fontSize: 13,
+              color: scheme.onSurface.withValues(alpha: 0.4),
+            ),
+            prefixIcon: Icon(
+              Icons.search_rounded,
+              size: 20,
+              color: scheme.onSurface.withValues(alpha: 0.4),
+            ),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: Icon(
+                      Icons.close_rounded,
+                      size: 18,
+                      color: scheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                  )
+                : null,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(String? selectedStore) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    if (_selectionMode) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 16, 12, 0),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.close_rounded),
+              onPressed: _exitSelectionMode,
+              tooltip: 'Cancel selection',
+            ),
+            Expanded(
+              child: Text(
+                '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.store_rounded, color: scheme.onSurface),
+              tooltip: 'Change location',
+              onPressed: () => _showStorePicker(),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Orders by Location',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                Text(
+                  selectedStore ?? 'Select a location',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.store_rounded, color: scheme.onSurface),
+            tooltip: 'Change location',
+            onPressed: () => _showStorePicker(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectionBottomBar() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          16,
+          20,
+          MediaQuery.of(context).padding.bottom + 16,
+        ),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 20,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.oceanBlue,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            disabledBackgroundColor: AppTheme.oceanBlue.withValues(alpha: 0.5),
+          ),
+          onPressed: _creatingTrip ? null : _handleCreateTrip,
+          child: _creatingTrip
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(
+                  '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected → Create Trip',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -683,6 +1024,7 @@ class _OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final statusColor = order.status.statusColor;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -704,7 +1046,9 @@ class _OrderCard extends StatelessWidget {
                       color: selected ? AppTheme.oceanBlue : Colors.transparent,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
-                        color: selected ? AppTheme.oceanBlue : Colors.black38,
+                        color: selected
+                            ? AppTheme.oceanBlue
+                            : scheme.onSurface.withValues(alpha: 0.4),
                         width: 2,
                       ),
                     ),
@@ -745,43 +1089,43 @@ class _OrderCard extends StatelessWidget {
                     children: [
                       Text(
                         order.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
-                          color: AppTheme.nightBlue,
+                          color: scheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.person_outline,
                             size: 13,
-                            color: Colors.black45,
+                            color: scheme.onSurface.withValues(alpha: 0.5),
                           ),
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
                               order.customerName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.black54,
+                                color: scheme.onSurface.withValues(alpha: 0.6),
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 8),
-                          const Icon(
+                          Icon(
                             Icons.schedule,
                             size: 13,
-                            color: Colors.black45,
+                            color: scheme.onSurface.withValues(alpha: 0.5),
                           ),
                           const SizedBox(width: 4),
                           Text(
                             _formatDate(order.modified),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.black45,
+                              color: scheme.onSurface.withValues(alpha: 0.5),
                             ),
                           ),
                         ],
@@ -853,6 +1197,7 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 60),
       child: FrostCard(
@@ -865,18 +1210,21 @@ class _EmptyState extends StatelessWidget {
               color: AppTheme.oceanBlue.withValues(alpha: 0.4),
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'No orders found',
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppTheme.nightBlue,
+                color: scheme.onSurface,
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Pull down to refresh',
-              style: TextStyle(fontSize: 13, color: Colors.black45),
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSurface.withValues(alpha: 0.5),
+              ),
             ),
           ],
         ),
@@ -896,6 +1244,7 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 40),
       child: FrostCard(
@@ -911,7 +1260,10 @@ class _ErrorState extends StatelessWidget {
             Text(
               error?.toString() ?? 'Something went wrong',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Colors.black54),
+              style: TextStyle(
+                fontSize: 13,
+                color: scheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(

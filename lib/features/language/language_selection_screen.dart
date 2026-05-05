@@ -106,6 +106,7 @@ class _LanguageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(18),
@@ -113,12 +114,12 @@ class _LanguageTile extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: selected ? Colors.white : Colors.white.withValues(alpha: 0.74),
+          color: selected ? scheme.surface : scheme.surface.withValues(alpha: 0.74),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: selected
-                ? Theme.of(context).colorScheme.primary
-                : Colors.black12,
+                ? scheme.primary
+                : scheme.onSurface.withValues(alpha: 0.12),
             width: selected ? 1.6 : 1,
           ),
         ),
@@ -151,7 +152,12 @@ class _LanguageTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(sample, style: const TextStyle(color: Colors.black54)),
+                  Text(
+                    sample,
+                    style: TextStyle(
+                      color: scheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
                 ],
               ),
             ),

@@ -30,13 +30,14 @@ class ProfileCompletenessIndicator extends StatelessWidget {
     final percentage = (completeness.percentage * 100).round();
     final color = _getProgressColor(completeness.percentage);
     final remaining = completeness.totalCount - completeness.completedCount;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
 
     return GestureDetector(
       onTap: () => _showDetailsBottomSheet(context),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
@@ -79,7 +80,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.nightBlue,
+                    color: scheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -101,7 +102,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
             Icon(
               Icons.chevron_right_rounded,
               size: 20,
-              color: AppTheme.nightBlue.withValues(alpha: 0.4),
+              color: scheme.onSurface.withValues(alpha: 0.4),
             ),
           ],
         ),
@@ -114,16 +115,18 @@ class ProfileCompletenessIndicator extends StatelessWidget {
     final percentage = (completeness.percentage * 100).round();
     final color = _getProgressColor(completeness.percentage);
     final isComplete = completeness.percentage == 1.0;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
       onTap: () => _showDetailsBottomSheet(context),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
+              color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
               blurRadius: 20,
               offset: const Offset(0, 8),
             ),
@@ -159,7 +162,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: isDark ? scheme.surfaceContainerHighest : Colors.white,
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
@@ -192,10 +195,10 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                               isComplete
                                   ? app.t('all_done')
                                   : app.t('profile_progress'),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
-                                color: AppTheme.nightBlue,
+                                color: scheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -203,7 +206,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                               completeness.localizedMessage(app.languageCode),
                               style: TextStyle(
                                 fontSize: 13,
-                                color: AppTheme.nightBlue.withValues(alpha: 0.6),
+                                color: scheme.onSurface.withValues(alpha: 0.6),
                               ),
                             ),
                           ],
@@ -242,7 +245,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: AppTheme.nightBlue.withValues(alpha: 0.5),
+                          color: scheme.onSurface.withValues(alpha: 0.5),
                         ),
                       ),
                       if (!isComplete)
@@ -297,6 +300,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
     Color color,
   ) {
     final app = AppScope.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.all(10),
@@ -343,7 +347,7 @@ class ProfileCompletenessIndicator extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: AppTheme.nightBlue.withValues(alpha: 0.8),
+              color: scheme.onSurface.withValues(alpha: 0.8),
             ),
           ),
         ],
@@ -445,14 +449,15 @@ class _DetailsBottomSheet extends StatelessWidget {
     final app = AppScope.of(context);
     final percentage = (completeness.percentage * 100).round();
     final color = _getProgressColor(completeness.percentage);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
 
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.75,
       ),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -462,7 +467,7 @@ class _DetailsBottomSheet extends StatelessWidget {
             height: 4,
             margin: const EdgeInsets.only(top: 12, bottom: 20),
             decoration: BoxDecoration(
-              color: Colors.black12,
+              color: scheme.onSurface.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -500,7 +505,7 @@ class _DetailsBottomSheet extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
-                              color: AppTheme.nightBlue,
+                              color: scheme.onSurface,
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -514,9 +519,9 @@ class _DetailsBottomSheet extends StatelessWidget {
                                   '{total}',
                                   '${completeness.totalCount}',
                                 ),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
-                              color: Colors.black54,
+                              color: scheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                         ],
@@ -559,9 +564,9 @@ class _DetailsBottomSheet extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Text(
               completeness.localizedMessage(app.languageCode),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
-                color: Colors.black54,
+                color: scheme.onSurface.withValues(alpha: 0.6),
               ),
             ),
           ),
@@ -593,6 +598,7 @@ class _DetailsBottomSheet extends StatelessWidget {
     int index,
   ) {
     final app = AppScope.of(context);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: Duration(milliseconds: 300 + (index * 50)),
@@ -657,7 +663,7 @@ class _DetailsBottomSheet extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             color: item.isCompleted
                                 ? const Color(0xFF1AB36A)
-                                : AppTheme.nightBlue,
+                                : scheme.onSurface,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -665,7 +671,7 @@ class _DetailsBottomSheet extends StatelessWidget {
                           app.t(item.description),
                           style: TextStyle(
                             fontSize: 12,
-                            color: AppTheme.nightBlue.withValues(alpha: 0.5),
+                            color: scheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
                       ],

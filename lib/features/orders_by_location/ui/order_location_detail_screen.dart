@@ -10,6 +10,8 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/call_utils.dart';
 import '../../../core/widgets/app_shell.dart';
@@ -89,8 +91,26 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
       _loading = true;
       _error = null;
     });
+    // Offline first: serve cached order if we have it.
+    if (!ConnectivityService().isConnected) {
+      final cached = OfflineTripManager().getCachedOrder(widget.order.name);
+      setState(() {
+        _detail = cached;
+        _loading = false;
+        _error = cached == null
+            ? 'No internet and no cached copy of this order. '
+                'Open it once online to enable offline access.'
+            : null;
+      });
+      return;
+    }
+    // Online: hit the repository directly so any error surfaces here.
     try {
       final detail = await widget.repository.fetchDetail(widget.order.name);
+      if (!mounted) return;
+      ConnectivityService().reportNetworkSuccess();
+      // Persist to the cache so subsequent offline opens succeed.
+      await OfflineTripManager().cacheOrderDetail(detail);
       if (!mounted) return;
       setState(() {
         _detail = detail;
@@ -110,6 +130,18 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
       }
     } catch (e) {
       if (!mounted) return;
+      if (_isNetworkError(e)) {
+        ConnectivityService().reportNetworkFailure();
+        final cached =
+            OfflineTripManager().getCachedOrder(widget.order.name);
+        if (cached != null) {
+          setState(() {
+            _detail = cached;
+            _loading = false;
+          });
+          return;
+        }
+      }
       setState(() {
         _error = e.toString();
         _loading = false;
@@ -141,7 +173,24 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   Future<void> _updateStatus(String newStatus) async {
     setState(() => _updating = true);
     try {
-      await widget.repository.updateStatus(widget.order.name, newStatus);
+      // Always go through the offline-aware path. It queues + flushes
+      // immediately when online, queues + updates the local cache when
+      // offline. Either way the user sees the new status right away.
+      await OfflineTripManager().updateOrderStatusOffline(
+        orderName: widget.order.name,
+        newStatus: newStatus,
+      );
+      if (!mounted) return;
+      final isConnected = ConnectivityService().isConnected;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isConnected
+                ? 'Status updated to $newStatus'
+                : 'Saved offline. Will sync when reconnected.',
+          ),
+        ),
+      );
       await _refreshDetail();
     } catch (e) {
       if (mounted) {
@@ -276,6 +325,18 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
     }
     return permission == LocationPermission.whileInUse ||
         permission == LocationPermission.always;
+  }
+
+  bool _isNetworkError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('socketexception') ||
+        s.contains('network is unreachable') ||
+        s.contains('failed host lookup') ||
+        s.contains('connection failed') ||
+        s.contains('connection refused') ||
+        s.contains('connection closed') ||
+        s.contains('timed out') ||
+        s.contains('clientexception');
   }
 
   // ---------------------------------------------------------------------------
@@ -865,6 +926,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   }
 
   Widget _buildError() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Stack(
       children: [
         _buildMap(),
@@ -887,7 +949,10 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                 Text(
                   _error ?? 'Something went wrong',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.black54, fontSize: 13),
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
@@ -1003,6 +1068,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   }
 
   Widget _buildContent() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final detail = _detail!;
     final statusColor = detail.status.statusColor;
     final s = detail.status.toLowerCase();
@@ -1110,10 +1176,11 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
           snapSizes: const [0.18, 0.42, 0.88],
           builder: (context, scrollController) {
             return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                boxShadow: [
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: const [
                   BoxShadow(
                     color: Color(0x22000000),
                     blurRadius: 20,
@@ -1137,7 +1204,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                       width: 36,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.black12,
+                        color: scheme.onSurface.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1152,26 +1219,28 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                           children: [
                             Text(
                               detail.name,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w800,
-                                color: AppTheme.nightBlue,
+                                color: scheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 2),
                             Row(
                               children: [
-                                const Icon(
+                                Icon(
                                   Icons.store_rounded,
                                   size: 13,
-                                  color: Colors.black38,
+                                  color: scheme.onSurface
+                                      .withValues(alpha: 0.4),
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
                                   detail.storeName,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.black54,
+                                    color: scheme.onSurface
+                                        .withValues(alpha: 0.6),
                                   ),
                                 ),
                               ],
@@ -1229,19 +1298,20 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                           children: [
                             Text(
                               detail.customerName,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 16,
-                                color: AppTheme.nightBlue,
+                                color: scheme.onSurface,
                               ),
                             ),
                             if (detail.contactMobile != null) ...[
                               const SizedBox(height: 2),
                               Text(
                                 detail.contactMobile!,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
-                                  color: Colors.black45,
+                                  color: scheme.onSurface
+                                      .withValues(alpha: 0.5),
                                 ),
                               ),
                             ],
@@ -1298,27 +1368,28 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                             Expanded(
                               child: Text(
                                 item.itemName,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 14,
-                                  color: AppTheme.nightBlue,
+                                  color: scheme.onSurface,
                                 ),
                               ),
                             ),
                             Text(
                               'x${item.qty % 1 == 0 ? item.qty.toInt() : item.qty}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
-                                color: AppTheme.nightBlue,
+                                color: scheme.onSurface,
                               ),
                             ),
                             if (item.amount != null) ...[
                               const SizedBox(width: 14),
                               Text(
                                 '₹${item.amount!.toStringAsFixed(0)}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
-                                  color: Colors.black45,
+                                  color: scheme.onSurface
+                                      .withValues(alpha: 0.5),
                                 ),
                               ),
                             ],
@@ -1715,6 +1786,7 @@ class _BackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Positioned(
       top: MediaQuery.of(context).padding.top + 8,
       left: 12,
@@ -1724,7 +1796,7 @@ class _BackButton extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: scheme.surface,
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
@@ -1734,9 +1806,9 @@ class _BackButton extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(
+          child: Icon(
             Icons.arrow_back_rounded,
-            color: AppTheme.nightBlue,
+            color: scheme.onSurface,
             size: 20,
           ),
         ),
@@ -1752,11 +1824,12 @@ class _SheetShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: const [
           BoxShadow(
             color: Color(0x22000000),
             blurRadius: 20,
@@ -1774,7 +1847,7 @@ class _SheetShell extends StatelessWidget {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.black12,
+                color: scheme.onSurface.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -1827,6 +1900,7 @@ class _AddressRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1838,18 +1912,18 @@ class _AddressRow extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: Colors.black45,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 address,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
-                  color: AppTheme.nightBlue,
+                  color: scheme.onSurface,
                   height: 1.4,
                 ),
               ),

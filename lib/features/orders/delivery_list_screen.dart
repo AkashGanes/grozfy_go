@@ -107,7 +107,7 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
           delivery: delivery,
           scrollController: scrollController,
           apiService: _apiService,
-          onAccept: (name) => _repository.createAndSubmitTripForOrderName(name),
+          onAccept: (name) => _repository.createTripForOrderName(name),
           onNavigateToDelivery: () {
             if (!delivery.hasDropLocation) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -153,6 +153,7 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
   }
 
   Widget _buildContent() {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     if (_isLoading && !_isRefreshing) {
       return const SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(16, 20, 16, 20),
@@ -177,7 +178,10 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
                 Text(
                   _errorMessage!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton.icon(
@@ -206,18 +210,21 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
                   color: AppTheme.oceanBlue.withValues(alpha: 0.4),
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   'No deliveries available',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: AppTheme.nightBlue,
+                    color: scheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   'Pull down to refresh',
-                  style: TextStyle(fontSize: 13, color: Colors.black45),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: scheme.onSurface.withValues(alpha: 0.5),
+                  ),
                 ),
               ],
             ),
@@ -262,6 +269,7 @@ class _DeliveryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: GestureDetector(
@@ -285,27 +293,27 @@ class _DeliveryCard extends StatelessWidget {
                   children: [
                     Text(
                       delivery.name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,
-                        color: AppTheme.nightBlue,
+                        color: scheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.store_outlined,
                           size: 13,
-                          color: Colors.black45,
+                          color: scheme.onSurface.withValues(alpha: 0.5),
                         ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             delivery.storeName,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.black54,
+                              color: scheme.onSurface.withValues(alpha: 0.6),
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -315,32 +323,32 @@ class _DeliveryCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.person_outline,
                           size: 13,
-                          color: Colors.black45,
+                          color: scheme.onSurface.withValues(alpha: 0.5),
                         ),
                         const SizedBox(width: 4),
                         Text(
                           delivery.customerName,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.black54,
+                            color: scheme.onSurface.withValues(alpha: 0.6),
                           ),
                         ),
                         if (delivery.modified != null) ...[
                           const SizedBox(width: 10),
-                          const Icon(
+                          Icon(
                             Icons.schedule,
                             size: 13,
-                            color: Colors.black45,
+                            color: scheme.onSurface.withValues(alpha: 0.5),
                           ),
                           const SizedBox(width: 4),
                           Text(
                             _formatDate(delivery.modified),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.black45,
+                              color: scheme.onSurface.withValues(alpha: 0.5),
                             ),
                           ),
                         ],
@@ -543,12 +551,13 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final statusColor = _getStatusColor(_delivery.status);
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SingleChildScrollView(
         controller: widget.scrollController,
@@ -562,7 +571,7 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey[300],
+                    color: scheme.onSurface.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -766,6 +775,7 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
   }
 
   Widget _buildSection(String title, List<Widget> children) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final nonEmptyChildren = children.where((w) => w is! SizedBox).toList();
     if (nonEmptyChildren.isEmpty) return const SizedBox.shrink();
 
@@ -774,17 +784,17 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: Colors.grey,
+            color: scheme.onSurface.withValues(alpha: 0.6),
           ),
         ),
         const SizedBox(height: 8),
         Card(
           margin: EdgeInsets.zero,
           elevation: 0,
-          color: Colors.grey[50],
+          color: scheme.surfaceContainerHighest,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -798,18 +808,22 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
   }
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: Colors.grey[600]),
+          Icon(icon, size: 18, color: scheme.onSurface.withValues(alpha: 0.6)),
           const SizedBox(width: 8),
           SizedBox(
             width: 80,
             child: Text(
               label,
-              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              style: TextStyle(
+                color: scheme.onSurface.withValues(alpha: 0.6),
+                fontSize: 13,
+              ),
             ),
           ),
           Expanded(

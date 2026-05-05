@@ -271,6 +271,7 @@ class _InboxSummaryBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final String subtitle = unreadCount == 0
         ? 'All caught up'
         : '$unreadCount unread update${unreadCount > 1 ? 's' : ''}';
@@ -278,7 +279,7 @@ class _InboxSummaryBar extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.62),
+        color: scheme.surface.withValues(alpha: 0.62),
         borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(
@@ -302,11 +303,11 @@ class _InboxSummaryBar extends ConsumerWidget {
                       color: AppTheme.oceanBlue.withValues(alpha: 0.9),
                     ),
                     const SizedBox(width: 6),
-                    const Text(
+                    Text(
                       'Inbox',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.nightBlue,
+                        color: scheme.onSurface,
                       ),
                     ),
                     if (unreadCount > 0) ...[
@@ -333,7 +334,12 @@ class _InboxSummaryBar extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 2),
-                Text(subtitle, style: const TextStyle(color: Colors.black54)),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
               ],
             ),
           ),
@@ -360,10 +366,11 @@ class _NotificationFilterPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final Color background = selected
         ? AppTheme.oceanBlue
-        : Colors.white.withValues(alpha: 0.6);
-    final Color foreground = selected ? Colors.white : AppTheme.nightBlue;
+        : scheme.surface.withValues(alpha: 0.6);
+    final Color foreground = selected ? Colors.white : scheme.onSurface;
     final Color badgeBackground = selected
         ? Colors.white.withValues(alpha: 0.18)
         : AppTheme.oceanBlue.withValues(alpha: 0.12);
@@ -450,6 +457,7 @@ class _FilteredEmptyState extends StatelessWidget {
       ),
     };
 
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.only(top: 54),
@@ -458,17 +466,19 @@ class _FilteredEmptyState extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppTheme.nightBlue,
+                color: scheme.onSurface,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
             Text(
               subtitle,
-              style: const TextStyle(color: Colors.black45),
+              style: TextStyle(
+                color: scheme.onSurface.withValues(alpha: 0.5),
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -571,6 +581,7 @@ class _NotificationTile extends ConsumerWidget {
       }
     }
 
+    final ColorScheme tileScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: FrostCard(
@@ -612,16 +623,16 @@ class _NotificationTile extends ConsumerWidget {
                               fontWeight: isUnread
                                   ? FontWeight.w700
                                   : FontWeight.w600,
-                              color: AppTheme.nightBlue,
+                              color: tileScheme.onSurface,
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Text(
                           _timeAgo(),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
-                            color: Colors.black45,
+                            color: tileScheme.onSurface.withValues(alpha: 0.5),
                           ),
                         ),
                       ],
@@ -631,8 +642,8 @@ class _NotificationTile extends ConsumerWidget {
                       notification.message,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.black54,
+                      style: TextStyle(
+                        color: tileScheme.onSurface.withValues(alpha: 0.6),
                         height: 1.35,
                       ),
                     ),
@@ -651,7 +662,10 @@ class _NotificationTile extends ConsumerWidget {
                 ),
               ] else if (hasNavigationTarget) ...[
                 const SizedBox(width: 8),
-                const Icon(Icons.chevron_right_rounded, color: Colors.black38),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: tileScheme.onSurface.withValues(alpha: 0.4),
+                ),
               ],
             ],
           ),
@@ -726,6 +740,7 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Center(
       child: FrostCard(
         child: Column(
@@ -737,18 +752,20 @@ class _ErrorState extends StatelessWidget {
               size: 40,
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Unable to load notifications',
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color: AppTheme.nightBlue,
+                color: scheme.onSurface,
               ),
             ),
             const SizedBox(height: 6),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.black54),
+              style: TextStyle(
+                color: scheme.onSurface.withValues(alpha: 0.6),
+              ),
             ),
           ],
         ),

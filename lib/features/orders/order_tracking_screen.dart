@@ -283,6 +283,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final app = AppScope.of(context);
     final order = app.activeOrder;
 
@@ -292,11 +294,18 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.track_changes, size: 64, color: Colors.grey.shade400),
+              Icon(
+                Icons.track_changes,
+                size: 64,
+                color: scheme.onSurface.withValues(alpha: 0.4),
+              ),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'No active order to track',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: scheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
               const SizedBox(height: 20),
               ElevatedButton.icon(
@@ -346,8 +355,10 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             ),
             children: [
               TileLayer(
-                urlTemplate:
-                    'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                urlTemplate: isDark
+                    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+                    : 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                subdomains: isDark ? const ['a', 'b', 'c', 'd'] : const [],
                 userAgentPackageName: 'com.lyncspace.grozfy_go',
               ),
               if (_routePoints.length >= 2)
@@ -371,7 +382,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     height: 52,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: scheme.surface,
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
@@ -439,7 +450,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: scheme.surface,
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: [
                           BoxShadow(
@@ -502,7 +513,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     vertical: 7,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: scheme.surface,
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
@@ -517,7 +528,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       Icon(
                         Icons.straighten_rounded,
                         size: 15,
-                        color: Colors.grey.shade600,
+                        color: scheme.onSurface.withValues(alpha: 0.6),
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -530,7 +541,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       Text(
                         '  to destination',
                         style: TextStyle(
-                          color: Colors.grey.shade500,
+                          color: scheme.onSurface.withValues(alpha: 0.5),
                           fontSize: 12,
                         ),
                       ),
@@ -546,14 +557,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             minChildSize: 0.14,
             maxChildSize: 0.76,
             builder: (context, scrollController) => Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black12,
+                    color: Colors.black.withValues(alpha: 0.12),
                     blurRadius: 20,
-                    offset: Offset(0, -4),
+                    offset: const Offset(0, -4),
                   ),
                 ],
               ),
@@ -567,7 +579,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
+                        color: scheme.onSurface.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -584,7 +596,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           color: AppTheme.oceanBlue.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Icon(
+                        child: const Icon(
                           Icons.shopping_bag_rounded,
                           color: AppTheme.oceanBlue,
                           size: 22,
@@ -607,7 +619,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                                   ? order.storeName
                                   : 'Delivery',
                               style: TextStyle(
-                                color: Colors.grey.shade600,
+                                color: scheme.onSurface.withValues(alpha: 0.6),
                                 fontSize: 12,
                               ),
                             ),
@@ -721,17 +733,17 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
+                        color: scheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
                         'GPS: ${_hasInitialPosition ? '${_partnerLocation.latitude.toStringAsFixed(5)}, ${_partnerLocation.longitude.toStringAsFixed(5)}' : 'waiting…'}\n'
                         'Dest: ${destination.latitude.toStringAsFixed(5)}, ${destination.longitude.toStringAsFixed(5)}\n'
                         'Route points: ${_routePoints.length}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
                           fontFamily: 'monospace',
-                          color: Colors.grey,
+                          color: scheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                     ),
@@ -761,13 +773,14 @@ class _MapIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 44,
         height: 44,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: scheme.surface,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
@@ -777,7 +790,7 @@ class _MapIconButton extends StatelessWidget {
             ),
           ],
         ),
-        child: Icon(icon, color: color ?? Colors.black87, size: 22),
+        child: Icon(icon, color: color ?? scheme.onSurface, size: 22),
       ),
     );
   }
@@ -843,6 +856,7 @@ class _InfoTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -860,7 +874,10 @@ class _InfoTile extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
                 Text(
                   value,
@@ -892,17 +909,22 @@ class _DetailRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 17, color: Colors.grey.shade500),
+        Icon(
+          icon,
+          size: 17,
+          color: scheme.onSurface.withValues(alpha: 0.5),
+        ),
         const SizedBox(width: 10),
         SizedBox(
           width: 76,
           child: Text(
             label,
             style: TextStyle(
-              color: Colors.grey.shade500,
+              color: scheme.onSurface.withValues(alpha: 0.6),
               fontSize: 12,
             ),
           ),
@@ -944,6 +966,7 @@ class _DeliveryProgressTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
     final currentIndex = _flow.indexOf(status);
 
     return Column(
@@ -970,7 +993,7 @@ class _DeliveryProgressTimeline extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: i < currentIndex
                             ? Colors.green
-                            : Colors.grey.shade200,
+                            : scheme.onSurface.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -995,7 +1018,7 @@ class _DeliveryProgressTimeline extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: isActive
                             ? (isCurrent ? AppTheme.oceanBlue : Colors.green)
-                            : Colors.grey.shade200,
+                            : scheme.onSurface.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                         boxShadow: isCurrent
                             ? [
@@ -1013,8 +1036,9 @@ class _DeliveryProgressTimeline extends StatelessWidget {
                         isActive && !isCurrent
                             ? Icons.check_rounded
                             : step.icon,
-                        color:
-                            isActive ? Colors.white : Colors.grey.shade400,
+                        color: isActive
+                            ? Colors.white
+                            : scheme.onSurface.withValues(alpha: 0.4),
                         size: 17,
                       ),
                     ),
@@ -1025,7 +1049,9 @@ class _DeliveryProgressTimeline extends StatelessWidget {
                         fontSize: 9,
                         fontWeight:
                             isCurrent ? FontWeight.bold : FontWeight.normal,
-                        color: isActive ? Colors.black87 : Colors.grey,
+                        color: isActive
+                            ? scheme.onSurface
+                            : scheme.onSurface.withValues(alpha: 0.5),
                       ),
                       textAlign: TextAlign.center,
                     ),
