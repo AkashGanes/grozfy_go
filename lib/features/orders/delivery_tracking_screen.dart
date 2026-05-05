@@ -16,6 +16,7 @@ import '../../core/services/api_service.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/utils/call_utils.dart';
+import '../../core/widgets/app_shell.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 
@@ -81,13 +82,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
   bool _hasArrived = false;
   String? _errorMessage;
 
-  final TextEditingController _demoLatController = TextEditingController(
-    text: '11.1271',
-  );
-  final TextEditingController _demoLngController = TextEditingController(
-    text: '78.6569',
-  );
-
   static const double _arrivalThreshold = 50.0;
   static const Color _primaryColor = Color(0xFF44b180);
   static const Color _secondaryColor = Color(0xFF2E7D32);
@@ -122,19 +116,12 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
     if (_dropLat != null && _dropLng != null) {
       _destination = LatLng(_dropLat!, _dropLng!);
     }
-
-    if (_destination != null) {
-      _demoLatController.text = _dropLat?.toStringAsFixed(4) ?? '';
-      _demoLngController.text = _dropLng?.toStringAsFixed(4) ?? '';
-    }
   }
 
   @override
   void dispose() {
     _positionStream?.cancel();
     _animatedMapController.dispose();
-    _demoLatController.dispose();
-    _demoLngController.dispose();
     super.dispose();
   }
 
@@ -294,15 +281,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
         ],
       ),
     );
-  }
-
-  void _setDestination(LatLng destination) {
-    setState(() {
-      _destination = destination;
-      _hasArrived = false;
-    });
-    _getRoutePoints();
-    _startLiveTracking();
   }
 
   Future<void> _getRoutePoints() async {
@@ -902,129 +880,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
     return _deliveryName.trim();
   }
 
-  void _showDemoLocationPicker() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          left: 24,
-          right: 24,
-          top: 24,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Set Delivery Location',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Enter coordinates for testing',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _demoLatController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                      signed: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: 'Latitude',
-                      hintText: '28.6139',
-                      prefixIcon: const Icon(Icons.location_on),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: _demoLngController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                      signed: true,
-                    ),
-                    decoration: InputDecoration(
-                      labelText: 'Longitude',
-                      hintText: '77.2090',
-                      prefixIcon: const Icon(Icons.location_on_outlined),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () {
-                final lat = double.tryParse(_demoLatController.text);
-                final lng = double.tryParse(_demoLngController.text);
-                if (lat != null &&
-                    lng != null &&
-                    lat >= -90 &&
-                    lat <= 90 &&
-                    lng >= -180 &&
-                    lng <= 180) {
-                  _setDestination(LatLng(lat, lng));
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Route calculated! Start navigation.'),
-                      backgroundColor: _primaryColor,
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please enter valid coordinates'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _primaryColor,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Set Location',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   void _refreshLocation() async {
     setState(() {
@@ -1038,46 +893,48 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
     return Scaffold(
       body: Stack(
         children: [
-          FlutterMap(
-            mapController: _animatedMapController.mapController,
-            options: MapOptions(
-              initialCenter: _currentLocation,
-              initialZoom: 16.0,
-              onMapReady: () {
-                _isMapReady = true;
-                _updateMarkers();
-                if (_polylineCoordinates.isNotEmpty) {
-                  _fitMapToRoute();
-                } else {
-                  _animatedMapController.animateTo(
-                    dest: _currentLocation,
-                    zoom: 16.0,
-                  );
-                }
-              },
-              onPositionChanged: (camera, hasGesture) {
-                if (hasGesture && _isFollowMode) {
-                  setState(() => _isFollowMode = false);
-                }
-              },
-            ),
-            children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.lyncspace.grozfygo',
+          SafeMap(
+            child: FlutterMap(
+              mapController: _animatedMapController.mapController,
+              options: MapOptions(
+                initialCenter: _currentLocation,
+                initialZoom: 16.0,
+                onMapReady: () {
+                  _isMapReady = true;
+                  _updateMarkers();
+                  if (_polylineCoordinates.isNotEmpty) {
+                    _fitMapToRoute();
+                  } else {
+                    _animatedMapController.animateTo(
+                      dest: _currentLocation,
+                      zoom: 16.0,
+                    );
+                  }
+                },
+                onPositionChanged: (camera, hasGesture) {
+                  if (hasGesture && _isFollowMode) {
+                    setState(() => _isFollowMode = false);
+                  }
+                },
               ),
-              if (_polylineCoordinates.isNotEmpty)
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: _polylineCoordinates,
-                      color: Colors.blue,
-                      strokeWidth: 6.0,
-                    ),
-                  ],
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.lyncspace.grozfygo',
                 ),
-              MarkerLayer(markers: _markers),
-            ],
+                if (_polylineCoordinates.isNotEmpty)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _polylineCoordinates,
+                        color: Colors.blue,
+                        strokeWidth: 6.0,
+                      ),
+                    ],
+                  ),
+                MarkerLayer(markers: _markers),
+              ],
+            ),
           ),
 
           if (_isLoading)
@@ -1172,37 +1029,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
               ),
             ),
           ),
-
-          if (kDebugMode)
-            Positioned(
-              top: 100,
-              right: 16,
-              child: Column(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.edit_location,
-                        color: _primaryColor,
-                      ),
-                      onPressed: _showDemoLocationPicker,
-                      tooltip: 'Set delivery location (Debug only)',
-                    ),
-                  ),
-                ],
-              ),
-            ),
 
           DraggableScrollableSheet(
             key: ValueKey(_isMinimized),
@@ -1457,7 +1283,11 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                           Expanded(
                             child: ElevatedButton.icon(
                               onPressed: _contactNumber.isNotEmpty
-                                  ? () => makePhoneCall(context, _contactNumber, label: 'Customer')
+                                  ? () => makePhoneCall(
+                                      context,
+                                      _contactNumber,
+                                      label: 'Customer',
+                                    )
                                   : null,
                               icon: const Icon(Icons.call),
                               label: const Text('Call Customer'),
@@ -1499,20 +1329,16 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                               ? (_isTracking
                                     ? _stopLiveTracking
                                     : _startLiveTracking)
-                              : (kDebugMode
-                                    ? _showDemoLocationPicker
-                                    : () {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'No delivery location available',
-                                            ),
-                                            backgroundColor: Colors.red,
-                                          ),
-                                        );
-                                      }),
+                              : () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'No delivery location available',
+                                      ),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _destination == null
                                 ? _primaryColor

@@ -389,6 +389,7 @@ class _OrdersByLocationScreenState
   Future<void> _showStorePicker() async {
     List<String> stores = [];
     bool loading = true;
+    bool fetchStarted = false;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -397,12 +398,15 @@ class _OrdersByLocationScreenState
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
-            if (loading) {
+            if (loading && !fetchStarted) {
+              fetchStarted = true;
               _repository.fetchStoreNames().then((names) {
                 setModal(() {
                   stores = names;
                   loading = false;
                 });
+              }).catchError((_) {
+                setModal(() => loading = false);
               });
             }
 
@@ -554,414 +558,79 @@ class _OrdersByLocationScreenState
 
   @override
   Widget build(BuildContext context) {
-    final app = ref.watch(appControllerProvider);
-    final selectedStore = app.selectedStoreName;
+    final selectedStore = ref.watch(appControllerProvider).selectedStoreName;
 
-    ref.listen(
-      appControllerProvider.select((c) => c.languageCode),
-      (previous, next) {
-        if (previous != null && previous != next) {
-          _lastStoreName = null;
-          _pagingController.refresh();
-        }
-      },
-    );
-
-    return PopScope(
-      canPop: !_selectionMode,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && _selectionMode) {
-          _exitSelectionMode();
-        }
-      },
-      child: Scaffold(
-        body: Builder(
-          builder: (context) {
-            final theme = Theme.of(context);
-            final bgColor = theme.scaffoldBackgroundColor;
-            return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                bgColor,
-                Color.alphaBlend(
-                  theme.colorScheme.secondary.withValues(alpha: 0.08),
-                  bgColor,
-                ),
-                Color.alphaBlend(
-                  theme.colorScheme.tertiary.withValues(alpha: 0.06),
-                  bgColor,
-                ),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+    return AppShell(
+      title: 'Orders by Location',
+      subtitle: selectedStore ?? 'Select a location',
+      scrollable: false,
+      padding: EdgeInsets.zero,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
+          tooltip: 'Change location',
+          onPressed: () => _showStorePicker(),
+        ),
+      ],
+      child: RefreshIndicator(
+        color: AppTheme.oceanBlue,
+        onRefresh: _refresh,
+        child: PagedListView<int, LocationListItem>(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+          pagingController: _pagingController,
+          builderDelegate: PagedChildBuilderDelegate<LocationListItem>(
+            itemBuilder: (context, item, index) {
+              if (item is StoreHeader) {
+                return _StoreHeaderTile(storeName: item.storeName);
+              }
+              if (item is OrderRow) {
+                return _OrderCard(
+                  order: item.order,
+                  onTap: () => _handleOrderTap(item.order),
+                  selected: false,
+                  selectionMode: false,
+                  onLongPress: () {},
+                  busy: false,
+                );
+              }
+              return const SizedBox.shrink();
+            },
+            firstPageProgressIndicatorBuilder: (_) => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: SkeletonLoader(itemCount: 4, spacing: 12),
             ),
-          ),
-          child: Stack(
-            children: [
-              const _LocationBackdropShapes(),
-              SafeArea(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(selectedStore),
-                    const SizedBox(height: 10),
-                    if (!_selectionMode)
-                      _buildSearchBar(),
-                    Expanded(
-                      child: _searchQuery.isNotEmpty
-                          ? _buildSearchResults()
-                          : RefreshIndicator(
-                        color: AppTheme.oceanBlue,
-                        onRefresh: _refresh,
-                        child: PagedListView<int, LocationListItem>(
-                          physics: const BouncingScrollPhysics(),
-                          padding: EdgeInsets.fromLTRB(
-                            20,
-                            4,
-                            20,
-                            _selectionMode ? 100 : 20,
-                          ),
-                          pagingController: _pagingController,
-                          builderDelegate:
-                              PagedChildBuilderDelegate<LocationListItem>(
-                                itemBuilder: (context, item, index) {
-                                  if (item is StoreHeader) {
-                                    return _StoreHeaderTile(
-                                      storeName: item.storeName,
-                                    );
-                                  }
-                                  if (item is OrderRow) {
-                                    return _OrderCard(
-                                      order: item.order,
-                                      busy:
-                                          _submittingOrderIds.contains(
-                                            item.order.name,
-                                          ) ||
-                                          _creatingTrip,
-                                      selected: _selectedOrderIds.contains(
-                                        item.order.name,
-                                      ),
-                                      selectionMode: _selectionMode,
-                                      onTap: () => _handleOrderTap(item.order),
-                                      onLongPress: () =>
-                                          _handleOrderLongPress(item.order),
-                                    );
-                                  }
-                                  return const SizedBox.shrink();
-                                },
-                                firstPageProgressIndicatorBuilder: (_) =>
-                                    const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: 20,
-                                      ),
-                                      child: SkeletonLoader(
-                                        itemCount: 4,
-                                        spacing: 12,
-                                      ),
-                                    ),
-                                newPageProgressIndicatorBuilder: (_) => Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 20,
-                                  ),
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Container(
-                                            width: 20,
-                                            height: 20,
-                                            decoration: BoxDecoration(
-                                              color: AppTheme.oceanBlue
-                                                  .withValues(alpha: 0.12),
-                                              shape: BoxShape.circle,
-                                            ),
-                                          )
-                                          .animate(
-                                            onPlay: (controller) =>
-                                                controller.repeat(),
-                                          )
-                                          .shimmer(
-                                            duration: 800.ms,
-                                            color: AppTheme.oceanBlue
-                                                .withValues(alpha: 0.3),
-                                          ),
-                                    ],
-                                  ),
-                                ),
-                                noItemsFoundIndicatorBuilder: (_) =>
-                                    const _EmptyState(),
-                                firstPageErrorIndicatorBuilder: (_) =>
-                                    _ErrorState(
-                                      error: _pagingController.error,
-                                      onRetry: _pagingController.refresh,
-                                    ),
-                                newPageErrorIndicatorBuilder: (_) =>
-                                    _ErrorState(
-                                      error: _pagingController.error,
-                                      onRetry: _pagingController.refresh,
-                                    ),
-                              ),
-                        ),
-                      ),
+            newPageProgressIndicatorBuilder: (_) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
                     ),
-                  ],
-                ),
-              ),
-              if (_selectionMode) _buildSelectionBottomBar(),
-            ],
-          ),
-        );
-          },
-        ),
-      ),
-    );
-  }
-
-  List<LocationListItem> _filteredItems() {
-    final query = _searchQuery.toLowerCase().trim();
-    if (query.isEmpty) return _pagingController.itemList ?? [];
-    final result = <LocationListItem>[];
-    StoreHeader? pendingHeader;
-    for (final item in _pagingController.itemList ?? <LocationListItem>[]) {
-      if (item is StoreHeader) {
-        pendingHeader = item;
-      } else if (item is OrderRow) {
-        final o = item.order;
-        final matches = o.name.toLowerCase().contains(query) ||
-            o.customerName.toLowerCase().contains(query) ||
-            o.storeName.toLowerCase().contains(query);
-        if (matches) {
-          if (pendingHeader != null) {
-            result.add(pendingHeader);
-            pendingHeader = null;
-          }
-          result.add(item);
-        }
-      }
-    }
-    return result;
-  }
-
-  Widget _buildSearchResults() {
-    final items = _filteredItems();
-    if (items.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-        child: FrostCard(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.search_off_rounded,
-                size: 48,
-                color: AppTheme.mango.withValues(alpha: 0.7),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'No orders found',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.nightBlue,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'No results for "$_searchQuery"',
-                style: const TextStyle(fontSize: 13, color: Colors.black45),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(20, 4, 20, _selectionMode ? 100 : 20),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        if (item is StoreHeader) {
-          return _StoreHeaderTile(storeName: item.storeName);
-        }
-        if (item is OrderRow) {
-          return _OrderCard(
-            order: item.order,
-            busy: _submittingOrderIds.contains(item.order.name) || _creatingTrip,
-            selected: _selectedOrderIds.contains(item.order.name),
-            selectionMode: _selectionMode,
-            onTap: () => _handleOrderTap(item.order),
-            onLongPress: () => _handleOrderLongPress(item.order),
-          );
-        }
-        return const SizedBox.shrink();
-      },
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-      child: Container(
-        height: 44,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.86),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0A0A1D3A),
-              blurRadius: 10,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: TextField(
-          controller: _searchController,
-          onChanged: (v) => setState(() => _searchQuery = v),
-          style: const TextStyle(fontSize: 14, color: AppTheme.nightBlue),
-          decoration: InputDecoration(
-            hintText: 'Search by order ID or customer…',
-            hintStyle: const TextStyle(fontSize: 13, color: Colors.black38),
-            prefixIcon: const Icon(
-              Icons.search_rounded,
-              size: 20,
-              color: Colors.black38,
-            ),
-            suffixIcon: _searchQuery.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: Colors.black38,
-                    ),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
                   )
-                : null,
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(String? selectedStore) {
-    if (_selectionMode) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 16, 12, 0),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.close_rounded),
-              onPressed: _exitSelectionMode,
-              tooltip: 'Cancel selection',
-            ),
-            Expanded(
-              child: Text(
-                '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.nightBlue,
-                ),
+                      .animate(onPlay: (controller) => controller.repeat())
+                      .shimmer(
+                        duration: 800.ms,
+                        color: AppTheme.oceanBlue.withValues(alpha: 0.3),
+                      ),
+                ],
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
-              tooltip: 'Change location',
-              onPressed: () => _showStorePicker(),
+            noItemsFoundIndicatorBuilder: (_) => const _EmptyState(),
+            firstPageErrorIndicatorBuilder: (_) => _ErrorState(
+              error: _pagingController.error,
+              onRetry: _pagingController.refresh,
             ),
-          ],
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Orders by Location',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.nightBlue,
-                  ),
-                ),
-                Text(
-                  selectedStore ?? 'All Stores',
-                  style: const TextStyle(fontSize: 14, color: Colors.black54),
-                ),
-              ],
+            newPageErrorIndicatorBuilder: (_) => _ErrorState(
+              error: _pagingController.error,
+              onRetry: _pagingController.retryLastFailedRequest,
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
-            tooltip: 'Change location',
-            onPressed: () => _showStorePicker(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSelectionBottomBar() {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: Container(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          MediaQuery.of(context).padding.bottom + 16,
-        ),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.oceanBlue,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            disabledBackgroundColor: AppTheme.oceanBlue.withValues(alpha: 0.5),
-          ),
-          onPressed: _creatingTrip ? null : _handleCreateTrip,
-          child: _creatingTrip
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : Text(
-                  '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected → Create Trip',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
         ),
       ),
     );
@@ -992,18 +661,18 @@ class _StoreHeaderTile extends StatelessWidget {
 class _OrderCard extends StatelessWidget {
   const _OrderCard({
     required this.order,
-    required this.busy,
     required this.onTap,
     required this.selected,
     required this.selectionMode,
     required this.onLongPress,
+    this.busy = false,
   });
   final ExternalDelivery order;
-  final bool busy;
   final VoidCallback onTap;
   final bool selected;
   final bool selectionMode;
   final VoidCallback onLongPress;
+  final bool busy;
 
   String _formatDate(String raw) {
     if (raw.length < 10) return raw;
@@ -1108,37 +777,27 @@ class _OrderCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 // Status badge
-                if (busy)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.oceanBlue,
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: statusColor.withValues(alpha: 0.35),
-                      ),
-                    ),
-                    child: Text(
-                      order.status,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: statusColor.withValues(alpha: 0.35),
                     ),
                   ),
+                  child: Text(
+                    order.status,
+                    style: TextStyle(
+                      color: statusColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

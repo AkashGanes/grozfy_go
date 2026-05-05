@@ -223,14 +223,10 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                 hintText: 'Search by Order ID, Store or Customer…',
-                hintStyle: TextStyle(
-                  color: Colors.grey.shade400,
-                  fontSize: 13,
-                ),
+                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13),
                 prefixIcon: Icon(
                   Icons.search_rounded,
-                  color:
-                      searching ? AppTheme.oceanBlue : Colors.grey.shade400,
+                  color: searching ? AppTheme.oceanBlue : Colors.grey.shade400,
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
@@ -255,8 +251,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
-                  borderSide:
-                      BorderSide(color: AppTheme.oceanBlue, width: 1.5),
+                  borderSide: BorderSide(color: AppTheme.oceanBlue, width: 1.5),
                 ),
               ),
             ),
@@ -485,8 +480,18 @@ class _FullOrderCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              _Row(Icons.store_rounded, 'Store', order.storeName, q: searchQuery),
-              _Row(Icons.person_rounded, 'Customer', order.customerName, q: searchQuery),
+              _Row(
+                Icons.store_rounded,
+                'Store',
+                order.storeName,
+                q: searchQuery,
+              ),
+              _Row(
+                Icons.person_rounded,
+                'Customer',
+                order.customerName,
+                q: searchQuery,
+              ),
               _Row(Icons.location_on_rounded, 'Drop', order.deliveryAddress),
               _Row(Icons.route_rounded, 'Distance', '${order.distanceKm} km'),
               _Row(
@@ -760,11 +765,7 @@ class _SearchEmpty extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.search_off_rounded,
-            size: 56,
-            color: Colors.grey.shade400,
-          ),
+          Icon(Icons.search_off_rounded, size: 56, color: Colors.grey.shade400),
           const SizedBox(height: 14),
           Text(
             'No results for "$query"',

@@ -210,10 +210,12 @@ class OrderRow extends LocationListItem {
 
 extension ExternalDeliveryStatusColor on String {
   Color get statusColor => switch (this) {
-    _ when _normalizedStatus(this) == 'delivered' => const Color(0xFF2E7D32),
-    _ when _normalizedStatus(this) == 'added_to_trip' =>
-      const Color(0xFFE65100),
-    _ when _normalizedStatus(this) == 'pending' => const Color(0xFF757575),
+    'Delivered' => const Color(0xFF2E7D32),
+    'Added to Trip' => const Color(0xFFE65100),
+    'Failed' => const Color(0xFFC62828),
+    'Return Initiated' => const Color(0xFF6A1B9A),
+    'Returned' => const Color(0xFF4E342E),
+    'Pending' => const Color(0xFF757575),
     _ => const Color(0xFF757575),
   };
 }

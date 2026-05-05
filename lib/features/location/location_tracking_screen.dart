@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
 
 class LocationTrackingScreen extends StatefulWidget {
@@ -15,6 +18,7 @@ class LocationTrackingScreen extends StatefulWidget {
 }
 
 class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
+  final MapController _mapController = MapController();
   Timer? _timer;
 
   @override
@@ -31,9 +35,25 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
     );
   }
 
+  LatLng _currentLatLng(AppController app) {
+    final lat = app.currentLatitude;
+    final lng = app.currentLongitude;
+    if (lat != null && lng != null) {
+      return LatLng(lat, lng);
+    }
+    return const LatLng(11.1271, 78.6569);
+  }
+
+  void _centerMap(AppController app) {
+    try {
+      _mapController.move(_currentLatLng(app), 16.0);
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
+    final position = _currentLatLng(app);
 
     return AppShell(
       title: 'Live Location Tracking',
@@ -45,31 +65,121 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(Icons.map_rounded),
-                    SizedBox(width: 8),
-                    Text(
-                      'Google Maps SDK placeholder',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                    const Icon(Icons.map_rounded),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Live GPS Position',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
+                    if (app.isTracking)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.my_location_rounded,
+                          color: AppTheme.nightBlue,
+                        ),
+                        onPressed: () => _centerMap(app),
+                        tooltip: 'Center on position',
+                        iconSize: 20,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 12),
-                Container(
-                  height: 170,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFE6F2FF), Color(0xFFDDF7EE)],
-                    ),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.location_pin, size: 48),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: SizedBox(
+                    height: 200,
+                    child: app.isTracking
+                        ? SafeMap(child: FlutterMap(
+                            mapController: _mapController,
+                            options: MapOptions(
+                              initialCenter: position,
+                              initialZoom: 16.0,
+                              interactionOptions: const InteractionOptions(
+                                flags: InteractiveFlag.all &
+                                    ~InteractiveFlag.rotate,
+                              ),
+                            ),
+                            children: [
+                              TileLayer(
+                                urlTemplate:
+                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                userAgentPackageName:
+                                    'com.example.delivery_partner_app',
+                              ),
+                              MarkerLayer(
+                                markers: [
+                                  Marker(
+                                    point: position,
+                                    width: 40,
+                                    height: 40,
+                                    child: const Icon(
+                                      Icons.navigation_rounded,
+                                      color: AppTheme.nightBlue,
+                                      size: 32,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ))
+                        : Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              gradient: const LinearGradient(
+                                colors: [
+                                  Color(0xFFE6F2FF),
+                                  Color(0xFFDDF7EE),
+                                ],
+                              ),
+                            ),
+                            child: const Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.location_off_rounded,
+                                    size: 48,
+                                    color: Colors.grey,
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    'Start tracking to see live map',
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 12),
-                Text('Current coordinates: ${app.liveCoordinates}'),
+                Row(
+                  children: [
+                    Icon(
+                      app.isTracking
+                          ? Icons.gps_fixed_rounded
+                          : Icons.gps_off_rounded,
+                      size: 16,
+                      color: app.isTracking ? Colors.green : Colors.grey,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Coordinates: ${app.liveCoordinates}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 Text('Update interval: ${app.trackingInterval}s'),
                 Slider(
@@ -85,10 +195,33 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
                     }
                   },
                 ),
+                if (app.isTracking)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.battery_alert_rounded,
+                          size: 16,
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          app.trackingInterval <= 10
+                              ? 'High accuracy — higher battery usage'
+                              : 'Balanced accuracy and battery usage',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 Row(
                   children: [
                     Expanded(
-                      child: ElevatedButton(
+                      child: ElevatedButton.icon(
                         onPressed: () async {
                           final scaffoldMessenger = ScaffoldMessenger.of(
                             context,
@@ -113,9 +246,21 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
                                 content: Text('Live tracking started'),
                               ),
                             );
+                            // Center map on current position after tracking starts
+                            Future.delayed(
+                              const Duration(milliseconds: 500),
+                              () {
+                                if (mounted) _centerMap(app);
+                              },
+                            );
                           }
                         },
-                        child: Text(
+                        icon: Icon(
+                          app.isTracking
+                              ? Icons.stop_rounded
+                              : Icons.play_arrow_rounded,
+                        ),
+                        label: Text(
                           app.isTracking ? 'Stop Tracking' : 'Start Tracking',
                         ),
                       ),

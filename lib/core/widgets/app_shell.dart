@@ -340,6 +340,86 @@ class _BackdropShapes extends StatelessWidget {
   }
 }
 
+class SafeMap extends StatefulWidget {
+  const SafeMap({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<SafeMap> createState() => _SafeMapState();
+}
+
+class _SafeMapState extends State<SafeMap> {
+  bool _hasError = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hasError) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.map_outlined, size: 48, color: Colors.grey[400]),
+              const SizedBox(height: 8),
+              Text(
+                'Map unavailable',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Check your internet connection',
+                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              TextButton.icon(
+                onPressed: () => setState(() => _hasError = false),
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return _MapErrorBoundary(
+      onError: () {
+        if (mounted) setState(() => _hasError = true);
+      },
+      child: widget.child,
+    );
+  }
+}
+
+class _MapErrorBoundary extends StatelessWidget {
+  const _MapErrorBoundary({required this.child, required this.onError});
+
+  final Widget child;
+  final VoidCallback onError;
+
+  @override
+  Widget build(BuildContext context) {
+    ErrorWidget.builder = (FlutterErrorDetails details) {
+      onError();
+      return Container(
+        color: Colors.grey[100],
+        child: const Center(
+          child: Icon(Icons.map_outlined, size: 48, color: Colors.grey),
+        ),
+      );
+    };
+    return child;
+  }
+}
+
 void showInfoSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }

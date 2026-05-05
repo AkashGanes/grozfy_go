@@ -423,7 +423,7 @@ class _CurrentLocationPickerScreenState
       body: Stack(
         children: [
           // Full-screen Map
-          FlutterMap(
+          SafeMap(child: FlutterMap(
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _selectedPoint,
@@ -451,7 +451,7 @@ class _CurrentLocationPickerScreenState
                 ],
               ),
             ],
-          ),
+          )),
 
           // Loading overlay
           if (_loading)

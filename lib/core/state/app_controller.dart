@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -82,7 +83,8 @@ class AppController extends ChangeNotifier {
   static const String _prefPermForeground = 'perm_foreground_location';
   static const String _prefPermBackground = 'perm_background_location';
   static const String _prefPermNotification = 'perm_notification';
-  static const String _prefLicenseRequiresReupload = 'license_requires_reupload';
+  static const String _prefLicenseRequiresReupload =
+      'license_requires_reupload';
   static const String _prefThemeMode = 'theme_mode';
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
@@ -397,17 +399,26 @@ class AppController extends ChangeNotifier {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await SecureTokenStorage.migrateFromPreferences(prefs);
     _languageCode = prefs.getString(_prefLanguageCode) ?? '';
-    _sessionToken = await SecureTokenStorage.read(SecureTokenStorage.accessToken);
+    _sessionToken = await SecureTokenStorage.read(
+      SecureTokenStorage.accessToken,
+    );
     _tokenType =
-        _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.tokenType)) ??
+        _nullIfBlank(
+          await SecureTokenStorage.read(SecureTokenStorage.tokenType),
+        ) ??
         'Bearer';
-    _refreshToken =
-        _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.refreshToken));
-    _clientId =
-        _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.clientId));
-    _apiKey = _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.apiKey));
-    _apiSecret =
-        _nullIfBlank(await SecureTokenStorage.read(SecureTokenStorage.apiSecret));
+    _refreshToken = _nullIfBlank(
+      await SecureTokenStorage.read(SecureTokenStorage.refreshToken),
+    );
+    _clientId = _nullIfBlank(
+      await SecureTokenStorage.read(SecureTokenStorage.clientId),
+    );
+    _apiKey = _nullIfBlank(
+      await SecureTokenStorage.read(SecureTokenStorage.apiKey),
+    );
+    _apiSecret = _nullIfBlank(
+      await SecureTokenStorage.read(SecureTokenStorage.apiSecret),
+    );
     _logApi(
       'bootstrap',
       'secure storage hydrate: access=${_sessionToken != null}, '
@@ -431,7 +442,9 @@ class AppController extends ChangeNotifier {
         _bank = _bankFromApiData(decoded);
       }
     }
-    final String? vehicleRawJson = _nullIfBlank(prefs.getString(_prefVehicleRawJson));
+    final String? vehicleRawJson = _nullIfBlank(
+      prefs.getString(_prefVehicleRawJson),
+    );
     if (vehicleRawJson != null) {
       final Map<String, dynamic> decoded = _decodeJsonMap(vehicleRawJson);
       if (decoded.isNotEmpty) {
@@ -453,7 +466,9 @@ class AppController extends ChangeNotifier {
     _selectedStoreName = _nullIfBlank(prefs.getString(_prefSelectedStore));
     _driverName = _nullIfBlank(prefs.getString(_prefDriverName));
     _profileImagePath = _nullIfBlank(prefs.getString(_prefProfileImagePath));
-    _serverProfileImageUrl = _nullIfBlank(prefs.getString(_prefServerProfileImageUrl));
+    _serverProfileImageUrl = _nullIfBlank(
+      prefs.getString(_prefServerProfileImageUrl),
+    );
     final int themeModeIndex =
         prefs.getInt(_prefThemeMode) ?? ThemeMode.system.index;
     _themeMode =
@@ -538,6 +553,8 @@ class AppController extends ChangeNotifier {
       todayEarnings: _earnings.today,
       activeOrder: _activeOrder,
     );
+
+    await syncPermissionsFromOS();
 
     _bootstrapped = true;
 
@@ -919,9 +936,14 @@ class AppController extends ChangeNotifier {
         );
         fileUrl = _extractUploadedFileUrl(uploadPayload);
         if (fileUrl == null) {
-          throw Exception('Image uploaded but file URL missing in server response');
+          throw Exception(
+            'Image uploaded but file URL missing in server response',
+          );
         }
-        await _updateEmployeeImage(employeeName: employeeName, imageUrl: fileUrl);
+        await _updateEmployeeImage(
+          employeeName: employeeName,
+          imageUrl: fileUrl,
+        );
       } else if (userName != null) {
         final Map<String, dynamic> uploadPayload = await _authorizedUploadFile(
           uri: uploadUri,
@@ -938,10 +960,14 @@ class AppController extends ChangeNotifier {
         );
         fileUrl = _extractUploadedFileUrl(uploadPayload);
         if (fileUrl == null) {
-          throw Exception('Image uploaded but file URL missing in server response');
+          throw Exception(
+            'Image uploaded but file URL missing in server response',
+          );
         }
       } else {
-        throw Exception('No employee or user account linked — cannot sync image to web');
+        throw Exception(
+          'No employee or user account linked — cannot sync image to web',
+        );
       }
 
       // Always cache the server URL locally so the avatar can fall back to it
@@ -1526,10 +1552,7 @@ class AppController extends ChangeNotifier {
             },
           )
           .timeout(_networkTimeout);
-      _logApi(
-        'revoke_token response',
-        'status=${response.statusCode}',
-      );
+      _logApi('revoke_token response', 'status=${response.statusCode}');
     } catch (e) {
       _logApi('revoke_token error', e.toString());
     }
@@ -1541,17 +1564,16 @@ class AppController extends ChangeNotifier {
   Future<void> _serverSideLogout(String bearerToken, String tokenType) async {
     try {
       _logApi('server logout request', 'POST $_serverLogoutUri');
-      final http.Response response = await http.post(
-        _serverLogoutUri,
-        headers: <String, String>{
-          'Authorization':
-              '${tokenType.isEmpty ? 'Bearer' : tokenType} $bearerToken',
-        },
-      ).timeout(_networkTimeout);
-      _logApi(
-        'server logout response',
-        'status=${response.statusCode}',
-      );
+      final http.Response response = await http
+          .post(
+            _serverLogoutUri,
+            headers: <String, String>{
+              'Authorization':
+                  '${tokenType.isEmpty ? 'Bearer' : tokenType} $bearerToken',
+            },
+          )
+          .timeout(_networkTimeout);
+      _logApi('server logout response', 'status=${response.statusCode}');
     } catch (e) {
       _logApi('server logout error', e.toString());
     }
@@ -1642,9 +1664,7 @@ class AppController extends ChangeNotifier {
           tokenType: tokenTypeSnapshot,
         ),
       );
-      unawaited(
-        FCMService().unsubscribeWithToken(bearerToken: accessToRevoke),
-      );
+      unawaited(FCMService().unsubscribeWithToken(bearerToken: accessToRevoke));
     }
   }
 
@@ -1767,7 +1787,9 @@ class AppController extends ChangeNotifier {
         _kycCompleted = true;
         _licenseRequiresReupload = false;
         _existingAadharNo = aadharNo;
-        _existingAadharUrl = aadharAttachmentUrl.isNotEmpty ? aadharAttachmentUrl : _existingAadharUrl;
+        _existingAadharUrl = aadharAttachmentUrl.isNotEmpty
+            ? aadharAttachmentUrl
+            : _existingAadharUrl;
         _existingLicenseNo = licenseNumber ?? _existingLicenseNo;
         _existingLicenseUrl = licenseAttachmentUrl ?? _existingLicenseUrl;
         _existingPanNo = panNo ?? _existingPanNo;
@@ -1775,12 +1797,18 @@ class AppController extends ChangeNotifier {
         final SharedPreferences prefs = await SharedPreferences.getInstance();
         await Future.wait(<Future<bool>>[
           prefs.setBool(_prefKycCompleted, true),
-          if (_existingLicenseNo != null) prefs.setString(_prefKycLicenseNo, _existingLicenseNo!),
-          if (_existingAadharNo != null) prefs.setString(_prefKycAadharNo, _existingAadharNo!),
-          if (_existingPanNo != null) prefs.setString(_prefKycPanNo, _existingPanNo!),
-          if (_existingLicenseUrl != null) prefs.setString(_prefKycLicenseUrl, _existingLicenseUrl!),
-          if (_existingAadharUrl != null) prefs.setString(_prefKycAadharUrl, _existingAadharUrl!),
-          if (_existingPanUrl != null) prefs.setString(_prefKycPanUrl, _existingPanUrl!),
+          if (_existingLicenseNo != null)
+            prefs.setString(_prefKycLicenseNo, _existingLicenseNo!),
+          if (_existingAadharNo != null)
+            prefs.setString(_prefKycAadharNo, _existingAadharNo!),
+          if (_existingPanNo != null)
+            prefs.setString(_prefKycPanNo, _existingPanNo!),
+          if (_existingLicenseUrl != null)
+            prefs.setString(_prefKycLicenseUrl, _existingLicenseUrl!),
+          if (_existingAadharUrl != null)
+            prefs.setString(_prefKycAadharUrl, _existingAadharUrl!),
+          if (_existingPanUrl != null)
+            prefs.setString(_prefKycPanUrl, _existingPanUrl!),
         ]);
         notifyListeners();
         return null;
@@ -1832,8 +1860,7 @@ class AppController extends ChangeNotifier {
     if (_licenseRequiresReupload) {
       _licenseRequiresReupload = false;
       _writePref(
-        (SharedPreferences prefs) =>
-            prefs.remove(_prefLicenseRequiresReupload),
+        (SharedPreferences prefs) => prefs.remove(_prefLicenseRequiresReupload),
       );
       notifyListeners();
     }
@@ -2061,7 +2088,10 @@ class AppController extends ChangeNotifier {
           _loggedProfileDetails?.driver?['vehicle']?.toString(),
         );
         if (vehicleFromDriver != null) {
-          _logApi('vehicle.hydrate', 'fetch by driver.vehicle=$vehicleFromDriver');
+          _logApi(
+            'vehicle.hydrate',
+            'fetch by driver.vehicle=$vehicleFromDriver',
+          );
           data = await fetchVehicleByName(vehicleFromDriver);
         }
       }
@@ -2090,8 +2120,12 @@ class AppController extends ChangeNotifier {
         'vehicle.hydrate',
         'loaded vehicle name=${_vehicle?.name} plate=${_vehicle?.licensePlate}',
       );
-      final SharedPreferences vehicleHydratePrefs = await SharedPreferences.getInstance();
-      await vehicleHydratePrefs.setString(_prefVehicleRawJson, jsonEncode(data));
+      final SharedPreferences vehicleHydratePrefs =
+          await SharedPreferences.getInstance();
+      await vehicleHydratePrefs.setString(
+        _prefVehicleRawJson,
+        jsonEncode(data),
+      );
       notifyListeners();
     } catch (e) {
       _logApi('vehicle.hydrate', 'error: $e');
@@ -2303,7 +2337,8 @@ class AppController extends ChangeNotifier {
         'bank.hydrate',
         'loaded bank account=${_submittedBankRaw?['name']} holder=${_bank?.accountHolder}',
       );
-      final SharedPreferences hydratePrefs = await SharedPreferences.getInstance();
+      final SharedPreferences hydratePrefs =
+          await SharedPreferences.getInstance();
       await hydratePrefs.setString(_prefBankRawJson, jsonEncode(data));
       notifyListeners();
     } catch (e) {
@@ -2484,8 +2519,12 @@ class AppController extends ChangeNotifier {
         vehicleName: _nullIfBlank(finalData['name']?.toString()) ?? finalName,
         licensePlate: plate,
       );
-      final SharedPreferences vehicleSubmitPrefs = await SharedPreferences.getInstance();
-      await vehicleSubmitPrefs.setString(_prefVehicleRawJson, jsonEncode(finalData));
+      final SharedPreferences vehicleSubmitPrefs =
+          await SharedPreferences.getInstance();
+      await vehicleSubmitPrefs.setString(
+        _prefVehicleRawJson,
+        jsonEncode(finalData),
+      );
       notifyListeners();
       _logApi(
         'vehicle.submit',
@@ -2663,8 +2702,12 @@ class AppController extends ChangeNotifier {
         accountName: normalizedAccountName,
       );
       if (_submittedBankRaw != null) {
-        final SharedPreferences submitPrefs = await SharedPreferences.getInstance();
-        await submitPrefs.setString(_prefBankRawJson, jsonEncode(_submittedBankRaw));
+        final SharedPreferences submitPrefs =
+            await SharedPreferences.getInstance();
+        await submitPrefs.setString(
+          _prefBankRawJson,
+          jsonEncode(_submittedBankRaw),
+        );
       }
       notifyListeners();
       _logApi(
@@ -2689,14 +2732,41 @@ class AppController extends ChangeNotifier {
       notification: notification,
     );
     if (foreground != null) {
-      _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermForeground, foreground));
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.setBool(_prefPermForeground, foreground),
+      );
     }
     if (background != null) {
-      _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermBackground, background));
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.setBool(_prefPermBackground, background),
+      );
     }
     if (notification != null) {
-      _writePref((SharedPreferences prefs) => prefs.setBool(_prefPermNotification, notification));
+      _writePref(
+        (SharedPreferences prefs) =>
+            prefs.setBool(_prefPermNotification, notification),
+      );
     }
+    notifyListeners();
+  }
+
+  Future<void> syncPermissionsFromOS() async {
+    final locationPerm = await Geolocator.checkPermission();
+    final notifStatus = await ph.Permission.notification.status;
+
+    final foreground =
+        locationPerm == LocationPermission.whileInUse ||
+        locationPerm == LocationPermission.always;
+    final background = locationPerm == LocationPermission.always;
+    final notification = notifStatus.isGranted;
+
+    _permissionState = PermissionState(
+      foregroundLocation: foreground,
+      backgroundLocation: background,
+      notification: notification,
+    );
     notifyListeners();
   }
 
@@ -2778,10 +2848,6 @@ class AppController extends ChangeNotifier {
   }
 
   Future<String?> startTracking() async {
-    if (!_permissionState.allGranted) {
-      return 'Location and notification permissions are required';
-    }
-
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       return 'Location services are disabled. Please enable GPS.';
@@ -2951,7 +3017,7 @@ class AppController extends ChangeNotifier {
                   )
             : _activeOrder!.deliveryPartnerLocation,
       );
-    _replaceAcceptedOrder(_activeOrder!);
+      _replaceAcceptedOrder(_activeOrder!);
 
       if (status == OrderStatus.delivered) {
         final String deliveredOrderId = _activeOrder!.orderId;
@@ -2974,7 +3040,9 @@ class AppController extends ChangeNotifier {
             time: DateTime.now(),
           ),
         );
-        _acceptedOrders.removeWhere((order) => order.orderId == deliveredOrderId);
+        _acceptedOrders.removeWhere(
+          (order) => order.orderId == deliveredOrderId,
+        );
         _activeOrder = null;
         _activeTripId = null;
         _locationPingSubscription?.cancel();
@@ -3249,13 +3317,20 @@ class AppController extends ChangeNotifier {
       // Create and submit an External Delivery Trip in Frappe so the web
       // dashboard reflects the accepted order immediately.
       try {
-        final String tripName = await _orderRepository
-            .createTripByOrderName(orderId);
-        _logApi('accept_order_trip', 'trip $tripName created for order $orderId');
+        final String tripName = await _orderRepository.createTripByOrderName(
+          orderId,
+        );
+        _logApi(
+          'accept_order_trip',
+          'trip $tripName created for order $orderId',
+        );
         _activeTripId = tripName;
         unawaited(_persistActiveTripId(tripName));
       } catch (e) {
-        _logApi('accept_order_trip_warn', 'trip creation failed (non-fatal): $e');
+        _logApi(
+          'accept_order_trip_warn',
+          'trip creation failed (non-fatal): $e',
+        );
       }
 
       _availableOrders.removeWhere((order) => order.orderId == orderId);
@@ -3363,8 +3438,9 @@ class AppController extends ChangeNotifier {
 
   Future<void> _restoreActiveOrder(String orderId) async {
     try {
-      final ExternalDeliveryDetail detail =
-          await _orderRepository.fetchDetail(orderId);
+      final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
+        orderId,
+      );
       final OrderStatus status = _mapExternalStatus(detail.status);
       if (status == OrderStatus.delivered ||
           status == OrderStatus.cancelled ||
@@ -4078,12 +4154,22 @@ class AppController extends ChangeNotifier {
       if (driverName != null) {
         driverDoc = await _fetchResourceDoc('Driver', driverName);
         employeeName ??= _nullIfBlank(driverDoc?['employee']?.toString());
-        _existingLicenseNo = _nullIfBlank(driverDoc?['license_number']?.toString());
-        _existingAadharNo = _nullIfBlank(driverDoc?['custom_aadhar_no']?.toString());
+        _existingLicenseNo = _nullIfBlank(
+          driverDoc?['license_number']?.toString(),
+        );
+        _existingAadharNo = _nullIfBlank(
+          driverDoc?['custom_aadhar_no']?.toString(),
+        );
         _existingPanNo = _nullIfBlank(driverDoc?['custom_pan_no']?.toString());
-        _existingLicenseUrl = _nullIfBlank(driverDoc?['custom_license_attachment']?.toString());
-        _existingAadharUrl = _nullIfBlank(driverDoc?['custom_aadhar_attachment']?.toString());
-        _existingPanUrl = _nullIfBlank(driverDoc?['custom_pan_attachment']?.toString());
+        _existingLicenseUrl = _nullIfBlank(
+          driverDoc?['custom_license_attachment']?.toString(),
+        );
+        _existingAadharUrl = _nullIfBlank(
+          driverDoc?['custom_aadhar_attachment']?.toString(),
+        );
+        _existingPanUrl = _nullIfBlank(
+          driverDoc?['custom_pan_attachment']?.toString(),
+        );
       }
       if (employeeName != null) {
         employeeDoc = await _fetchResourceDoc('Employee', employeeName);
@@ -4155,9 +4241,7 @@ class AppController extends ChangeNotifier {
       return;
     }
 
-    final String? serverUrl = _nullIfBlank(
-      employeeDoc['image']?.toString(),
-    );
+    final String? serverUrl = _nullIfBlank(employeeDoc['image']?.toString());
     _serverProfileImageUrl = serverUrl;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (serverUrl != null) {
@@ -4654,7 +4738,10 @@ class AppController extends ChangeNotifier {
     _serverProfileImageUrl = _nullIfBlank(url);
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (_serverProfileImageUrl != null) {
-      await prefs.setString(_prefServerProfileImageUrl, _serverProfileImageUrl!);
+      await prefs.setString(
+        _prefServerProfileImageUrl,
+        _serverProfileImageUrl!,
+      );
     } else {
       await prefs.remove(_prefServerProfileImageUrl);
     }
@@ -4697,7 +4784,10 @@ class AppController extends ChangeNotifier {
         'fieldname': 'user_image',
         'value': value,
       });
-      _logApi('profile', 'user_image set via set_value (JSON) for $effectiveUser');
+      _logApi(
+        'profile',
+        'user_image set via set_value (JSON) for $effectiveUser',
+      );
       return null;
     } catch (e) {
       _logApi('profile', 'set_value JSON failed: $e');
@@ -4707,8 +4797,9 @@ class AppController extends ChangeNotifier {
     // Some Frappe versions require multipart/form-data for whitelisted methods.
     try {
       final List<Map<String, String>> authHeaders = _authorizationHeaders();
-      final Map<String, String> headers =
-          authHeaders.isNotEmpty ? authHeaders.first : <String, String>{};
+      final Map<String, String> headers = authHeaders.isNotEmpty
+          ? authHeaders.first
+          : <String, String>{};
       final Uri uri = Uri.parse(
         '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
       );
@@ -4725,7 +4816,10 @@ class AppController extends ChangeNotifier {
           )
           .timeout(_networkTimeout);
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        _logApi('profile', 'user_image set via set_value (form) for $effectiveUser');
+        _logApi(
+          'profile',
+          'user_image set via set_value (form) for $effectiveUser',
+        );
         return null;
       }
       final String formErr =

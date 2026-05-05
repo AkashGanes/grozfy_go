@@ -485,7 +485,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               SectionLabel(app.t('available_deliveries')),
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).pushNamed(AppRoutes.deliveryList);
+                  Navigator.of(context).pushNamed(AppRoutes.ordersByLocation);
                 },
                 child: Text(app.t('view_all')),
               ),
@@ -535,7 +535,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      Navigator.of(context).pushNamed(AppRoutes.deliveryList);
+                      Navigator.of(context).pushNamed(AppRoutes.ordersByLocation);
                     },
                     icon: const Icon(Icons.list_alt),
                     label: Text(app.t('view_deliveries')),
