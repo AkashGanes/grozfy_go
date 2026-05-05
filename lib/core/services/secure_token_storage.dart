@@ -35,6 +35,7 @@ class SecureTokenStorage {
   static const String refreshToken = 'refresh_token';
   static const String tokenType = 'token_type';
   static const String expiresIn = 'expires_in';
+  static const String accessTokenExpiresAt = 'access_token_expires_at';
   static const String apiKey = 'api_key';
   static const String apiSecret = 'api_secret';
   static const String clientId = 'client_id';
@@ -44,6 +45,7 @@ class SecureTokenStorage {
     refreshToken,
     tokenType,
     expiresIn,
+    accessTokenExpiresAt,
     apiKey,
     apiSecret,
     clientId,

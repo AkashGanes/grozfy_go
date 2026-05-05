@@ -476,33 +476,49 @@ class AppController extends ChangeNotifier {
       );
     }
 
-    // Proactively refresh the access token at boot so the first authorised
-    // call doesn't have to bounce off a 401. If we have everything refresh
-    // needs and it still fails, the access/refresh tokens are dead — wipe
-    // local auth state so the splash routes to login instead of leaving a
-    // raw AuthenticationError visible.
+    // Refresh the access token only if it's actually expired (or
+    // about to be — 30s skew buffer). Otherwise keep the existing
+    // bearer token and let the reactive 401 path inside
+    // _authorizedGet handle anything that surprises us. Without this
+    // gate every cold start would hit /get_token and create a new
+    // OAuth Bearer Token row server-side.
     if (_isLoggedIn &&
         _refreshToken != null &&
         _refreshToken!.trim().isNotEmpty &&
         _clientId != null &&
         _clientId!.trim().isNotEmpty) {
-      final bool refreshed = await refreshSession();
-      if (!refreshed) {
+      final DateTime? expiresAt = await _readAccessTokenExpiry();
+      final DateTime now = DateTime.now().toUtc();
+      final bool needsRefresh = expiresAt == null ||
+          now.isAfter(expiresAt.subtract(const Duration(seconds: 30)));
+      if (needsRefresh) {
         _logApi(
           'bootstrap',
-          'token refresh failed at boot — clearing auth state',
+          'access token expired at $expiresAt — refreshing',
         );
-        _isLoggedIn = false;
-        _sessionToken = null;
-        _refreshToken = null;
-        _tokenType = 'Bearer';
-        _clientId = null;
-        _apiKey = null;
-        _apiSecret = null;
-        _profile = null;
-        _profileCompleted = false;
-        _kycCompleted = false;
-        await SecureTokenStorage.deleteAll();
+        final bool refreshed = await refreshSession();
+        if (!refreshed) {
+          _logApi(
+            'bootstrap',
+            'token refresh failed at boot — clearing auth state',
+          );
+          _isLoggedIn = false;
+          _sessionToken = null;
+          _refreshToken = null;
+          _tokenType = 'Bearer';
+          _clientId = null;
+          _apiKey = null;
+          _apiSecret = null;
+          _profile = null;
+          _profileCompleted = false;
+          _kycCompleted = false;
+          await SecureTokenStorage.deleteAll();
+        }
+      } else {
+        _logApi(
+          'bootstrap',
+          'access token still valid until $expiresAt — skipping refresh',
+        );
       }
     }
 
@@ -1346,6 +1362,11 @@ class AppController extends ChangeNotifier {
         );
       }
 
+      final int? newExpiresIn = int.tryParse(
+        data['expires_in']?.toString() ?? '',
+      );
+      await _persistAccessTokenExpiry(newExpiresIn);
+
       _logApi('refresh_token', 'session refreshed successfully');
       return true;
     } catch (e) {
@@ -1354,6 +1375,34 @@ class AppController extends ChangeNotifier {
     } finally {
       _isRefreshing = false;
     }
+  }
+
+  /// Persist the absolute moment when the current access token will
+  /// stop being valid. Used by bootstrap to decide whether the
+  /// proactive refresh actually needs to fire — without this we hit
+  /// /get_token on every cold start and litter the OAuth Bearer
+  /// Token table with new rows.
+  Future<void> _persistAccessTokenExpiry(int? expiresInSeconds) async {
+    final int seconds = (expiresInSeconds == null || expiresInSeconds <= 0)
+        ? 3600
+        : expiresInSeconds;
+    final DateTime expiresAt = DateTime.now().toUtc().add(
+      Duration(seconds: seconds),
+    );
+    await SecureTokenStorage.write(
+      SecureTokenStorage.accessTokenExpiresAt,
+      expiresAt.toIso8601String(),
+    );
+  }
+
+  /// Reads the persisted access-token expiry. Returns null if it has
+  /// never been written, can't be parsed, or has already passed.
+  Future<DateTime?> _readAccessTokenExpiry() async {
+    final String? raw = await SecureTokenStorage.read(
+      SecureTokenStorage.accessTokenExpiresAt,
+    );
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw)?.toUtc();
   }
 
   Future<String?> registerNewPartner({
@@ -3659,6 +3708,7 @@ class AppController extends ChangeNotifier {
         expiresIn.toString(),
       );
     }
+    await _persistAccessTokenExpiry(expiresIn);
     if (clientId != null) {
       await SecureTokenStorage.write(SecureTokenStorage.clientId, clientId);
     }
