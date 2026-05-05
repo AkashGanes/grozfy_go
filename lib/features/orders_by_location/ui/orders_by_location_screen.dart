@@ -718,12 +718,23 @@ class _OrderCard extends StatelessWidget {
                   ),
                 ] else ...[
                   Container(
-                    width: 10,
-                    height: 10,
-                    margin: const EdgeInsets.only(right: 14, top: 2),
+                    width: 12,
+                    height: 12,
+                    margin: const EdgeInsets.only(right: 12, top: 2),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: statusColor,
+                      border: Border.all(
+                        color: statusColor.withValues(alpha: 0.4),
+                        width: 2.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: statusColor.withValues(alpha: 0.3),
+                          blurRadius: 4,
+                          spreadRadius: 1,
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -740,7 +751,7 @@ class _OrderCard extends StatelessWidget {
                           color: AppTheme.nightBlue,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Row(
                         children: [
                           const Icon(
@@ -749,14 +760,17 @@ class _OrderCard extends StatelessWidget {
                             color: Colors.black45,
                           ),
                           const SizedBox(width: 4),
-                          Text(
-                            order.customerName,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.black54,
+                          Expanded(
+                            child: Text(
+                              order.customerName,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black54,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: 8),
                           const Icon(
                             Icons.schedule,
                             size: 13,
@@ -772,6 +786,29 @@ class _OrderCard extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (order.storeName.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.store_outlined,
+                              size: 12,
+                              color: Colors.black38,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                order.storeName,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.black38,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
@@ -9,6 +10,7 @@ import '../model/external_delivery.dart';
 import '../repository/external_delivery_repository.dart';
 import 'delivery_proof_sheet.dart';
 import 'failed_delivery_bottom_sheet.dart';
+import 'trip_stop_map_screen.dart';
 
 class ExternalDeliveryTripDetailsScreen extends StatefulWidget {
   const ExternalDeliveryTripDetailsScreen({super.key, required this.tripName});
@@ -48,62 +50,6 @@ class _ExternalDeliveryTripDetailsScreenState
       return const JsonEncoder.withIndent('  ').convert(value);
     }
     return '$value';
-  }
-
-  String _labelFromKey(String key) {
-    return key
-        .split('_')
-        .where((part) => part.isNotEmpty)
-        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-        .join(' ');
-  }
-
-  List<MapEntry<String, dynamic>> _orderedTripFields(ExternalDeliveryTrip trip) {
-    const priority = <String>[
-      'name',
-      'driver',
-      'status',
-      'docstatus',
-      'trip_date',
-      'total_stops',
-      'completes_stops',
-      'total_distancekm',
-      'started_at',
-      'completed_at',
-    ];
-    final remaining = Map<String, dynamic>.from(trip.rawFields)..remove('stops');
-    final fields = <MapEntry<String, dynamic>>[];
-
-    for (final key in priority) {
-      if (remaining.containsKey(key)) {
-        fields.add(MapEntry(key, remaining.remove(key)));
-      }
-    }
-    fields.addAll(remaining.entries);
-    return fields;
-  }
-
-  List<MapEntry<String, dynamic>> _orderedStopFields(ExternalDeliveryTripStop stop) {
-    const priority = <String>[
-      'stop',
-      'external_delivery',
-      'customer',
-      'address',
-      'mobile',
-      'status',
-      'delivered_at',
-      'notes',
-    ];
-    final remaining = Map<String, dynamic>.from(stop.rawFields);
-    final fields = <MapEntry<String, dynamic>>[];
-
-    for (final key in priority) {
-      if (remaining.containsKey(key)) {
-        fields.add(MapEntry(key, remaining.remove(key)));
-      }
-    }
-    fields.addAll(remaining.entries);
-    return fields;
   }
 
   @override
@@ -211,10 +157,106 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _summaryTab(ExternalDeliveryTrip trip) {
+    final remaining = (trip.totalStops - trip.completedStops).clamp(0, trip.totalStops);
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: FrostCard(
-        child: _fieldList(_orderedTripFields(trip)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Trip Statistics',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: AppTheme.nightBlue,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _statBox('Total', '${trip.totalStops}', Icons.route_outlined, AppTheme.oceanBlue),
+                const SizedBox(width: 8),
+                _statBox('Done', '${trip.completedStops}', Icons.check_circle_outline, const Color(0xFF2E7D32)),
+                const SizedBox(width: 8),
+                _statBox('Left', '$remaining', Icons.pending_outlined, AppTheme.mango),
+              ],
+            ),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: trip.totalStops > 0 ? trip.completedStops / trip.totalStops : 0,
+                backgroundColor: Colors.black12,
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  trip.completedStops >= trip.totalStops && trip.totalStops > 0
+                      ? const Color(0xFF2E7D32)
+                      : AppTheme.oceanBlue,
+                ),
+                minHeight: 8,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Progress', style: TextStyle(fontSize: 11, color: Colors.black45)),
+                Text(
+                  '${trip.completedStops}/${trip.totalStops} stops',
+                  style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            if (trip.totalDistanceKm > 0) ...[
+              const SizedBox(height: 14),
+              const Divider(height: 1, color: Colors.black12),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  const Icon(Icons.route_outlined, size: 16, color: AppTheme.oceanBlue),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Total Distance', style: TextStyle(color: Colors.black54, fontSize: 13)),
+                  ),
+                  Text(
+                    '${trip.totalDistanceKm.toStringAsFixed(1)} km',
+                    style: const TextStyle(
+                      color: AppTheme.nightBlue,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            if (trip.startedAt.trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(Icons.play_circle_outline, size: 16, color: AppTheme.oceanBlue),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Started', style: TextStyle(color: Colors.black54, fontSize: 13)),
+                  ),
+                  Text(trip.startedAt, style: const TextStyle(color: AppTheme.nightBlue, fontSize: 12)),
+                ],
+              ),
+            ],
+            if (trip.completedAt.trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(Icons.stop_circle_outlined, size: 16, color: Color(0xFF2E7D32)),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text('Completed', style: TextStyle(color: Colors.black54, fontSize: 13)),
+                  ),
+                  Text(trip.completedAt, style: const TextStyle(color: AppTheme.nightBlue, fontSize: 12)),
+                ],
+              ),
+            ],
+          ],
+        ),
       )
           .animate()
           .fadeIn(delay: 60.ms, duration: 260.ms)
@@ -232,27 +274,77 @@ class _ExternalDeliveryTripDetailsScreenState
     final driver = _displayValue(trip.rawFields['driver']);
     final tripDate = _displayValue(trip.rawFields['trip_date']);
     final status = _displayValue(trip.rawFields['status']);
+    final remaining = (trip.totalStops - trip.completedStops).clamp(0, trip.totalStops);
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      child: FrostCard(
-        child: Column(
-          children: [
-            _tripInfoRow(Icons.person_outline, 'Driver', driver),
-            _tripInfoRow(Icons.calendar_month_outlined, 'Trip Date', tripDate),
-            _tripInfoRow(Icons.flag_outlined, 'Status', status),
+      child: Column(
+        children: [
+          FrostCard(
+            child: Column(
+              children: [
+                _tripInfoRow(Icons.person_outline, 'Driver', driver),
+                _tripInfoRow(Icons.calendar_month_outlined, 'Trip Date', tripDate),
+                _tripInfoRow(Icons.flag_outlined, 'Status', status),
+              ],
+            ),
+          )
+              .animate()
+              .fadeIn(delay: 60.ms, duration: 260.ms)
+              .slideY(begin: 0.05, end: 0)
+              .scale(
+                begin: const Offset(0.98, 0.98),
+                end: const Offset(1, 1),
+                duration: 280.ms,
+                curve: Curves.easeOutCubic,
+              ),
+          if (trip.totalStops > 0) ...[
+            const SizedBox(height: 10),
+            FrostCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Stops Progress',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.nightBlue,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _statBox('Total', '${trip.totalStops}', Icons.route_outlined, AppTheme.oceanBlue),
+                      const SizedBox(width: 8),
+                      _statBox('Done', '${trip.completedStops}', Icons.check_circle_outline, const Color(0xFF2E7D32)),
+                      const SizedBox(width: 8),
+                      _statBox('Left', '$remaining', Icons.pending_outlined, AppTheme.mango),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: trip.totalStops > 0 ? trip.completedStops / trip.totalStops : 0,
+                      backgroundColor: Colors.black12,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        trip.completedStops >= trip.totalStops
+                            ? const Color(0xFF2E7D32)
+                            : AppTheme.oceanBlue,
+                      ),
+                      minHeight: 8,
+                    ),
+                  ),
+                ],
+              ),
+            )
+                .animate()
+                .fadeIn(delay: 120.ms, duration: 260.ms)
+                .slideY(begin: 0.05, end: 0),
           ],
-        ),
-      )
-          .animate()
-          .fadeIn(delay: 60.ms, duration: 260.ms)
-          .slideY(begin: 0.05, end: 0)
-          .scale(
-            begin: const Offset(0.98, 0.98),
-            end: const Offset(1, 1),
-            duration: 280.ms,
-            curve: Curves.easeOutCubic,
-          ),
+        ],
+      ),
     );
   }
 
@@ -595,10 +687,18 @@ class _ExternalDeliveryTripDetailsScreenState
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _stopTitleWithAction(trip, entry.value),
-                      
-                      const SizedBox(height: 8),
-                      _fieldList(_orderedStopFields(entry.value)),
+                      _stopHeader(entry.value),
+                      const SizedBox(height: 12),
+                      _stopInfoCard(entry.value),
+                      if (_isStopEditable(
+                        tripStatus: trip.status,
+                        stopStatus: entry.value.status,
+                      )) ...[
+                        const SizedBox(height: 12),
+                        const Divider(height: 1, color: Colors.black12),
+                        const SizedBox(height: 10),
+                        _stopActionButtons(trip, entry.value),
+                      ],
                     ],
                   ),
                 ),
@@ -618,78 +718,6 @@ class _ExternalDeliveryTripDetailsScreenState
             ),
         ],
       ),
-    );
-  }
-
-  Widget _stopTitleWithAction(
-    ExternalDeliveryTrip trip,
-    ExternalDeliveryTripStop stop,
-  ) {
-    final stopKey = _stopKey(stop);
-    final isUpdating = _updatingStops.contains(stopKey);
-    final isEditable = _isStopEditable(
-      tripStatus: trip.status,
-      stopStatus: stop.status,
-    );
-    return Row(
-      children: [
-        _stopTitle('Stop ${stop.stop}'),
-        const Spacer(),
-        if (isUpdating)
-          const SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: AppTheme.oceanBlue,
-            ),
-          )
-        else if (isEditable)
-          PopupMenuButton<String>(
-            onSelected: (status) => _updateStopStatus(stop, status),
-            itemBuilder: (context) {
-              final options = <String>{
-                ..._stopStatusOptions,
-                if (stop.status.trim().isNotEmpty) stop.status.trim(),
-              }.toList();
-              return options
-                  .map((status) => PopupMenuItem<String>(
-                        value: status,
-                        child: Text(status),
-                      ))
-                  .toList();
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.25),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Icon(
-                    Icons.edit_rounded,
-                    size: 14,
-                    color: AppTheme.oceanBlue,
-                  ),
-                  SizedBox(width: 4),
-                  Text(
-                    'Update Status',
-                    style: TextStyle(
-                      color: AppTheme.oceanBlue,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-      ],
     );
   }
 
@@ -882,90 +910,324 @@ class _ExternalDeliveryTripDetailsScreenState
     }
   }
 
-  Widget _fieldList(List<MapEntry<String, dynamic>> entries) {
-    return Column(
-      children: entries
-          .asMap()
-          .entries
-          .map(
-            (entry) => _kv(
-              _labelFromKey(entry.value.key),
-              _displayValue(entry.value.value),
-            )
-                .animate()
-                .fadeIn(
-                  delay: (30 + (entry.key * 24)).ms,
-                  duration: 180.ms,
-                )
-                .slideX(begin: 0.02, end: 0),
-          )
-          .toList(),
-    );
-  }
-
-  Widget _kv(String key, String value) {
-    const icon = Icon(
-      Icons.label_outline_rounded,
-      size: 14,
-      color: Colors.black45,
-    );
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 140,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 2),
-                  child: icon,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    key,
-                    style: const TextStyle(
-                      color: Colors.black54,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: SelectableText(
+  Widget _statBox(String label, String value, IconData icon, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(height: 4),
+            Text(
               value,
-              style: const TextStyle(color: AppTheme.nightBlue, height: 1.25),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
             ),
-          ),
-        ],
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 10,
+                color: Colors.black54,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _stopTitle(String stopText) {
+  Widget _stopHeader(ExternalDeliveryTripStop stop) {
+    final statusNorm = stop.status.trim().toLowerCase();
+    final Color statusColor;
+    if (statusNorm == 'delivered' || statusNorm == 'returned') {
+      statusColor = const Color(0xFF2E7D32);
+    } else if (statusNorm == 'failed') {
+      statusColor = Colors.red;
+    } else if (statusNorm == 'out for delivery') {
+      statusColor = AppTheme.oceanBlue;
+    } else if (statusNorm == 'cancelled') {
+      statusColor = Colors.black38;
+    } else {
+      statusColor = Colors.black45;
+    }
+
     return Row(
       children: [
-        const Icon(
-          Icons.location_on_outlined,
-          size: 18,
-          color: AppTheme.oceanBlue,
-        ),
+        const Icon(Icons.location_on_outlined, size: 18, color: AppTheme.oceanBlue),
         const SizedBox(width: 6),
         Text(
-          stopText,
+          'Stop ${stop.stop}',
           style: const TextStyle(
             fontWeight: FontWeight.w700,
             color: AppTheme.nightBlue,
+            fontSize: 14,
+          ),
+        ),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: statusColor.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+          ),
+          child: Text(
+            stop.status.isEmpty ? 'Pending' : stop.status,
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
     );
   }
+
+  Widget _stopInfoCard(ExternalDeliveryTripStop stop) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (stop.customer.isNotEmpty) ...[
+          _stopInfoRow(Icons.person_outline, stop.customer),
+          const SizedBox(height: 6),
+        ],
+        if (stop.address.isNotEmpty) ...[
+          _stopInfoRow(Icons.location_on_outlined, stop.address),
+          const SizedBox(height: 6),
+        ],
+        if (stop.mobile.isNotEmpty) ...[
+          Row(
+            children: [
+              const Icon(Icons.phone_outlined, size: 15, color: Colors.black45),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  stop.mobile,
+                  style: const TextStyle(color: AppTheme.nightBlue, fontSize: 13),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => _launchCall(stop.mobile),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.call_rounded, size: 13, color: Color(0xFF2E7D32)),
+                      SizedBox(width: 4),
+                      Text(
+                        'Call',
+                        style: TextStyle(
+                          color: Color(0xFF2E7D32),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+        ],
+        if (stop.address.isNotEmpty) ...[
+          GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => TripStopMapScreen(
+                  address: stop.address,
+                  stopNumber: stop.stop,
+                ),
+              ),
+            ),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 9),
+              decoration: BoxDecoration(
+                color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.2),
+                ),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.navigation_rounded, size: 15, color: AppTheme.oceanBlue),
+                  SizedBox(width: 6),
+                  Text(
+                    'Navigate',
+                    style: TextStyle(
+                      color: AppTheme.oceanBlue,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
+        if (stop.externalDelivery.isNotEmpty)
+          _stopInfoRow(Icons.receipt_long_outlined, stop.externalDelivery, subtle: true),
+        if (stop.deliveredAt.trim().isNotEmpty) ...[
+          const SizedBox(height: 4),
+          _stopInfoRow(
+            Icons.check_circle_outline,
+            'Delivered: ${stop.deliveredAt}',
+            color: const Color(0xFF2E7D32),
+          ),
+        ],
+        if (stop.notes.trim().isNotEmpty) ...[
+          const SizedBox(height: 4),
+          _stopInfoRow(Icons.notes_rounded, stop.notes, subtle: true),
+        ],
+      ],
+    );
+  }
+
+  Widget _stopInfoRow(IconData icon, String text, {bool subtle = false, Color? color}) {
+    final textColor = color ?? (subtle ? Colors.black45 : AppTheme.nightBlue);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(icon, size: 15, color: color ?? Colors.black45),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: textColor,
+              fontSize: subtle ? 12 : 13,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _stopActionButtons(ExternalDeliveryTrip trip, ExternalDeliveryTripStop stop) {
+    final stopKey = _stopKey(stop);
+    final isUpdating = _updatingStops.contains(stopKey);
+
+    if (isUpdating) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 4),
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.oceanBlue),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: _actionButton(
+            label: 'Delivered',
+            icon: Icons.check_rounded,
+            color: const Color(0xFF2E7D32),
+            onTap: () => _updateStopStatus(stop, 'Delivered'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _actionButton(
+            label: 'Failed',
+            icon: Icons.close_rounded,
+            color: Colors.red,
+            onTap: () => _updateStopStatus(stop, 'Failed'),
+          ),
+        ),
+        const SizedBox(width: 8),
+        PopupMenuButton<String>(
+          onSelected: (status) => _updateStopStatus(stop, status),
+          itemBuilder: (context) {
+            final options = <String>{
+              ..._stopStatusOptions,
+              if (stop.status.trim().isNotEmpty) stop.status.trim(),
+            }.toList();
+            return options
+                .map((s) => PopupMenuItem<String>(value: s, child: Text(s)))
+                .toList();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.black12),
+            ),
+            child: const Icon(Icons.more_horiz, size: 18, color: Colors.black54),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _actionButton({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 14, color: color),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _launchCall(String phone) async {
+    final uri = Uri(scheme: 'tel', path: phone);
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
 }
+
