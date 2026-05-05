@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_bottom_nav.dart';
 
 class MyOrdersScreen extends StatefulWidget {
   const MyOrdersScreen({super.key});
@@ -45,7 +46,16 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: AppBottomNav(
+        currentIndex: 1,
+        onTap: (index) {
+          if (index == 0) {
+            Navigator.of(context).pushNamed(AppRoutes.dashboard);
+          } else if (index == 2) {
+            Navigator.of(context).pushNamed(AppRoutes.more);
+          }
+        },
+      ),
     );
   }
 
@@ -224,47 +234,6 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     );
   }
 
-  Widget _buildBottomNav() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(
-              icon: Icons.home_rounded,
-              label: 'Home',
-              isSelected: false,
-              onTap: () => Navigator.of(context).pushNamed(AppRoutes.dashboard),
-            ),
-            _NavItem(
-              icon: Icons.local_shipping_rounded,
-              label: 'My Orders',
-              isSelected: true,
-              onTap: () {},
-            ),
-            _NavItem(
-              icon: Icons.more_horiz_rounded,
-              label: 'More',
-              isSelected: false,
-              onTap: () => Navigator.of(context).pushNamed(AppRoutes.more),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   List<DeliveryOrder> _getActiveOrders() => [
     DeliveryOrder(
       orderId: '#OD3001',
@@ -358,48 +327,6 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
       assignmentStatus: OrderAssignmentStatus.assigned,
     ),
   ];
-}
-
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? AppTheme.oceanBlue : Colors.black54,
-              size: 24,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? AppTheme.oceanBlue : Colors.black54,
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _OrderCard extends StatelessWidget {
@@ -569,7 +496,16 @@ class _MoreScreenState extends State<MoreScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: AppBottomNav(
+        currentIndex: 2,
+        onTap: (index) {
+          if (index == 0) {
+            Navigator.of(context).pushNamed(AppRoutes.dashboard);
+          } else if (index == 1) {
+            Navigator.of(context).pushNamed(AppRoutes.myOrders);
+          }
+        },
+      ),
     );
   }
 
@@ -721,44 +657,4 @@ class _MoreScreenState extends State<MoreScreen> {
     );
   }
 
-  Widget _buildBottomNav() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(
-              icon: Icons.home_rounded,
-              label: 'Home',
-              isSelected: false,
-              onTap: () => Navigator.of(context).pushNamed(AppRoutes.dashboard),
-            ),
-            _NavItem(
-              icon: Icons.local_shipping_rounded,
-              label: 'My Orders',
-              isSelected: false,
-              onTap: () => Navigator.of(context).maybePop(),
-            ),
-            _NavItem(
-              icon: Icons.more_horiz_rounded,
-              label: 'More',
-              isSelected: true,
-              onTap: () {},
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

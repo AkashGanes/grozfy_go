@@ -73,6 +73,7 @@ class ExternalDeliveryOrder {
     this.contactNumber,
     this.creation,
     this.modified,
+    this.proofPhoto,
   });
 
   final String name;
@@ -89,6 +90,7 @@ class ExternalDeliveryOrder {
   final String? contactNumber;
   final DateTime? creation;
   final DateTime? modified;
+  final String? proofPhoto;
 
   factory ExternalDeliveryOrder.fromJson(Map<String, dynamic> json) {
     return ExternalDeliveryOrder(
@@ -114,7 +116,13 @@ class ExternalDeliveryOrder {
       modified: json['modified'] != null
           ? DateTime.tryParse(json['modified'].toString())
           : null,
+      proofPhoto: _nullIfBlank(json['proof_photo']?.toString()),
     );
+  }
+
+  static String? _nullIfBlank(String? v) {
+    if (v == null || v.trim().isEmpty) return null;
+    return v.trim();
   }
 
   static double? _parseDouble(dynamic value) {

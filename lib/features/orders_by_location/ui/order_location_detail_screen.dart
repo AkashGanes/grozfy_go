@@ -8,6 +8,7 @@ import '../../../core/utils/call_utils.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
+import 'delivery_proof_sheet.dart';
 
 class OrderLocationDetailScreen extends StatefulWidget {
   const OrderLocationDetailScreen({
@@ -24,8 +25,7 @@ class OrderLocationDetailScreen extends StatefulWidget {
       _OrderLocationDetailScreenState();
 }
 
-class _OrderLocationDetailScreenState
-    extends State<OrderLocationDetailScreen> {
+class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   ExternalDeliveryDetail? _detail;
   bool _loading = true;
   String? _error;
@@ -68,13 +68,95 @@ class _OrderLocationDetailScreenState
   Future<void> _updateStatus(String newStatus) async {
     setState(() => _updating = true);
     try {
-      await widget.repository.updateStatus(widget.order.name, newStatus);
+      await widget.repository.updateStatusViaSetValue(
+        widget.order.name,
+        newStatus,
+      );
       await _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
+  }
+
+  Future<void> _handleDelivered() async {
+    final photoPath = await showDeliveryProofSheet(context);
+    if (!mounted) return;
+    if (photoPath != null) {
+      await widget.repository.uploadProofPhoto(
+        orderName: widget.order.name,
+        filePath: photoPath,
+      );
+    }
+    await _updateStatus('Delivered');
+  }
+
+  Future<void> _uploadProofPhotoLate() async {
+    final photoPath = await showDeliveryProofSheet(context);
+    if (!mounted || photoPath == null) return;
+    setState(() => _updating = true);
+    try {
+      await widget.repository.uploadProofPhoto(
+        orderName: widget.order.name,
+        filePath: photoPath,
+      );
+      await _load();
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
+  }
+
+  Future<void> _clearProofPhoto() async {
+    final detail = _detail;
+    if (detail == null ||
+        detail.proofPhoto == null ||
+        detail.proofPhoto!.isEmpty) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Clear proof photo?'),
+        content: const Text(
+          'This will blank the proof_photo field on External Delivery.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _updating = true);
+    try {
+      await widget.repository.clearProofPhoto(orderName: widget.order.name);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Proof photo cleared')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     } finally {
       if (mounted) setState(() => _updating = false);
@@ -104,8 +186,8 @@ class _OrderLocationDetailScreenState
       body: _loading
           ? _buildLoading()
           : _error != null
-              ? _buildError()
-              : _buildContent(),
+          ? _buildError()
+          : _buildContent(),
     );
   }
 
@@ -141,14 +223,16 @@ class _OrderLocationDetailScreenState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.error_outline_rounded,
-                    color: Colors.redAccent, size: 36),
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: Colors.redAccent,
+                  size: 36,
+                ),
                 const SizedBox(height: 8),
                 Text(
                   _error ?? 'Something went wrong',
                   textAlign: TextAlign.center,
-                  style:
-                      const TextStyle(color: Colors.black54, fontSize: 13),
+                  style: const TextStyle(color: Colors.black54, fontSize: 13),
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
@@ -192,8 +276,7 @@ class _OrderLocationDetailScreenState
             return Container(
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 boxShadow: [
                   BoxShadow(
                     color: Color(0x22000000),
@@ -242,14 +325,18 @@ class _OrderLocationDetailScreenState
                             const SizedBox(height: 2),
                             Row(
                               children: [
-                                const Icon(Icons.store_rounded,
-                                    size: 13, color: Colors.black38),
+                                const Icon(
+                                  Icons.store_rounded,
+                                  size: 13,
+                                  color: Colors.black38,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   detail.storeName,
                                   style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black54),
+                                    fontSize: 12,
+                                    color: Colors.black54,
+                                  ),
                                 ),
                               ],
                             ),
@@ -258,12 +345,15 @@ class _OrderLocationDetailScreenState
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: statusColor.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                              color: statusColor.withValues(alpha: 0.35)),
+                            color: statusColor.withValues(alpha: 0.35),
+                          ),
                         ),
                         child: Text(
                           detail.status,
@@ -287,8 +377,7 @@ class _OrderLocationDetailScreenState
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color:
-                              AppTheme.oceanBlue.withValues(alpha: 0.10),
+                          color: AppTheme.oceanBlue.withValues(alpha: 0.10),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -315,7 +404,9 @@ class _OrderLocationDetailScreenState
                               Text(
                                 detail.contactMobile!,
                                 style: const TextStyle(
-                                    fontSize: 13, color: Colors.black45),
+                                  fontSize: 13,
+                                  color: Colors.black45,
+                                ),
                               ),
                             ],
                           ],
@@ -350,7 +441,9 @@ class _OrderLocationDetailScreenState
                   // ── Items ──────────────────────────────────────
                   if (detail.items.isNotEmpty) ...[
                     const _SheetSectionLabel(
-                        icon: Icons.shopping_bag_rounded, label: 'Items'),
+                      icon: Icons.shopping_bag_rounded,
+                      label: 'Items',
+                    ),
                     const SizedBox(height: 10),
                     ...detail.items.map(
                       (item) => Padding(
@@ -360,8 +453,7 @@ class _OrderLocationDetailScreenState
                             Container(
                               width: 6,
                               height: 6,
-                              margin:
-                                  const EdgeInsets.only(right: 10, top: 1),
+                              margin: const EdgeInsets.only(right: 10, top: 1),
                               decoration: const BoxDecoration(
                                 shape: BoxShape.circle,
                                 color: AppTheme.oceanBlue,
@@ -389,10 +481,57 @@ class _OrderLocationDetailScreenState
                               Text(
                                 '₹${item.amount!.toStringAsFixed(0)}',
                                 style: const TextStyle(
-                                    fontSize: 13, color: Colors.black45),
+                                  fontSize: 13,
+                                  color: Colors.black45,
+                                ),
                               ),
                             ],
                           ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Divider(height: 1),
+                    const SizedBox(height: 14),
+                  ],
+
+                  // ── Proof of Delivery ──────────────────────────
+                  if (detail.proofPhoto != null &&
+                      detail.proofPhoto!.isNotEmpty) ...[
+                    const _SheetSectionLabel(
+                      icon: Icons.camera_alt_rounded,
+                      label: 'Proof of Delivery',
+                    ),
+                    const SizedBox(height: 10),
+                    buildProofPhotoWidget(context, detail.proofPhoto!),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: _updating ? null : _clearProofPhoto,
+                        icon: const Icon(Icons.clear_rounded),
+                        label: const Text('Clear Proof Photo'),
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    const SizedBox(height: 14),
+                  ] else if (detail.status.toLowerCase() == 'delivered') ...[
+                    const _SheetSectionLabel(
+                      icon: Icons.camera_alt_rounded,
+                      label: 'Proof of Delivery',
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _updating ? null : _uploadProofPhotoLate,
+                        icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                        label: const Text('Add Proof Photo'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                       ),
                     ),
@@ -407,21 +546,23 @@ class _OrderLocationDetailScreenState
                       child: Padding(
                         padding: EdgeInsets.symmetric(vertical: 8),
                         child: CircularProgressIndicator(
-                            color: AppTheme.oceanBlue),
+                          color: AppTheme.oceanBlue,
+                        ),
                       ),
                     )
                   else ...[
                     const _SheetSectionLabel(
-                        icon: Icons.touch_app_rounded, label: 'Actions'),
+                      icon: Icons.touch_app_rounded,
+                      label: 'Actions',
+                    ),
                     const SizedBox(height: 12),
                     _ActionButtons(
                       status: detail.status,
                       started: _started,
                       onStart: () => _startTracking(detail),
                       onAccept: () => _updateStatus('Accepted'),
-                      onStartDelivery: () =>
-                          _updateStatus('Out for Delivery'),
-                      onDelivered: () => _updateStatus('Delivered'),
+                      onStartDelivery: () => _updateStatus('Out for Delivery'),
+                      onDelivered: _handleDelivered,
                     ),
                   ],
                 ],
@@ -456,8 +597,7 @@ class _MapLayer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasDestination = latitude != null && longitude != null;
-    final destination =
-        hasDestination ? LatLng(latitude!, longitude!) : null;
+    final destination = hasDestination ? LatLng(latitude!, longitude!) : null;
     final initialCenter = hasDestination ? destination! : _partnerLocation;
 
     return FlutterMap(
@@ -562,8 +702,7 @@ class _BackButton extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _SheetShell extends StatelessWidget {
-  const _SheetShell(
-      {required this.scrollController, required this.child});
+  const _SheetShell({required this.scrollController, required this.child});
   final ScrollController scrollController;
   final Widget child;
 
@@ -575,9 +714,10 @@ class _SheetShell extends StatelessWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-              color: Color(0x22000000),
-              blurRadius: 20,
-              offset: Offset(0, -4)),
+            color: Color(0x22000000),
+            blurRadius: 20,
+            offset: Offset(0, -4),
+          ),
         ],
       ),
       child: ListView(
@@ -685,8 +825,6 @@ class _AddressRow extends StatelessWidget {
   }
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Action buttons
 // ---------------------------------------------------------------------------
@@ -722,12 +860,8 @@ class _ActionButtons extends StatelessWidget {
         // Start button — shows partner + destination on the map (no external app)
         _Btn(
           label: started ? 'Tracking Active' : 'Start',
-          icon: started
-              ? Icons.my_location_rounded
-              : Icons.play_arrow_rounded,
-          color: started
-              ? const Color(0xFF4CAF50)
-              : const Color(0xFFE8384F),
+          icon: started ? Icons.my_location_rounded : Icons.play_arrow_rounded,
+          color: started ? const Color(0xFF4CAF50) : const Color(0xFFE8384F),
           onTap: onStart,
         ),
         const SizedBox(height: 10),
@@ -777,17 +911,14 @@ class _Btn extends StatelessWidget {
         backgroundColor: color,
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 15),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 0,
       ),
       onPressed: onTap,
       icon: Icon(icon, size: 20),
       label: Text(
         label,
-        style:
-            const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -804,13 +935,13 @@ class _LoadingSkeleton extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: double.infinity,
-            height: 18,
-            decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
-            ),
-          )
+                width: double.infinity,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              )
               .animate(onPlay: (controller) => controller.repeat())
               .shimmer(
                 duration: 1000.ms,
@@ -820,13 +951,13 @@ class _LoadingSkeleton extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-              )
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                  )
                   .animate(onPlay: (controller) => controller.repeat())
                   .shimmer(
                     duration: 1000.ms,
@@ -838,13 +969,13 @@ class _LoadingSkeleton extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: double.infinity,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    )
+                          width: double.infinity,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        )
                         .animate(onPlay: (controller) => controller.repeat())
                         .shimmer(
                           duration: 1000.ms,
@@ -852,13 +983,13 @@ class _LoadingSkeleton extends StatelessWidget {
                         ),
                     const SizedBox(height: 8),
                     Container(
-                      width: 150,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    )
+                          width: 150,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        )
                         .animate(onPlay: (controller) => controller.repeat())
                         .shimmer(
                           duration: 1000.ms,

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +14,8 @@ import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/profile_completeness_indicator.dart';
+import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../orders_by_location/ui/delivery_proof_sheet.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -53,7 +57,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     _app = AppScope.of(context);
     if (_app.licenseRequiresReupload && !_licenseDialogShowing) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_licenseDialogShowing &&
+        if (mounted &&
+            !_licenseDialogShowing &&
             ModalRoute.of(context)?.isCurrent == true) {
           _showLicenseRemovedDialog();
         }
@@ -295,9 +300,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       children: [
                         const Icon(Icons.warning_amber_rounded),
                         const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(app.t('kyc_warning')),
-                        ),
+                        Expanded(child: Text(app.t('kyc_warning'))),
                         TextButton(
                           onPressed: () {
                             Navigator.of(
@@ -430,7 +433,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                           const SizedBox(height: 2),
                           Text(
                             app.t('pick_up_multiple'),
-                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -513,7 +519,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ),
                           Text(
                             app.t('external_deliveries_desc'),
-                            style: const TextStyle(color: Colors.grey, fontSize: 12),
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -724,7 +733,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                   Icons.local_shipping_outlined,
                   route: AppRoutes.externalDeliveryTripList,
                 ),
-                _quickButton(context, app.t('support'), Icons.support_agent_rounded),
+                _quickButton(
+                  context,
+                  app.t('support'),
+                  Icons.support_agent_rounded,
+                ),
                 _quickButton(
                   context,
                   app.t('settings'),
@@ -794,7 +807,6 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     return lines.join('\n');
   }
-
 }
 
 class _ActiveOrderActions extends StatelessWidget {
@@ -835,16 +847,47 @@ class _ActiveOrderActions extends StatelessWidget {
           Expanded(
             child: OutlinedButton(
               onPressed: () async {
-                final Uri uri = Uri.parse(
-                  'https://www.google.com/maps/dir/?api=1&destination=${order.latitude},${order.longitude}&travelmode=driving',
+                final double lat = order.latitude;
+                final double lng = order.longitude;
+
+                if (Platform.isAndroid) {
+                  final Uri androidUri = Uri.parse(
+                    'google.navigation:q=$lat,$lng&mode=d',
+                  );
+                  if (await canLaunchUrl(androidUri)) {
+                    await launchUrl(
+                      androidUri,
+                      mode: LaunchMode.externalApplication,
+                    );
+                    return;
+                  }
+                }
+
+                if (Platform.isIOS) {
+                  final Uri googleMapsIos = Uri.parse(
+                    'comgooglemaps://?daddr=$lat,$lng&directionsmode=driving',
+                  );
+                  if (await canLaunchUrl(googleMapsIos)) {
+                    await launchUrl(googleMapsIos);
+                    return;
+                  }
+                  final Uri appleMaps = Uri.parse('maps:?daddr=$lat,$lng');
+                  if (await canLaunchUrl(appleMaps)) {
+                    await launchUrl(appleMaps);
+                    return;
+                  }
+                }
+
+                final Uri webUri = Uri.parse(
+                  'https://www.google.com/maps/dir/?api=1'
+                  '&destination=$lat,$lng'
+                  '&travelmode=driving',
                 );
                 final bool launched = await launchUrl(
-                  uri,
+                  webUri,
                   mode: LaunchMode.externalApplication,
                 );
-                if (!context.mounted) {
-                  return;
-                }
+                if (!context.mounted) return;
                 if (!launched) {
                   showInfoSnack(context, app.t('unable_open_maps'));
                 }
@@ -876,6 +919,20 @@ class _ActiveOrderActions extends StatelessWidget {
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
               final navigator = Navigator.of(context);
+
+              if (transition.next == OrderProgressStatus.delivered) {
+                final photoPath = await showDeliveryProofSheet(context);
+                if (!context.mounted) return;
+
+                if (photoPath != null) {
+                  await ExternalDeliveryRepository().uploadProofPhoto(
+                    orderName: order.orderId,
+                    filePath: photoPath,
+                  );
+                  if (!context.mounted) return;
+                }
+              }
+
               final error = await app.updateOrderStatus(transition.next);
               if (!context.mounted) {
                 return;
@@ -886,9 +943,7 @@ class _ActiveOrderActions extends StatelessWidget {
               }
               if (transition.next == OrderProgressStatus.delivered) {
                 messenger.showSnackBar(
-                  SnackBar(
-                    content: Text(app.t('order_delivered')),
-                  ),
+                  SnackBar(content: Text(app.t('order_delivered'))),
                 );
                 navigator.pushNamedAndRemoveUntil(
                   AppRoutes.dashboard,
@@ -916,11 +971,17 @@ class _ActiveOrderActions extends StatelessWidget {
   ) {
     switch (current) {
       case OrderStatus.accepted:
-        return (label: app.t('mark_reached_pickup'), next: OrderStatus.reachedPickup);
+        return (
+          label: app.t('mark_reached_pickup'),
+          next: OrderStatus.reachedPickup,
+        );
       case OrderStatus.reachedPickup:
         return (label: app.t('mark_picked_up'), next: OrderStatus.pickedUp);
       case OrderStatus.pickedUp:
-        return (label: app.t('start_delivery'), next: OrderStatus.outForDelivery);
+        return (
+          label: app.t('start_delivery'),
+          next: OrderStatus.outForDelivery,
+        );
       case OrderStatus.outForDelivery:
         return (label: app.t('mark_delivered'), next: OrderStatus.delivered);
       case OrderStatus.pending:

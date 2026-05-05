@@ -19,6 +19,7 @@ class ApiService {
     'status',
     'creation',
     'modified',
+    'proof_photo',
   ];
 
   String? _sessionToken;
@@ -121,15 +122,19 @@ class ApiService {
 
   Future<bool> updateDeliveryStatus(String deliveryName, String status) async {
     try {
-      final body = jsonEncode({'status': status});
-
-      final uri = _resourceUri(
-        doctype: 'External Delivery',
-        name: deliveryName,
-      );
+      // Use frappe.client.set_value instead of a full REST PUT so that Frappe
+      // does not validate unrelated link fields (e.g. delivery_trip) that may
+      // point to documents that no longer exist.
+      final uri = Uri.parse('$baseUrl/api/method/frappe.client.set_value');
+      final body = jsonEncode({
+        'doctype': 'External Delivery',
+        'name': deliveryName,
+        'fieldname': 'status',
+        'value': status,
+      });
 
       final response = await _sendWithAuthRetry(
-        (headers) => http.put(uri, headers: headers, body: body),
+        (headers) => http.post(uri, headers: headers, body: body),
       );
 
       return response.statusCode == 200;

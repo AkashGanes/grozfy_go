@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
-import '../../core/services/api_service.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
+import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../orders_by_location/ui/delivery_proof_sheet.dart';
 
 class OrderStatusScreen extends StatefulWidget {
   const OrderStatusScreen({super.key});
@@ -14,7 +15,6 @@ class OrderStatusScreen extends StatefulWidget {
 }
 
 class _OrderStatusScreenState extends State<OrderStatusScreen> {
-  final ApiService _apiService = ApiService();
   bool _syncing = false;
 
   static const List<OrderProgressStatus> _flow = <OrderProgressStatus>[
@@ -29,21 +29,25 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final app = AppScope.of(context);
     final order = app.activeOrder;
     if (order == null || _syncing) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
 
     final OrderProgressStatus next = _nextStatus(order.orderStatus);
     if (next == order.orderStatus) return;
 
     setState(() => _syncing = true);
 
-    final bool apiOk = await _apiService.updateDeliveryStatus(
-      order.orderId,
-      _statusApiLabel(next),
-    );
+    if (next == OrderStatus.delivered) {
+      final photoPath = await showDeliveryProofSheet(context);
+      if (!mounted) return;
 
-    if (!mounted) return;
-
-    if (!apiOk) {
-      showInfoSnack(context, 'Server sync failed — status saved locally');
+      if (photoPath != null) {
+        await ExternalDeliveryRepository().uploadProofPhoto(
+          orderName: order.orderId,
+          filePath: photoPath,
+        );
+        if (!mounted) return;
+      }
     }
 
     app.updateOrderStatus(next);
@@ -52,10 +56,10 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     setState(() => _syncing = false);
 
     if (next == OrderStatus.delivered) {
-      showInfoSnack(context, 'Order delivered and earnings updated');
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Order delivered and earnings updated')),
+      );
+      navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
     }
   }
 
@@ -77,23 +81,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return OrderStatus.delivered;
       case OrderStatus.cancelled:
         return OrderStatus.cancelled;
-    }
-  }
-
-  String _statusApiLabel(OrderProgressStatus status) {
-    switch (status) {
-      case OrderStatus.accepted:
-        return 'Accepted';
-      case OrderStatus.reachedPickup:
-        return 'Reached Pickup';
-      case OrderStatus.pickedUp:
-        return 'Picked Up';
-      case OrderStatus.outForDelivery:
-        return 'Out For Delivery';
-      case OrderStatus.delivered:
-        return 'Delivered';
-      default:
-        return status.label;
     }
   }
 

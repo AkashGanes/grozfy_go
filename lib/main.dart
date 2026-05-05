@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'core/models/app_models.dart';
 import 'core/localization/app_localizations.dart';
 import 'core/services/fcm_initializer.dart';
+import 'core/services/location_ping_service.dart';
 import 'core/navigation/app_routes.dart';
 import 'core/state/providers.dart';
 import 'core/state/app_scope.dart';
@@ -54,6 +55,9 @@ void main() async {
       "⚠️ Firebase initialization failed. Make sure google-services.json is added. Error: $e",
     );
   }
+
+  // Configure background location ping service
+  await LocationPingService.initialize();
 
   runApp(
     UncontrolledProviderScope(container: container, child: const GrozfyGoApp()),

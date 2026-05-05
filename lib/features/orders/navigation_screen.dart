@@ -169,38 +169,51 @@ class NavigationScreen extends StatelessWidget {
     double lat,
     double lng,
   ) async {
+    // Try each URI in order, launching without canLaunchUrl check because
+    // custom schemes (google.navigation, comgooglemaps) can return false on
+    // Android 11+ even when the app is installed.
     if (Platform.isAndroid) {
-      final Uri androidUri = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
-      if (await canLaunchUrl(androidUri)) {
-        await launchUrl(androidUri, mode: LaunchMode.externalApplication);
-        return;
-      }
+      // Native navigation intent — starts turn-by-turn from current GPS location.
+      final Uri navUri = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
+      try {
+        if (await launchUrl(navUri, mode: LaunchMode.externalApplication)) {
+          return;
+        }
+      } catch (_) {}
+
+      // Fallback: geo URI with destination query (opens Maps or lets user choose).
+      final Uri geoUri = Uri.parse('geo:$lat,$lng?q=$lat,$lng');
+      try {
+        if (await launchUrl(geoUri, mode: LaunchMode.externalApplication)) {
+          return;
+        }
+      } catch (_) {}
     }
 
     if (Platform.isIOS) {
       final Uri googleMapsIos = Uri.parse(
         'comgooglemaps://?daddr=$lat,$lng&directionsmode=driving',
       );
-      if (await canLaunchUrl(googleMapsIos)) {
-        await launchUrl(googleMapsIos);
-        return;
-      }
+      try {
+        if (await launchUrl(googleMapsIos)) return;
+      } catch (_) {}
+
       final Uri appleMaps = Uri.parse('maps:?daddr=$lat,$lng');
-      if (await canLaunchUrl(appleMaps)) {
-        await launchUrl(appleMaps);
-        return;
-      }
+      try {
+        if (await launchUrl(appleMaps)) return;
+      } catch (_) {}
     }
 
+    // Universal fallback: web Google Maps with driving directions.
     final Uri webUri = Uri.parse(
       'https://www.google.com/maps/dir/?api=1'
       '&destination=$lat,$lng'
       '&travelmode=driving',
     );
-    if (await canLaunchUrl(webUri)) {
+    try {
       await launchUrl(webUri, mode: LaunchMode.externalApplication);
       return;
-    }
+    } catch (_) {}
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

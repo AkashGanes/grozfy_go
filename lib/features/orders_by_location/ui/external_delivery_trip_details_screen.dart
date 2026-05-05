@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../repository/external_delivery_repository.dart';
+import 'delivery_proof_sheet.dart';
 import 'failed_delivery_bottom_sheet.dart';
 
 class ExternalDeliveryTripDetailsScreen extends StatefulWidget {
@@ -728,6 +729,12 @@ class _ExternalDeliveryTripDetailsScreenState
     final current = stop.status.trim().toLowerCase();
     if (current == newStatus.trim().toLowerCase()) return;
 
+    // Intercept "Delivered" — show proof-of-delivery capture sheet
+    if (newStatus == 'Delivered') {
+      await _handleDeliveredStop(stop);
+      return;
+    }
+
     // Intercept "Failed" — show reason sheet and handle return trip flow
     if (newStatus == 'Failed') {
       await _handleFailedDelivery(stop);
@@ -753,6 +760,38 @@ class _ExternalDeliveryTripDetailsScreenState
       if (mounted) {
         setState(() => _updatingStops.remove(stopKey));
       }
+    }
+  }
+
+  Future<void> _handleDeliveredStop(ExternalDeliveryTripStop stop) async {
+    final photoPath = await showDeliveryProofSheet(context);
+    if (!mounted) return;
+
+    final orderName = stop.externalDelivery.trim();
+    if (photoPath != null && orderName.isNotEmpty) {
+      await ExternalDeliveryRepository().uploadProofPhoto(
+        orderName: orderName,
+        filePath: photoPath,
+      );
+    }
+
+    final stopKey = _stopKey(stop);
+    setState(() => _updatingStops.add(stopKey));
+    try {
+      await ExternalDeliveryRepository().updateTripStopStatus(
+        stop: stop,
+        newStatus: 'Delivered',
+      );
+      if (!mounted) return;
+      showInfoSnack(context, 'Stop status updated to Delivered');
+      setState(() {
+        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _updatingStops.remove(stopKey));
     }
   }
 
