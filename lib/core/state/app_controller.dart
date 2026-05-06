@@ -2717,24 +2717,6 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> syncPermissionsFromOS() async {
-    final locationPerm = await Geolocator.checkPermission();
-    final notifStatus = await ph.Permission.notification.status;
-
-    final foreground =
-        locationPerm == LocationPermission.whileInUse ||
-        locationPerm == LocationPermission.always;
-    final background = locationPerm == LocationPermission.always;
-    final notification = notifStatus.isGranted;
-
-    _permissionState = PermissionState(
-      foregroundLocation: foreground,
-      backgroundLocation: background,
-      notification: notification,
-    );
-    notifyListeners();
-  }
-
   void setTrackingInterval(int seconds) {
     _trackingInterval = seconds;
     notifyListeners();
@@ -2793,23 +2775,6 @@ class AppController extends ChangeNotifier {
     _availabilitySyncing = false;
     notifyListeners();
     return null;
-  }
-
-  Future<String?> _syncAvailabilityToBackend(bool value) async {
-    if (_driverName == null || _driverName!.trim().isEmpty) {
-      return null; // No driver record yet — skip backend sync silently
-    }
-    try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/Driver/${Uri.encodeComponent(_driverName!)}',
-      );
-      await authorizedPutJson(uri, <String, dynamic>{
-        'custom_custom_is_online': value ? 1 : 0,
-      });
-      return null;
-    } catch (e) {
-      return 'Failed to sync availability: ${e.toString().replaceAll('Exception: ', '')}';
-    }
   }
 
   Future<String?> _syncAvailabilityToBackend(bool value) async {

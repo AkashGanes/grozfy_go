@@ -1735,39 +1735,6 @@ class _AddressRow extends StatelessWidget {
   }
 }
 
-class _CallButton extends StatelessWidget {
-  const _CallButton({required this.mobile});
-  final String mobile;
-
-  Future<void> _call() async {
-    final digits = mobile.replaceAll(RegExp(r'\s+'), '');
-    await launchUrl(Uri.parse('tel:$digits'));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _call,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE8F5E9),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: const Color(0xFF4CAF50).withValues(alpha: 0.3),
-          ),
-        ),
-        child: const Icon(
-          Icons.phone_rounded,
-          color: Color(0xFF4CAF50),
-          size: 18,
-        ),
-      ),
-    );
-  }
-}
-
 // =============================================================================
 // Route data
 // =============================================================================

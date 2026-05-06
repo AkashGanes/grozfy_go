@@ -25,7 +25,6 @@ class _ExternalDeliveryTripListScreenState
   PagingController<int, TripListItem>? _pagingController;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  String? _lastDriver;
 
   @override
   void didChangeDependencies() {
@@ -216,7 +215,6 @@ class _ExternalDeliveryTripListScreenState
       appControllerProvider.select((c) => c.languageCode),
       (previous, next) {
         if (previous != null && previous != next) {
-          _lastDriver = null;
           _pagingController?.refresh();
         }
       },

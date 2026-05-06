@@ -220,11 +220,3 @@ extension ExternalDeliveryStatusColor on String {
   };
 }
 
-String _normalizedStatus(String value) {
-  return value
-      .trim()
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-      .replaceAll(RegExp(r'_+'), '_')
-      .replaceAll(RegExp(r'^_|_$'), '');
-}

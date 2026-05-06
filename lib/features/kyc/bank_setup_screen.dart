@@ -37,9 +37,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
 
   final _formKey = GlobalKey<FormState>();
 
-  bool _disabled = false;
-  bool _isDefault = false;
-  bool _isCompanyAccount = false;
   bool _busy = false;
   bool _ready = false;
 

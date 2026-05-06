@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -49,6 +48,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   final ApiService _apiService = ApiService();
   late final MapController _mapController;
   StreamSubscription<Position>? _positionStream;
+  final TextEditingController _demoLatController = TextEditingController();
+  final TextEditingController _demoLngController = TextEditingController();
 
   String _deliveryName = '';
   String _customerName = '';
@@ -79,9 +80,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   static const double _arrivalThreshold = 50.0;
   static const Color _primaryColor = Color(0xFF44b180);
   static const Color _secondaryColor = Color(0xFF2E7D32);
-  static const String _osrmBaseUrl = kDebugMode
-      ? 'https://router.project-osrm.org/route/v1/driving'
-      : 'TODO: Replace with self-hosted OSRM server URL';
+  static const String _osrmBaseUrl =
+      'https://router.project-osrm.org/route/v1/driving';
   static const Duration _routeRefreshInterval = Duration(seconds: 20);
   static const int _maxRoutePoints = 400;
 
@@ -112,6 +112,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   @override
   void dispose() {
     _positionStream?.cancel();
+    _demoLatController.dispose();
+    _demoLngController.dispose();
     _mapController.dispose();
     super.dispose();
   }
@@ -526,14 +528,31 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                 ? _calculateBearing(_currentLocation, nextLocation)
                 : _currentHeading;
 
-            setState(() {
-              _currentLocation = nextLocation;
-              _currentHeading = nextHeading;
-              _updateRemainingRouteFromCurrentLocation();
-            });
-
+            // Mutate fields before setState so the O(n) polyline search and
+            // marker building don't block the framework's rebuild dispatch.
+            _currentLocation = nextLocation;
+            _currentHeading = nextHeading;
+            _updateRemainingRouteFromCurrentLocation();
             _updateMarkers();
-            _checkArrival();
+
+            // Compute arrival inline to avoid a second setState call.
+            bool justArrived = false;
+            if (_destination != null && !_hasArrived) {
+              final double dist = _calculateDistance(
+                nextLocation.latitude,
+                nextLocation.longitude,
+                _destination!.latitude,
+                _destination!.longitude,
+              );
+              justArrived = dist < _arrivalThreshold;
+              _distanceToDestination = dist;
+              _hasArrived = justArrived;
+            }
+
+            // Single rebuild covers location, heading, polyline, markers & arrival.
+            setState(() {});
+
+            if (justArrived) _stopLiveTracking();
 
             if (_isMapReady && _isTracking) {
               _mapController.move(_currentLocation, 16.0);
@@ -633,27 +652,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           ),
         ),
       );
-    }
-  }
-
-  void _checkArrival() {
-    if (_destination == null || _hasArrived) return;
-
-    final distance = _calculateDistance(
-      _currentLocation.latitude,
-      _currentLocation.longitude,
-      _destination!.latitude,
-      _destination!.longitude,
-    );
-    final bool arrived = distance < _arrivalThreshold;
-
-    setState(() {
-      _distanceToDestination = distance;
-      _hasArrived = arrived;
-    });
-
-    if (arrived) {
-      _stopLiveTracking();
     }
   }
 
@@ -835,6 +833,26 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     }
 
     return _deliveryName.trim();
+  }
+
+  void _setDestination(LatLng destination) {
+    setState(() {
+      _destination = destination;
+      _dropLat = destination.latitude;
+      _dropLng = destination.longitude;
+      _hasArrived = false;
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    _updateMarkers();
+    _getRoutePoints().whenComplete(() {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    });
   }
 
   void _showDemoLocationPicker() {
@@ -1386,6 +1404,24 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
+
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _showDemoLocationPicker,
+                          icon: const Icon(Icons.location_searching),
+                          label: const Text('Demo Location'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _primaryColor,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: const BorderSide(color: _primaryColor),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
 
                       SizedBox(
                         width: double.infinity,

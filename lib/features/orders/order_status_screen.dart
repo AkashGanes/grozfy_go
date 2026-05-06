@@ -35,6 +35,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     setState(() => _syncing = true);
 
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
     final bool apiOk = await _apiService.updateDeliveryStatus(
       order.orderId,
       _statusApiLabel(next),
@@ -42,20 +45,21 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     if (!mounted) return;
 
-    if (!apiOk) {
-      showInfoSnack(context, 'Server sync failed — status saved locally');
-    }
-
     app.updateOrderStatus(next);
-
-    if (!mounted) return;
     setState(() => _syncing = false);
 
+    if (!apiOk) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Server sync failed — status saved locally')),
+      );
+      return;
+    }
+
     if (next == OrderStatus.delivered) {
-      showInfoSnack(context, 'Order delivered and earnings updated');
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Order delivered and earnings updated')),
+      );
+      navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
     }
   }
 

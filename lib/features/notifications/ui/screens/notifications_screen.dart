@@ -661,64 +661,6 @@ class _NotificationTile extends ConsumerWidget {
   }
 }
 
-class _LoadingState extends StatelessWidget {
-  const _LoadingState();
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.builder(
-      physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: 5,
-      itemBuilder: (context, index) {
-        return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: FrostCard(
-                child: Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            height: 12,
-                            width: 160,
-                            decoration: BoxDecoration(
-                              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            height: 10,
-                            width: 230,
-                            decoration: BoxDecoration(
-                              color: AppTheme.oceanBlue.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-            .animate(onPlay: (controller) => controller.repeat())
-            .shimmer(duration: (1000 + (index * 120)).ms);
-      },
-    );
-  }
-}
-
 class _ErrorState extends StatelessWidget {
   const _ErrorState({required this.message});
 

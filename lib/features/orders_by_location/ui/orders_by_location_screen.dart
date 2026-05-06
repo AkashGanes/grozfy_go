@@ -5,6 +5,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
+import '../../../core/navigation/app_routes.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
@@ -37,7 +38,6 @@ class _OrdersByLocationScreenState
   bool _creatingTrip = false;
   final List<ExternalDeliveryDetail> _orderDetailsCache = [];
 
-  String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -546,6 +546,18 @@ class _OrdersByLocationScreenState
       scrollable: false,
       padding: EdgeInsets.zero,
       actions: [
+        if (_selectionMode)
+          IconButton(
+            icon: _creatingTrip
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.route_rounded, color: AppTheme.nightBlue),
+            tooltip: 'Create trip',
+            onPressed: _creatingTrip ? null : _handleCreateTrip,
+          ),
         IconButton(
           icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
           tooltip: 'Change location',
@@ -568,6 +580,10 @@ class _OrdersByLocationScreenState
                 return _OrderCard(
                   order: item.order,
                   onTap: () => _handleOrderTap(item.order),
+                  onLongPress: () => _handleOrderLongPress(item.order),
+                  selected: _selectedOrderIds.contains(item.order.name),
+                  selectionMode: _selectionMode,
+                  busy: _submittingOrderIds.contains(item.order.name),
                 );
               }
               return const SizedBox.shrink();
@@ -641,12 +657,14 @@ class _OrderCard extends StatelessWidget {
     required this.selected,
     required this.selectionMode,
     required this.onLongPress,
+    required this.busy,
   });
   final ExternalDelivery order;
   final VoidCallback onTap;
   final bool selected;
   final bool selectionMode;
   final VoidCallback onLongPress;
+  final bool busy;
 
   String _formatDate(String raw) {
     if (raw.length < 10) return raw;
@@ -775,6 +793,7 @@ class _OrderCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
       ),
     );
   }
@@ -862,59 +881,3 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Backdrop shapes
-// ---------------------------------------------------------------------------
-
-class _LocationBackdropShapes extends StatelessWidget {
-  const _LocationBackdropShapes();
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Stack(
-        children: [
-          Positioned(
-            left: -60,
-            top: -70,
-            child: Container(
-              width: 180,
-              height: 180,
-              decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.16),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          Positioned(
-            right: -35,
-            top: 110,
-            child: Transform.rotate(
-              angle: 0.8,
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: AppTheme.mango.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 40,
-            bottom: -60,
-            child: Container(
-              width: 210,
-              height: 210,
-              decoration: BoxDecoration(
-                color: AppTheme.mint.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
