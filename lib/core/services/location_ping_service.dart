@@ -1,16 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-
-const int _kFgNotificationId = 88;
-const String _kChannelId = 'grozfy_location';
 
 // Limits that mirror the backend contract
 const int _kAccuracyLimitM = 80; // server rejects pings with accuracy > 80 m
@@ -18,49 +12,58 @@ const int _kStaleLimitSec = 88;  // server limit is 90 s; use 88 for safety
 const int _kMaxRetries = 3;      // retry a failed ping up to this many times
 const int _kDefaultPingSec = 10; // initial send interval
 
-/// Manages the background foreground-service that POSTs driver location pings
-/// to the server while a trip is active.
+/// POSTs driver location pings to the server while a trip is active.
+///
+/// Runs on the **main isolate** via a Timer + a Geolocator stream. This
+/// previously used `flutter_background_service` to host the loop in a second
+/// Flutter engine, but on Vivo (and other compositor-strict OEMs) running
+/// two Flutter engines in the same process exhausts BLAST surface buffers
+/// and the OS recycles the foreground service / kills the app.
+///
+/// The trade-off: pings stop when the OS suspends the main isolate
+/// (screen-off, app fully backgrounded for long periods). On Vivo with
+/// aggressive battery management the foreground-service approach was
+/// already unreliable, so this is acceptable.
 class LocationPingService {
   LocationPingService._();
 
-  static final FlutterBackgroundService _service = FlutterBackgroundService();
+  // ── Trip context (populated by [start]) ───────────────────────────────────
+  static String? _tripId;
+  static String? _deliveryId;
+  static String? _authHeader;
+  static String? _baseUrl;
 
-  /// Call once at app startup (before [start]).
-  static Future<void> initialize() async {
-    final FlutterLocalNotificationsPlugin notifications =
-        FlutterLocalNotificationsPlugin();
-    await notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(
-          const AndroidNotificationChannel(
-            _kChannelId,
-            'Location Tracking',
-            description: 'Active while your location is being shared',
-            importance: Importance.low,
-          ),
-        );
+  // ── GPS state ─────────────────────────────────────────────────────────────
+  static Position? _latestPos;
+  static StreamSubscription<Position>? _posSub;
+  static StreamSubscription<ServiceStatus>? _svcStatusSub;
+  static bool _gpsDisabled = false;
 
-    await _service.configure(
-      androidConfiguration: AndroidConfiguration(
-        onStart: _onStart,
-        autoStart: false,
-        isForegroundMode: true,
-        notificationChannelId: _kChannelId,
-        initialNotificationTitle: 'Grozfy Go',
-        initialNotificationContent: 'Sharing your live location…',
-        foregroundServiceNotificationId: _kFgNotificationId,
-        foregroundServiceTypes: [AndroidForegroundType.location],
-      ),
-      iosConfiguration: IosConfiguration(
-        autoStart: false,
-        onForeground: _onStart,
-        onBackground: _onIosBackground,
-      ),
-    );
+  // ── Ping timing ───────────────────────────────────────────────────────────
+  static Timer? _fallbackTimer;
+  static bool _isPinging = false;
+  static bool _isRefreshingFix = false;
+  static int _nextPingSec = _kDefaultPingSec;
+  static DateTime? _lastPingedAt;
+
+  // ── Retry / offline cache ─────────────────────────────────────────────────
+  static Map<String, dynamic>? _retryBody;
+  static DateTime? _retryBodyCapturedAt;
+  static int _failureCount = 0;
+
+  // ── External event stream ─────────────────────────────────────────────────
+  static final StreamController<Map<String, dynamic>?> _eventsController =
+      StreamController<Map<String, dynamic>?>.broadcast();
+
+  static void _log(String message) {
+    if (kDebugMode) debugPrint('[LocationPing] $message');
   }
 
-  /// Start the background service for [tripId] / [deliveryId].
+  /// Kept for API compatibility with callers; nothing to set up upfront now
+  /// that we run on the main isolate.
+  static Future<void> initialize() async {}
+
+  /// Start sending pings for [tripId] / [deliveryId].
   /// [authHeader] is the full Authorization value
   /// (e.g. `"token key:secret"` or `"Bearer <token>"`).
   static Future<void> start({
@@ -69,359 +72,65 @@ class LocationPingService {
     required String authHeader,
     required String baseUrl,
   }) async {
-    final bool running = await _service.isRunning();
-    if (!running) {
-      await _service.startService();
-      // Give the background isolate time to boot before the first message.
-      await Future<void>.delayed(const Duration(milliseconds: 400));
-    }
-    _service.invoke('startPing', {
-      'trip_id': tripId,
-      'delivery_id': deliveryId,
-      'auth_header': authHeader,
-      'base_url': baseUrl,
-    });
+    _tripId = tripId;
+    _deliveryId = deliveryId;
+    _authHeader = authHeader;
+    _baseUrl = baseUrl;
+    _nextPingSec = _kDefaultPingSec;
+    _lastPingedAt = null;
+    _isPinging = false;
+    _isRefreshingFix = false;
+    _retryBody = null;
+    _retryBodyCapturedAt = null;
+    _failureCount = 0;
+    _log('start trip_id=$tripId external_delivery=$deliveryId interval=${_nextPingSec}s');
+    await _startStreams();
   }
 
-  /// Stop location pings and kill the background service.
-  static void stop() => _service.invoke('stopPing');
+  /// Stop pings and tear down all listeners/timers.
+  static void stop() {
+    _log('stop');
+    _stopAll();
+  }
 
-  /// Stream of ping events from the background isolate.
-  /// Each event contains: `lat`, `lng`, `ok`, `message` (if error),
-  /// `next_ping_sec`.
+  /// Stream of ping events. Each event contains `lat`, `lng`, `ok`,
+  /// `message` (if error), `next_ping_sec`.
   static Stream<Map<String, dynamic>?> get locationUpdates =>
-      _service.on('locationUpdate');
-}
+      _eventsController.stream;
 
-// ─── Background isolate entry points ─────────────────────────────────────────
+  // ── Internal: stream + timer lifecycle ────────────────────────────────────
 
-@pragma('vm:entry-point')
-Future<bool> _onIosBackground(ServiceInstance service) async => true;
-
-@pragma('vm:entry-point')
-void _onStart(ServiceInstance service) {
-  // Register all Flutter platform-channel plugins in this background isolate.
-  DartPluginRegistrant.ensureInitialized();
-
-  void logPing(String message) {
-    debugPrint('[LocationPing] $message');
+  static void _stopAll() {
+    _posSub?.cancel();
+    _posSub = null;
+    _svcStatusSub?.cancel();
+    _svcStatusSub = null;
+    _fallbackTimer?.cancel();
+    _fallbackTimer = null;
+    _gpsDisabled = false;
+    _latestPos = null;
+    _retryBody = null;
+    _retryBodyCapturedAt = null;
   }
 
-  // ── Trip context (populated via 'startPing') ────────────────────────────
-  String? tripId;
-  String? deliveryId;
-  String? authHeader;
-  String? baseUrl;
-
-  // ── GPS state ───────────────────────────────────────────────────────────
-  Position? latestPos;
-  StreamSubscription<Position>? posSub;
-
-  // ── Ping timing ─────────────────────────────────────────────────────────
-  Timer? fallbackTimer;
-  bool isPinging = false;
-  bool isRefreshingFix = false;
-  int nextPingSec = _kDefaultPingSec;
-  DateTime? lastPingedAt;
-
-  // ── Retry / offline cache ───────────────────────────────────────────────
-  Map<String, dynamic>? retryBody;      // payload queued for retry
-  DateTime? retryBodyCapturedAt;        // when the cached payload was built
-  int failureCount = 0;
-
-  // ── Indirect reference to sendPing (breaks the restartTimer ↔ sendPing
-  //    forward-reference cycle; set after sendPing is declared below). ─────
-  Future<void> Function() doSendPing = () async {};
-
-  // ── Helper: restart the fallback timer at a new interval ────────────────
-  void restartTimer(int newSec) {
-    if (newSec == nextPingSec) return;
-    nextPingSec = newSec;
-    fallbackTimer?.cancel();
-    fallbackTimer = Timer.periodic(
-      Duration(seconds: nextPingSec),
-      (_) => doSendPing(),
+  static void _armFallbackTimer() {
+    _fallbackTimer?.cancel();
+    if (_gpsDisabled) return;
+    _fallbackTimer = Timer.periodic(
+      Duration(seconds: _nextPingSec),
+      (_) => _sendPing(),
     );
   }
 
-  // ── Helper: handle HTTP / network failure with retry + exponential backoff
-  void onNetworkFailure(Map<String, dynamic> payload) {
-    failureCount++;
-    final bool exceeded = failureCount > _kMaxRetries;
-    if (!exceeded) {
-      retryBody = payload; // keep payload; retry on next tick
-    } else {
-      retryBody = null;
-      retryBodyCapturedAt = null;
-      failureCount = 0;
-    }
-    // Exponential backoff: interval × failures, capped at 60 s.
-    final int backoff = exceeded
-        ? nextPingSec
-        : (nextPingSec * failureCount).clamp(nextPingSec, 60);
-    restartTimer(backoff);
-    logPing(
-      'network failure #$failureCount, retry in ${backoff}s, payload=${jsonEncode(payload)}',
-    );
+  static void _restartTimer(int newSec) {
+    if (newSec == _nextPingSec) return;
+    _nextPingSec = newSec;
+    _armFallbackTimer();
   }
 
-  void onClientError(http.Response resp) {
-    retryBody = null;
-    retryBodyCapturedAt = null;
-    failureCount = 0;
-    logPing('client error status=${resp.statusCode}, not retrying automatically');
-    service.invoke('locationUpdate', {
-      'lat': latestPos?.latitude,
-      'lng': latestPos?.longitude,
-      'ok': false,
-      'message': 'client_error_${resp.statusCode}',
-      'next_ping_sec': nextPingSec,
-    });
-  }
-
-  // ── Helper: build a fresh payload or reuse the retry cache ──────────────
-  //
-  // Returns null when the ping cycle must be skipped:
-  //   • No GPS fix available yet
-  //   • Accuracy worse than 80 m (server will reject it)
-  //   • GPS fix older than 88 s (server limit is 90 s)
-  //   • Retry cache has itself expired
-  Map<String, dynamic>? resolveBody(DateTime now) {
-    // Prefer a cached payload from a previous failed attempt.
-    if (retryBody != null && retryBodyCapturedAt != null) {
-      final int cacheAge =
-          now.difference(retryBodyCapturedAt!).inSeconds;
-      if (cacheAge <= _kStaleLimitSec) {
-        logPing('retrying cached payload age=${cacheAge}s');
-        return retryBody!;
-      }
-      // Cache has expired — discard and fall through to build fresh.
-      retryBody = null;
-      retryBodyCapturedAt = null;
-      failureCount = 0;
-    } else if (retryBody != null) {
-      // Defensive: retryBody set without timestamp (shouldn't happen, but
-      // we've seen it crash in the wild). Drop it and rebuild fresh.
-      logPing('retry cache had no timestamp — dropping');
-      retryBody = null;
-      failureCount = 0;
-    }
-
-    if (latestPos == null) {
-      logPing('skip: no GPS fix yet');
-      return null;
-    }
-    // Pre-flight accuracy guard — mirrors the server's 80 m rejection rule.
-    if (latestPos!.accuracy > _kAccuracyLimitM) {
-      logPing('skip: accuracy too low (${latestPos!.accuracy}m)');
-      return null;
-    }
-    // Pre-flight freshness guard — reject fixes the server would mark stale.
-    final int fixAge = now.difference(latestPos!.timestamp.toUtc()).inSeconds;
-    if (fixAge > _kStaleLimitSec) {
-      logPing('skip: stale GPS fix age=${fixAge}s');
-      return null;
-    }
-
-    final DateTime capturedAtLocal = latestPos!.timestamp.toLocal();
-    retryBodyCapturedAt = latestPos!.timestamp.toUtc();
-    return {
-      'trip_id': tripId!,
-      'external_delivery': deliveryId!,
-      'lat': latestPos!.latitude,
-      'lng': latestPos!.longitude,
-      'captured_at': _frappeDateTime(capturedAtLocal),
-      if (latestPos!.accuracy > 0) 'accuracy_m': latestPos!.accuracy,
-      if (latestPos!.speed >= 0) 'speed_mps': latestPos!.speed,
-      if (latestPos!.heading >= 0) 'heading_deg': latestPos!.heading,
-    };
-  }
-
-  // ── Core ping ────────────────────────────────────────────────────────────
-
-  Future<void> refreshLatestPosition(String reason) async {
-    if (isRefreshingFix) {
-      logPing('skip: GPS refresh already in flight');
-      return;
-    }
-    isRefreshingFix = true;
-    try {
-      logPing('refreshing GPS fix: $reason');
-      final Position pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 8),
-        ),
-      );
-      latestPos = pos;
-      logPing(
-        'refreshed gps lat=${pos.latitude}, lng=${pos.longitude}, '
-        'accuracy=${pos.accuracy}, speed=${pos.speed}, heading=${pos.heading}, '
-        'captured_at=${_frappeDateTime(pos.timestamp.toLocal())}',
-      );
-    } catch (e) {
-      logPing('refresh GPS failed: $e');
-    } finally {
-      isRefreshingFix = false;
-    }
-  }
-
-  Future<void> sendPing() async {
-    if (tripId == null ||
-        deliveryId == null ||
-        authHeader == null ||
-        baseUrl == null ||
-        isPinging ||
-        isRefreshingFix) {
-      if (isPinging) {
-        logPing('skip: previous request still in flight');
-      }
-      if (isRefreshingFix) {
-        logPing('skip: waiting for GPS refresh');
-      }
-      return;
-    }
-
-    final DateTime now = DateTime.now().toUtc();
-
-    // Throttle: never ping faster than nextPingSec.
-    if (lastPingedAt != null &&
-        now.difference(lastPingedAt!).inSeconds < nextPingSec - 1) {
-      logPing(
-        'skip: throttled, next allowed in '
-        '${nextPingSec - now.difference(lastPingedAt!).inSeconds}s',
-      );
-      return;
-    }
-
-    if (latestPos == null) {
-      await refreshLatestPosition('no cached fix');
-    } else {
-      final int fixAge = now.difference(latestPos!.timestamp.toUtc()).inSeconds;
-      if (fixAge > _kStaleLimitSec) {
-        await refreshLatestPosition('stale cached fix age=${fixAge}s');
-      }
-    }
-
-    final Map<String, dynamic>? body = resolveBody(now);
-    if (body == null) return; // pre-flight check failed; skip this cycle
-
-    isPinging = true;
-    lastPingedAt = now;
-
-    try {
-      logPing(
-        'POST $baseUrl/api/method/grozfy_go.grozfy_go.api.driver_uplink.location_ping '
-        'body=${jsonEncode(body)}',
-      );
-      final http.Response resp = await http
-          .post(
-            Uri.parse(
-              '$baseUrl/api/method/grozfy_go.grozfy_go.api.driver_uplink.location_ping',
-            ),
-            headers: {
-              'Authorization': authHeader!,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(const Duration(seconds: 8));
-
-      logPing('response status=${resp.statusCode} body=${resp.body}');
-
-      if (resp.statusCode == 200) {
-        final Map<String, dynamic> raw =
-            jsonDecode(resp.body) as Map<String, dynamic>;
-        // Frappe wraps method results in {"message": <result>}. Unwrap.
-        final Map<String, dynamic> json =
-            (raw['message'] is Map<String, dynamic>)
-                ? raw['message'] as Map<String, dynamic>
-                : raw;
-
-        // Any 200 response clears the retry cache.
-        retryBody = null;
-        retryBodyCapturedAt = null;
-        failureCount = 0;
-
-        final dynamic nextRaw = json['next_ping_sec'];
-        final int suggested =
-            (nextRaw is num && nextRaw > 0) ? nextRaw.toInt() : nextPingSec;
-
-        // Snapshot position before potential mutation below.
-        final Position? pos = latestPos;
-
-        // Server contract: "ok" message means happy path; anything else is
-        // a soft error. Older deployments returned bool `ok`; tolerate both.
-        final dynamic msgField = json['message'];
-        final String msg = msgField is String ? msgField : '';
-        final bool isOk = json['ok'] == true || msg == 'ok';
-
-        if (isOk) {
-          // ── Happy path: update interval, notify UI ───────────────────────
-          restartTimer(suggested);
-          service.invoke('locationUpdate', {
-            'lat': pos?.latitude,
-            'lng': pos?.longitude,
-            'ok': true,
-            'next_ping_sec': nextPingSec,
-          });
-        } else {
-          switch (msg) {
-            case 'low_gps_accuracy':
-              // Server confirmed accuracy is too poor; respect its delay.
-              restartTimer(suggested);
-            case 'impossible_speed':
-              // GPS glitch / teleport — discard fix, wait for next stream event.
-              latestPos = null;
-            case 'stale location update':
-              // Fix was too old when it arrived — discard and wait for fresh one.
-              latestPos = null;
-          }
-          service.invoke('locationUpdate', {
-            'lat': pos?.latitude,
-            'lng': pos?.longitude,
-            'ok': false,
-            'message': msg,
-            'next_ping_sec': suggested,
-          });
-        }
-      } else if (resp.statusCode >= 400 &&
-          resp.statusCode < 500 &&
-          resp.statusCode != 408 &&
-          resp.statusCode != 429) {
-        onClientError(resp);
-      } else {
-        // Non-200 HTTP — treat as transient and schedule a retry.
-        onNetworkFailure(body);
-      }
-    } catch (e) {
-      // Timeout, no network, DNS failure, etc. — cache payload and retry.
-      logPing('request error: $e');
-      onNetworkFailure(body);
-    } finally {
-      isPinging = false;
-    }
-  }
-
-  // Wire the indirect reference now that sendPing is declared.
-  doSendPing = sendPing;
-
-  // ── GPS stream setup ─────────────────────────────────────────────────────
-
-  void stopAll() {
-    posSub?.cancel();
-    fallbackTimer?.cancel();
-    service.stopSelf();
-  }
-
-  void startStreams() {
-    posSub?.cancel();
-    fallbackTimer?.cancel();
-
-    // Single shared stream — store latest fix in memory; never call GPS again
-    // inside sendPing().  distanceFilter = 10 m is the device-side gate.
-    posSub = Geolocator.getPositionStream(
+  static void _startPositionStream() {
+    if (_posSub != null) return;
+    _posSub = Geolocator.getPositionStream(
       locationSettings: Platform.isAndroid
           ? AndroidSettings(
               accuracy: LocationAccuracy.high,
@@ -435,50 +144,295 @@ void _onStart(ServiceInstance service) {
               pauseLocationUpdatesAutomatically: false,
             ),
     ).listen((Position pos) {
-      latestPos = pos;
-      logPing(
+      _latestPos = pos;
+      _log(
         'gps lat=${pos.latitude}, lng=${pos.longitude}, '
         'accuracy=${pos.accuracy}, speed=${pos.speed}, heading=${pos.heading}, '
         'captured_at=${_frappeDateTime(pos.timestamp.toLocal())}',
       );
-      sendPing();
+      _sendPing();
+    });
+  }
+
+  static void _stopPositionStream() {
+    _posSub?.cancel();
+    _posSub = null;
+  }
+
+  static void _onGpsEnabled() {
+    if (!_gpsDisabled) return;
+    _gpsDisabled = false;
+    _log('GPS service enabled — resuming pings');
+    _startPositionStream();
+    _armFallbackTimer();
+  }
+
+  static void _onGpsDisabled() {
+    if (_gpsDisabled) return;
+    _gpsDisabled = true;
+    _log('GPS service disabled — pausing pings until re-enabled');
+    _fallbackTimer?.cancel();
+    _fallbackTimer = null;
+    _stopPositionStream();
+    _latestPos = null;
+  }
+
+  static Future<void> _startStreams() async {
+    _stopPositionStream();
+    _svcStatusSub?.cancel();
+    _fallbackTimer?.cancel();
+
+    bool enabled = false;
+    try {
+      enabled = await Geolocator.isLocationServiceEnabled();
+    } catch (e) {
+      _log('initial isLocationServiceEnabled check failed: $e');
+    }
+    if (!enabled) _onGpsDisabled();
+
+    _svcStatusSub = Geolocator.getServiceStatusStream().listen((status) {
+      if (status == ServiceStatus.enabled) {
+        _onGpsEnabled();
+      } else {
+        _onGpsDisabled();
+      }
     });
 
-    // Fallback: keep pinging at the current interval even when stationary.
-    fallbackTimer = Timer.periodic(
-      Duration(seconds: nextPingSec),
-      (_) => sendPing(),
+    if (!_gpsDisabled) {
+      _startPositionStream();
+      _armFallbackTimer();
+    }
+  }
+
+  // ── Internal: ping logic ──────────────────────────────────────────────────
+
+  static Future<void> _refreshLatestPosition(String reason) async {
+    if (_isRefreshingFix) {
+      _log('skip: GPS refresh already in flight');
+      return;
+    }
+    _isRefreshingFix = true;
+    try {
+      _log('refreshing GPS fix: $reason');
+      final Position pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+      _latestPos = pos;
+      _log(
+        'refreshed gps lat=${pos.latitude}, lng=${pos.longitude}, '
+        'accuracy=${pos.accuracy}, speed=${pos.speed}, heading=${pos.heading}, '
+        'captured_at=${_frappeDateTime(pos.timestamp.toLocal())}',
+      );
+    } catch (e) {
+      _log('refresh GPS failed: $e');
+    } finally {
+      _isRefreshingFix = false;
+    }
+  }
+
+  static Map<String, dynamic>? _resolveBody(DateTime now) {
+    if (_retryBody != null && _retryBodyCapturedAt != null) {
+      final int cacheAge = now.difference(_retryBodyCapturedAt!).inSeconds;
+      if (cacheAge <= _kStaleLimitSec) {
+        _log('retrying cached payload age=${cacheAge}s');
+        return _retryBody!;
+      }
+      _retryBody = null;
+      _retryBodyCapturedAt = null;
+      _failureCount = 0;
+    } else if (_retryBody != null) {
+      _log('retry cache had no timestamp — dropping');
+      _retryBody = null;
+      _failureCount = 0;
+    }
+
+    if (_latestPos == null) {
+      _log('skip: no GPS fix yet');
+      return null;
+    }
+    if (_latestPos!.accuracy > _kAccuracyLimitM) {
+      _log('skip: accuracy too low (${_latestPos!.accuracy}m)');
+      return null;
+    }
+    final int fixAge = now.difference(_latestPos!.timestamp.toUtc()).inSeconds;
+    if (fixAge > _kStaleLimitSec) {
+      _log('skip: stale GPS fix age=${fixAge}s');
+      return null;
+    }
+
+    final DateTime capturedAtLocal = _latestPos!.timestamp.toLocal();
+    _retryBodyCapturedAt = _latestPos!.timestamp.toUtc();
+    return {
+      'trip_id': _tripId!,
+      'external_delivery': _deliveryId!,
+      'lat': _latestPos!.latitude,
+      'lng': _latestPos!.longitude,
+      'captured_at': _frappeDateTime(capturedAtLocal),
+      if (_latestPos!.accuracy > 0) 'accuracy_m': _latestPos!.accuracy,
+      if (_latestPos!.speed >= 0) 'speed_mps': _latestPos!.speed,
+      if (_latestPos!.heading >= 0) 'heading_deg': _latestPos!.heading,
+    };
+  }
+
+  static void _onNetworkFailure(Map<String, dynamic> payload) {
+    _failureCount++;
+    final bool exceeded = _failureCount > _kMaxRetries;
+    if (!exceeded) {
+      _retryBody = payload;
+    } else {
+      _retryBody = null;
+      _retryBodyCapturedAt = null;
+      _failureCount = 0;
+    }
+    final int backoff = exceeded
+        ? _nextPingSec
+        : (_nextPingSec * _failureCount).clamp(_nextPingSec, 60);
+    _restartTimer(backoff);
+    _log(
+      'network failure #$_failureCount, retry in ${backoff}s, payload=${jsonEncode(payload)}',
     );
   }
 
-  // ── Service message handlers ─────────────────────────────────────────────
+  static void _onClientError(http.Response resp) {
+    _retryBody = null;
+    _retryBodyCapturedAt = null;
+    _failureCount = 0;
+    _log('client error status=${resp.statusCode}, not retrying automatically');
+    _eventsController.add({
+      'lat': _latestPos?.latitude,
+      'lng': _latestPos?.longitude,
+      'ok': false,
+      'message': 'client_error_${resp.statusCode}',
+      'next_ping_sec': _nextPingSec,
+    });
+  }
 
-  service.on('startPing').listen((Map<String, dynamic>? data) {
-    if (data == null) return;
-    tripId = data['trip_id'] as String?;
-    deliveryId = data['delivery_id'] as String?;
-    authHeader = data['auth_header'] as String?;
-    baseUrl = data['base_url'] as String?;
-    nextPingSec = (data['interval_sec'] as int?) ?? _kDefaultPingSec;
-    lastPingedAt = null;
-    isPinging = false;
-    isRefreshingFix = false;
-    retryBody = null;
-    retryBodyCapturedAt = null;
-    failureCount = 0;
-    logPing(
-      'start trip_id=$tripId external_delivery=$deliveryId interval=${nextPingSec}s',
-    );
-    startStreams();
-  });
+  static Future<void> _sendPing() async {
+    if (_tripId == null ||
+        _deliveryId == null ||
+        _authHeader == null ||
+        _baseUrl == null ||
+        _isPinging ||
+        _isRefreshingFix) {
+      if (_isPinging) _log('skip: previous request still in flight');
+      if (_isRefreshingFix) _log('skip: waiting for GPS refresh');
+      return;
+    }
 
-  service.on('stopPing').listen((_) {
-    logPing('stop');
-    stopAll();
-  });
+    final DateTime now = DateTime.now().toUtc();
+
+    if (_lastPingedAt != null &&
+        now.difference(_lastPingedAt!).inSeconds < _nextPingSec - 1) {
+      _log(
+        'skip: throttled, next allowed in '
+        '${_nextPingSec - now.difference(_lastPingedAt!).inSeconds}s',
+      );
+      return;
+    }
+
+    if (_latestPos == null) {
+      await _refreshLatestPosition('no cached fix');
+    } else {
+      final int fixAge =
+          now.difference(_latestPos!.timestamp.toUtc()).inSeconds;
+      if (fixAge > _kStaleLimitSec) {
+        await _refreshLatestPosition('stale cached fix age=${fixAge}s');
+      }
+    }
+
+    final Map<String, dynamic>? body = _resolveBody(now);
+    if (body == null) return;
+
+    _isPinging = true;
+    _lastPingedAt = now;
+
+    try {
+      _log(
+        'POST $_baseUrl/api/method/grozfy_go.grozfy_go.api.driver_uplink.location_ping '
+        'body=${jsonEncode(body)}',
+      );
+      final http.Response resp = await http
+          .post(
+            Uri.parse(
+              '$_baseUrl/api/method/grozfy_go.grozfy_go.api.driver_uplink.location_ping',
+            ),
+            headers: {
+              'Authorization': _authHeader!,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 8));
+
+      _log('response status=${resp.statusCode} body=${resp.body}');
+
+      if (resp.statusCode == 200) {
+        final Map<String, dynamic> raw =
+            jsonDecode(resp.body) as Map<String, dynamic>;
+        final Map<String, dynamic> json =
+            (raw['message'] is Map<String, dynamic>)
+                ? raw['message'] as Map<String, dynamic>
+                : raw;
+
+        _retryBody = null;
+        _retryBodyCapturedAt = null;
+        _failureCount = 0;
+
+        final dynamic nextRaw = json['next_ping_sec'];
+        final int suggested =
+            (nextRaw is num && nextRaw > 0) ? nextRaw.toInt() : _nextPingSec;
+
+        final Position? pos = _latestPos;
+
+        final dynamic msgField = json['message'];
+        final String msg = msgField is String ? msgField : '';
+        final bool isOk = json['ok'] == true || msg == 'ok';
+
+        if (isOk) {
+          _restartTimer(suggested);
+          _eventsController.add({
+            'lat': pos?.latitude,
+            'lng': pos?.longitude,
+            'ok': true,
+            'next_ping_sec': _nextPingSec,
+          });
+        } else {
+          switch (msg) {
+            case 'low_gps_accuracy':
+              _restartTimer(suggested);
+            case 'impossible_speed':
+              _latestPos = null;
+            case 'stale location update':
+              _latestPos = null;
+          }
+          _eventsController.add({
+            'lat': pos?.latitude,
+            'lng': pos?.longitude,
+            'ok': false,
+            'message': msg,
+            'next_ping_sec': suggested,
+          });
+        }
+      } else if (resp.statusCode >= 400 &&
+          resp.statusCode < 500 &&
+          resp.statusCode != 408 &&
+          resp.statusCode != 429) {
+        _onClientError(resp);
+      } else {
+        _onNetworkFailure(body);
+      }
+    } catch (e) {
+      _log('request error: $e');
+      _onNetworkFailure(body);
+    } finally {
+      _isPinging = false;
+    }
+  }
 }
-
-// ─── Pure helpers ─────────────────────────────────────────────────────────────
 
 /// Formats [dateTime] as `"YYYY-MM-DD HH:MM:SS"` for Frappe.
 String _frappeDateTime(DateTime dateTime) =>

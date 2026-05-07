@@ -58,7 +58,6 @@ dependencies:
   internet_connection_checker_plus: ^2.9.1
   html: ^0.15.4
   flutter_secure_storage: ^9.2.4
-  flutter_background_service: ^5.0.6
   hive: ^2.2.3
   hive_flutter: ^1.1.0
 

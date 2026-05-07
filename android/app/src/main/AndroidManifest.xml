@@ -49,13 +49,6 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- flutter_background_service foreground service (location type for Android 14+) -->
-        <service
-            android:name="id.flutter.flutter_background_service.BackgroundService"
-            android:foregroundServiceType="location"
-            android:exported="true"
-            tools:replace="android:exported" />
-
         <receiver
             android:name=".PartnerWidgetProvider"
             android:exported="true">

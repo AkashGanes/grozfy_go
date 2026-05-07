@@ -100,20 +100,24 @@ class SkeletonLoader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.zero,
-      itemCount: itemCount,
-      itemBuilder: (context, index) {
+    // Column instead of a shrinkWrap ListView. The shrinkWrap form is a
+    // RenderShrinkWrappingViewport, which fails the intrinsic-height query
+    // that infinite_scroll_pagination's SliverFillRemaining performs on the
+    // first-page indicator — that assertion was detaching the debugger when
+    // the screen first rendered.
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: List<Widget>.generate(itemCount, (index) {
         return Padding(
-          padding: EdgeInsets.only(bottom: spacing),
+          padding: EdgeInsets.only(
+            bottom: index == itemCount - 1 ? 0 : spacing,
+          ),
           child: _SkeletonItem(
             index: index,
             shimmerColor: shimmerColor,
           ),
         );
-      },
+      }),
     );
   }
 }
