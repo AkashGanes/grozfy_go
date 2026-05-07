@@ -335,6 +335,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     return AppShell(
       title: 'Track Order ${order.orderId}',
       subtitle: 'Real-time tracking visible to customer & admin',
+      // Map + DraggableScrollableSheet need bounded height; AppShell's
+      // default SingleChildScrollView wrapper denies that and crashes
+      // the engine on push.
+      scrollable: false,
+      padding: EdgeInsets.zero,
       actions: [
         if (app.isOrderTimerRunning)
           const Padding(
