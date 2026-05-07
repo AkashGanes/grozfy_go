@@ -69,6 +69,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   Future<void> _fetchPage(int pageKey) async {
     final app = _app;
     if (app == null) {
+      if (!mounted) return;
       _pagingController.error = 'App controller is not available';
       return;
     }
@@ -95,6 +96,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         }),
       );
 
+      // The screen may have been popped (and the controller disposed) while
+      // these awaits were in flight. Touching the controller after dispose
+      // throws — bail out instead.
+      if (!mounted) return;
+
       final orders = pageOrders.whereType<DeliveryOrder>().toList()
         ..sort((a, b) {
           final c = a.distanceKm.compareTo(b.distanceKm);
@@ -108,6 +114,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         _pagingController.appendPage(orders, pageKey + summaries.length);
       }
     } catch (e) {
+      if (!mounted) return;
       _pagingController.error = e;
     }
   }

@@ -64,6 +64,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         }
       }
 
+      // Bail if the screen was popped while we were awaiting — touching a
+      // disposed PagingController throws.
+      if (!mounted) return;
+
       final isLastPage = items.length < _pageSize;
       if (isLastPage) {
         _pagingController.appendLastPage(items);
@@ -71,6 +75,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         _pagingController.appendPage(items, offset + items.length);
       }
     } catch (e) {
+      if (!mounted) return;
       _pagingController.error = e;
     }
   }

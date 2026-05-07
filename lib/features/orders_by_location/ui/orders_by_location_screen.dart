@@ -82,6 +82,10 @@ class _OrdersByLocationScreenState
       await OfflineTripManager()
           .cacheOrderSummaries(orders.map(_summaryToMap).toList());
 
+      // The screen may have been popped while these awaits were in flight.
+      // Writing to a disposed PagingController throws.
+      if (!mounted) return;
+
       final items = <LocationListItem>[];
       for (final order in orders) {
         if (order.storeName != _lastStoreName) {
@@ -97,6 +101,7 @@ class _OrdersByLocationScreenState
         _pagingController.appendPage(items, pageKey + orders.length);
       }
     } catch (e) {
+      if (!mounted) return;
       if (_isNetworkError(e)) {
         ConnectivityService().reportNetworkFailure();
         _serveFromCache(pageKey, storeName);
