@@ -21,6 +21,7 @@ import '../services/fcm_service.dart';
 import '../services/location_ping_service.dart';
 import '../services/secure_token_storage.dart';
 import '../services/sync_manager.dart';
+import '../utils/formatters.dart';
 import '../utils/validators.dart' as app_validators;
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
@@ -3616,23 +3617,38 @@ class AppController extends ChangeNotifier {
     final double longitude = detail.longitude ?? _currentLongitude ?? 77.2090;
     final OrderStatus status = _mapExternalStatus(detail.status);
 
+    // Frappe stores addresses with HTML markup (<br> for line breaks,
+    // sometimes <a>, <span>, etc.). Sanitize once here so every consumer
+    // of DeliveryOrder gets plain text with real newlines.
+    final String dropAddress = Formatters.stripHtml(
+      detail.deliveryAddress,
+      preserveLineBreaks: true,
+    );
+    final String pickupAddress = Formatters.stripHtml(
+      detail.pickupAddress,
+      preserveLineBreaks: true,
+    );
+    final String storeAddress = pickupAddress.isNotEmpty
+        ? pickupAddress
+        : detail.storeUrl;
+
     return DeliveryOrder(
       id: detail.name,
       orderId: detail.name,
       customerName: detail.customerName,
       customerPhone: detail.contactMobile ?? '',
-      deliveryAddress: detail.deliveryAddress ?? '',
+      deliveryAddress: dropAddress,
       storeId: detail.storeUrl.isNotEmpty ? detail.storeUrl : detail.storeName,
       storeName: detail.storeName,
       storeContact: detail.contactMobile ?? '',
-      storeAddress: detail.pickupAddress ?? detail.storeUrl,
+      storeAddress: storeAddress,
       orderItems: items,
       orderStatus: status,
       latitude: latitude,
       longitude: longitude,
       contactNumber: detail.contactMobile ?? '',
-      pickup: detail.pickupAddress ?? detail.storeUrl,
-      drop: detail.deliveryAddress ?? '',
+      pickup: pickupAddress.isNotEmpty ? pickupAddress : detail.storeUrl,
+      drop: dropAddress,
       deliveryInstructions: '',
       paymentMode: detail.paymentMode ?? '',
       distanceKm: _calculateDistance(
@@ -3780,14 +3796,18 @@ class AppController extends ChangeNotifier {
         deliveryPartnerLocation: _partnerLiveLocation,
       );
     }
-    unawaited(
-      SyncManager().queueLocationPing(_currentLatitude!, _currentLongitude!),
-    );
     notifyListeners();
   }
 
   Future<void> _startLocationPingIfReady() async {
-    if (_activeTripId == null || _activeOrder == null) return;
+    if (_activeOrder == null) return;
+    if (_activeTripId == null) {
+      _logApi(
+        'location_ping_skip',
+        'missing active trip id for order=${_activeOrder!.orderId}',
+      );
+      return;
+    }
     final String? authHeader = await _buildAuthHeader();
     if (authHeader == null) return;
     await LocationPingService.start(

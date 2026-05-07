@@ -12,6 +12,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/profile_completeness_indicator.dart';
@@ -320,7 +321,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           const SizedBox(height: 12),
           _DashboardLocationCard(app: app),
           const SizedBox(height: 14),
-          SectionLabel(app.t('earnings_summary')),
+          /* SectionLabel(app.t('earnings_summary')),
           FrostCard(
             child: Column(
               children: [
@@ -358,8 +359,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          SectionLabel(app.t('performance_metrics')),
+          const SizedBox(height: 14), */
+          /* SectionLabel(app.t('performance_metrics')),
           FrostCard(
             child: Column(
               children: [
@@ -399,7 +400,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ],
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 14), */
           SectionLabel(app.t('batch_pickup')),
           FrostCard(
             child: Column(
@@ -589,13 +590,18 @@ class _DashboardScreenState extends State<DashboardScreen>
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 6),
-                      Text(app.activeOrder!.drop),
+                      Text(
+                        Formatters.stripHtml(
+                          app.activeOrder!.drop,
+                          preserveLineBreaks: true,
+                        ),
+                      ),
                       const SizedBox(height: 10),
                       _ActiveOrderActions(order: app.activeOrder!),
                     ],
                   ),
           ),
-          const SizedBox(height: 14),
+          /* const SizedBox(height: 14),
           SectionLabel(app.t('notifications')),
           FrostCard(
             child: Column(
@@ -680,8 +686,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          SectionLabel(app.t('quick_access')),
+          const SizedBox(height: 14), */
+          /* SectionLabel(app.t('quick_access')),
           FrostCard(
             child: Wrap(
               spacing: 10,
@@ -748,7 +754,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 12), */
         ],
       ),
     );

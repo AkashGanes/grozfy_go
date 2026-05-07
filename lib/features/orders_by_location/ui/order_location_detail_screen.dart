@@ -14,6 +14,7 @@ import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/call_utils.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
@@ -80,6 +81,15 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
     _isTracking = false;
     _mapController.dispose();
     super.dispose();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  String _cleanAddress(String? raw, {String fallback = ''}) {
+    final cleaned = Formatters.stripHtml(raw, preserveLineBreaks: true);
+    return cleaned.isEmpty ? fallback : cleaned;
   }
 
   // ---------------------------------------------------------------------------
@@ -1324,12 +1334,16 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                   ),
                   const SizedBox(height: 14),
 
-                  // Addresses
+                  // Addresses — Frappe sends them as HTML, sanitize before
+                  // handing to the row widget (which uses raw Text).
                   _AddressRow(
                     icon: Icons.location_on_rounded,
                     iconColor: Colors.redAccent,
                     label: 'Delivery',
-                    address: detail.deliveryAddress ?? 'Address not available',
+                    address: _cleanAddress(
+                      detail.deliveryAddress,
+                      fallback: 'Address not available',
+                    ),
                   ),
                   if (detail.pickupAddress != null) ...[
                     const SizedBox(height: 12),
@@ -1337,7 +1351,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                       icon: Icons.store_rounded,
                       iconColor: AppTheme.oceanBlue,
                       label: 'Pickup',
-                      address: detail.pickupAddress!,
+                      address: _cleanAddress(detail.pickupAddress),
                     ),
                   ],
                   const SizedBox(height: 14),
