@@ -103,6 +103,10 @@ void _onStart(ServiceInstance service) {
   // Register all Flutter platform-channel plugins in this background isolate.
   DartPluginRegistrant.ensureInitialized();
 
+  void logPing(String message) {
+    debugPrint('[LocationPing] $message');
+  }
+
   // ── Trip context (populated via 'startPing') ────────────────────────────
   String? tripId;
   String? deliveryId;
@@ -116,6 +120,7 @@ void _onStart(ServiceInstance service) {
   // ── Ping timing ─────────────────────────────────────────────────────────
   Timer? fallbackTimer;
   bool isPinging = false;
+  bool isRefreshingFix = false;
   int nextPingSec = _kDefaultPingSec;
   DateTime? lastPingedAt;
 
@@ -155,7 +160,23 @@ void _onStart(ServiceInstance service) {
         ? nextPingSec
         : (nextPingSec * failureCount).clamp(nextPingSec, 60);
     restartTimer(backoff);
-    debugPrint('[LocationPing] failure #$failureCount — retry in ${backoff}s');
+    logPing(
+      'network failure #$failureCount, retry in ${backoff}s, payload=${jsonEncode(payload)}',
+    );
+  }
+
+  void onClientError(http.Response resp) {
+    retryBody = null;
+    retryBodyCapturedAt = null;
+    failureCount = 0;
+    logPing('client error status=${resp.statusCode}, not retrying automatically');
+    service.invoke('locationUpdate', {
+      'lat': latestPos?.latitude,
+      'lng': latestPos?.longitude,
+      'ok': false,
+      'message': 'client_error_${resp.statusCode}',
+      'next_ping_sec': nextPingSec,
+    });
   }
 
   // ── Helper: build a fresh payload or reuse the retry cache ──────────────
@@ -167,37 +188,49 @@ void _onStart(ServiceInstance service) {
   //   • Retry cache has itself expired
   Map<String, dynamic>? resolveBody(DateTime now) {
     // Prefer a cached payload from a previous failed attempt.
-    if (retryBody != null) {
-      final int cacheAge = now.difference(retryBodyCapturedAt!).inSeconds;
+    if (retryBody != null && retryBodyCapturedAt != null) {
+      final int cacheAge =
+          now.difference(retryBodyCapturedAt!).inSeconds;
       if (cacheAge <= _kStaleLimitSec) {
+        logPing('retrying cached payload age=${cacheAge}s');
         return retryBody!;
       }
       // Cache has expired — discard and fall through to build fresh.
       retryBody = null;
       retryBodyCapturedAt = null;
       failureCount = 0;
+    } else if (retryBody != null) {
+      // Defensive: retryBody set without timestamp (shouldn't happen, but
+      // we've seen it crash in the wild). Drop it and rebuild fresh.
+      logPing('retry cache had no timestamp — dropping');
+      retryBody = null;
+      failureCount = 0;
     }
 
     if (latestPos == null) {
+      logPing('skip: no GPS fix yet');
       return null;
     }
     // Pre-flight accuracy guard — mirrors the server's 80 m rejection rule.
     if (latestPos!.accuracy > _kAccuracyLimitM) {
+      logPing('skip: accuracy too low (${latestPos!.accuracy}m)');
       return null;
     }
     // Pre-flight freshness guard — reject fixes the server would mark stale.
     final int fixAge = now.difference(latestPos!.timestamp.toUtc()).inSeconds;
     if (fixAge > _kStaleLimitSec) {
+      logPing('skip: stale GPS fix age=${fixAge}s');
       return null;
     }
 
-    retryBodyCapturedAt = now;
+    final DateTime capturedAtLocal = latestPos!.timestamp.toLocal();
+    retryBodyCapturedAt = latestPos!.timestamp.toUtc();
     return {
       'trip_id': tripId!,
       'external_delivery': deliveryId!,
       'lat': latestPos!.latitude,
       'lng': latestPos!.longitude,
-      'captured_at': _frappeUtc(now),
+      'captured_at': _frappeDateTime(capturedAtLocal),
       if (latestPos!.accuracy > 0) 'accuracy_m': latestPos!.accuracy,
       if (latestPos!.speed >= 0) 'speed_mps': latestPos!.speed,
       if (latestPos!.heading >= 0) 'heading_deg': latestPos!.heading,
@@ -206,12 +239,46 @@ void _onStart(ServiceInstance service) {
 
   // ── Core ping ────────────────────────────────────────────────────────────
 
+  Future<void> refreshLatestPosition(String reason) async {
+    if (isRefreshingFix) {
+      logPing('skip: GPS refresh already in flight');
+      return;
+    }
+    isRefreshingFix = true;
+    try {
+      logPing('refreshing GPS fix: $reason');
+      final Position pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+      latestPos = pos;
+      logPing(
+        'refreshed gps lat=${pos.latitude}, lng=${pos.longitude}, '
+        'accuracy=${pos.accuracy}, speed=${pos.speed}, heading=${pos.heading}, '
+        'captured_at=${_frappeDateTime(pos.timestamp.toLocal())}',
+      );
+    } catch (e) {
+      logPing('refresh GPS failed: $e');
+    } finally {
+      isRefreshingFix = false;
+    }
+  }
+
   Future<void> sendPing() async {
     if (tripId == null ||
         deliveryId == null ||
         authHeader == null ||
         baseUrl == null ||
-        isPinging) {
+        isPinging ||
+        isRefreshingFix) {
+      if (isPinging) {
+        logPing('skip: previous request still in flight');
+      }
+      if (isRefreshingFix) {
+        logPing('skip: waiting for GPS refresh');
+      }
       return;
     }
 
@@ -220,7 +287,20 @@ void _onStart(ServiceInstance service) {
     // Throttle: never ping faster than nextPingSec.
     if (lastPingedAt != null &&
         now.difference(lastPingedAt!).inSeconds < nextPingSec - 1) {
+      logPing(
+        'skip: throttled, next allowed in '
+        '${nextPingSec - now.difference(lastPingedAt!).inSeconds}s',
+      );
       return;
+    }
+
+    if (latestPos == null) {
+      await refreshLatestPosition('no cached fix');
+    } else {
+      final int fixAge = now.difference(latestPos!.timestamp.toUtc()).inSeconds;
+      if (fixAge > _kStaleLimitSec) {
+        await refreshLatestPosition('stale cached fix age=${fixAge}s');
+      }
     }
 
     final Map<String, dynamic>? body = resolveBody(now);
@@ -230,6 +310,10 @@ void _onStart(ServiceInstance service) {
     lastPingedAt = now;
 
     try {
+      logPing(
+        'POST $baseUrl/api/method/grozfy_go.grozfy_go.api.driver_uplink.location_ping '
+        'body=${jsonEncode(body)}',
+      );
       final http.Response resp = await http
           .post(
             Uri.parse(
@@ -244,9 +328,16 @@ void _onStart(ServiceInstance service) {
           )
           .timeout(const Duration(seconds: 8));
 
+      logPing('response status=${resp.statusCode} body=${resp.body}');
+
       if (resp.statusCode == 200) {
-        final Map<String, dynamic> json =
+        final Map<String, dynamic> raw =
             jsonDecode(resp.body) as Map<String, dynamic>;
+        // Frappe wraps method results in {"message": <result>}. Unwrap.
+        final Map<String, dynamic> json =
+            (raw['message'] is Map<String, dynamic>)
+                ? raw['message'] as Map<String, dynamic>
+                : raw;
 
         // Any 200 response clears the retry cache.
         retryBody = null;
@@ -260,7 +351,13 @@ void _onStart(ServiceInstance service) {
         // Snapshot position before potential mutation below.
         final Position? pos = latestPos;
 
-        if (json['ok'] == true) {
+        // Server contract: "ok" message means happy path; anything else is
+        // a soft error. Older deployments returned bool `ok`; tolerate both.
+        final dynamic msgField = json['message'];
+        final String msg = msgField is String ? msgField : '';
+        final bool isOk = json['ok'] == true || msg == 'ok';
+
+        if (isOk) {
           // ── Happy path: update interval, notify UI ───────────────────────
           restartTimer(suggested);
           service.invoke('locationUpdate', {
@@ -270,8 +367,6 @@ void _onStart(ServiceInstance service) {
             'next_ping_sec': nextPingSec,
           });
         } else {
-          // ── Error responses — handle per backend contract ────────────────
-          final String msg = (json['message'] as String?) ?? '';
           switch (msg) {
             case 'low_gps_accuracy':
               // Server confirmed accuracy is too poor; respect its delay.
@@ -291,12 +386,18 @@ void _onStart(ServiceInstance service) {
             'next_ping_sec': suggested,
           });
         }
+      } else if (resp.statusCode >= 400 &&
+          resp.statusCode < 500 &&
+          resp.statusCode != 408 &&
+          resp.statusCode != 429) {
+        onClientError(resp);
       } else {
         // Non-200 HTTP — treat as transient and schedule a retry.
         onNetworkFailure(body);
       }
-    } catch (_) {
+    } catch (e) {
       // Timeout, no network, DNS failure, etc. — cache payload and retry.
+      logPing('request error: $e');
       onNetworkFailure(body);
     } finally {
       isPinging = false;
@@ -335,6 +436,11 @@ void _onStart(ServiceInstance service) {
             ),
     ).listen((Position pos) {
       latestPos = pos;
+      logPing(
+        'gps lat=${pos.latitude}, lng=${pos.longitude}, '
+        'accuracy=${pos.accuracy}, speed=${pos.speed}, heading=${pos.heading}, '
+        'captured_at=${_frappeDateTime(pos.timestamp.toLocal())}',
+      );
       sendPing();
     });
 
@@ -356,22 +462,29 @@ void _onStart(ServiceInstance service) {
     nextPingSec = (data['interval_sec'] as int?) ?? _kDefaultPingSec;
     lastPingedAt = null;
     isPinging = false;
+    isRefreshingFix = false;
     retryBody = null;
     retryBodyCapturedAt = null;
     failureCount = 0;
+    logPing(
+      'start trip_id=$tripId external_delivery=$deliveryId interval=${nextPingSec}s',
+    );
     startStreams();
   });
 
-  service.on('stopPing').listen((_) => stopAll());
+  service.on('stopPing').listen((_) {
+    logPing('stop');
+    stopAll();
+  });
 }
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
-/// Formats [utcNow] as `"YYYY-MM-DD HH:MM:SS"` — the Frappe datetime format.
-String _frappeUtc(DateTime utcNow) =>
-    '${utcNow.year.toString().padLeft(4, '0')}-'
-    '${utcNow.month.toString().padLeft(2, '0')}-'
-    '${utcNow.day.toString().padLeft(2, '0')} '
-    '${utcNow.hour.toString().padLeft(2, '0')}:'
-    '${utcNow.minute.toString().padLeft(2, '0')}:'
-    '${utcNow.second.toString().padLeft(2, '0')}';
+/// Formats [dateTime] as `"YYYY-MM-DD HH:MM:SS"` for Frappe.
+String _frappeDateTime(DateTime dateTime) =>
+    '${dateTime.year.toString().padLeft(4, '0')}-'
+    '${dateTime.month.toString().padLeft(2, '0')}-'
+    '${dateTime.day.toString().padLeft(2, '0')} '
+    '${dateTime.hour.toString().padLeft(2, '0')}:'
+    '${dateTime.minute.toString().padLeft(2, '0')}:'
+    '${dateTime.second.toString().padLeft(2, '0')}';
