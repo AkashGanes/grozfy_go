@@ -31,7 +31,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   bool _savingBasicInfo = false;
   bool _basicInfoInitialized = false;
-  bool _expandBasicDetails = true;
+  bool _expandBasicDetails = false;
   bool _expandLicenseDetails = false;
   bool _expandDrivingCategory = false;
   bool _expandAdditionalDetails = false;

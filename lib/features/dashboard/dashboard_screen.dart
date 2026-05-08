@@ -191,8 +191,9 @@ class _DashboardScreenState extends State<DashboardScreen>
           ProfileProgressCard(
             completeness: app.profileCompleteness,
             progressTitle: app.t('profile_progress'),
-            subtitleBuilder: (c, t) =>
-                'Your profile is $c/$t complete. Keep going!',
+            subtitleBuilder: (c, t) => c == t
+                ? "You're good to go. Ride & earn!"
+                : 'Your profile is $c/$t complete. Keep going!',
             progressLabel: (c, t) => '$c of $t completed',
             tapToCompleteLabel: app.t('tap_to_complete'),
             pendingLabel: app.t('pending'),
