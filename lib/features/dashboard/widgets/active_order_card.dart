@@ -289,11 +289,8 @@ class _ActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: isDark
-          ? Theme.of(context).colorScheme.surfaceContainerHighest
-          : Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: action.onTap,
@@ -308,7 +305,7 @@ class _ActionTile extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(action.icon, size: 16, color: AppTheme.accentOf(context)),
+              Icon(action.icon, size: 16, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
@@ -316,7 +313,7 @@ class _ActionTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: AppTheme.accentOf(context),
+                    color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.w700,
                     fontSize: 12,
                   ),

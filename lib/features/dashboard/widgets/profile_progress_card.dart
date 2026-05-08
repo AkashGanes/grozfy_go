@@ -376,14 +376,10 @@ class _ItemChip extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : iconColor.withValues(alpha: 0.12),
+                  color: iconColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon,
-                    color: isDark ? Colors.white.withValues(alpha: 0.9) : iconColor,
-                    size: 20),
+                child: Icon(icon, color: iconColor, size: 20),
               ),
               const SizedBox(height: 8),
               Text(

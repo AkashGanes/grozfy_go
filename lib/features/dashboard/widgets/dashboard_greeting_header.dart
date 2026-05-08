@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 class DashboardGreetingHeader extends StatelessWidget {
@@ -5,6 +7,7 @@ class DashboardGreetingHeader extends StatelessWidget {
     super.key,
     required this.name,
     this.avatarUrl,
+    this.avatarFilePath,
     this.avatarInitial,
     this.hasUnreadNotifications = false,
     this.onNotificationsTap,
@@ -14,6 +17,7 @@ class DashboardGreetingHeader extends StatelessWidget {
 
   final String name;
   final String? avatarUrl;
+  final String? avatarFilePath;
   final String? avatarInitial;
   final bool hasUnreadNotifications;
   final VoidCallback? onNotificationsTap;
@@ -54,13 +58,19 @@ class DashboardGreetingHeader extends StatelessWidget {
                 ],
               ),
               child: ClipOval(
-                child: avatarUrl != null && avatarUrl!.isNotEmpty
-                    ? Image.network(
-                        avatarUrl!,
+                child: avatarFilePath != null && avatarFilePath!.isNotEmpty
+                    ? Image.file(
+                        File(avatarFilePath!),
                         fit: BoxFit.cover,
                         errorBuilder: (_, _, _) => _initialAvatar(scheme),
                       )
-                    : _initialAvatar(scheme),
+                    : avatarUrl != null && avatarUrl!.isNotEmpty
+                        ? Image.network(
+                            avatarUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => _initialAvatar(scheme),
+                          )
+                        : _initialAvatar(scheme),
               ),
             ),
           ),

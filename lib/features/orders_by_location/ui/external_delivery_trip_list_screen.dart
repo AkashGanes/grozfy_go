@@ -433,14 +433,14 @@ class _TripCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: badgeColor.withValues(alpha: 0.1),
+                      color: statusColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: badgeColor.withValues(alpha: 0.35)),
+                      border: Border.all(color: statusColor.withValues(alpha: 0.35)),
                     ),
                     child: Text(
-                      _docstatusLabel(context, trip.docstatus),
+                      trip.status.isEmpty ? 'Draft' : trip.status,
                       style: TextStyle(
-                        color: badgeColor,
+                        color: statusColor,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -448,30 +448,31 @@ class _TripCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        backgroundColor: Colors.black12,
-                        valueColor: AlwaysStoppedAnimation<Color>(progressColor),
-                        minHeight: 6,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
+                  const Spacer(),
                   Text(
                     '$done/$total stops',
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: isComplete ? const Color(0xFF2E7D32) : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54),
+                      color: isComplete
+                          ? const Color(0xFF2E7D32)
+                          : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54),
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  backgroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+                  valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                  minHeight: 6,
+                ),
               ),
             ],
           ),

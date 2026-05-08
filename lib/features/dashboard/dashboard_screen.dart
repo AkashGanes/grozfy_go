@@ -188,6 +188,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               .maybeWhen(data: (v) => v, orElse: () => 0);
           return DashboardGreetingHeader(
             name: partnerName,
+            avatarFilePath: app.profileImagePath,
+            avatarUrl: app.serverProfileImageUrl,
             avatarInitial: partnerName.isNotEmpty ? partnerName[0] : '?',
             hasUnreadNotifications: unreadCount > 0,
             onNotificationsTap: () =>
