@@ -849,6 +849,8 @@ class _ExternalDeliveryTripDetailsScreenState
             ? 'Stop status updated to $newStatus'
             : 'Saved offline. Will sync when reconnected.',
       );
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
       setState(() {
         _future = _loadTrip();
       });
@@ -877,14 +879,30 @@ class _ExternalDeliveryTripDetailsScreenState
     final stopKey = _stopKey(stop);
     setState(() => _updatingStops.add(stopKey));
     try {
-      await ExternalDeliveryRepository().updateTripStopStatus(
-        stop: stop,
+      final stopDocType =
+          (stop.rawFields['doctype'] ?? '').toString().trim();
+      final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+      final parentTripName =
+          (stop.rawFields['parent'] ?? '').toString().trim();
+      await OfflineTripManager().updateStopStatusOffline(
+        stopDocType: stopDocType,
+        stopName: stopName,
+        parentTripName: parentTripName,
+        orderName: stop.externalDelivery.trim(),
         newStatus: 'Delivered',
       );
       if (!mounted) return;
-      showInfoSnack(context, 'Stop status updated to Delivered');
+      final isConnected = ConnectivityService().isConnected;
+      showInfoSnack(
+        context,
+        isConnected
+            ? 'Stop status updated to Delivered'
+            : 'Saved offline. Will sync when reconnected.',
+      );
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
       setState(() {
-        _future = ExternalDeliveryRepository().fetchTripDetails(widget.tripName);
+        _future = _loadTrip();
       });
     } catch (e) {
       if (!mounted) return;

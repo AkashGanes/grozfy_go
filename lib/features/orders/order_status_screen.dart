@@ -51,7 +51,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
     }
 
-    app.updateOrderStatus(next);
+    final String? error = await app.updateOrderStatus(next);
 
     if (next == OrderStatus.delivered ||
         next == OrderStatus.cancelled ||
@@ -61,6 +61,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     if (!context.mounted) return;
     setState(() => _syncing = false);
+
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
 
     if (next == OrderStatus.delivered) {
       AppToast.show(context, 'Order delivered and earnings updated');

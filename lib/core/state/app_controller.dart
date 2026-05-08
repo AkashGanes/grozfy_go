@@ -3065,6 +3065,26 @@ class AppController extends ChangeNotifier {
         }
       }
 
+      // Sync trip stop status for terminal states.
+      if (_activeTripId != null) {
+        final String? stopStatus = _toTripStopStatus(status);
+        if (stopStatus != null) {
+          try {
+            await _orderRepository.updateTripStopStatusByDelivery(
+              tripId: _activeTripId!,
+              deliveryId: _activeOrder!.orderId,
+              newStatus: stopStatus,
+            );
+            _logApi(
+              'update_trip_stop_status',
+              'trip=$_activeTripId delivery=${_activeOrder!.orderId} → $stopStatus',
+            );
+          } catch (e) {
+            _logApi('update_trip_stop_status_warn', e.toString());
+          }
+        }
+      }
+
       _activeOrder = _activeOrder!.copyWith(
         orderStatus: status,
         assignmentStatus: OrderAssignmentStatus.assigned,
@@ -3306,8 +3326,7 @@ class AppController extends ChangeNotifier {
       final OrderStatus status = _mapExternalStatus(detail.status);
       if (status == OrderStatus.delivered ||
           status == OrderStatus.cancelled ||
-          status == OrderStatus.rejected ||
-          status == OrderStatus.pending) {
+          status == OrderStatus.rejected) {
         _activeOrder = null;
         _acceptedOrders.removeWhere((order) => order.orderId == activeOrderId);
         await _persistActiveOrderId(null);
@@ -3343,8 +3362,9 @@ class AppController extends ChangeNotifier {
       );
       notifyListeners();
     } catch (e) {
+      // Keep the existing active order on network/API errors —
+      // a temporary failure should not clear a driver's in-progress delivery.
       _logApi('fetch_active_order_warn', e.toString());
-      _activeOrder = null;
       notifyListeners();
     } finally {
       _isFetchingActiveOrder = false;
@@ -3574,6 +3594,17 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  String? _toTripStopStatus(OrderStatus status) {
+    switch (status) {
+      case OrderStatus.delivered:
+        return 'Delivered';
+      case OrderStatus.cancelled:
+        return 'Failed';
+      default:
+        return null;
+    }
+  }
+
   OrderStatus _mapExternalStatus(String status) {
     switch (status.trim().toLowerCase()) {
       case 'accepted':
@@ -3594,6 +3625,9 @@ class AppController extends ChangeNotifier {
         return OrderStatus.delivered;
       case 'cancelled':
       case 'canceled':
+      case 'failed':
+      case 'return initiated':
+      case 'returned':
         return OrderStatus.cancelled;
       case 'pending':
       default:
@@ -3676,6 +3710,8 @@ class AppController extends ChangeNotifier {
   DeliveryOrder buildDeliveryOrderFromDetail(ExternalDeliveryDetail detail) {
     return _deliveryOrderFromDetail(detail);
   }
+
+  OrderStatus mapStatus(String status) => _mapExternalStatus(status);
 
   bool validateProximityToStore(
     double storeLat,

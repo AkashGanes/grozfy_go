@@ -1,23 +1,103 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
+import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_bottom_nav.dart';
+import '../orders_by_location/model/external_delivery.dart';
+import '../orders_by_location/repository/external_delivery_repository.dart';
 
-class MyOrdersScreen extends StatefulWidget {
+class MyOrdersScreen extends ConsumerStatefulWidget {
   const MyOrdersScreen({super.key});
 
   @override
-  State<MyOrdersScreen> createState() => _MyOrdersScreenState();
+  ConsumerState<MyOrdersScreen> createState() => _MyOrdersScreenState();
 }
 
-class _MyOrdersScreenState extends State<MyOrdersScreen> {
+class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
   int _selectedTab = 0;
+
+  final ExternalDeliveryRepository _repo = ExternalDeliveryRepository();
+
+  List<DeliveryOrder> _pastOrders = [];
+  bool _isPastLoading = true;
+  String? _pastError;
+  Future<void>? _pastFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPastOrders();
+  }
+
+  DeliveryOrder _summaryToOrder(ExternalDelivery s) {
+    final status = ref.read(appControllerProvider).mapStatus(s.status);
+    final address = s.deliveryAddress != null
+        ? Formatters.stripHtml(s.deliveryAddress!, preserveLineBreaks: false)
+        : '';
+    return DeliveryOrder(
+      id: s.name,
+      orderId: s.name,
+      customerName: s.customerName,
+      customerPhone: '',
+      deliveryAddress: address,
+      storeId: s.storeUrl.isNotEmpty ? s.storeUrl : s.storeName,
+      storeName: s.storeName,
+      storeContact: '',
+      storeAddress: '',
+      orderItems: const [],
+      orderStatus: status,
+      latitude: 0,
+      longitude: 0,
+      pickup: '',
+      drop: address,
+      paymentMode: '',
+      distanceKm: 0,
+      estimatedEarnings: 0,
+      assignmentStatus: status == OrderStatus.pending
+          ? OrderAssignmentStatus.unassigned
+          : OrderAssignmentStatus.assigned,
+    );
+  }
+
+  Future<void> _loadPastOrders() async {
+    if (_pastFuture != null) return;
+    _pastFuture = _doLoadPast();
+    await _pastFuture;
+    _pastFuture = null;
+  }
+
+  Future<void> _doLoadPast() async {
+    setState(() {
+      _isPastLoading = true;
+      _pastError = null;
+    });
+    try {
+      final summaries = await _repo.fetchPastOrdersForDriver();
+      final orders = summaries.map(_summaryToOrder).toList();
+      if (mounted) {
+        setState(() {
+          _pastOrders = orders;
+          _isPastLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _pastError = e.toString();
+          _isPastLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeOrder = ref.watch(appControllerProvider).activeOrder;
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
@@ -44,10 +124,10 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
               child: Column(
                 children: [
                   _buildHeader(),
-                  _buildTabBar(),
+                  _buildTabBar(activeOrder),
                   Expanded(
                     child: _selectedTab == 0
-                        ? _buildActiveList()
+                        ? _buildActiveList(activeOrder)
                         : _buildPastList(),
                   ),
                 ],
@@ -152,7 +232,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     );
   }
 
-  Widget _buildTabBar() {
+  Widget _buildTabBar(DeliveryOrder? activeOrder) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -177,7 +257,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                   ),
                   child: Center(
                     child: Text(
-                      'Active (1)',
+                      activeOrder != null ? 'Active (1)' : 'Active (0)',
                       style: TextStyle(
                         color: _selectedTab == 0
                             ? Colors.white
@@ -203,7 +283,9 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
                   ),
                   child: Center(
                     child: Text(
-                      'Past (3)',
+                      _isPastLoading
+                        ? 'Past'
+                        : 'Past (${_pastOrders.length})',
                       style: TextStyle(
                         color: _selectedTab == 1
                             ? Colors.white
@@ -222,29 +304,72 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     );
   }
 
-  Widget _buildActiveList() {
-    return ListView.builder(
+  Widget _buildActiveList(DeliveryOrder? activeOrder) {
+    if (activeOrder == null) {
+      return const Center(child: Text('No active orders.'));
+    }
+    return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      itemCount: _getActiveOrders().length,
-      itemBuilder: (context, index) => _OrderCard(
-        order: _getActiveOrders()[index],
-        onTap: () => Navigator.of(context).pushNamed(
-          AppRoutes.orderDetails,
-          arguments: _getActiveOrders()[index],
+      children: [
+        _OrderCard(
+          order: activeOrder,
+          onTap: () => Navigator.of(context).pushNamed(
+            AppRoutes.orderDetails,
+            arguments: activeOrder,
+          ),
         ),
-      ),
+      ],
     );
   }
 
   Widget _buildPastList() {
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      itemCount: _getPastOrders().length,
-      itemBuilder: (context, index) => _OrderCard(
-        order: _getPastOrders()[index],
-        onTap: () => Navigator.of(
-          context,
-        ).pushNamed(AppRoutes.orderDetails, arguments: _getPastOrders()[index]),
+    if (_isPastLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_pastError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 12),
+              Text(
+                'Failed to load orders',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _pastError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadPastOrders,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_pastOrders.isEmpty) {
+      return const Center(child: Text('No past orders found.'));
+    }
+    return RefreshIndicator(
+      onRefresh: _loadPastOrders,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        itemCount: _pastOrders.length,
+        itemBuilder: (context, index) => _OrderCard(
+          order: _pastOrders[index],
+          onTap: () => Navigator.of(context).pushNamed(
+            AppRoutes.orderDetails,
+            arguments: _pastOrders[index],
+          ),
+        ),
       ),
     );
   }
@@ -290,99 +415,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     );
   }
 
-  List<DeliveryOrder> _getActiveOrders() => [
-    DeliveryOrder(
-      orderId: '#OD3001',
-      customerName: 'Sneha Gupta',
-      customerPhone: '9876512345',
-      deliveryAddress: 'Saket, New Delhi - 110017',
-      storeId: 'STORE200',
-      storeName: 'Pizza Palace',
-      storeContact: '9876598765',
-      storeAddress: 'Dwarka, New Delhi',
-      orderItems: const [
-        OrderItem(name: 'Pepperoni Pizza', quantity: 2, price: 450),
-      ],
-      orderStatus: OrderStatus.accepted,
-      latitude: 28.5692,
-      longitude: 77.1538,
-      pickup: 'Dwarka',
-      drop: 'Saket',
-      paymentMode: 'Online',
-      distanceKm: 5.2,
-      estimatedEarnings: 145,
-      assignmentStatus: OrderAssignmentStatus.assigned,
-    ),
-  ];
 
-  List<DeliveryOrder> _getPastOrders() => [
-    DeliveryOrder(
-      orderId: '#OD2001',
-      customerName: 'Riya Sharma',
-      customerPhone: '9876510001',
-      deliveryAddress: 'Connaught Place, New Delhi',
-      storeId: 'STORE100',
-      storeName: 'Fresh Bites Kitchen',
-      storeContact: '9876543210',
-      storeAddress: 'Karol Bagh',
-      orderItems: const [
-        OrderItem(name: 'Veg Biryani', quantity: 1, price: 180),
-      ],
-      orderStatus: OrderStatus.delivered,
-      latitude: 28.6139,
-      longitude: 77.2090,
-      pickup: 'Karol Bagh',
-      drop: 'Connaught Place',
-      paymentMode: 'COD',
-      distanceKm: 4.0,
-      estimatedEarnings: 80,
-      assignmentStatus: OrderAssignmentStatus.assigned,
-    ),
-    DeliveryOrder(
-      orderId: '#OD2002',
-      customerName: 'Amit Kumar',
-      customerPhone: '9876510002',
-      deliveryAddress: 'Karol Bagh, New Delhi',
-      storeId: 'STORE101',
-      storeName: 'Tasty Treats',
-      storeContact: '9876543211',
-      storeAddress: 'Lajpat Nagar',
-      orderItems: const [
-        OrderItem(name: 'Chicken Curry', quantity: 1, price: 250),
-      ],
-      orderStatus: OrderStatus.delivered,
-      latitude: 28.6339,
-      longitude: 77.2290,
-      pickup: 'Lajpat Nagar',
-      drop: 'Karol Bagh',
-      paymentMode: 'Online',
-      distanceKm: 3.5,
-      estimatedEarnings: 70,
-      assignmentStatus: OrderAssignmentStatus.assigned,
-    ),
-    DeliveryOrder(
-      orderId: '#OD2003',
-      customerName: 'Priya Singh',
-      customerPhone: '9876510003',
-      deliveryAddress: 'Lajpat Nagar, New Delhi',
-      storeId: 'STORE102',
-      storeName: 'Burger Barn',
-      storeContact: '9876543212',
-      storeAddress: 'Saket',
-      orderItems: const [
-        OrderItem(name: 'Classic Burger', quantity: 2, price: 150),
-      ],
-      orderStatus: OrderStatus.cancelled,
-      latitude: 28.6539,
-      longitude: 77.2490,
-      pickup: 'Saket',
-      drop: 'Lajpat Nagar',
-      paymentMode: 'COD',
-      distanceKm: 6.0,
-      estimatedEarnings: 60,
-      assignmentStatus: OrderAssignmentStatus.assigned,
-    ),
-  ];
 }
 
 class _NavItem extends StatelessWidget {

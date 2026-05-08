@@ -809,7 +809,14 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
       AppToast.show(context, 'Failed to update server. Saving locally.');
     }
 
-    app.updateOrderStatus(OrderProgressStatus.delivered);
+    final String? statusError = await app.updateOrderStatus(
+      OrderProgressStatus.delivered,
+    );
+    if (!mounted) return;
+    if (statusError != null) {
+      AppToast.show(context, statusError);
+      return;
+    }
     _stopLiveTracking();
     showDialog(
       context: context,
