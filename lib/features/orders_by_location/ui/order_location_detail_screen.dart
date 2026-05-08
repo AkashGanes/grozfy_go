@@ -695,7 +695,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
           children: [
             Text(
               '${_formatDistance(_distanceToDestination)} from destination',
-              style: const TextStyle(fontSize: 14, color: Colors.black54),
+              style: TextStyle(fontSize: 14, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54)),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -711,8 +711,8 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
           OutlinedButton(
             onPressed: () => Navigator.pop(ctx, false),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.black54,
-              side: const BorderSide(color: Colors.black26),
+              foregroundColor: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54),
+              side: BorderSide(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.26)),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -1016,13 +1016,13 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                 // Route shadow for depth
                 Polyline(
                   points: _polylineCoordinates,
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.3),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
                   strokeWidth: 8.0,
                 ),
                 // Main route line
                 Polyline(
                   points: _polylineCoordinates,
-                  color: AppTheme.oceanBlue,
+                  color: Theme.of(context).colorScheme.primary,
                   strokeWidth: 5.0,
                 ),
               ],
@@ -1039,12 +1039,12 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                     angle: _toRadians(_currentHeading),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue,
+                        color: Theme.of(context).colorScheme.primary,
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2.5),
                         boxShadow: [
                           BoxShadow(
-                            color: AppTheme.oceanBlue.withValues(alpha: 0.4),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
                             blurRadius: 10,
                             spreadRadius: 2,
                           ),
@@ -1106,7 +1106,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
               height: 44,
               decoration: BoxDecoration(
                 color: _followMe && _isTracking
-                    ? AppTheme.oceanBlue
+                    ? Theme.of(context).colorScheme.primary
                     : Colors.white,
                 shape: BoxShape.circle,
                 boxShadow: [
@@ -1121,7 +1121,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                 Icons.my_location_rounded,
                 color: _followMe && _isTracking
                     ? Colors.white
-                    : AppTheme.oceanBlue,
+                    : Theme.of(context).colorScheme.primary,
                 size: 22,
               ),
             ),
@@ -1158,7 +1158,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                           ? Icons.check_circle_rounded
                           : Icons.two_wheeler,
                       size: 18,
-                      color: _hasArrived ? Colors.white : AppTheme.oceanBlue,
+                      color: _hasArrived ? Colors.white : Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -1168,7 +1168,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
-                        color: _hasArrived ? Colors.white : AppTheme.nightBlue,
+                        color: _hasArrived ? Colors.white : Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                   ],
@@ -1292,12 +1292,12 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.person_outline_rounded,
-                          color: AppTheme.oceanBlue,
+                          color: Theme.of(context).colorScheme.primary,
                           size: 22,
                         ),
                       ),
@@ -1349,7 +1349,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                     const SizedBox(height: 12),
                     _AddressRow(
                       icon: Icons.store_rounded,
-                      iconColor: AppTheme.oceanBlue,
+                      iconColor: Theme.of(context).colorScheme.primary,
                       label: 'Pickup',
                       address: _cleanAddress(detail.pickupAddress),
                     ),
@@ -1374,9 +1374,9 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                               width: 6,
                               height: 6,
                               margin: const EdgeInsets.only(right: 10, top: 1),
-                              decoration: const BoxDecoration(
+                              decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: AppTheme.oceanBlue,
+                                color: Theme.of(context).colorScheme.primary,
                               ),
                             ),
                             Expanded(
@@ -1468,7 +1468,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                       s != 'returned' &&
                       s != 'return initiated') ...[
                     if (_updating)
-                      const Padding(
+                      Padding(
                         padding: EdgeInsets.only(bottom: 12),
                         child: Center(
                           child: SizedBox(
@@ -1476,7 +1476,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                             height: 24,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.5,
-                              color: AppTheme.oceanBlue,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
                         ),
@@ -1883,14 +1883,14 @@ class _SheetSectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 14, color: AppTheme.oceanBlue),
+        Icon(icon, size: 14, color: Theme.of(context).colorScheme.primary),
         const SizedBox(width: 5),
         Text(
           label.toUpperCase(),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
-            color: AppTheme.oceanBlue,
+            color: Theme.of(context).colorScheme.primary,
             letterSpacing: 0.6,
           ),
         ),
@@ -2006,14 +2006,14 @@ class _LoadingSkeleton extends StatelessWidget {
                 width: double.infinity,
                 height: 18,
                 decoration: BoxDecoration(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
               )
               .animate(onPlay: (controller) => controller.repeat())
               .shimmer(
                 duration: 1000.ms,
-                color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.06),
               ),
           const SizedBox(height: 16),
           Row(
@@ -2022,14 +2022,14 @@ class _LoadingSkeleton extends StatelessWidget {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
                   )
                   .animate(onPlay: (controller) => controller.repeat())
                   .shimmer(
                     duration: 1000.ms,
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.06),
                   ),
               const SizedBox(width: 14),
               Expanded(
@@ -2040,28 +2040,28 @@ class _LoadingSkeleton extends StatelessWidget {
                           width: double.infinity,
                           height: 14,
                           decoration: BoxDecoration(
-                            color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(6),
                           ),
                         )
                         .animate(onPlay: (controller) => controller.repeat())
                         .shimmer(
                           duration: 1000.ms,
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.06),
                         ),
                     const SizedBox(height: 8),
                     Container(
                           width: 150,
                           height: 10,
                           decoration: BoxDecoration(
-                            color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(6),
                           ),
                         )
                         .animate(onPlay: (controller) => controller.repeat())
                         .shimmer(
                           duration: 1000.ms,
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.04),
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.04),
                         ),
                   ],
                 ),

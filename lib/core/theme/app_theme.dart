@@ -1,6 +1,17 @@
 import 'package:flutter/material.dart';
 
+class _SeedColor extends ThemeExtension<_SeedColor> {
+  const _SeedColor(this.value);
+  final Color value;
+  @override
+  _SeedColor copyWith({Color? value}) => _SeedColor(value ?? this.value);
+  @override
+  _SeedColor lerp(_SeedColor? other, double t) => this;
+}
+
 class AppTheme {
+  static Color accentOf(BuildContext context) =>
+      Theme.of(context).extension<_SeedColor>()?.value ?? oceanBlue;
   static const Color nightBlue = Color(0xFF0E1B2B);
   static const Color oceanBlue = Color(0xFF1C4E80);
   static const Color mint = Color(0xFF35C2B5);
@@ -117,19 +128,45 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       textTheme: base.textTheme.copyWith(
-        headlineMedium: TextStyle(
+        headlineMedium: const TextStyle(
           fontSize: 30,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.2,
           color: nightBlue,
         ),
-        titleLarge: TextStyle(
+        titleLarge: const TextStyle(
           fontSize: 21,
           fontWeight: FontWeight.w700,
           color: nightBlue,
         ),
-        bodyLarge: TextStyle(fontSize: 16, color: Color(0xFF293847)),
+        titleMedium: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: nightBlue,
+        ),
+        titleSmall: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: nightBlue,
+        ),
+        bodyLarge: const TextStyle(fontSize: 16, color: Color(0xFF293847)),
+        bodyMedium: const TextStyle(fontSize: 14, color: Color(0xFF293847)),
+        bodySmall: TextStyle(
+          fontSize: 12,
+          color: const Color(0xFF293847).withValues(alpha: 0.7),
+        ),
+        labelLarge: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: nightBlue,
+        ),
+        labelMedium: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: nightBlue.withValues(alpha: 0.8),
+        ),
       ),
+      extensions: [_SeedColor(primary)],
     );
   }
 
@@ -149,7 +186,6 @@ class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: primary,
         brightness: Brightness.dark,
-        primary: primary,
         secondary: mint,
         tertiary: mango,
         surface: surface,
@@ -181,11 +217,11 @@ class AppTheme {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: primary.withValues(alpha: 0.3)),
+          borderSide: BorderSide(color: base.colorScheme.primary.withValues(alpha: 0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: primary, width: 1.2),
+          borderSide: BorderSide(color: base.colorScheme.primary, width: 1.2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -234,8 +270,40 @@ class AppTheme {
           fontWeight: FontWeight.w700,
           color: Colors.white,
         ),
-        bodyLarge: TextStyle(fontSize: 16, color: Colors.grey[300]),
+        titleMedium: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+        titleSmall: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+        bodyLarge: const TextStyle(fontSize: 16, color: Color(0xFFDDE3EC)),
+        bodyMedium: const TextStyle(fontSize: 14, color: Color(0xFFDDE3EC)),
+        bodySmall: const TextStyle(
+          fontSize: 12,
+          color: Color(0xFFAAB4C0),
+        ),
+        labelLarge: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: Colors.white,
+        ),
+        labelMedium: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: Color(0xFFCDD5DE),
+        ),
       ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.selected) ? Colors.white : null),
+        trackColor: WidgetStateProperty.resolveWith((states) =>
+            states.contains(WidgetState.selected) ? primary : null),
+      ),
+      extensions: [_SeedColor(primary)],
     );
   }
 

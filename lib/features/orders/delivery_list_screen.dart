@@ -207,7 +207,7 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
                 Icon(
                   Icons.inbox_outlined,
                   size: 52,
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.4),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
                 ),
                 const SizedBox(height: 12),
                 Text(

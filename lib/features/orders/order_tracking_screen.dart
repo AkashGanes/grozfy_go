@@ -382,7 +382,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   polylines: [
                     Polyline(
                       points: _routePoints,
-                      color: AppTheme.oceanBlue,
+                      color: Theme.of(context).colorScheme.primary,
                       strokeWidth: 5,
                       borderColor: Colors.white.withValues(alpha: 0.5),
                       borderStrokeWidth: 2,
@@ -425,11 +425,11 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         angle: _currentHeading * pi / 180,
                         child: Container(
                           decoration: BoxDecoration(
-                            color: AppTheme.oceanBlue,
+                            color: Theme.of(context).colorScheme.primary,
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.oceanBlue.withValues(alpha: 0.45),
+                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.45),
                                 blurRadius: 12,
                                 spreadRadius: 2,
                               ),
@@ -504,7 +504,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   const SizedBox(width: 10),
                   _MapIconButton(
                     icon: Icons.my_location_rounded,
-                    color: AppTheme.oceanBlue,
+                    color: Theme.of(context).colorScheme.primary,
                     onTap: () {
                       if (_isMapReady && _hasInitialPosition) {
                         _mapController.move(_partnerLocation, 16);
@@ -609,12 +609,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.shopping_bag_rounded,
-                          color: AppTheme.oceanBlue,
+                          color: Theme.of(context).colorScheme.primary,
                           size: 22,
                         ),
                       ),
@@ -654,7 +654,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                           icon: Icons.straighten_rounded,
                           label: 'Distance',
                           value: _formatDist(distanceM),
-                          color: AppTheme.oceanBlue,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -1033,13 +1033,13 @@ class _DeliveryProgressTimeline extends StatelessWidget {
                       height: 36,
                       decoration: BoxDecoration(
                         color: isActive
-                            ? (isCurrent ? AppTheme.oceanBlue : Colors.green)
+                            ? (isCurrent ? Theme.of(context).colorScheme.primary : Colors.green)
                             : scheme.onSurface.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                         boxShadow: isCurrent
                             ? [
                                 BoxShadow(
-                                  color: AppTheme.oceanBlue.withValues(
+                                  color: Theme.of(context).colorScheme.primary.withValues(
                                     alpha: 0.4,
                                   ),
                                   blurRadius: 8,

@@ -355,7 +355,7 @@ class _ActiveOrderSection extends StatelessWidget {
     if (app.isFetchingActiveOrder) {
       return _placeholder(
         context,
-        const SizedBox(
+        SizedBox(
           height: 20,
           child: Row(
             children: [
@@ -364,8 +364,14 @@ class _ActiveOrderSection extends StatelessWidget {
                 height: 18,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
-              SizedBox(width: 12),
-              Text('Loading active order...'),
+              const SizedBox(width: 12),
+              Text(
+                'Loading active order...',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontSize: 13,
+                ),
+              ),
             ],
           ),
         ),
@@ -447,6 +453,8 @@ class _ActiveOrderSection extends StatelessWidget {
   }
 
   Widget _placeholder(BuildContext context, Widget body) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -454,25 +462,18 @@ class _ActiveOrderSection extends StatelessWidget {
           padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
             app.t('active_order'),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF101828),
+              color: scheme.onSurface,
             ),
           ),
         ),
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDark ? scheme.surface : Colors.white,
             borderRadius: BorderRadius.circular(22),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
           ),
           child: body,
         ),

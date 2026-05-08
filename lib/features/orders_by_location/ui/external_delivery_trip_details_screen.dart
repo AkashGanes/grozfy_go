@@ -181,7 +181,7 @@ class _ExternalDeliveryTripDetailsScreenState
                     .shimmer(
                       delay: 320.ms,
                       duration: 900.ms,
-                      color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                     ),
                 const SizedBox(height: 12),
                 Expanded(
@@ -209,18 +209,18 @@ class _ExternalDeliveryTripDetailsScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Trip Statistics',
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color: AppTheme.nightBlue,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 13,
               ),
             ),
             const SizedBox(height: 12),
             Row(
               children: [
-                _statBox('Total', '${trip.totalStops}', Icons.route_outlined, AppTheme.oceanBlue),
+                _statBox('Total', '${trip.totalStops}', Icons.route_outlined, Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
                 _statBox('Done', '${trip.completedStops}', Icons.check_circle_outline, const Color(0xFF2E7D32)),
                 const SizedBox(width: 8),
@@ -236,7 +236,7 @@ class _ExternalDeliveryTripDetailsScreenState
                 valueColor: AlwaysStoppedAnimation<Color>(
                   trip.completedStops >= trip.totalStops && trip.totalStops > 0
                       ? const Color(0xFF2E7D32)
-                      : AppTheme.oceanBlue,
+                      : Theme.of(context).colorScheme.primary,
                 ),
                 minHeight: 8,
               ),
@@ -245,28 +245,28 @@ class _ExternalDeliveryTripDetailsScreenState
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Progress', style: TextStyle(fontSize: 11, color: Colors.black45)),
+                Text('Progress', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45))),
                 Text(
                   '${trip.completedStops}/${trip.totalStops} stops',
-                  style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54), fontWeight: FontWeight.w600),
                 ),
               ],
             ),
             if (trip.totalDistanceKm > 0) ...[
               const SizedBox(height: 14),
-              const Divider(height: 1, color: Colors.black12),
+              Divider(height: 1, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12)),
               const SizedBox(height: 14),
               Row(
                 children: [
-                  const Icon(Icons.route_outlined, size: 16, color: AppTheme.oceanBlue),
+                  Icon(Icons.route_outlined, size: 16, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text('Total Distance', style: TextStyle(color: Colors.black54, fontSize: 13)),
+                  Expanded(
+                    child: Text('Total Distance', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54), fontSize: 13)),
                   ),
                   Text(
                     '${trip.totalDistanceKm.toStringAsFixed(1)} km',
-                    style: const TextStyle(
-                      color: AppTheme.nightBlue,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                     ),
@@ -278,12 +278,12 @@ class _ExternalDeliveryTripDetailsScreenState
               const SizedBox(height: 10),
               Row(
                 children: [
-                  const Icon(Icons.play_circle_outline, size: 16, color: AppTheme.oceanBlue),
+                  Icon(Icons.play_circle_outline, size: 16, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text('Started', style: TextStyle(color: Colors.black54, fontSize: 13)),
+                  Expanded(
+                    child: Text('Started', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54), fontSize: 13)),
                   ),
-                  Text(trip.startedAt, style: const TextStyle(color: AppTheme.nightBlue, fontSize: 12)),
+                  Text(trip.startedAt, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 12)),
                 ],
               ),
             ],
@@ -293,10 +293,10 @@ class _ExternalDeliveryTripDetailsScreenState
                 children: [
                   const Icon(Icons.stop_circle_outlined, size: 16, color: Color(0xFF2E7D32)),
                   const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text('Completed', style: TextStyle(color: Colors.black54, fontSize: 13)),
+                  Expanded(
+                    child: Text('Completed', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54), fontSize: 13)),
                   ),
-                  Text(trip.completedAt, style: const TextStyle(color: AppTheme.nightBlue, fontSize: 12)),
+                  Text(trip.completedAt, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 12)),
                 ],
               ),
             ],
@@ -349,18 +349,18 @@ class _ExternalDeliveryTripDetailsScreenState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Stops Progress',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.nightBlue,
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 13,
                     ),
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      _statBox('Total', '${trip.totalStops}', Icons.route_outlined, AppTheme.oceanBlue),
+                      _statBox('Total', '${trip.totalStops}', Icons.route_outlined, Theme.of(context).colorScheme.primary),
                       const SizedBox(width: 8),
                       _statBox('Done', '${trip.completedStops}', Icons.check_circle_outline, const Color(0xFF2E7D32)),
                       const SizedBox(width: 8),
@@ -376,7 +376,7 @@ class _ExternalDeliveryTripDetailsScreenState
                       valueColor: AlwaysStoppedAnimation<Color>(
                         trip.completedStops >= trip.totalStops
                             ? const Color(0xFF2E7D32)
-                            : AppTheme.oceanBlue,
+                            : Theme.of(context).colorScheme.primary,
                       ),
                       minHeight: 8,
                     ),
@@ -401,7 +401,7 @@ class _ExternalDeliveryTripDetailsScreenState
         child: Container(
           height: 12,
           decoration: BoxDecoration(
-            color: AppTheme.oceanBlue.withValues(alpha: 0.14),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
             borderRadius: BorderRadius.circular(10),
           ),
         ),
@@ -420,7 +420,7 @@ class _ExternalDeliveryTripDetailsScreenState
             .animate(onPlay: (controller) => controller.repeat())
             .shimmer(
               duration: 1100.ms,
-              color: AppTheme.oceanBlue.withValues(alpha: 0.18),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.18),
             ),
         const SizedBox(height: 12),
         Expanded(
@@ -478,13 +478,13 @@ class _ExternalDeliveryTripDetailsScreenState
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
+            child: Icon(
               Icons.local_shipping_outlined,
               size: 18,
-              color: AppTheme.oceanBlue,
+              color: Theme.of(context).colorScheme.primary,
             ),
           ),
           const SizedBox(width: 10),
@@ -512,10 +512,10 @@ class _ExternalDeliveryTripDetailsScreenState
             width: 30,
             height: 30,
             decoration: BoxDecoration(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, size: 16, color: AppTheme.oceanBlue),
+            child: Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -614,13 +614,13 @@ class _ExternalDeliveryTripDetailsScreenState
                 SizedBox(
                   width: double.infinity,
                   child: _returningToStore
-                      ? const Center(
+                      ? Center(
                           child: SizedBox(
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.5,
-                              color: AppTheme.oceanBlue,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
                         )
@@ -658,7 +658,7 @@ class _ExternalDeliveryTripDetailsScreenState
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.store_outlined, color: AppTheme.oceanBlue),
+            Icon(Icons.store_outlined, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
             Text(
               'Returned to Store?',
@@ -765,7 +765,7 @@ class _ExternalDeliveryTripDetailsScreenState
                         stopStatus: entry.value.status,
                       )) ...[
                         const SizedBox(height: 12),
-                        const Divider(height: 1, color: Colors.black12),
+                        Divider(height: 1, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12)),
                         const SizedBox(height: 10),
                         _stopActionButtons(trip, entry.value),
                       ],
@@ -944,7 +944,7 @@ class _ExternalDeliveryTripDetailsScreenState
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.undo_rounded, color: AppTheme.oceanBlue),
+            Icon(Icons.undo_rounded, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
             Text(
               'Return to Store?',
@@ -1076,9 +1076,9 @@ class _ExternalDeliveryTripDetailsScreenState
             ),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
-                color: Colors.black54,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54),
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1096,22 +1096,22 @@ class _ExternalDeliveryTripDetailsScreenState
     } else if (statusNorm == 'failed') {
       statusColor = Colors.red;
     } else if (statusNorm == 'out for delivery') {
-      statusColor = AppTheme.oceanBlue;
+      statusColor = Theme.of(context).colorScheme.primary;
     } else if (statusNorm == 'cancelled') {
-      statusColor = Colors.black38;
+      statusColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38);
     } else {
-      statusColor = Colors.black45;
+      statusColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45);
     }
 
     return Row(
       children: [
-        const Icon(Icons.location_on_outlined, size: 18, color: AppTheme.oceanBlue),
+        Icon(Icons.location_on_outlined, size: 18, color: Theme.of(context).colorScheme.primary),
         const SizedBox(width: 6),
         Text(
           'Stop ${stop.stop}',
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w700,
-            color: AppTheme.nightBlue,
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 14,
           ),
         ),
@@ -1151,12 +1151,12 @@ class _ExternalDeliveryTripDetailsScreenState
         if (stop.mobile.isNotEmpty) ...[
           Row(
             children: [
-              const Icon(Icons.phone_outlined, size: 15, color: Colors.black45),
+              Icon(Icons.phone_outlined, size: 15, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   stop.mobile,
-                  style: const TextStyle(color: AppTheme.nightBlue, fontSize: 13),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13),
                 ),
               ),
               GestureDetector(
@@ -1205,21 +1205,21 @@ class _ExternalDeliveryTripDetailsScreenState
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 9),
               decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.2),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
                 ),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.navigation_rounded, size: 15, color: AppTheme.oceanBlue),
+                  Icon(Icons.navigation_rounded, size: 15, color: Theme.of(context).colorScheme.primary),
                   SizedBox(width: 6),
                   Text(
                     'Navigate',
                     style: TextStyle(
-                      color: AppTheme.oceanBlue,
+                      color: Theme.of(context).colorScheme.primary,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1249,13 +1249,14 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _stopInfoRow(IconData icon, String text, {bool subtle = false, Color? color}) {
-    final textColor = color ?? (subtle ? Colors.black45 : AppTheme.nightBlue);
+    final Color onSurface = Theme.of(context).colorScheme.onSurface;
+    final textColor = color ?? (subtle ? onSurface.withValues(alpha: 0.5) : onSurface);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 1),
-          child: Icon(icon, size: 15, color: color ?? Colors.black45),
+          child: Icon(icon, size: 15, color: color ?? onSurface.withValues(alpha: 0.5)),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -1324,9 +1325,9 @@ class _ExternalDeliveryTripDetailsScreenState
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.black12),
+              border: Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12)),
             ),
-            child: const Icon(Icons.more_horiz, size: 18, color: Colors.black54),
+            child: Icon(Icons.more_horiz, size: 18, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54)),
           ),
         ),
       ],

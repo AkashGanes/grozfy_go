@@ -34,10 +34,10 @@ class AvailableDeliveriesCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   heading,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF101828),
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ),
@@ -47,16 +47,16 @@ class AvailableDeliveriesCard extends StatelessWidget {
                   children: [
                     Text(
                       viewAllLabel,
-                      style: const TextStyle(
-                        color: Color(0xFF1F4FB6),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
                       ),
                     ),
                     const SizedBox(width: 2),
-                    const Icon(
+                    Icon(
                       Icons.chevron_right_rounded,
-                      color: Color(0xFF1F4FB6),
+                      color: Theme.of(context).colorScheme.primary,
                       size: 18,
                     ),
                   ],
@@ -89,17 +89,17 @@ class AvailableDeliveriesCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF101828),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        color: Color(0xFF667085),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                         fontSize: 12,
                         height: 1.35,
                       ),

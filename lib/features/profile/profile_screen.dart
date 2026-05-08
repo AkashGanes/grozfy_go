@@ -177,14 +177,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       width: 60,
                       height: 60,
                       decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
                     )
                     .animate(onPlay: (controller) => controller.repeat())
                     .shimmer(
                       duration: 1200.ms,
-                      color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
                     ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -195,28 +195,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             width: 150,
                             height: 18,
                             decoration: BoxDecoration(
-                              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(8),
                             ),
                           )
                           .animate(onPlay: (controller) => controller.repeat())
                           .shimmer(
                             duration: 1200.ms,
-                            color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
                           ),
                       const SizedBox(height: 8),
                       Container(
                             width: 100,
                             height: 12,
                             decoration: BoxDecoration(
-                              color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(6),
                             ),
                           )
                           .animate(onPlay: (controller) => controller.repeat())
                           .shimmer(
                             duration: 1200.ms,
-                            color: AppTheme.oceanBlue.withValues(alpha: 0.04),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.04),
                           ),
                     ],
                   ),
@@ -228,28 +228,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   width: double.infinity,
                   height: 14,
                   decoration: BoxDecoration(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(6),
                   ),
                 )
                 .animate(onPlay: (controller) => controller.repeat())
                 .shimmer(
                   duration: 1200.ms,
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.06),
                 ),
             const SizedBox(height: 10),
             Container(
                   width: double.infinity,
                   height: 14,
                   decoration: BoxDecoration(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(6),
                   ),
                 )
                 .animate(onPlay: (controller) => controller.repeat())
                 .shimmer(
                   duration: 1200.ms,
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.06),
                 ),
           ],
         ),

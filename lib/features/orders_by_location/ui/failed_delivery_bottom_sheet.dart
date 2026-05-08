@@ -76,7 +76,7 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
           children: [
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.camera_alt_outlined, color: AppTheme.oceanBlue),
+              leading: Icon(Icons.camera_alt_outlined, color: Theme.of(context).colorScheme.primary),
               title: const Text('Take Photo'),
               onTap: () {
                 Navigator.of(ctx).pop();
@@ -84,7 +84,7 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined, color: AppTheme.oceanBlue),
+              leading: Icon(Icons.photo_library_outlined, color: Theme.of(context).colorScheme.primary),
               title: const Text('Choose from Gallery'),
               onTap: () {
                 Navigator.of(ctx).pop();
@@ -185,12 +185,12 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
                     color: _selectedReason == reason
-                        ? AppTheme.oceanBlue.withValues(alpha: 0.08)
+                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.08)
                         : scheme.onSurface.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
                       color: _selectedReason == reason
-                          ? AppTheme.oceanBlue.withValues(alpha: 0.4)
+                          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.4)
                           : Colors.transparent,
                     ),
                   ),
@@ -202,7 +202,7 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                             : Icons.radio_button_off,
                         size: 18,
                         color: _selectedReason == reason
-                            ? AppTheme.oceanBlue
+                            ? Theme.of(context).colorScheme.primary
                             : scheme.onSurface.withValues(alpha: 0.4),
                       ),
                       const SizedBox(width: 10),
@@ -252,7 +252,7 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.2),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
@@ -263,8 +263,8 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(
-                    color: AppTheme.oceanBlue,
+                  borderSide: BorderSide(
+                    color: Theme.of(context).colorScheme.primary,
                     width: 1.4,
                   ),
                 ),

@@ -121,20 +121,16 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(appControllerProvider);
+    final themeController = ref.watch(themeControllerProvider);
     return AppScope(
       controller: controller,
       child: MaterialApp(
         navigatorKey: navigatorKey,
         debugShowCheckedModeBanner: false,
         title: controller.t('app_title'),
-        theme: AppTheme.getLightTheme(
-          scaffoldBackgroundColor: controller.backgroundColor,
-          primaryColor: controller.accentColor,
-        ),
-        darkTheme: AppTheme.getDarkTheme(
-          primaryColor: controller.accentColor,
-        ),
-        themeMode: controller.themeMode,
+        theme: themeController.lightTheme,
+        darkTheme: themeController.darkTheme,
+        themeMode: themeController.themeMode,
         locale: controller.languageCode.isNotEmpty
             ? Locale(controller.languageCode)
             : null,

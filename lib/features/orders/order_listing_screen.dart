@@ -238,7 +238,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                 prefixIcon: Icon(
                   Icons.search_rounded,
                   color: searching
-                      ? AppTheme.oceanBlue
+                      ? Theme.of(context).colorScheme.primary
                       : scheme.onSurface.withValues(alpha: 0.4),
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
@@ -269,7 +269,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide:
-                      const BorderSide(color: AppTheme.oceanBlue, width: 1.5),
+                      BorderSide(color: Theme.of(context).colorScheme.primary, width: 1.5),
                 ),
               ),
             ),
@@ -282,12 +282,12 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
               child: Row(
                 children: [
                   if (_searchLoading) ...[
-                    const SizedBox(
+                    SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppTheme.oceanBlue,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -322,17 +322,17 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.2),
+                          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
                         ),
                       ),
                       child: Text(
                         '${_searchResults.length} result${_searchResults.length == 1 ? '' : 's'}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppTheme.oceanBlue,
+                          color: Theme.of(context).colorScheme.primary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -620,12 +620,12 @@ class _SearchResultCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.shopping_bag_rounded,
-                    color: AppTheme.oceanBlue,
+                    color: Theme.of(context).colorScheme.primary,
                     size: 22,
                   ),
                 ),
@@ -665,12 +665,12 @@ class _SearchResultCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 if (isLoading)
-                  const SizedBox(
+                  SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: AppTheme.oceanBlue,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   )
                 else
@@ -719,7 +719,7 @@ class _Highlight extends StatelessWidget {
           TextSpan(
             text: text.substring(idx, idx + query.length),
             style: style.copyWith(
-              color: AppTheme.oceanBlue,
+              color: Theme.of(context).colorScheme.primary,
               fontWeight: FontWeight.bold,
               backgroundColor: AppTheme.oceanBlue.withValues(alpha: 0.1),
             ),

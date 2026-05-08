@@ -4,7 +4,6 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
 
 class LocationPermissionScreen extends StatefulWidget {
@@ -269,7 +268,7 @@ class _PermissionTile extends StatelessWidget {
     return ListTile(
       leading: Icon(
         icon,
-        color: granted ? Colors.green : AppTheme.nightBlue,
+        color: granted ? Colors.green : Theme.of(context).colorScheme.onSurface,
       ),
       title: Text(title),
       subtitle: Text(

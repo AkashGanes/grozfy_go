@@ -227,16 +227,16 @@ class _CompleteButton extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  color: Color(0xFF1F4FB6),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.w700,
                   fontSize: 12,
                 ),
               ),
               const SizedBox(width: 6),
-              const Icon(
+              Icon(
                 Icons.arrow_forward_rounded,
-                color: Color(0xFF1F4FB6),
+                color: Theme.of(context).colorScheme.primary,
                 size: 16,
               ),
             ],
@@ -304,7 +304,7 @@ class _ItemsStrip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -376,10 +376,10 @@ class _ItemChip extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF101828),
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 6),

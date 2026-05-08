@@ -525,11 +525,11 @@ class _OrdersByLocationScreenState
                   ),
                   const SizedBox(height: 16),
                   if (loading)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.symmetric(vertical: 24),
                       child: Center(
                         child: CircularProgressIndicator(
-                          color: AppTheme.oceanBlue,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
                     )
@@ -562,8 +562,8 @@ class _OrdersByLocationScreenState
                               leading: Icon(
                                 Icons.public_rounded,
                                 color: selected
-                                    ? AppTheme.oceanBlue
-                                    : Colors.black38,
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38),
                               ),
                               title: Text(
                                 'All Stores',
@@ -572,14 +572,14 @@ class _OrdersByLocationScreenState
                                       ? FontWeight.w700
                                       : FontWeight.w500,
                                   color: selected
-                                      ? AppTheme.oceanBlue
-                                      : AppTheme.nightBlue,
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.onSurface,
                                 ),
                               ),
                               trailing: selected
-                                  ? const Icon(
+                                  ? Icon(
                                       Icons.check_circle_rounded,
-                                      color: AppTheme.oceanBlue,
+                                      color: Theme.of(context).colorScheme.primary,
                                     )
                                   : null,
                               onTap: () async {
@@ -599,7 +599,7 @@ class _OrdersByLocationScreenState
                             leading: Icon(
                               Icons.store_rounded,
                               color: selected
-                                  ? AppTheme.oceanBlue
+                                  ? Theme.of(context).colorScheme.primary
                                   : scheme.onSurface.withValues(alpha: 0.4),
                             ),
                             title: Text(
@@ -609,14 +609,14 @@ class _OrdersByLocationScreenState
                                     ? FontWeight.w700
                                     : FontWeight.w500,
                                 color: selected
-                                    ? AppTheme.oceanBlue
+                                    ? Theme.of(context).colorScheme.primary
                                     : scheme.onSurface,
                               ),
                             ),
                             trailing: selected
-                                ? const Icon(
+                                ? Icon(
                                     Icons.check_circle_rounded,
-                                    color: AppTheme.oceanBlue,
+                                    color: Theme.of(context).colorScheme.primary,
                                   )
                                 : null,
                             onTap: () async {
@@ -650,13 +650,13 @@ class _OrdersByLocationScreenState
       padding: EdgeInsets.zero,
       actions: [
         IconButton(
-          icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
+          icon: Icon(Icons.store_rounded, color: Theme.of(context).colorScheme.onSurface),
           tooltip: 'Change location',
           onPressed: () => _showStorePicker(),
         ),
       ],
       child: RefreshIndicator(
-        color: AppTheme.oceanBlue,
+        color: Theme.of(context).colorScheme.primary,
         onRefresh: _refresh,
         child: PagedListView<int, LocationListItem>(
           physics: const BouncingScrollPhysics(),
@@ -692,14 +692,14 @@ class _OrdersByLocationScreenState
                     width: 20,
                     height: 20,
                     decoration: BoxDecoration(
-                      color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                       shape: BoxShape.circle,
                     ),
                   )
                       .animate(onPlay: (controller) => controller.repeat())
                       .shimmer(
                         duration: 800.ms,
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.3),
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
                       ),
                 ],
               ),
@@ -958,7 +958,7 @@ class _OrdersByLocationScreenState
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
-            disabledBackgroundColor: AppTheme.oceanBlue.withValues(alpha: 0.5),
+            disabledBackgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
           ),
           onPressed: _creatingTrip ? null : _handleCreateTrip,
           child: _creatingTrip
@@ -1048,11 +1048,11 @@ class _OrderCard extends StatelessWidget {
                     height: 24,
                     margin: const EdgeInsets.only(right: 12),
                     decoration: BoxDecoration(
-                      color: selected ? AppTheme.oceanBlue : Colors.transparent,
+                      color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
                       borderRadius: BorderRadius.circular(6),
                       border: Border.all(
                         color: selected
-                            ? AppTheme.oceanBlue
+                            ? Theme.of(context).colorScheme.primary
                             : scheme.onSurface.withValues(alpha: 0.4),
                         width: 2,
                       ),
@@ -1139,18 +1139,18 @@ class _OrderCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.store_outlined,
                               size: 12,
-                              color: Colors.black38,
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38),
                             ),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 order.storeName,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.black38,
+                                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38),
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1212,7 +1212,7 @@ class _EmptyState extends StatelessWidget {
             Icon(
               Icons.inbox_outlined,
               size: 52,
-              color: AppTheme.oceanBlue.withValues(alpha: 0.4),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
             ),
             const SizedBox(height: 12),
             Text(
@@ -1302,7 +1302,7 @@ class _LocationBackdropShapes extends StatelessWidget {
               width: 180,
               height: 180,
               decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.16),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.16),
                 shape: BoxShape.circle,
               ),
             ),

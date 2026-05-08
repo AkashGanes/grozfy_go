@@ -216,7 +216,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           const SizedBox(height: 12),
           Expanded(
             child: RefreshIndicator(
-              color: AppTheme.oceanBlue,
+              color: AppTheme.accentOf(context),
               onRefresh: _refresh,
               child: PagedListView<int, NotificationLog>(
                 pagingController: _pagingController,
@@ -305,7 +305,7 @@ class _InboxSummaryBar extends ConsumerWidget {
                     Icon(
                       Icons.notifications_active_rounded,
                       size: 16,
-                      color: AppTheme.oceanBlue.withValues(alpha: 0.9),
+                      color: AppTheme.accentOf(context).withValues(alpha: 0.9),
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -323,13 +323,13 @@ class _InboxSummaryBar extends ConsumerWidget {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                          color: AppTheme.accentOf(context).withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           '$unreadCount',
                           style: TextStyle(
-                            color: AppTheme.oceanBlue.withValues(alpha: 0.95),
+                            color: AppTheme.accentOf(context).withValues(alpha: 0.95),
                             fontWeight: FontWeight.w800,
                             fontSize: 12,
                           ),
@@ -373,15 +373,15 @@ class _NotificationFilterPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final Color background = selected
-        ? AppTheme.oceanBlue
+        ? AppTheme.accentOf(context)
         : scheme.surface.withValues(alpha: 0.6);
     final Color foreground = selected ? Colors.white : scheme.onSurface;
     final Color badgeBackground = selected
         ? Colors.white.withValues(alpha: 0.18)
-        : AppTheme.oceanBlue.withValues(alpha: 0.12);
+        : AppTheme.accentOf(context).withValues(alpha: 0.12);
     final Color badgeForeground = selected
         ? Colors.white
-        : AppTheme.oceanBlue.withValues(alpha: 0.95);
+        : AppTheme.accentOf(context).withValues(alpha: 0.95);
 
     return Material(
       color: Colors.transparent,
@@ -603,12 +603,12 @@ class _NotificationTile extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: isUnread
                       ? AppTheme.mango.withValues(alpha: 0.18)
-                      : AppTheme.oceanBlue.withValues(alpha: 0.1),
+                      : AppTheme.accentOf(context).withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   _iconForNotification(),
-                  color: isUnread ? AppTheme.mango : AppTheme.oceanBlue,
+                  color: isUnread ? AppTheme.mango : AppTheme.accentOf(context),
                   size: 20,
                 ),
               ),
@@ -660,8 +660,8 @@ class _NotificationTile extends ConsumerWidget {
                 Container(
                   width: 9,
                   height: 9,
-                  decoration: const BoxDecoration(
-                    color: AppTheme.oceanBlue,
+                  decoration: BoxDecoration(
+                    color: AppTheme.accentOf(context),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -698,7 +698,7 @@ class _LoadingState extends StatelessWidget {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                        color: AppTheme.accentOf(context).withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -711,7 +711,7 @@ class _LoadingState extends StatelessWidget {
                             height: 12,
                             width: 160,
                             decoration: BoxDecoration(
-                              color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                              color: AppTheme.accentOf(context).withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(8),
                             ),
                           ),
@@ -720,7 +720,7 @@ class _LoadingState extends StatelessWidget {
                             height: 10,
                             width: 230,
                             decoration: BoxDecoration(
-                              color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+                              color: AppTheme.accentOf(context).withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                           ),

@@ -87,9 +87,6 @@ class AppController extends ChangeNotifier {
   static const String _prefPermNotification = 'perm_notification';
   static const String _prefLicenseRequiresReupload =
       'license_requires_reupload';
-  static const String _prefThemeMode = 'theme_mode';
-  static const String _prefBackgroundColor = 'background_color';
-  static const String _prefAccentColor = 'accent_color';
   static const String _prefActiveOrderId = 'active_order_id';
   static const String _prefActiveTripId = 'active_trip_id';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
@@ -183,10 +180,6 @@ class AppController extends ChangeNotifier {
   String? _serverProfileImageUrl;
   StreamSubscription<Position>? _positionStream;
 
-  ThemeMode _themeMode = ThemeMode.system;
-  int _backgroundColorValue = 0xFFF0F4FA;
-  int _accentColorValue = 0xFF1C4E80;
-
   bool _isConnected = true;
   bool _showRetryButton = true;
   bool _isInitialized = false;
@@ -268,9 +261,6 @@ class AppController extends ChangeNotifier {
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
   String? get serverProfileImageUrl => _serverProfileImageUrl;
-  ThemeMode get themeMode => _themeMode;
-  Color get backgroundColor => Color(_backgroundColorValue);
-  Color get accentColor => Color(_accentColorValue);
   bool get hasSelectedLocation =>
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
@@ -520,12 +510,6 @@ class AppController extends ChangeNotifier {
     _serverProfileImageUrl = _nullIfBlank(
       prefs.getString(_prefServerProfileImageUrl),
     );
-    final int themeModeIndex =
-        prefs.getInt(_prefThemeMode) ?? ThemeMode.system.index;
-    _themeMode =
-        ThemeMode.values[themeModeIndex.clamp(0, ThemeMode.values.length - 1)];
-    _backgroundColorValue = prefs.getInt(_prefBackgroundColor) ?? 0xFFF0F4FA;
-    _accentColorValue = prefs.getInt(_prefAccentColor) ?? 0xFF1C4E80;
     _permissionState = PermissionState(
       foregroundLocation: prefs.getBool(_prefPermForeground) ?? false,
       backgroundLocation: prefs.getBool(_prefPermBackground) ?? false,
@@ -689,43 +673,6 @@ class AppController extends ChangeNotifier {
     _languageCode = normalized;
     _writePref((SharedPreferences prefs) {
       return prefs.setString(_prefLanguageCode, normalized);
-    });
-    notifyListeners();
-  }
-
-  void setThemeMode(ThemeMode mode) {
-    _themeMode = mode;
-    _writePref((SharedPreferences prefs) {
-      return prefs.setInt(_prefThemeMode, mode.index);
-    });
-    notifyListeners();
-  }
-
-  void setBackgroundColor(Color color) {
-    _backgroundColorValue = color.toARGB32();
-    _writePref((SharedPreferences prefs) {
-      return prefs.setInt(_prefBackgroundColor, _backgroundColorValue);
-    });
-    notifyListeners();
-  }
-
-  void setAccentColor(Color color) {
-    _accentColorValue = color.toARGB32();
-    _writePref((SharedPreferences prefs) {
-      return prefs.setInt(_prefAccentColor, _accentColorValue);
-    });
-    notifyListeners();
-  }
-
-  void resetThemeToDefaults() {
-    _themeMode = ThemeMode.system;
-    _backgroundColorValue = 0xFFF0F4FA;
-    _accentColorValue = 0xFF1C4E80;
-    _writePref((SharedPreferences prefs) async {
-      await prefs.setInt(_prefThemeMode, ThemeMode.system.index);
-      await prefs.setInt(_prefBackgroundColor, _backgroundColorValue);
-      await prefs.setInt(_prefAccentColor, _accentColorValue);
-      return true;
     });
     notifyListeners();
   }

@@ -77,9 +77,9 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
                     ),
                     if (app.isTracking)
                       IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.my_location_rounded,
-                          color: AppTheme.nightBlue,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                         onPressed: () => _centerMap(app),
                         tooltip: 'Center on position',
@@ -118,9 +118,9 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
                                     point: position,
                                     width: 40,
                                     height: 40,
-                                    child: const Icon(
+                                    child: Icon(
                                       Icons.navigation_rounded,
-                                      color: AppTheme.nightBlue,
+                                      color: Theme.of(context).colorScheme.primary,
                                       size: 32,
                                     ),
                                   ),

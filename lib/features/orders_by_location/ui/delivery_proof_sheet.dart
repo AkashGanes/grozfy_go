@@ -46,7 +46,7 @@ Widget buildProofPhotoWidget(BuildContext context, String photoUrl) {
                     ? progress.cumulativeBytesLoaded /
                         progress.expectedTotalBytes!
                     : null,
-                color: AppTheme.oceanBlue,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
           );
@@ -54,17 +54,17 @@ Widget buildProofPhotoWidget(BuildContext context, String photoUrl) {
         errorBuilder: (context, error, stack) => Container(
           height: 200,
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Column(
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.broken_image_outlined, color: Colors.black38, size: 36),
+              Icon(Icons.broken_image_outlined, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38), size: 36),
               SizedBox(height: 8),
               Text(
                 'Could not load photo',
-                style: TextStyle(color: Colors.black38, fontSize: 12),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38), fontSize: 12),
               ),
             ],
           ),
@@ -153,7 +153,7 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
   void _showPhotoSourceSheet() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
@@ -163,8 +163,8 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
           children: [
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.camera_alt_outlined,
-                  color: AppTheme.oceanBlue),
+              leading: Icon(Icons.camera_alt_outlined,
+                  color: Theme.of(context).colorScheme.primary),
               title: const Text('Take Photo'),
               onTap: () {
                 Navigator.of(ctx).pop();
@@ -172,8 +172,8 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined,
-                  color: AppTheme.oceanBlue),
+              leading: Icon(Icons.photo_library_outlined,
+                  color: Theme.of(context).colorScheme.primary),
               title: const Text('Choose from Gallery'),
               onTap: () {
                 Navigator.of(ctx).pop();
@@ -202,9 +202,9 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
       child: SingleChildScrollView(
@@ -217,7 +217,7 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.black12,
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
@@ -240,20 +240,20 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Text(
+                Text(
                   'Proof of Delivery',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.nightBlue,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Optionally capture a photo as proof of delivery.',
-              style: TextStyle(fontSize: 13, color: Colors.black54),
+              style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55)),
             ),
             const SizedBox(height: 20),
 
@@ -267,25 +267,25 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
                         color: Colors.grey.withValues(alpha: 0.06),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Colors.black.withValues(alpha: 0.10),
+                          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
                         ),
                       ),
-                      child: const Column(
+                      child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.add_a_photo_outlined,
-                              color: Colors.black38, size: 36),
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38), size: 36),
                           SizedBox(height: 8),
                           Text(
                             'Tap to capture photo',
                             style: TextStyle(
-                                color: Colors.black38, fontSize: 13),
+                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38), fontSize: 13),
                           ),
                           SizedBox(height: 4),
                           Text(
                             'Camera or gallery',
                             style: TextStyle(
-                                color: Colors.black26, fontSize: 11),
+                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.26), fontSize: 11),
                           ),
                         ],
                       ),
@@ -344,13 +344,13 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       side: BorderSide(
-                          color: Colors.black.withValues(alpha: 0.20)),
+                          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.4)),
                     ),
-                    child: const Text(
+                    child: Text(
                       'Skip',
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
-                        color: Colors.black54,
+                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54),
                       ),
                     ),
                   ),

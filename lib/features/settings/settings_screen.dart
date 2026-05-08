@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/theme_controller.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -11,6 +12,7 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(appControllerProvider);
+    final themeController = ref.watch(themeControllerProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -23,11 +25,11 @@ class SettingsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _buildThemeCustomizationSection(context, controller),
+          _buildThemeCustomizationSection(context, controller, themeController),
           const SizedBox(height: 16),
           _buildLanguageCustomizationSection(context, controller),
           const SizedBox(height: 16),
-          _buildResetButton(context, controller),
+          _buildResetButton(context, controller, themeController),
           const SizedBox(height: 16),
         ],
       ),
@@ -207,6 +209,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget _buildThemeCustomizationSection(
     BuildContext context,
     dynamic controller,
+    ThemeController themeController,
   ) {
     final theme = Theme.of(context);
 
@@ -239,24 +242,22 @@ class SettingsScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildThemeModeRow(context, controller, theme),
+                  _buildThemeModeRow(context, themeController, theme),
                   const Divider(height: 28),
                   _buildColorPickerRow(
                     context: context,
-                    controller: controller,
                     label: controller.t('background_color'),
-                    currentColor: controller.backgroundColor,
+                    currentColor: themeController.backgroundColor,
                     colorOptions: AppTheme.backgroundColorOptions,
-                    onColorSelected: controller.setBackgroundColor,
+                    onColorSelected: themeController.setBackgroundColor,
                   ),
                   const Divider(height: 28),
                   _buildColorPickerRow(
                     context: context,
-                    controller: controller,
                     label: controller.t('accent_color'),
-                    currentColor: controller.accentColor,
+                    currentColor: themeController.accentColor,
                     colorOptions: AppTheme.accentColorOptions,
-                    onColorSelected: controller.setAccentColor,
+                    onColorSelected: themeController.setAccentColor,
                   ),
                 ],
               ),
@@ -269,14 +270,14 @@ class SettingsScreen extends ConsumerWidget {
 
   Widget _buildThemeModeRow(
     BuildContext context,
-    dynamic controller,
+    ThemeController themeController,
     ThemeData theme,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          controller.t('theme_mode'),
+          'Theme Mode',
           style: theme.textTheme.bodyLarge?.copyWith(
             fontWeight: FontWeight.w500,
           ),
@@ -287,30 +288,30 @@ class SettingsScreen extends ConsumerWidget {
             Expanded(
               child: _buildThemeModeOption(
                 context: context,
-                controller: controller,
+                themeController: themeController,
                 mode: ThemeMode.system,
                 icon: Icons.brightness_auto,
-                label: controller.t('system'),
+                label: 'System',
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: _buildThemeModeOption(
                 context: context,
-                controller: controller,
+                themeController: themeController,
                 mode: ThemeMode.light,
                 icon: Icons.light_mode,
-                label: controller.t('light'),
+                label: 'Light',
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: _buildThemeModeOption(
                 context: context,
-                controller: controller,
+                themeController: themeController,
                 mode: ThemeMode.dark,
                 icon: Icons.dark_mode,
-                label: controller.t('dark'),
+                label: 'Dark',
               ),
             ),
           ],
@@ -321,7 +322,6 @@ class SettingsScreen extends ConsumerWidget {
 
   Widget _buildColorPickerRow({
     required BuildContext context,
-    required dynamic controller,
     required String label,
     required Color currentColor,
     required List<Color> colorOptions,
@@ -402,16 +402,16 @@ class SettingsScreen extends ConsumerWidget {
 
   Widget _buildThemeModeOption({
     required BuildContext context,
-    required dynamic controller,
+    required ThemeController themeController,
     required ThemeMode mode,
     required IconData icon,
     required String label,
   }) {
-    final bool isSelected = controller.themeMode == mode;
+    final bool isSelected = themeController.themeMode == mode;
     final theme = Theme.of(context);
 
     return GestureDetector(
-      onTap: () => controller.setThemeMode(mode),
+      onTap: () => themeController.setThemeMode(mode),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
@@ -453,7 +453,11 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildResetButton(BuildContext context, dynamic controller) {
+  Widget _buildResetButton(
+    BuildContext context,
+    dynamic controller,
+    ThemeController themeController,
+  ) {
     final theme = Theme.of(context);
 
     return OutlinedButton.icon(
@@ -470,7 +474,7 @@ class SettingsScreen extends ConsumerWidget {
               ),
               FilledButton(
                 onPressed: () {
-                  controller.resetThemeToDefaults();
+                  themeController.resetToDefaults();
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(

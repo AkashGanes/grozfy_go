@@ -289,7 +289,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         children: [
           Text(
             label,
-            style: const TextStyle(color: Colors.black54, fontSize: 12),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54), fontSize: 12),
           ),
           const SizedBox(height: 2),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),

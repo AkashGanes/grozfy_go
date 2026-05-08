@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_theme.dart';
 import 'section_card.dart';
 
 class BatchPickupCard extends StatelessWidget {
@@ -31,10 +32,10 @@ class BatchPickupCard extends StatelessWidget {
           padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
             heading,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF101828),
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
         ),
@@ -48,10 +49,10 @@ class BatchPickupCard extends StatelessWidget {
                     width: 76,
                     height: 76,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(
+                      gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [Color(0xFF2D6CDF), Color(0xFF1F4FB6)],
+                        colors: [const Color(0xFF2D6CDF), Theme.of(context).colorScheme.primary],
                       ),
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -68,17 +69,17 @@ class BatchPickupCard extends StatelessWidget {
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF101828),
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           subtitle,
-                          style: const TextStyle(
-                            color: Color(0xFF667085),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                             fontSize: 12,
                             height: 1.35,
                           ),
@@ -133,9 +134,9 @@ class _BatchActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primary = const Color(0xFF1F4FB6);
+    final accent = AppTheme.accentOf(context);
     return Material(
-      color: filled ? primary : Colors.white,
+      color: filled ? accent : Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -144,7 +145,7 @@ class _BatchActionButton extends StatelessWidget {
           height: 44,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: primary, width: filled ? 0 : 1.4),
+            border: Border.all(color: accent, width: filled ? 0 : 1.4),
           ),
           alignment: Alignment.center,
           child: Row(
@@ -153,13 +154,13 @@ class _BatchActionButton extends StatelessWidget {
               Icon(
                 icon,
                 size: 18,
-                color: filled ? Colors.white : primary,
+                color: filled ? Colors.white : Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 8),
               Text(
                 label,
                 style: TextStyle(
-                  color: filled ? Colors.white : primary,
+                  color: filled ? Colors.white : Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.w700,
                   fontSize: 13,
                 ),

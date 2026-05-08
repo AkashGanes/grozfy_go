@@ -52,10 +52,10 @@ class AvailabilityCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF101828),
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -76,8 +76,8 @@ class AvailabilityCard extends StatelessWidget {
                     isOnline ? onlineDescription : offlineDescription,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF667085),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                       fontSize: 13,
                       height: 1.35,
                     ),

@@ -96,26 +96,10 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final activeOrder = ref.watch(appControllerProvider).activeOrder;
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isDark
-                ? [
-                    Theme.of(context).colorScheme.surface,
-                    Theme.of(context).scaffoldBackgroundColor,
-                  ]
-                : const [
-                    Color(0xFFF1F7FF),
-                    Color(0xFFE8F5F0),
-                    Color(0xFFFFF5E6),
-                  ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: Stack(
           children: [
             _buildBackdrop(),
@@ -160,7 +144,7 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
             ),
@@ -251,7 +235,7 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
                     color: _selectedTab == 0
-                        ? AppTheme.oceanBlue
+                        ? AppTheme.accentOf(context)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -277,7 +261,7 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
                     color: _selectedTab == 1
-                        ? AppTheme.oceanBlue
+                        ? AppTheme.accentOf(context)
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -442,7 +426,7 @@ class _NavItem extends StatelessWidget {
             Icon(
               icon,
               color: isSelected
-                  ? AppTheme.oceanBlue
+                  ? AppTheme.accentOf(context)
                   : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
               size: 24,
             ),
@@ -451,7 +435,7 @@ class _NavItem extends StatelessWidget {
               label,
               style: TextStyle(
                 color: isSelected
-                    ? AppTheme.oceanBlue
+                    ? AppTheme.accentOf(context)
                     : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                 fontSize: 11,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
@@ -627,25 +611,9 @@ class MoreScreen extends StatefulWidget {
 class _MoreScreenState extends State<MoreScreen> {
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isDark
-                ? [
-                    Theme.of(context).colorScheme.surface,
-                    Theme.of(context).scaffoldBackgroundColor,
-                  ]
-                : const [
-                    Color(0xFFF1F7FF),
-                    Color(0xFFE8F5F0),
-                    Color(0xFFFFF5E6),
-                  ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
+        color: Theme.of(context).scaffoldBackgroundColor,
         child: Stack(
           children: [
             _buildBackdrop(),
@@ -684,7 +652,7 @@ class _MoreScreenState extends State<MoreScreen> {
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
               ),
             ),
@@ -808,10 +776,10 @@ class _MoreScreenState extends State<MoreScreen> {
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+            color: AppTheme.accentOf(context).withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: AppTheme.oceanBlue, size: 20),
+          child: Icon(icon, color: AppTheme.accentOf(context), size: 20),
         ),
         title: Text(label, style: const TextStyle(fontSize: 14)),
         trailing: Icon(

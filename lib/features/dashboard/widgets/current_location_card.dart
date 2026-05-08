@@ -44,10 +44,10 @@ class CurrentLocationCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF101828),
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ),
@@ -88,10 +88,10 @@ class CurrentLocationCard extends StatelessWidget {
                                   point: center,
                                   width: 44,
                                   height: 44,
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.location_pin,
                                     size: 36,
-                                    color: Color(0xFF1F4FB6),
+                                    color: Theme.of(context).colorScheme.primary,
                                   ),
                                 ),
                               ],
@@ -101,10 +101,10 @@ class CurrentLocationCard extends StatelessWidget {
                       : Container(
                           color: const Color(0xFFEEF2F7),
                           alignment: Alignment.center,
-                          child: const Icon(
+                          child: Icon(
                             Icons.map_outlined,
                             size: 40,
-                            color: Color(0xFF98A2B3),
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.38),
                           ),
                         ),
                 ),
@@ -121,11 +121,11 @@ class CurrentLocationCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
+              Padding(
                 padding: EdgeInsets.only(top: 2),
                 child: Icon(
                   Icons.location_on_rounded,
-                  color: Color(0xFF1F4FB6),
+                  color: Theme.of(context).colorScheme.primary,
                   size: 22,
                 ),
               ),
@@ -138,9 +138,9 @@ class CurrentLocationCard extends StatelessWidget {
                       address,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF101828),
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 14,
                       ),
                     ),
@@ -150,8 +150,8 @@ class CurrentLocationCard extends StatelessWidget {
                         subAddress,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF667085),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                           fontSize: 12,
                         ),
                       ),
@@ -175,7 +175,7 @@ class _ChangeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -184,21 +184,21 @@ class _ChangeChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFFE4E7EC)),
+            border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.gps_fixed_rounded,
                 size: 14,
-                color: Color(0xFF1F4FB6),
+                color: Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 6),
               Text(
                 label,
-                style: const TextStyle(
-                  color: Color(0xFF1F4FB6),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),

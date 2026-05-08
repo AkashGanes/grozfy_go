@@ -186,12 +186,12 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                       height: 44,
                       child: Container(
                         decoration: BoxDecoration(
-                          color: AppTheme.oceanBlue,
+                          color: Theme.of(context).colorScheme.primary,
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2.5),
                           boxShadow: [
                             BoxShadow(
-                              color: AppTheme.oceanBlue.withValues(alpha: 0.4),
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
                               blurRadius: 8,
                               spreadRadius: 2,
                             ),
@@ -238,9 +238,9 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                     ),
                   ],
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.arrow_back_rounded,
-                  color: AppTheme.nightBlue,
+                  color: Theme.of(context).colorScheme.onSurface,
                   size: 20,
                 ),
               ),
@@ -268,9 +268,9 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                       ),
                     ],
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.fit_screen_rounded,
-                    color: AppTheme.nightBlue,
+                    color: Theme.of(context).colorScheme.onSurface,
                     size: 20,
                   ),
                 ),
@@ -283,14 +283,14 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
             right: 0,
             bottom: 0,
             child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black12,
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
                     blurRadius: 16,
-                    offset: Offset(0, -4),
+                    offset: const Offset(0, -4),
                   ),
                 ],
               ),
@@ -307,7 +307,7 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                           width: 36,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: Colors.black12,
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -336,19 +336,19 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                                   widget.stopNumber != null
                                       ? 'Stop ${widget.stopNumber}'
                                       : 'Delivery Stop',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.black45,
+                                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   widget.address,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
-                                    color: AppTheme.nightBlue,
+                                    color: Theme.of(context).colorScheme.onSurface,
                                   ),
                                 ),
                               ],

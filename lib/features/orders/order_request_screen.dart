@@ -145,7 +145,7 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
         children: [
           SizedBox(
             width: 120,
-            child: Text(label, style: const TextStyle(color: Colors.black54)),
+            child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54))),
           ),
           Expanded(
             child: Text(

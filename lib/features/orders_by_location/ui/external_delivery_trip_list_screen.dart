@@ -150,9 +150,9 @@ class _ExternalDeliveryTripListScreenState
             hintStyle: TextStyle(
               color: scheme.onSurface.withValues(alpha: 0.5),
             ),
-            prefixIcon: const Icon(
+            prefixIcon: Icon(
               Icons.search_rounded,
-              color: AppTheme.oceanBlue,
+              color: Theme.of(context).colorScheme.primary,
               size: 18,
             ),
             suffixIcon: _searchQuery.trim().isEmpty
@@ -203,11 +203,11 @@ class _ExternalDeliveryTripListScreenState
           return const SizedBox.shrink();
         },
         firstPageProgressIndicatorBuilder: (_) => const _ListLoadingState(),
-        newPageProgressIndicatorBuilder: (_) => const Padding(
+        newPageProgressIndicatorBuilder: (_) => Padding(
           padding: EdgeInsets.symmetric(vertical: 20),
           child: Center(
             child: CircularProgressIndicator(
-              color: AppTheme.oceanBlue,
+              color: Theme.of(context).colorScheme.primary,
               strokeWidth: 2,
             ),
           ),
@@ -377,7 +377,7 @@ class _TripCard extends StatelessWidget {
       case 1:
         badgeColor = colorScheme.primary;
       default:
-        badgeColor = Colors.black45;
+        badgeColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45);
     }
 
     final statusColor = _getStatusColor(trip.status);
@@ -412,18 +412,18 @@ class _TripCard extends StatelessWidget {
                       children: [
                         Text(
                           trip.name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
-                            color: AppTheme.nightBlue,
+                            color: Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           _formatDate(trip.tripDate),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.black45,
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
                           ),
                         ),
                       ],
@@ -468,7 +468,7 @@ class _TripCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: isComplete ? const Color(0xFF2E7D32) : Colors.black54,
+                      color: isComplete ? const Color(0xFF2E7D32) : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.54),
                     ),
                   ),
                 ],
@@ -496,7 +496,7 @@ class _EmptyState extends StatelessWidget {
             Icon(
               Icons.local_shipping_outlined,
               size: 52,
-              color: AppTheme.oceanBlue.withValues(alpha: 0.4),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
             ),
             const SizedBox(height: 12),
             Text(
@@ -538,7 +538,7 @@ class _ListLoadingState extends StatelessWidget {
                     width: 24,
                     height: 14,
                     decoration: BoxDecoration(
-                      color: AppTheme.oceanBlue.withValues(alpha: 0.14),
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -551,7 +551,7 @@ class _ListLoadingState extends StatelessWidget {
                           height: 12,
                           width: 150,
                           decoration: BoxDecoration(
-                            color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
@@ -560,7 +560,7 @@ class _ListLoadingState extends StatelessWidget {
                           height: 10,
                           width: 220,
                           decoration: BoxDecoration(
-                            color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
@@ -574,7 +574,7 @@ class _ListLoadingState extends StatelessWidget {
           .animate(onPlay: (controller) => controller.repeat())
           .shimmer(
             duration: (1000 + (i * 120)).ms,
-            color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
           );
     }
 
@@ -600,7 +600,7 @@ class _SearchEmptyState extends StatelessWidget {
           Icon(
             Icons.search_off_rounded,
             size: 18,
-            color: AppTheme.oceanBlue.withValues(alpha: 0.45),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.45),
           ),
           const SizedBox(height: 12),
           Text(

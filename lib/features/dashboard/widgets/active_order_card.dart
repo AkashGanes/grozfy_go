@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_theme.dart';
 import 'section_card.dart';
 import 'status_pill.dart';
 
@@ -72,10 +73,10 @@ class ActiveOrderCard extends StatelessWidget {
             children: [
               Text(
                 heading,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF101828),
+                  color: Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(width: 8),
@@ -91,16 +92,16 @@ class ActiveOrderCard extends StatelessWidget {
                   children: [
                     Text(
                       trackOrderLabel,
-                      style: const TextStyle(
-                        color: Color(0xFF1F4FB6),
+                      style: TextStyle(
+                        color: AppTheme.accentOf(context),
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
                       ),
                     ),
                     const SizedBox(width: 2),
-                    const Icon(
+                    Icon(
                       Icons.chevron_right_rounded,
-                      color: Color(0xFF1F4FB6),
+                      color: AppTheme.accentOf(context),
                       size: 18,
                     ),
                   ],
@@ -130,10 +131,10 @@ class ActiveOrderCard extends StatelessWidget {
                     children: [
                       Text(
                         orderId,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF101828),
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -141,8 +142,8 @@ class ActiveOrderCard extends StatelessWidget {
                         address,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF475467),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
                           fontSize: 13,
                           height: 1.35,
                         ),
@@ -173,7 +174,7 @@ class ActiveOrderCard extends StatelessWidget {
                               ),
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1F4FB6),
+                              backgroundColor: const Color(0xFF2E7D32),
                               foregroundColor: Colors.white,
                               elevation: 0,
                               shape: RoundedRectangleBorder(
@@ -230,7 +231,7 @@ class _MetaChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: const Color(0xFF667085)),
+        Icon(icon, size: 14, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
         const SizedBox(width: 5),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 180),
@@ -238,8 +239,8 @@ class _MetaChip extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF475467),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -288,8 +289,11 @@ class _ActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: Colors.white,
+      color: isDark
+          ? Theme.of(context).colorScheme.surfaceContainerHighest
+          : Colors.white,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: action.onTap,
@@ -298,21 +302,21 @@ class _ActionTile extends StatelessWidget {
           height: 44,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE4E7EC)),
+            border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3)),
           ),
           alignment: Alignment.center,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(action.icon, size: 16, color: const Color(0xFF1F4FB6)),
+              Icon(action.icon, size: 16, color: AppTheme.accentOf(context)),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   action.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF1F4FB6),
+                  style: TextStyle(
+                    color: AppTheme.accentOf(context),
                     fontWeight: FontWeight.w700,
                     fontSize: 12,
                   ),
