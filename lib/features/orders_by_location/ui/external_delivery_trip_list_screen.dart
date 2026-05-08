@@ -181,24 +181,14 @@ class _ExternalDeliveryTripListScreenState
       pagingController: controller,
       builderDelegate: PagedChildBuilderDelegate<TripListItem>(
         itemBuilder: (context, item, index) {
-          final delay = (index * 45).clamp(0, 320);
           if (item is TripRow) {
             return _TripCard(
-                  trip: item.trip,
-                  onTap: () => Navigator.of(context).pushNamed(
-                    AppRoutes.externalDeliveryTripDetails,
-                    arguments: item.trip.name,
-                  ),
-                )
-                .animate()
-                .fadeIn(delay: delay.ms, duration: 240.ms)
-                .slideY(begin: 0.06, end: 0)
-                .scale(
-                  begin: const Offset(0.985, 0.985),
-                  end: const Offset(1, 1),
-                  duration: 240.ms,
-                  curve: Curves.easeOutCubic,
-                );
+              trip: item.trip,
+              onTap: () => Navigator.of(context).pushNamed(
+                AppRoutes.externalDeliveryTripDetails,
+                arguments: item.trip.name,
+              ),
+            );
           }
           return const SizedBox.shrink();
         },
@@ -246,24 +236,14 @@ class _ExternalDeliveryTripListScreenState
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
       itemCount: results.length,
       itemBuilder: (context, index) {
-        final delay = (index * 45).clamp(0, 320);
         final trip = results[index];
         return _TripCard(
-              trip: trip,
-              onTap: () => Navigator.of(context).pushNamed(
-                AppRoutes.externalDeliveryTripDetails,
-                arguments: trip.name,
-              ),
-            )
-            .animate()
-            .fadeIn(delay: delay.ms, duration: 240.ms)
-            .slideY(begin: 0.05, end: 0)
-            .scale(
-              begin: const Offset(0.985, 0.985),
-              end: const Offset(1, 1),
-              duration: 230.ms,
-              curve: Curves.easeOutCubic,
-            );
+          trip: trip,
+          onTap: () => Navigator.of(context).pushNamed(
+            AppRoutes.externalDeliveryTripDetails,
+            arguments: trip.name,
+          ),
+        );
       },
     );
   }

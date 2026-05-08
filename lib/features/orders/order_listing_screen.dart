@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../core/navigation/app_routes.dart';
@@ -394,10 +393,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                 order: order,
                 searchQuery: '',
                 onTap: () => _openFullOrder(context, order),
-              )
-              .animate()
-              .fadeIn(delay: (index * 35).ms, duration: 220.ms)
-              .slideY(begin: 0.04, end: 0);
+              );
         },
       ),
     );
@@ -428,14 +424,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         final summary = _searchResults[index];
         final isOpening = _openingOrderId == summary.name;
         return _SearchResultCard(
-              summary: summary,
-              query: _searchQuery,
-              isLoading: isOpening,
-              onTap: isOpening ? null : () => _openSearchResult(summary),
-            )
-            .animate()
-            .fadeIn(delay: (index * 30).ms, duration: 200.ms)
-            .slideY(begin: 0.03, end: 0);
+          summary: summary,
+          query: _searchQuery,
+          isLoading: isOpening,
+          onTap: isOpening ? null : () => _openSearchResult(summary),
+        );
       },
     );
   }
