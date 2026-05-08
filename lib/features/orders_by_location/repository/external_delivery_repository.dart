@@ -131,6 +131,7 @@ class ExternalDeliveryRepository {
     'store_name',
     'customer_name',
     'status',
+    'delivery_address',
   ];
   static const List<String> _tripFields = [
     'name',
@@ -252,6 +253,132 @@ class ExternalDeliveryRepository {
         ],
       ],
     );
+  }
+
+  /// Fetches active orders for the logged-in driver via their trip stops.
+  /// Uses External Delivery Trip (driver filter permitted) → stop names
+  /// → parallel detail fetches. Typically 1 active trip with a few stops.
+  Future<List<ExternalDeliveryDetail>> fetchActiveOrdersForDriver() async {
+    final driver = await _getLoggedInDriver();
+
+    // 1. Get driver's submitted trips that are NOT completed
+    final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+      queryParameters: {
+        'fields': jsonEncode(['name', 'status', 'docstatus']),
+        'filters': jsonEncode([
+          ['External Delivery Trip', 'driver', '=', driver],
+          ['External Delivery Trip', 'docstatus', '=', '1'],
+          ['External Delivery Trip', 'status', '!=', 'Completed'],
+        ]),
+        'limit_page_length': '10',
+        'order_by': 'modified desc',
+      },
+    );
+    _logApi('fetch_active_trips request', tripUri.toString());
+    final tripResp = await _get(tripUri, headers: await _authHeaders());
+    if (!_okCodes.contains(tripResp.statusCode)) {
+      throw Exception(_extractErrorMessage(tripResp));
+    }
+    final tripRows = (jsonDecode(tripResp.body)['data']) as List;
+    if (tripRows.isEmpty) return [];
+
+    // 2. Fetch trip details for each active trip (usually just 1)
+    final allStopNames = <String>[];
+    for (final row in tripRows) {
+      final tripName = (row as Map<String, dynamic>)['name']?.toString() ?? '';
+      if (tripName.isEmpty) continue;
+      try {
+        final trip = await fetchTripDetails(tripName);
+        for (final stop in trip.stops) {
+          if (stop.externalDelivery.isNotEmpty) {
+            allStopNames.add(stop.externalDelivery);
+          }
+        }
+      } catch (_) {}
+    }
+    if (allStopNames.isEmpty) return [];
+
+    // 3. Fetch delivery details in parallel
+    final results = await Future.wait(
+      allStopNames.map((name) => fetchDetail(name).catchError((_) => null)),
+    );
+
+    const _inactiveStatuses = {
+      'delivered', 'cancelled', 'returned', 'canceled', 'return initiated', 'failed',
+    };
+
+    // 4. Keep only orders that are still in progress
+    return results
+        .whereType<ExternalDeliveryDetail>()
+        .where((d) => !_inactiveStatuses.contains(d.status.trim().toLowerCase()))
+        .toList();
+  }
+
+  /// Fetches past orders for the logged-in driver directly from trip stop data.
+  /// Uses the same source as the trip page so IDs always match what the driver
+  /// sees there. Only terminal-status stops are included.
+  Future<List<ExternalDelivery>> fetchPastOrdersForDriver() async {
+    final driver = await _getLoggedInDriver();
+
+    // 1. Get ALL trips for this driver (any status/docstatus).
+    final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+      queryParameters: {
+        'fields': jsonEncode(['name']),
+        'filters': jsonEncode([
+          ['External Delivery Trip', 'driver', '=', driver],
+        ]),
+        'limit_page_length': '50',
+        'order_by': 'modified desc',
+      },
+    );
+    _logApi('fetch_past_trips request', tripUri.toString());
+    final tripResp = await _get(tripUri, headers: await _authHeaders());
+    if (!_okCodes.contains(tripResp.statusCode)) {
+      throw Exception(_extractErrorMessage(tripResp));
+    }
+    final tripRows = (jsonDecode(tripResp.body)['data']) as List;
+    if (tripRows.isEmpty) return [];
+
+    // 2. Fetch trip details in parallel.
+    final tripNames = tripRows
+        .map((r) => (r as Map<String, dynamic>)['name']?.toString() ?? '')
+        .where((n) => n.isNotEmpty)
+        .toList();
+
+    final tripDetails = await Future.wait(
+      tripNames.map((n) => fetchTripDetails(n).catchError((_) => null)),
+    );
+
+    // 3. Build ExternalDelivery objects directly from trip stop data.
+    //    This guarantees orderId == stop.externalDelivery (same ID as trip page)
+    //    and avoids a second batch query against External Delivery.
+    const terminalStatuses = {
+      'delivered', 'cancelled', 'returned', 'failed',
+    };
+
+    final seen = <String>{};
+    final results = <ExternalDelivery>[];
+    for (final trip in tripDetails.whereType<ExternalDeliveryTrip>()) {
+      for (final stop in trip.stops) {
+        final id = stop.externalDelivery.trim();
+        if (id.isEmpty) continue;
+        if (!terminalStatuses.contains(stop.status.trim().toLowerCase())) continue;
+        if (!seen.add(id)) continue;
+        results.add(
+          ExternalDelivery(
+            name: id,
+            storeUrl: '',
+            storeName: '',
+            customerName: stop.customer,
+            status: stop.status,
+            creation: '',
+            modified: '',
+            deliveryAddress: stop.address.isNotEmpty ? stop.address : null,
+          ),
+        );
+      }
+    }
+    return results;
   }
 
   /// Fetches all External Delivery records with [status] using server-side
@@ -563,7 +690,7 @@ class ExternalDeliveryRepository {
   /// External Delivery Trip doctype is not configured as submittable.
   Future<String> createTripByOrderName(String orderName) async {
     final createPayload = <String, dynamic>{
-      'driver': ApiConstants.defaultExternalDeliveryDriver,
+      'driver': await _getLoggedInDriver(),
       'status': 'Draft',
       'trip_date': DateTime.now().toIso8601String().split('T').first,
       'stops': <Map<String, String>>[
@@ -827,6 +954,22 @@ class ExternalDeliveryRepository {
         }
       }
     }
+  }
+
+  /// Looks up the trip stop for [deliveryId] inside [tripId] and updates its
+  /// status. Used when the driver advances order status outside the trip screen.
+  Future<void> updateTripStopStatusByDelivery({
+    required String tripId,
+    required String deliveryId,
+    required String newStatus,
+  }) async {
+    final trip = await fetchTripDetails(tripId);
+    final stop = trip.stops.firstWhere(
+      (s) => s.externalDelivery.trim() == deliveryId.trim(),
+      orElse: () =>
+          throw Exception('Stop not found for delivery $deliveryId in trip $tripId'),
+    );
+    await updateTripStopStatus(stop: stop, newStatus: newStatus);
   }
 
   /// Called when the delivery partner arrives back at the store with a

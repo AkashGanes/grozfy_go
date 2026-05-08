@@ -32,6 +32,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen>
     with WidgetsBindingObserver {
   bool _licenseDialogShowing = false;
+  bool _isNavigating = false;
   late AppController _app;
 
   @override
@@ -162,10 +163,22 @@ class _DashboardScreenState extends State<DashboardScreen>
       showBottomNav: true,
       bottomNavIndex: 0,
       onBottomNavTap: (index) {
+        if (_isNavigating) return;
+        setState(() => _isNavigating = true);
         if (index == 1) {
-          Navigator.of(context).pushNamed(AppRoutes.myOrders);
+          Navigator.of(context)
+              .pushNamed(AppRoutes.myOrders)
+              .whenComplete(() {
+                if (mounted) setState(() => _isNavigating = false);
+              });
         } else if (index == 2) {
-          Navigator.of(context).pushNamed(AppRoutes.more);
+          Navigator.of(context)
+              .pushNamed(AppRoutes.more)
+              .whenComplete(() {
+                if (mounted) setState(() => _isNavigating = false);
+              });
+        } else {
+          setState(() => _isNavigating = false);
         }
       },
       header: Consumer(
@@ -416,12 +429,16 @@ class _ActiveOrderSection extends StatelessWidget {
         ActiveOrderAction(
           label: app.t('track_order'),
           icon: Icons.local_shipping_outlined,
-          onTap: () =>
-              Navigator.of(context).pushNamed(AppRoutes.orderTracking),
+          onTap: () => Navigator.of(context).pushNamed(
+            AppRoutes.orderTracking,
+            arguments: order,
+          ),
         ),
       ],
-      onTrackOrder: () =>
-          Navigator.of(context).pushNamed(AppRoutes.orderTracking),
+      onTrackOrder: () => Navigator.of(context).pushNamed(
+        AppRoutes.orderTracking,
+        arguments: order,
+      ),
       primaryActionLabel: transition?.label,
       onPrimaryAction: transition == null
           ? null

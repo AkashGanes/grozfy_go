@@ -51,7 +51,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       }
     }
 
-    app.updateOrderStatus(next);
+    final String? error = await app.updateOrderStatus(next);
 
     if (next == OrderStatus.delivered ||
         next == OrderStatus.cancelled ||
@@ -61,6 +61,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     if (!mounted) return;
     setState(() => _syncing = false);
+
+    if (error != null) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(error),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     if (next == OrderStatus.delivered) {
       messenger.showSnackBar(

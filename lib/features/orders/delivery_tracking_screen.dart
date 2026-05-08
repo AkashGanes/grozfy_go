@@ -838,7 +838,19 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
       );
     }
 
-    app.updateOrderStatus(OrderProgressStatus.delivered);
+    final String? statusError = await app.updateOrderStatus(
+      OrderProgressStatus.delivered,
+    );
+    if (!mounted) return;
+    if (statusError != null) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text(statusError),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     _stopLiveTracking();
     showDialog(
       context: context,

@@ -11,6 +11,7 @@ class ExternalDelivery {
     required this.status,
     required this.creation,
     required this.modified,
+    this.deliveryAddress,
   });
 
   final String name;
@@ -20,6 +21,7 @@ class ExternalDelivery {
   final String status;
   final String creation;
   final String modified;
+  final String? deliveryAddress;
 
   factory ExternalDelivery.fromJson(Map<String, dynamic> m) {
     return ExternalDelivery(
@@ -30,6 +32,9 @@ class ExternalDelivery {
       status: (m['status'] ?? '').toString(),
       creation: (m['creation'] ?? '').toString(),
       modified: (m['modified'] ?? '').toString(),
+      deliveryAddress: m['delivery_address']?.toString().trim().isNotEmpty == true
+          ? m['delivery_address'].toString().trim()
+          : null,
     );
   }
 
