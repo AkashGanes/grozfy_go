@@ -132,6 +132,26 @@ class ExternalDeliveryRepository {
     'customer_name',
     'status',
   ];
+
+  // Fields fetched via frappe.desk.reportview.get for the listing screen.
+  // That endpoint is used by the Frappe desk itself and is not subject to the
+  // in_list_view field restriction that rejects grand_total on the REST API.
+  // Fields confirmed to be queryable via frappe.desk.reportview.get.
+  // pickup_address / payment_mode / grand_total are restricted by the server
+  // and must stay out — Frappe rejects the whole request on the first bad field.
+  static const List<String> _enrichedFields = [
+    'name',
+    'creation',
+    'modified',
+    'store_name',
+    'store_url',
+    'customer_name',
+    'status',
+    'contact_mobile',
+    'latitude',
+    'longitude',
+    'delivery_address',
+  ];
   static const List<String> _tripFields = [
     'name',
     'driver',
@@ -231,6 +251,66 @@ class ExternalDeliveryRepository {
         .toList();
   }
 
+  /// Fetches a full page of order details in a single HTTP call using the
+  /// Frappe desk reportview endpoint. This endpoint is used by the Frappe UI
+  /// itself and is not subject to the in_list_view field restriction that the
+  /// REST list API enforces, allowing fields like grand_total to be included.
+  ///
+  /// Response format: {"message": {"keys": [...], "values": [[...], ...]}}
+  Future<List<ExternalDeliveryDetail>> fetchPageEnriched({
+    int limitStart = 0,
+    int limitPageLength = pageSize,
+    String orderBy = 'modified desc',
+    List<List<dynamic>> filters = const [],
+  }) async {
+    final uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.reportview.get',
+    );
+
+    _logApi('fetch_enriched_list request', uri.toString());
+    final resp = await _post(
+      uri,
+      headers: {
+        ...await _authHeaders(),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: {
+        'doctype': 'External Delivery',
+        'fields': jsonEncode(_enrichedFields),
+        'filters': jsonEncode(filters),
+        'order_by': orderBy,
+        'start': '$limitStart',
+        'page_length': '$limitPageLength',
+        'with_comment_count': '0',
+      },
+    );
+
+    if (resp.statusCode == 401) {
+      throw Exception('401: Invalid API credentials.');
+    }
+    if (resp.statusCode == 403) {
+      throw Exception('403: Access denied. Check API permissions.');
+    }
+    if (resp.statusCode != 200) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final result = decoded['message'] as Map<String, dynamic>?;
+    if (result == null) throw Exception('Unexpected reportview response');
+
+    final keys = (result['keys'] as List<dynamic>).cast<String>();
+    final values = (result['values'] as List<dynamic>).cast<List<dynamic>>();
+
+    return values.map((row) {
+      final m = <String, dynamic>{
+        for (int i = 0; i < keys.length && i < row.length; i++)
+          keys[i]: row[i],
+      };
+      return ExternalDeliveryDetail.fromJson(m);
+    }).toList();
+  }
+
   Future<List<ExternalDelivery>> fetchActiveSummaries({
     int limitPageLength = 5,
   }) async {
@@ -293,7 +373,10 @@ class ExternalDeliveryRepository {
         .toList();
   }
 
-  Future<ExternalDeliveryDetail> fetchDetail(String name) async {
+  Future<ExternalDeliveryDetail> fetchDetail(
+    String name, {
+    bool resolveAddress = true,
+  }) async {
     final uri = Uri.parse(
       '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(name)}',
     );
@@ -312,11 +395,13 @@ class ExternalDeliveryRepository {
     }
 
     final data = (jsonDecode(resp.body)['data']) as Map<String, dynamic>;
-    final addressName = data['delivery_address']?.toString();
-    if (addressName != null && addressName.isNotEmpty) {
-      final resolved = await _fetchAddressText(addressName);
-      if (resolved != null) {
-        data['delivery_address'] = resolved;
+    if (resolveAddress) {
+      final addressName = data['delivery_address']?.toString();
+      if (addressName != null && addressName.isNotEmpty) {
+        final resolved = await _fetchAddressText(addressName);
+        if (resolved != null) {
+          data['delivery_address'] = resolved;
+        }
       }
     }
 
