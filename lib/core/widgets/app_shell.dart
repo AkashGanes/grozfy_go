@@ -11,6 +11,7 @@ class AppShell extends StatelessWidget {
     this.subtitle,
     required this.child,
     this.actions,
+    this.header,
     this.scrollable = true,
     this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 20),
     this.loading = false,
@@ -27,6 +28,7 @@ class AppShell extends StatelessWidget {
   final String? subtitle;
   final Widget child;
   final List<Widget>? actions;
+  final Widget? header;
   final bool scrollable;
   final EdgeInsets padding;
   final bool loading;
@@ -75,38 +77,41 @@ class AppShell extends StatelessWidget {
                 children: [
                   const OfflineStatusIndicator(),
                   const SyncStatusBanner(),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
-                    child: Row(
-                      children: [
-                        if (Navigator.canPop(context))
-                          IconButton(
-                            onPressed: () => Navigator.of(context).maybePop(),
-                            icon: const Icon(Icons.arrow_back_rounded),
-                          ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                title,
-                                style: theme.textTheme.titleLarge,
-                              ),
-                              if (subtitle != null)
+                  if (header != null)
+                    header!
+                  else
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
+                      child: Row(
+                        children: [
+                          if (Navigator.canPop(context))
+                            IconButton(
+                              onPressed: () => Navigator.of(context).maybePop(),
+                              icon: const Icon(Icons.arrow_back_rounded),
+                            ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Text(
-                                  subtitle!,
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: theme.colorScheme.onSurface
-                                        .withValues(alpha: 0.6),
-                                  ),
+                                  title,
+                                  style: theme.textTheme.titleLarge,
                                 ),
-                            ],
+                                if (subtitle != null)
+                                  Text(
+                                    subtitle!,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.6),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
-                        ),
-                        ...?actions,
-                      ],
+                          ...?actions,
+                        ],
+                      ),
                     ),
-                  ),
                   if (footer == null) const SizedBox(height: 12),
                   Expanded(
                     child: scrollable
