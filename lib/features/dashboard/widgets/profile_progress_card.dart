@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/models/app_models.dart';
+import '../../../core/theme/app_theme.dart';
 import 'status_pill.dart';
 
 class ProfileProgressCard extends StatelessWidget {
@@ -38,7 +39,7 @@ class ProfileProgressCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF1A3FA6).withValues(alpha: 0.28),
+            color: const Color(0xFF1A3FA6).withValues(alpha: Theme.of(context).brightness == Brightness.dark ? 0.15 : 0.28),
             blurRadius: 26,
             offset: const Offset(0, 12),
           ),
@@ -48,13 +49,15 @@ class ProfileProgressCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         child: Stack(
           children: [
-            const Positioned.fill(
+            Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF2563EB), Color(0xFF1E40AF)],
+                    colors: Theme.of(context).brightness == Brightness.dark
+                        ? const [Color(0xFF0F2350), Color(0xFF0A1628)]
+                        : const [Color(0xFF2563EB), Color(0xFF1E40AF)],
                   ),
                 ),
               ),
@@ -214,8 +217,9 @@ class _CompleteButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: Colors.white,
+      color: isDark ? Colors.white.withValues(alpha: 0.15) : Colors.white,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -228,7 +232,7 @@ class _CompleteButton extends StatelessWidget {
               Text(
                 label,
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.primary,
+                  color: isDark ? Colors.white : AppTheme.accentOf(context),
                   fontWeight: FontWeight.w700,
                   fontSize: 12,
                 ),
@@ -236,7 +240,7 @@ class _CompleteButton extends StatelessWidget {
               const SizedBox(width: 6),
               Icon(
                 Icons.arrow_forward_rounded,
-                color: Theme.of(context).colorScheme.primary,
+                color: isDark ? Colors.white : AppTheme.accentOf(context),
                 size: 16,
               ),
             ],
@@ -301,10 +305,16 @@ class _ItemsStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = items.take(4).toList();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.10)
+            : Colors.white.withValues(alpha: 0.92),
+        border: isDark
+            ? Border.all(color: Colors.white.withValues(alpha: 0.12))
+            : null,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -350,6 +360,7 @@ class _ItemChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -365,10 +376,14 @@ class _ItemChip extends StatelessWidget {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.12),
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : iconColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: iconColor, size: 20),
+                child: Icon(icon,
+                    color: isDark ? Colors.white.withValues(alpha: 0.9) : iconColor,
+                    size: 20),
               ),
               const SizedBox(height: 8),
               Text(
@@ -379,7 +394,7 @@ class _ItemChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.onSurface,
+                  color: isDark ? Colors.white : const Color(0xFF1A2A4E),
                 ),
               ),
               const SizedBox(height: 6),

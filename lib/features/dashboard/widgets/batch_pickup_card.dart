@@ -52,7 +52,7 @@ class BatchPickupCard extends StatelessWidget {
                       gradient: LinearGradient(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
-                        colors: [const Color(0xFF2D6CDF), Theme.of(context).colorScheme.primary],
+                        colors: [const Color(0xFF2D6CDF), AppTheme.accentOf(context)],
                       ),
                       borderRadius: BorderRadius.circular(16),
                     ),
