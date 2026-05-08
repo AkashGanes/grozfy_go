@@ -148,6 +148,8 @@ class AppController extends ChangeNotifier {
   String? _existingLicenseUrl;
   String? _existingAadharUrl;
   String? _existingPanUrl;
+  String? _existingIssuingDate;
+  String? _existingExpiryDate;
   bool _isRefreshing = false;
 
   DateTime? _lastOtpRequestAt;
@@ -368,6 +370,8 @@ class AppController extends ChangeNotifier {
   String? get existingLicenseUrl => _existingLicenseUrl;
   String? get existingAadharUrl => _existingAadharUrl;
   String? get existingPanUrl => _existingPanUrl;
+  String? get existingIssuingDate => _existingIssuingDate;
+  String? get existingExpiryDate => _existingExpiryDate;
   String? get registrationToken => _registrationToken;
   String? get pendingRegistrationMobile => _pendingRegistrationMobile;
 
@@ -4249,6 +4253,12 @@ class AppController extends ChangeNotifier {
         );
         _existingPanUrl = _nullIfBlank(
           driverDoc?['custom_pan_attachment']?.toString(),
+        );
+        _existingIssuingDate = _nullIfBlank(
+          driverDoc?['issuing_date']?.toString(),
+        );
+        _existingExpiryDate = _nullIfBlank(
+          driverDoc?['expiry_date']?.toString(),
         );
       }
       if (employeeName != null) {
