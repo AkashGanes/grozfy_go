@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../widgets/app_toast.dart';
+
 Future<void> makePhoneCall(
   BuildContext context,
   String phoneNumber, {
@@ -48,13 +50,7 @@ void _showSnackBar(
   String message, {
   bool isError = false,
 }) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(message),
-      backgroundColor: isError ? Colors.red : null,
-      duration: const Duration(seconds: 3),
-    ),
-  );
+  AppToast.show(context, message);
 }
 
 class CallButton extends StatelessWidget {

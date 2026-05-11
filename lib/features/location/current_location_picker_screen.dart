@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -420,506 +419,843 @@ class _CurrentLocationPickerScreenState
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final pageBg = isDark ? const Color(0xFF12141C) : const Color(0xFFF7F9FC);
+    final cardBg = isDark ? const Color(0xFF1B1E2A) : Colors.white;
+    final cardBorder =
+        isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE7EBF0);
+    final textPrimary =
+        isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
+    final textSecondary =
+        isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
+    final textHint =
+        isDark ? const Color(0xFF747B8B) : const Color(0xFF98A2B3);
+    final accent = const Color(0xFF1F5FE8);
+    final accentSoft =
+        isDark ? const Color(0xFF1A2E58) : const Color(0xFFE6EEFC);
+
     return Scaffold(
-      body: Stack(
-        children: [
-          // Full-screen Map
-          SafeMap(child: FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _selectedPoint,
-              initialZoom: 16.0,
-              onTap: (_, LatLng point) => _onMapTap(point),
-              onPositionChanged: _onMapDrag,
+      backgroundColor: pageBg,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(
+              cardBg: cardBg,
+              cardBorder: cardBorder,
+              textPrimary: textPrimary,
+              textSecondary: textSecondary,
+              textHint: textHint,
+              accent: accent,
             ),
-            children: [
-              TileLayer(
-                urlTemplate: isDark
-                    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
-                    : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                subdomains: isDark ? const ['a', 'b', 'c', 'd'] : const [],
-                userAgentPackageName: 'com.lyncspace.grozfygo',
-              ),
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: _selectedPoint,
-                    width: 56,
-                    height: 56,
-                    child: Icon(
-                      Icons.location_pin,
-                      size: 48,
-                      color: isDark ? AppTheme.mint : AppTheme.nightBlue,
+            Expanded(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: SafeMap(
+                      child: FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          initialCenter: _selectedPoint,
+                          initialZoom: 16.0,
+                          onTap: (_, LatLng point) => _onMapTap(point),
+                          onPositionChanged: _onMapDrag,
+                        ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: isDark
+                                ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
+                                : 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            subdomains: isDark
+                                ? const ['a', 'b', 'c', 'd']
+                                : const [],
+                            userAgentPackageName: 'com.lyncspace.grozfygo',
+                          ),
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: _selectedPoint,
+                                width: 56,
+                                height: 56,
+                                child: Icon(
+                                  Icons.location_pin,
+                                  size: 48,
+                                  color: accent,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (_loading)
+                    Container(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      child: const Center(child: _LocationPickerLoading()),
+                    ),
+                  if (_searchResults.isNotEmpty)
+                    Positioned(
+                      top: 8,
+                      left: 16,
+                      right: 16,
+                      child: _SearchResultsDropdown(
+                        cardBg: cardBg,
+                        cardBorder: cardBorder,
+                        textPrimary: textPrimary,
+                        textSecondary: textSecondary,
+                        accent: accent,
+                        results: _searchResults,
+                        onSelect: _selectSearchResult,
+                      ),
+                    ),
+                  Positioned(
+                    left: 16,
+                    bottom: 16,
+                    child: _UseMyLocationPill(
+                      onTap: (_loading || _saving)
+                          ? null
+                          : _loadCurrentLocation,
+                      cardBg: cardBg,
+                      accent: accent,
+                    ),
+                  ),
+                  Positioned(
+                    right: 16,
+                    bottom: 16,
+                    child: _MapControls(
+                      cardBg: cardBg,
+                      accent: accent,
+                      cardBorder: cardBorder,
+                      onLocate:
+                          (_loading || _saving) ? null : _loadCurrentLocation,
+                      onZoomIn: () {
+                        final z = _mapController.camera.zoom + 1;
+                        _mapController.move(
+                          _mapController.camera.center,
+                          z.clamp(2.0, 19.0),
+                        );
+                      },
+                      onZoomOut: () {
+                        final z = _mapController.camera.zoom - 1;
+                        _mapController.move(
+                          _mapController.camera.center,
+                          z.clamp(2.0, 19.0),
+                        );
+                      },
                     ),
                   ),
                 ],
               ),
-            ],
-          )),
-
-          // Loading overlay
-          if (_loading)
-            Container(
-              color: Colors.black.withValues(alpha: 0.3),
-              child: const Center(
-                child: _LocationPickerLoading(),
-              ),
             ),
+            _buildBottomSection(
+              cardBg: cardBg,
+              cardBorder: cardBorder,
+              textPrimary: textPrimary,
+              textSecondary: textSecondary,
+              accent: accent,
+              accentSoft: accentSoft,
+              isDark: isDark,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-          // Header and Search Bar
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
-            left: 16,
-            right: 16,
-            child: Column(
-              children: [
-                // Header
-                _MapOverlayCard(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 16,
-                  ),
-                  backgroundColor: AppTheme.nightBlue.withValues(alpha: 0.72),
-                  borderColor: Colors.white.withValues(alpha: 0.22),
-                  child: const Row(
-                    children: [
-                      Icon(
-                        Icons.location_on_rounded,
-                        color: Colors.white,
-                        size: 24,
+  Widget _buildHeader({
+    required Color cardBg,
+    required Color cardBorder,
+    required Color textPrimary,
+    required Color textSecondary,
+    required Color textHint,
+    required Color accent,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _BackChip(
+                onTap: () => Navigator.of(context).maybePop(),
+                cardBg: cardBg,
+                cardBorder: cardBorder,
+                textPrimary: textPrimary,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Select Delivery Zone',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: textPrimary,
+                        height: 1.1,
                       ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          'Select Delivery Zone',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Choose your preferred delivery area',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: textSecondary,
+                        height: 1.35,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                // Search Bar
-                _MapOverlayCard(
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            height: 52,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: cardBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.search_rounded, color: textSecondary, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
                   child: TextField(
                     controller: _searchController,
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    cursorColor: accent,
                     decoration: InputDecoration(
-                      hintText: 'Search area or location...',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      suffixIcon: _searching
-                          ? Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: scheme.primary,
-                                ),
-                              ),
-                            )
-                          : _searchController.text.isNotEmpty
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear_rounded),
-                                  onPressed: _clearSearch,
-                                )
-                              : null,
+                      isCollapsed: true,
+                      contentPadding:
+                          const EdgeInsets.symmetric(vertical: 14),
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      hintText: 'Search area or location...',
+                      hintStyle: TextStyle(
+                        color: textHint,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     onChanged: _onSearchChanged,
                   ),
                 ),
-                // Search Results Dropdown
-                if (_searchResults.isNotEmpty)
-                  _MapOverlayCard(
-                    margin: const EdgeInsets.only(top: 4),
-                    constraints: const BoxConstraints(maxHeight: 200),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      padding: EdgeInsets.zero,
-                      itemCount: _searchResults.length,
-                      itemBuilder: (context, index) {
-                        final result = _searchResults[index];
-                        return ListTile(
-                          leading: Icon(
-                            Icons.location_on_outlined,
-                            color: scheme.primary,
-                          ),
-                          title: Text(
-                            result.displayName,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                          onTap: () => _selectSearchResult(result),
-                          dense: true,
-                        );
-                      },
+                if (_searching)
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: accent,
                     ),
+                  )
+                else if (_searchController.text.isNotEmpty)
+                  GestureDetector(
+                    onTap: _clearSearch,
+                    child: Icon(
+                      Icons.close_rounded,
+                      color: textSecondary,
+                      size: 20,
+                    ),
+                  )
+                else
+                  Icon(
+                    Icons.tune_rounded,
+                    color: textSecondary,
+                    size: 22,
                   ),
               ],
-            ),
-          ),
-
-          // My Location FAB
-          Positioned(
-            right: 16,
-            bottom: 200,
-            child: FloatingActionButton(
-              heroTag: 'myLocation',
-              mini: true,
-              backgroundColor: scheme.surface,
-              onPressed: _loading || _saving ? null : _loadCurrentLocation,
-              child: Icon(
-                Icons.my_location_rounded,
-                color: scheme.primary,
-              ),
-            ),
-          ),
-
-          // Settings FAB
-          Positioned(
-            right: 16,
-            bottom: 260,
-            child: FloatingActionButton(
-              heroTag: 'settings',
-              mini: true,
-              backgroundColor: scheme.surface,
-              onPressed: _saving
-                  ? null
-                  : () async {
-                      await Geolocator.openLocationSettings();
-                    },
-              child: Icon(
-                Icons.settings_rounded,
-                color: scheme.primary,
-              ),
-            ),
-          ),
-
-          // Bottom Card with Address and Confirm Button
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _MapOverlayCard(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(24),
-              ),
-              backgroundColor: AppTheme.nightBlue.withValues(alpha: 0.54),
-              borderColor: Colors.white.withValues(alpha: 0.16),
-              shadowAlpha: 0.24,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Handle indicator
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.52),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Title
-                      const Text(
-                        'Select Delivery Zone',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-
-                      // Address Display
-                      _MapOverlayCard(
-                        padding: const EdgeInsets.all(16),
-                        borderRadius: BorderRadius.circular(12),
-                        backgroundColor: Colors.white.withValues(alpha: 0.18),
-                        borderColor: Colors.white.withValues(alpha: 0.16),
-                        blurSigma: 14,
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.location_on_rounded,
-                              color: Colors.white,
-                              size: 24,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Selected Location',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    _addressLabel,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (!_loading)
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.edit_rounded,
-                                  size: 20,
-                                  color: Colors.white,
-                                ),
-                                onPressed: () {
-                                  // Allow manual edit if needed
-                                },
-                              ),
-                          ],
-                        ),
-                      ),
-
-                      // Error message with actions
-                      if (_error != null) ...[
-                        const SizedBox(height: 12),
-                        _MapOverlayCard(
-                          padding: const EdgeInsets.all(14),
-                          borderRadius: BorderRadius.circular(12),
-                          backgroundColor: const Color(
-                            0xFFB3261E,
-                          ).withValues(alpha: 0.18),
-                          borderColor: Colors.red.withValues(alpha: 0.3),
-                          blurSigma: 14,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.location_off_rounded,
-                                    color: Colors.red,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Expanded(
-                                    child: Text(
-                                      'Location Required',
-                                      style: TextStyle(
-                                        color: Colors.red,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _error!,
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: () async {
-                                        await Geolocator.openLocationSettings();
-                                      },
-                                      icon: const Icon(
-                                        Icons.gps_fixed_rounded,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Turn On GPS'),
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.white,
-                                        side: BorderSide(
-                                          color: Colors.white.withValues(alpha: 0.8),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: OutlinedButton.icon(
-                                      onPressed: _loadCurrentLocation,
-                                      icon: const Icon(
-                                        Icons.refresh_rounded,
-                                        size: 18,
-                                      ),
-                                      label: const Text('Retry'),
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.white,
-                                        side: BorderSide(
-                                          color: Colors.white.withValues(alpha: 0.8),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      const SizedBox(height: 16),
-
-                      // Confirm Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 54,
-                        child: ElevatedButton(
-                          onPressed: (_loading || _saving || _error != null)
-                              ? null
-                              : _confirmSelection,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _error != null
-                                ? scheme.onSurface.withValues(alpha: 0.3)
-                                : scheme.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: _saving
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(_error != null
-                                        ? Icons.location_off_rounded
-                                        : Icons.check_circle_rounded),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      _error != null
-                                          ? 'Location Required'
-                                          : 'Confirm Location',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
             ),
           ),
         ],
       ),
     );
   }
-}
 
-class _MapOverlayCard extends StatelessWidget {
-  const _MapOverlayCard({
-    required this.child,
-    this.padding,
-    this.margin,
-    this.constraints,
-    this.borderRadius,
-    this.backgroundColor,
-    this.borderColor,
-    this.blurSigma = 18,
-    this.shadowAlpha = 0.14,
-  });
-
-  final Widget child;
-  final EdgeInsetsGeometry? padding;
-  final EdgeInsetsGeometry? margin;
-  final BoxConstraints? constraints;
-  final BorderRadius? borderRadius;
-  final Color? backgroundColor;
-  final Color? borderColor;
-  final double blurSigma;
-  final double shadowAlpha;
-
-  @override
-  Widget build(BuildContext context) {
-    final BorderRadius resolvedRadius =
-        borderRadius ?? BorderRadius.circular(16);
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-
+  Widget _buildBottomSection({
+    required Color cardBg,
+    required Color cardBorder,
+    required Color textPrimary,
+    required Color textSecondary,
+    required Color accent,
+    required Color accentSoft,
+    required bool isDark,
+  }) {
+    final bool disableConfirm = _loading || _saving || _error != null;
     return Container(
-      margin: margin,
-      constraints: constraints,
       decoration: BoxDecoration(
-        borderRadius: resolvedRadius,
+        color: cardBg,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: shadowAlpha),
+            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
             blurRadius: 18,
-            offset: const Offset(0, 8),
+            offset: const Offset(0, -4),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: resolvedRadius,
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-          child: Container(
-            padding: padding,
-            decoration: BoxDecoration(
-              color: backgroundColor ??
-                  (isDark
-                      ? scheme.surface.withValues(alpha: 0.78)
-                      : Colors.white.withValues(alpha: 0.78)),
-              borderRadius: resolvedRadius,
-              border: Border.all(
-                color: borderColor ??
-                    (isDark
-                        ? scheme.onSurface.withValues(alpha: 0.18)
-                        : Colors.white.withValues(alpha: 0.42)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF3D4255)
+                      : const Color(0xFFD0D5DD),
+                  borderRadius: BorderRadius.circular(99),
+                ),
               ),
             ),
-            child: child,
+            const SizedBox(height: 14),
+            Text(
+              'Selected Delivery Zone',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: cardBorder),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: accentSoft,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.location_on_rounded,
+                      color: accent,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Selected Location',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _addressLabel,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: textPrimary,
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _clearSearch,
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_rounded, color: accent, size: 16),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Edit',
+                          style: TextStyle(
+                            color: accent,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_error != null)
+              _ErrorBanner(
+                message: _error!,
+                onTurnOnGps: () async {
+                  await Geolocator.openLocationSettings();
+                },
+                onRetry: _loadCurrentLocation,
+              )
+            else
+              Container(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF14352A)
+                      : const Color(0xFFE7F7EE),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.shield_outlined,
+                      color: Color(0xFF118A52),
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'You can change your delivery zone anytime.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: isDark
+                              ? const Color(0xFF8FD2A8)
+                              : const Color(0xFF118A52),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: disableConfirm ? null : _confirmSelection,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accent,
+                  disabledBackgroundColor: accent.withValues(alpha: 0.4),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: _saving
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.check_circle_rounded, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'Confirm Location',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BackChip extends StatelessWidget {
+  const _BackChip({
+    required this.onTap,
+    required this.cardBg,
+    required this.cardBorder,
+    required this.textPrimary,
+  });
+  final VoidCallback onTap;
+  final Color cardBg;
+  final Color cardBorder;
+  final Color textPrimary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: cardBg,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: cardBorder),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(Icons.arrow_back_rounded, size: 22, color: textPrimary),
+        ),
+      ),
+    );
+  }
+}
+
+class _UseMyLocationPill extends StatelessWidget {
+  const _UseMyLocationPill({
+    required this.onTap,
+    required this.cardBg,
+    required this.accent,
+  });
+
+  final VoidCallback? onTap;
+  final Color cardBg;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: cardBg,
+      borderRadius: BorderRadius.circular(99),
+      elevation: 0,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(99),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(99),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.near_me_rounded, color: accent, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Use my location',
+                style: TextStyle(
+                  color: accent,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13.5,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 }
+
+class _MapControls extends StatelessWidget {
+  const _MapControls({
+    required this.cardBg,
+    required this.accent,
+    required this.cardBorder,
+    required this.onLocate,
+    required this.onZoomIn,
+    required this.onZoomOut,
+  });
+
+  final Color cardBg;
+  final Color accent;
+  final Color cardBorder;
+  final VoidCallback? onLocate;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        _MapControlButton(
+          icon: Icons.gps_fixed_rounded,
+          color: accent,
+          onTap: onLocate,
+          cardBg: cardBg,
+        ),
+        const SizedBox(height: 10),
+        Container(
+          width: 44,
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              InkWell(
+                onTap: onZoomIn,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(12),
+                ),
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Icon(Icons.add_rounded, color: accent, size: 22),
+                ),
+              ),
+              Container(height: 1, color: cardBorder),
+              InkWell(
+                onTap: onZoomOut,
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(12),
+                ),
+                child: SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: Icon(Icons.remove_rounded, color: accent, size: 22),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MapControlButton extends StatelessWidget {
+  const _MapControlButton({
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    required this.cardBg,
+  });
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onTap;
+  final Color cardBg;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: cardBg,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: color, size: 22),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchResultsDropdown extends StatelessWidget {
+  const _SearchResultsDropdown({
+    required this.cardBg,
+    required this.cardBorder,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.accent,
+    required this.results,
+    required this.onSelect,
+  });
+
+  final Color cardBg;
+  final Color cardBorder;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color accent;
+  final List<SearchResult> results;
+  final void Function(SearchResult) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 220),
+      child: Container(
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: cardBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ListView.separated(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          itemCount: results.length,
+          separatorBuilder: (_, _) =>
+              Divider(height: 1, color: cardBorder, thickness: 1),
+          itemBuilder: (context, index) {
+            final r = results[index];
+            return ListTile(
+              dense: true,
+              leading: Icon(Icons.location_on_outlined, color: accent),
+              title: Text(
+                r.displayName,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              onTap: () => onSelect(r),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({
+    required this.message,
+    required this.onTurnOnGps,
+    required this.onRetry,
+  });
+  final String message;
+  final VoidCallback onTurnOnGps;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFDA29B)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.location_off_rounded,
+                color: Color(0xFFB42318),
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  message,
+                  style: const TextStyle(
+                    color: Color(0xFFB42318),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onTurnOnGps,
+                  icon: const Icon(Icons.gps_fixed_rounded, size: 16),
+                  label: const Text('Turn On GPS'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFB42318),
+                    side: const BorderSide(color: Color(0xFFFDA29B)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Retry'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFB42318),
+                    side: const BorderSide(color: Color(0xFFFDA29B)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 
 class _LocationPickerLoading extends StatelessWidget {
   const _LocationPickerLoading();

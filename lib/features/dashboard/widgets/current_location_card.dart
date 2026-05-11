@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'dashboard_colors.dart';
 import 'section_card.dart';
 
 class CurrentLocationCard extends StatelessWidget {
@@ -44,10 +45,10 @@ class CurrentLocationCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF101828),
+                    color: DashColors.textPrimary(context),
                   ),
                 ),
               ),
@@ -99,12 +100,12 @@ class CurrentLocationCard extends StatelessWidget {
                           ],
                         )
                       : Container(
-                          color: const Color(0xFFEEF2F7),
+                          color: DashColors.subtleFill(context),
                           alignment: Alignment.center,
-                          child: const Icon(
+                          child: Icon(
                             Icons.map_outlined,
                             size: 40,
-                            color: Color(0xFF98A2B3),
+                            color: DashColors.textSecondary(context),
                           ),
                         ),
                 ),
@@ -138,9 +139,9 @@ class CurrentLocationCard extends StatelessWidget {
                       address,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF101828),
+                        color: DashColors.textPrimary(context),
                         fontSize: 14,
                       ),
                     ),
@@ -150,8 +151,8 @@ class CurrentLocationCard extends StatelessWidget {
                         subAddress,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF667085),
+                        style: TextStyle(
+                          color: DashColors.textSecondary(context),
                           fontSize: 12,
                         ),
                       ),
@@ -175,7 +176,7 @@ class _ChangeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: DashColors.cardBg(context),
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -184,7 +185,7 @@ class _ChangeChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: const Color(0xFFE4E7EC)),
+            border: Border.all(color: DashColors.cardBorder(context)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,

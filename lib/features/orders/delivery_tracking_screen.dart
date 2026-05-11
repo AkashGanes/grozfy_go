@@ -17,6 +17,7 @@ import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/utils/call_utils.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 
@@ -167,12 +168,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not get GPS: $e'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        AppToast.show(context, 'Could not get GPS: $e');
       }
       if (_destination != null) {
         _getRoutePoints();
@@ -749,24 +745,16 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
   }
 
   Future<void> _cancelDelivery() async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
     final app = AppScope.of(context);
     final navigator = Navigator.of(context);
     final String deliveryName = _resolveDeliveryName(app);
 
     if (deliveryName.isEmpty) {
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text('No active order found to cancel'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppToast.show(context, 'No active order found to cancel');
       return;
     }
 
-    scaffoldMessenger.showSnackBar(
-      SnackBar(content: Text('Cancelling delivery $deliveryName...')),
-    );
+    AppToast.show(context, 'Cancelling delivery $deliveryName...');
 
     final success = await _apiService.updateDeliveryStatus(
       deliveryName,
@@ -776,35 +764,25 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
     if (!mounted) return;
 
     if (!success) {
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text('Failed to cancel on server. Cancelling locally.'),
-          backgroundColor: Colors.orange,
-        ),
+      AppToast.show(
+        context,
+        'Failed to cancel on server. Cancelling locally.',
       );
     }
 
     app.clearActiveOrder();
     _stopLiveTracking();
     navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
-    scaffoldMessenger.showSnackBar(
-      const SnackBar(content: Text('Delivery cancelled')),
-    );
+    if (mounted) AppToast.show(context, 'Delivery cancelled');
   }
 
   Future<void> _confirmDelivery() async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
     final app = AppScope.of(context);
     final navigator = Navigator.of(context);
     final String deliveryName = _resolveDeliveryName(app);
 
     if (deliveryName.isEmpty) {
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text('No active order found to deliver'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppToast.show(context, 'No active order found to deliver');
       return;
     }
 
@@ -818,9 +796,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
       );
     }
 
-    scaffoldMessenger.showSnackBar(
-      SnackBar(content: Text('Confirming delivery $deliveryName...')),
-    );
+    AppToast.show(context, 'Confirming delivery $deliveryName...');
 
     final success = await _apiService.updateDeliveryStatus(
       deliveryName,
@@ -830,12 +806,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
     if (!mounted) return;
 
     if (!success) {
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(
-          content: Text('Failed to update server. Saving locally.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      AppToast.show(context, 'Failed to update server. Saving locally.');
     }
 
     app.updateOrderStatus(OrderProgressStatus.delivered);
@@ -1340,13 +1311,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                                     ? _stopLiveTracking
                                     : _startLiveTracking)
                               : () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'No delivery location available',
-                                      ),
-                                      backgroundColor: Colors.red,
-                                    ),
+                                  AppToast.show(
+                                    context,
+                                    'No delivery location available',
                                   );
                                 },
                           style: ElevatedButton.styleFrom(

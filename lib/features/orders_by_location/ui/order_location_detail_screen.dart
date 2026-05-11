@@ -16,6 +16,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/call_utils.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../../../core/widgets/app_toast.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
@@ -173,9 +174,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Refresh failed: $e')));
+        AppToast.show(context, 'Refresh failed: $e');
       }
     }
   }
@@ -192,21 +191,16 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
       );
       if (!mounted) return;
       final isConnected = ConnectivityService().isConnected;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isConnected
-                ? 'Status updated to $newStatus'
-                : 'Saved offline. Will sync when reconnected.',
-          ),
-        ),
+      AppToast.show(
+        context,
+        isConnected
+            ? 'Status updated to $newStatus'
+            : 'Saved offline. Will sync when reconnected.',
       );
       await _refreshDetail();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
+        AppToast.show(context, e.toString());
       }
     } finally {
       if (mounted) setState(() => _updating = false);
@@ -277,15 +271,11 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
       await widget.repository.clearProofPhoto(orderName: widget.order.name);
       await _refreshDetail();
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Proof photo cleared')));
+        AppToast.show(context, 'Proof photo cleared');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
+        AppToast.show(context, e.toString());
       }
     } finally {
       if (mounted) setState(() => _updating = false);
@@ -359,10 +349,9 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
     final hasPermission = await _checkLocationPermission();
     if (!mounted) return;
     if (!hasPermission) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Location permission is required to start tracking'),
-        ),
+      AppToast.show(
+        context,
+        'Location permission is required to start tracking',
       );
       return;
     }
@@ -805,9 +794,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _updating = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to mark delivered: $e')));
+        AppToast.show(context, 'Failed to mark delivered: $e');
       }
       return; // Don't show success dialog on failure
     }
@@ -894,12 +881,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
     _stopTracking();
     await _updateStatus('Failed');
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Delivery cancelled'),
-        backgroundColor: Color(0xFFC62828),
-      ),
-    );
+    AppToast.show(context, 'Delivery cancelled');
   }
 
   // ---------------------------------------------------------------------------

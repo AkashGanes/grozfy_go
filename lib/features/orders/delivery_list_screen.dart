@@ -4,6 +4,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/services/api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/skeleton_loader.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
@@ -110,10 +111,9 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
           onAccept: (name) => _repository.createTripForOrderName(name),
           onNavigateToDelivery: () {
             if (!delivery.hasDropLocation) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('No GPS coordinates for delivery location'),
-                ),
+              AppToast.show(
+                context,
+                'No GPS coordinates for delivery location',
               );
               return;
             }
@@ -481,15 +481,11 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
       );
       await _fetchFullDelivery();
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Proof photo cleared')));
+        AppToast.show(context, 'Proof photo cleared');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.toString())));
+        AppToast.show(context, e.toString());
       }
     } finally {
       if (mounted) setState(() => _uploadingProof = false);
@@ -523,12 +519,9 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
   }
 
   Future<void> _acceptDelivery(BuildContext context) async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
 
-    scaffoldMessenger.showSnackBar(
-      const SnackBar(content: Text('Creating trip...')),
-    );
+    AppToast.show(context, 'Creating trip...');
 
     try {
       final tripName = await widget.onAccept(_delivery.name);
@@ -540,12 +533,7 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
       );
     } catch (e) {
       if (!context.mounted) return;
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      AppToast.show(context, e.toString().replaceFirst('Exception: ', ''));
     }
   }
 

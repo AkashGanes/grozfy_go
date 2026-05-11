@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'dashboard_colors.dart';
 import 'section_card.dart';
 
 class BatchPickupCard extends StatelessWidget {
@@ -31,10 +32,10 @@ class BatchPickupCard extends StatelessWidget {
           padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
             heading,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF101828),
+              color: DashColors.textPrimary(context),
             ),
           ),
         ),
@@ -68,17 +69,17 @@ class BatchPickupCard extends StatelessWidget {
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF101828),
+                            color: DashColors.textPrimary(context),
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           subtitle,
-                          style: const TextStyle(
-                            color: Color(0xFF667085),
+                          style: TextStyle(
+                            color: DashColors.textSecondary(context),
                             fontSize: 12,
                             height: 1.35,
                           ),
@@ -135,7 +136,7 @@ class _BatchActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final primary = const Color(0xFF1F4FB6);
     return Material(
-      color: filled ? primary : Colors.white,
+      color: filled ? primary : DashColors.cardBg(context),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,

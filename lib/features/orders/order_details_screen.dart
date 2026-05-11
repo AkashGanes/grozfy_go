@@ -5,6 +5,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/utils/call_utils.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/app_toast.dart';
 import 'widgets/order_timer_widget.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
@@ -237,7 +238,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     DeliveryOrder order,
   ) async {
     final app = AppScope.of(context);
-    final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     final error = await app.acceptOrder(order.orderId);
     if (!context.mounted) {
@@ -245,7 +245,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
     setState(() => _busy = false);
     if (error != null) {
-      messenger.showSnackBar(SnackBar(content: Text(error)));
+      AppToast.show(context, error);
       return;
     }
     setState(() {
@@ -254,9 +254,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         assignmentStatus: OrderAssignmentStatus.assigned,
       );
     });
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Order accepted successfully!')),
-    );
+    AppToast.show(context, 'Order accepted successfully!');
     Navigator.of(context).pushNamed(AppRoutes.navigation);
   }
 
@@ -265,7 +263,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     DeliveryOrder order,
   ) async {
     final app = AppScope.of(context);
-    final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
     setState(() => _busy = true);
     final error = await app.rejectOrder(order.orderId);
@@ -274,10 +271,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
     setState(() => _busy = false);
     if (error != null) {
-      messenger.showSnackBar(SnackBar(content: Text(error)));
+      AppToast.show(context, error);
       return;
     }
-    messenger.showSnackBar(const SnackBar(content: Text('Order rejected')));
+    AppToast.show(context, 'Order rejected');
     navigator.pushNamedAndRemoveUntil(AppRoutes.orderListing, (route) => false);
   }
 

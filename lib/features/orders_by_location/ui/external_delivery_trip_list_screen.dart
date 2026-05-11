@@ -12,6 +12,7 @@ import '../../../core/state/app_scope.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../../kyc/widgets/kyc_form_widgets.dart';
 import '../model/external_delivery.dart';
 import '../repository/external_delivery_repository.dart';
 
@@ -133,43 +134,12 @@ class _ExternalDeliveryTripListScreenState
   }
 
   Widget _buildSearchBar() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
-      child: FrostCard(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-        child: TextField(
-          controller: _searchController,
-          onChanged: (value) => setState(() => _searchQuery = value),
-          textInputAction: TextInputAction.search,
-          decoration: InputDecoration(
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(vertical: 8),
-            border: InputBorder.none,
-            hintText: 'Search Trip ID',
-            hintStyle: TextStyle(
-              color: scheme.onSurface.withValues(alpha: 0.5),
-            ),
-            prefixIcon: const Icon(
-              Icons.search_rounded,
-              color: AppTheme.oceanBlue,
-              size: 18,
-            ),
-            suffixIcon: _searchQuery.trim().isEmpty
-                ? null
-                : IconButton(
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                    icon: Icon(
-                      Icons.close_rounded,
-                      color: scheme.onSurface.withValues(alpha: 0.5),
-                      size: 18,
-                    ),
-                  ),
-          ),
-        ),
+      child: KycSearchInput(
+        controller: _searchController,
+        hint: 'Search Trip ID',
+        onChanged: (value) => setState(() => _searchQuery = value),
       ),
     ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.04, end: 0);
   }

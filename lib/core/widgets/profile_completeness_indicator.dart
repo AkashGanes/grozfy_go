@@ -418,21 +418,35 @@ class ProfileCompletenessIndicator extends StatelessWidget {
   }
 
   void _showDetailsBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _DetailsBottomSheet(
-        completeness: completeness,
-        onItemTap: (item) {
-          Navigator.pop(context);
-          if (item.route != null && onItemTap != null) {
-            onItemTap!(item);
-          }
-        },
-      ),
+    showProfileCompletenessSheet(
+      context,
+      completeness: completeness,
+      onItemTap: (item) {
+        if (item.route != null && onItemTap != null) {
+          onItemTap!(item);
+        }
+      },
     );
   }
+}
+
+void showProfileCompletenessSheet(
+  BuildContext context, {
+  required ProfileCompleteness completeness,
+  required void Function(ProfileCompletenessItem) onItemTap,
+}) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetContext) => _DetailsBottomSheet(
+      completeness: completeness,
+      onItemTap: (item) {
+        Navigator.pop(sheetContext);
+        onItemTap(item);
+      },
+    ),
+  );
 }
 
 class _DetailsBottomSheet extends StatelessWidget {

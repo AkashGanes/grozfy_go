@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'app_bottom_nav.dart';
+import 'app_toast.dart';
 import 'offline_status_indicator.dart';
 
 class AppShell extends StatelessWidget {
@@ -429,7 +430,7 @@ class _MapErrorBoundary extends StatelessWidget {
 }
 
 void showInfoSnack(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  AppToast.show(context, message);
 }
 
 class _ShellLoadingIndicator extends StatefulWidget {

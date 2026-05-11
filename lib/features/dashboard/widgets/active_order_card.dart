@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'dashboard_colors.dart';
 import 'section_card.dart';
 import 'status_pill.dart';
 
@@ -72,10 +73,10 @@ class ActiveOrderCard extends StatelessWidget {
             children: [
               Text(
                 heading,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF101828),
+                  color: DashColors.textPrimary(context),
                 ),
               ),
               const SizedBox(width: 8),
@@ -130,10 +131,10 @@ class ActiveOrderCard extends StatelessWidget {
                     children: [
                       Text(
                         orderId,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF101828),
+                          color: DashColors.textPrimary(context),
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -141,8 +142,8 @@ class ActiveOrderCard extends StatelessWidget {
                         address,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF475467),
+                        style: TextStyle(
+                          color: DashColors.textTertiary(context),
                           fontSize: 13,
                           height: 1.35,
                         ),
@@ -230,7 +231,7 @@ class _MetaChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: const Color(0xFF667085)),
+        Icon(icon, size: 14, color: DashColors.textSecondary(context)),
         const SizedBox(width: 5),
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 180),
@@ -238,8 +239,8 @@ class _MetaChip extends StatelessWidget {
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF475467),
+            style: TextStyle(
+              color: DashColors.textTertiary(context),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -289,7 +290,7 @@ class _ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: DashColors.cardBg(context),
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: action.onTap,
@@ -298,7 +299,7 @@ class _ActionTile extends StatelessWidget {
           height: 44,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFE4E7EC)),
+            border: Border.all(color: DashColors.cardBorder(context)),
           ),
           alignment: Alignment.center,
           child: Row(

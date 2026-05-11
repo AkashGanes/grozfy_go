@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'dashboard_colors.dart';
 import 'section_card.dart';
 
 class AvailableDeliveriesCard extends StatelessWidget {
@@ -34,10 +35,10 @@ class AvailableDeliveriesCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   heading,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF101828),
+                    color: DashColors.textPrimary(context),
                   ),
                 ),
               ),
@@ -89,17 +90,17 @@ class AvailableDeliveriesCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF101828),
+                        color: DashColors.textPrimary(context),
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        color: Color(0xFF667085),
+                      style: TextStyle(
+                        color: DashColors.textSecondary(context),
                         fontSize: 12,
                         height: 1.35,
                       ),

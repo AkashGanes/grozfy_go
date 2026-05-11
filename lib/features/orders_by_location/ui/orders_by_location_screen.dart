@@ -12,6 +12,7 @@ import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/skeleton_loader.dart';
+import '../../kyc/widgets/kyc_form_widgets.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
@@ -806,55 +807,12 @@ class _OrdersByLocationScreenState
   }
 
   Widget _buildSearchBar() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-      child: Container(
-        height: 44,
-        decoration: BoxDecoration(
-          color: scheme.surface.withValues(alpha: 0.86),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: scheme.surface.withValues(alpha: 0.7)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0A0A1D3A),
-              blurRadius: 10,
-              offset: Offset(0, 4),
-            ),
-          ],
-        ),
-        child: TextField(
-          controller: _searchController,
-          onChanged: (v) => setState(() => _searchQuery = v),
-          style: TextStyle(fontSize: 14, color: scheme.onSurface),
-          decoration: InputDecoration(
-            hintText: 'Search by order ID or customer…',
-            hintStyle: TextStyle(
-              fontSize: 13,
-              color: scheme.onSurface.withValues(alpha: 0.4),
-            ),
-            prefixIcon: Icon(
-              Icons.search_rounded,
-              size: 20,
-              color: scheme.onSurface.withValues(alpha: 0.4),
-            ),
-            suffixIcon: _searchQuery.isNotEmpty
-                ? IconButton(
-                    icon: Icon(
-                      Icons.close_rounded,
-                      size: 18,
-                      color: scheme.onSurface.withValues(alpha: 0.4),
-                    ),
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                  )
-                : null,
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 12),
-          ),
-        ),
+      child: KycSearchInput(
+        controller: _searchController,
+        hint: 'Search by order ID or customer…',
+        onChanged: (v) => setState(() => _searchQuery = v),
       ),
     );
   }

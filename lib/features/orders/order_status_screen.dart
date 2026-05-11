@@ -4,6 +4,7 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import 'widgets/order_timer_widget.dart';
@@ -30,7 +31,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final app = AppScope.of(context);
     final order = app.activeOrder;
     if (order == null || _syncing) return;
-    final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
 
     final OrderProgressStatus next = _nextStatus(order.orderStatus);
@@ -59,13 +59,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       app.stopOrderTimer();
     }
 
-    if (!mounted) return;
+    if (!context.mounted) return;
     setState(() => _syncing = false);
 
     if (next == OrderStatus.delivered) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Order delivered and earnings updated')),
-      );
+      AppToast.show(context, 'Order delivered and earnings updated');
       navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
     }
   }

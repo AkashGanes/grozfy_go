@@ -7,6 +7,7 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/app_toast.dart';
 import 'delivery_tracking_screen.dart';
 
 class NavigationScreen extends StatelessWidget {
@@ -156,9 +157,7 @@ class NavigationScreen extends StatelessWidget {
               );
               if (!context.mounted) return;
               if (error != null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(error)),
-                );
+                AppToast.show(context, error);
                 return;
               }
               Navigator.of(context).pushNamed(AppRoutes.orderStatus);
@@ -222,9 +221,7 @@ class NavigationScreen extends StatelessWidget {
     } catch (_) {}
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open maps')),
-      );
+      AppToast.show(context, 'Could not open maps');
     }
   }
 }

@@ -8,9 +8,9 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/providers.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
+import 'widgets/kyc_form_widgets.dart';
 
 class KycDocumentsScreen extends ConsumerStatefulWidget {
   const KycDocumentsScreen({super.key, this.licenseReuploadMode = false});
@@ -53,8 +53,6 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     super.initState();
     _applyExistingValues(ref.read(appControllerProvider));
 
-    // If KYC is done but values aren't in memory yet (e.g. submitted before
-    // this version was deployed), fetch the driver doc from the server.
     final app = ref.read(appControllerProvider);
     if (app.kycCompleted && app.existingAadharNo == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -157,13 +155,15 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
               ),
               const SizedBox(height: 16),
               ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.camera_alt_rounded)),
+                leading:
+                    const CircleAvatar(child: Icon(Icons.camera_alt_rounded)),
                 title: const Text('Take Photo'),
                 subtitle: const Text('Use camera to capture document'),
                 onTap: () => Navigator.pop(context, ImageSource.camera),
               ),
               ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.photo_library_rounded)),
+                leading:
+                    const CircleAvatar(child: Icon(Icons.photo_library_rounded)),
                 title: const Text('Choose from Gallery'),
                 subtitle: const Text('Pick an existing image'),
                 onTap: () => Navigator.pop(context, ImageSource.gallery),
@@ -184,14 +184,12 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     );
     if (file == null || !mounted) return;
 
-    // File type check
     final String ext = file.name.split('.').last.toLowerCase();
     if (!_allowedExtensions.contains(ext)) {
       showInfoSnack(context, 'Only JPG and PNG images are accepted');
       return;
     }
 
-    // File size check
     final int sizeBytes = await File(file.path).length();
     if (!mounted) return;
     if (sizeBytes > _maxFileSizeBytes) {
@@ -217,13 +215,15 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
   String _formatDate(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
+  String _formatDateDmy(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final app = ref.read(appControllerProvider);
 
     setState(() => _busy = true);
 
-    // ── License reupload mode: only upload license and resubmit ──
     if (widget.licenseReuploadMode) {
       final String? licenseUrl = await app.uploadFile(
         filePath: _licenseFilePath!,
@@ -257,7 +257,6 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
       return;
     }
 
-    // ── Normal KYC mode ──
     String? licenseUrl;
     String? aadharUrl;
     String? panUrl;
@@ -336,11 +335,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
   @override
   Widget build(BuildContext context) {
     final bool reupload = widget.licenseReuploadMode;
-    // Subscribe so the form rebuilds when the controller's existing-doc
-    // values are populated by the post-init profile fetch.
     ref.watch(appControllerProvider);
-    // Per-document editability: a field stays editable until it has actually
-    // been uploaded. Reupload mode forces the license editable regardless.
+
     final bool licenseUploaded = (_existingLicenseUrl ?? '').isNotEmpty;
     final bool aadharUploaded = (_existingAadharUrl ?? '').isNotEmpty;
     final bool panUploaded = (_existingPanUrl ?? '').isNotEmpty;
@@ -349,344 +345,319 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     final bool panEditable = !panUploaded;
     final bool anyEditable = licenseEditable || aadharEditable || panEditable;
 
-    return AppShell(
-      title: reupload ? 'Re-upload License' : 'KYC Verification',
-      subtitle: reupload
-          ? 'Update your driving license details'
-          : 'Upload identity & license details',
-      loading: _busy,
-      child: Form(
-        key: _formKey,
-        autovalidateMode: AutovalidateMode.onUserInteraction,
-        child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ---- Warning banner (reupload mode only) ----
-          if (reupload) ...[
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppTheme.mango.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: AppTheme.mango.withValues(alpha: 0.30),
+    return Scaffold(
+      backgroundColor: KycColors.pageBg(context),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                KycHeader(
+                  title: reupload ? 'Re-upload License' : 'KYC Verification',
+                  subtitle: reupload
+                      ? 'Update your driving license details'
+                      : 'Upload identity & license details',
+                  icon: Icons.verified_user_outlined,
+                  onBack: () => Navigator.of(context).maybePop(),
                 ),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: AppTheme.mango),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Your driving license is missing or expired. Please upload to continue.',
-                      style: TextStyle(fontSize: 13),
+                Expanded(
+                  child: Form(
+                    key: _formKey,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      children: [
+                        if (reupload) ...[
+                          _ReuploadWarningBanner(),
+                          const SizedBox(height: 14),
+                        ],
+                        const KycSectionHeading('Driving License'),
+                        KycFieldCard(
+                          icon: Icons.badge_outlined,
+                          label: 'License Number',
+                          child: _baseTextField(
+                            controller: _licenseNumberCtrl,
+                            hint: 'Enter license number',
+                            textCapitalization: TextCapitalization.characters,
+                            validator: (v) =>
+                                validateLicenseNumber(v, required: reupload),
+                            enabled: licenseEditable,
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        _AttachmentCard(
+                          icon: Icons.image_outlined,
+                          label: 'License Attachment',
+                          fileName: _licenseFileName,
+                          existingUrl:
+                              reupload ? null : _existingLicenseUrl,
+                          enabled: licenseEditable,
+                          onTap: () => _pickFile('license'),
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: KycFieldCard(
+                                icon: Icons.event_available_outlined,
+                                label: 'Issuing Date',
+                                trailing: Icon(
+                                  Icons.calendar_today_outlined,
+                                  color: KycColors.textHint(context),
+                                  size: 18,
+                                ),
+                                onTap: licenseEditable
+                                    ? () => _pickDate(isIssuing: true)
+                                    : null,
+                                child: _staticText(
+                                  _issuingDate != null
+                                      ? _formatDateDmy(_issuingDate!)
+                                      : null,
+                                  'Select date',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: KycFieldCard(
+                                icon: Icons.event_busy_outlined,
+                                label: 'Expiry Date',
+                                trailing: Icon(
+                                  Icons.calendar_today_outlined,
+                                  color: KycColors.textHint(context),
+                                  size: 18,
+                                ),
+                                onTap: licenseEditable
+                                    ? () => _pickDate(isIssuing: false)
+                                    : null,
+                                child: _staticText(
+                                  _expiryDate != null
+                                      ? _formatDateDmy(_expiryDate!)
+                                      : null,
+                                  'Select date',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (!reupload) ...[
+                          const SizedBox(height: 8),
+                          const KycSectionHeading('Aadhar (Required)'),
+                          KycFieldCard(
+                            icon: Icons.credit_card_rounded,
+                            label: 'Aadhar Number',
+                            child: _baseTextField(
+                              controller: _aadharNoCtrl,
+                              hint: 'Enter 12-digit Aadhar',
+                              keyboardType: TextInputType.number,
+                              validator: validateAadhar,
+                              enabled: aadharEditable,
+                              onChanged: (_) => setState(() {}),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(12),
+                              ],
+                            ),
+                          ),
+                          _AttachmentCard(
+                            icon: Icons.image_outlined,
+                            label: 'Aadhar Attachment',
+                            fileName: _aadharFileName,
+                            existingUrl: _existingAadharUrl,
+                            enabled: aadharEditable,
+                            required: true,
+                            onTap: () => _pickFile('aadhar'),
+                          ),
+                          const SizedBox(height: 8),
+                          const KycSectionHeading('PAN (Optional)'),
+                          KycFieldCard(
+                            icon: Icons.account_balance_wallet_outlined,
+                            label: 'PAN Number',
+                            child: _baseTextField(
+                              controller: _panNoCtrl,
+                              hint: 'Enter PAN number',
+                              textCapitalization:
+                                  TextCapitalization.characters,
+                              validator: validatePAN,
+                              enabled: panEditable,
+                              inputFormatters: [
+                                LengthLimitingTextInputFormatter(10),
+                              ],
+                            ),
+                          ),
+                          _AttachmentCard(
+                            icon: Icons.image_outlined,
+                            label: 'PAN Attachment',
+                            fileName: _panFileName,
+                            existingUrl: _existingPanUrl,
+                            enabled: panEditable,
+                            onTap: () => _pickFile('pan'),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+                if (anyEditable)
+                  KycPrimaryButton(
+                    label: _busy
+                        ? 'Submitting...'
+                        : reupload
+                            ? 'Submit License'
+                            : 'Submit KYC & Continue',
+                    onPressed: _isFormValid && !_busy ? _submit : null,
+                  ),
+              ],
             ),
-            const SizedBox(height: 20),
+            if (_busy)
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: Colors.black26,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(kKycAccent),
+                    ),
+                  ),
+                ),
+              ),
           ],
-
-          // ---- License Section ----
-          const SectionLabel('Driving License'),
-          FrostCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextFormField(
-                  controller: _licenseNumberCtrl,
-                  textCapitalization: TextCapitalization.characters,
-                  validator: (v) => validateLicenseNumber(v, required: reupload),
-                  enabled: licenseEditable,
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    labelText: 'License Number',
-                    prefixIcon: Icon(Icons.badge_outlined),
-                    helperText: ' ',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _AttachTile(
-                  label: 'License Attachment',
-                  fileName: _licenseFileName,
-                  onPick: () => _pickFile('license'),
-                  existingUrl: reupload ? null : _existingLicenseUrl,
-                  enabled: licenseEditable,
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DateTile(
-                        label: 'Issuing Date',
-                        value: _issuingDate,
-                        onTap: licenseEditable
-                            ? () => _pickDate(isIssuing: true)
-                            : () {},
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _DateTile(
-                        label: 'Expiry Date',
-                        value: _expiryDate,
-                        onTap: licenseEditable
-                            ? () => _pickDate(isIssuing: false)
-                            : () {},
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // ---- Aadhar & PAN (normal KYC mode only) ----
-          if (!reupload) ...[
-          const SectionLabel('Aadhar (Required)'),
-          FrostCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextFormField(
-                  controller: _aadharNoCtrl,
-                  keyboardType: TextInputType.number,
-                  maxLength: 12,
-                  enabled: aadharEditable,
-                  onChanged: (_) => setState(() {}),
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  validator: validateAadhar,
-                  decoration: const InputDecoration(
-                    labelText: 'Aadhar Number',
-                    prefixIcon: Icon(Icons.credit_card_rounded),
-                    counterText: '',
-                    helperText: ' ',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _AttachTile(
-                  label: 'Aadhar Attachment',
-                  fileName: _aadharFileName,
-                  onPick: () => _pickFile('aadhar'),
-                  required: true,
-                  existingUrl: _existingAadharUrl,
-                  enabled: aadharEditable,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // ---- PAN Section (Optional) ----
-          const SectionLabel('PAN (Optional)'),
-          FrostCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextFormField(
-                  controller: _panNoCtrl,
-                  textCapitalization: TextCapitalization.characters,
-                  maxLength: 10,
-                  validator: validatePAN,
-                  enabled: panEditable,
-                  decoration: const InputDecoration(
-                    labelText: 'PAN Number',
-                    prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-                    counterText: '',
-                    helperText: ' ',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _AttachTile(
-                  label: 'PAN Attachment',
-                  fileName: _panFileName,
-                  onPick: () => _pickFile('pan'),
-                  existingUrl: _existingPanUrl,
-                  enabled: panEditable,
-                ),
-              ],
-            ),
-          ),
-          ], // end if (!reupload)
-          if (anyEditable) ...[
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isFormValid && !_busy ? _submit : null,
-                child: Text(
-                  _busy
-                      ? 'Submitting...'
-                      : reupload
-                          ? 'Submit License'
-                          : 'Submit KYC & Continue',
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 20),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _baseTextField({
+    required TextEditingController controller,
+    required String hint,
+    TextInputType? keyboardType,
+    TextCapitalization textCapitalization = TextCapitalization.none,
+    String? Function(String?)? validator,
+    ValueChanged<String>? onChanged,
+    bool enabled = true,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      textCapitalization: textCapitalization,
+      validator: validator,
+      enabled: enabled,
+      onChanged: onChanged,
+      inputFormatters: inputFormatters,
+      style: kycInputStyle(context).copyWith(
+        color: enabled
+            ? KycColors.textPrimary(context)
+            : KycColors.textHint(context),
+      ),
+      decoration:
+          kycHintDecoration(hint, hintColor: KycColors.textHint(context)),
+    );
+  }
+
+  Widget _staticText(String? value, String hint) {
+    final hasValue = value != null && value.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text(
+        hasValue ? value : hint,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
+          color: hasValue
+              ? KycColors.textPrimary(context)
+              : KycColors.textHint(context),
+        ),
       ),
     );
   }
 }
 
-// ---- Date picker tile ----
-class _DateTile extends StatelessWidget {
-  const _DateTile({
-    required this.label,
-    required this.value,
-    required this.onTap,
-  });
-
-  final String label;
-  final DateTime? value;
-  final VoidCallback onTap;
-
+class _ReuploadWarningBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final String display = value != null
-        ? '${value!.day.toString().padLeft(2, '0')}/${value!.month.toString().padLeft(2, '0')}/${value!.year}'
-        : 'Select';
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
-        decoration: BoxDecoration(
-          border: Border.all(color: scheme.onSurface.withValues(alpha: 0.12)),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF6E7),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF6D697)),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Color(0xFFB87707)),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Your driving license is missing or expired. Please upload to continue.',
               style: TextStyle(
-                fontSize: 11,
-                color: scheme.onSurface.withValues(alpha: 0.6),
+                fontSize: 13,
+                color: Color(0xFF7A4F08),
+                height: 1.35,
               ),
             ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Icon(Icons.calendar_today_rounded, size: 16),
-                const SizedBox(width: 6),
-                Text(
-                  display,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ---- File attachment tile ----
-class _AttachTile extends StatelessWidget {
-  const _AttachTile({
+class _AttachmentCard extends StatelessWidget {
+  const _AttachmentCard({
+    required this.icon,
     required this.label,
     required this.fileName,
-    required this.onPick,
+    required this.existingUrl,
+    required this.enabled,
+    required this.onTap,
     this.required = false,
-    this.existingUrl,
-    this.enabled = true,
   });
 
+  final IconData icon;
   final String label;
   final String? fileName;
-  final VoidCallback onPick;
-  final bool required;
   final String? existingUrl;
   final bool enabled;
+  final VoidCallback onTap;
+  final bool required;
 
   @override
   Widget build(BuildContext context) {
     final bool hasNewFile = fileName != null;
-    final bool hasExisting = existingUrl != null && !hasNewFile;
+    final bool hasExisting = (existingUrl ?? '').isNotEmpty && !hasNewFile;
     final bool hasFile = hasNewFile || hasExisting;
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: enabled ? onPick : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
-        decoration: BoxDecoration(
-          color: hasFile
-              ? AppTheme.mint.withValues(alpha: 0.08)
-              : scheme.onSurface.withValues(alpha: 0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: hasFile
-                ? AppTheme.mint.withValues(alpha: 0.3)
-                : scheme.onSurface.withValues(alpha: 0.12),
+
+    final IconData statusIcon = hasFile
+        ? Icons.check_circle_rounded
+        : Icons.upload_rounded;
+    final Color statusColor =
+        hasFile ? const Color(0xFF1AB36A) : KycColors.textHint(context);
+
+    return KycFieldCard(
+      icon: icon,
+      label: label + (required ? ' *' : ''),
+      trailing: Icon(statusIcon, size: 20, color: statusColor),
+      onTap: enabled ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Text(
+          hasNewFile
+              ? fileName!
+              : hasExisting
+                  ? 'Already uploaded'
+                  : enabled
+                      ? 'Tap to select image'
+                      : 'Locked',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: hasFile ? FontWeight.w600 : FontWeight.w400,
+            color: hasFile ? const Color(0xFF118A52) : KycColors.textHint(context),
           ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              hasFile ? Icons.check_circle : Icons.upload_file_rounded,
-              color: hasFile
-                  ? Colors.green
-                  : scheme.onSurface.withValues(alpha: 0.4),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label + (required ? ' *' : ''),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                  ),
-                  if (hasNewFile)
-                    Text(
-                      fileName!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: scheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    )
-                  else if (hasExisting)
-                    const Row(
-                      children: [
-                        Icon(Icons.cloud_done_outlined, size: 13, color: Colors.green),
-                        SizedBox(width: 4),
-                        Text(
-                          'Already uploaded',
-                          style: TextStyle(fontSize: 11, color: Colors.green),
-                        ),
-                      ],
-                    )
-                  else
-                    Text(
-                      'Tap to select image',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: scheme.onSurface.withValues(alpha: 0.4),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            if (hasFile && enabled)
-              Icon(
-                Icons.edit,
-                size: 16,
-                color: scheme.onSurface.withValues(alpha: 0.4),
-              ),
-          ],
         ),
       ),
     );

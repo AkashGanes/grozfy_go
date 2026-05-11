@@ -11,7 +11,9 @@ import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/app_toast.dart';
 import '../notifications/providers/notification_providers.dart';
+import '../profile/profile_completeness_sheet.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import 'widgets/active_order_card.dart';
@@ -199,12 +201,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             pendingLabel: app.t('pending'),
             verifiedLabel: app.t('verified'),
             itemLabel: (item) => app.t(item.name),
-            onTapComplete: () {
-              final next = app.profileCompleteness.nextIncompleteItem;
-              if (next?.route != null) {
-                Navigator.of(context).pushNamed(next!.route!);
-              }
-            },
+            onTapComplete: () => showProfileCompletenessSheet(context),
             onItemTap: (item) {
               if (item.route != null) {
                 Navigator.of(context).pushNamed(item.route!);
@@ -431,6 +428,7 @@ class _ActiveOrderSection extends StatelessWidget {
   }
 
   Widget _placeholder(BuildContext context, Widget body) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -438,21 +436,23 @@ class _ActiveOrderSection extends StatelessWidget {
           padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
             app.t('active_order'),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: Color(0xFF101828),
+              color: isDark
+                  ? const Color(0xFFF2F4F7)
+                  : const Color(0xFF101828),
             ),
           ),
         ),
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDark ? const Color(0xFF1B1E2A) : Colors.white,
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
+                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
                 blurRadius: 18,
                 offset: const Offset(0, 6),
               ),
@@ -503,7 +503,6 @@ class _ActiveOrderSection extends StatelessWidget {
     DeliveryOrder order,
     ({String label, OrderProgressStatus next}) transition,
   ) async {
-    final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
 
     if (transition.next == OrderStatus.delivered) {
@@ -521,13 +520,11 @@ class _ActiveOrderSection extends StatelessWidget {
     final error = await app.updateOrderStatus(transition.next);
     if (!context.mounted) return;
     if (error != null) {
-      messenger.showSnackBar(SnackBar(content: Text(error)));
+      AppToast.show(context, error);
       return;
     }
     if (transition.next == OrderStatus.delivered) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(app.t('order_delivered'))),
-      );
+      AppToast.show(context, app.t('order_delivered'));
       navigator.pushNamedAndRemoveUntil(
         AppRoutes.dashboard,
         (route) => false,

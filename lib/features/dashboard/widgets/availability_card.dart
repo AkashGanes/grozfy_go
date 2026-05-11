@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'dashboard_colors.dart';
 import 'section_card.dart';
 import 'status_pill.dart';
 
@@ -52,10 +53,10 @@ class AvailabilityCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF101828),
+                        color: DashColors.textPrimary(context),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -76,8 +77,8 @@ class AvailabilityCard extends StatelessWidget {
                     isOnline ? onlineDescription : offlineDescription,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF667085),
+                    style: TextStyle(
+                      color: DashColors.textSecondary(context),
                       fontSize: 13,
                       height: 1.35,
                     ),

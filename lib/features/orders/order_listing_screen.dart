@@ -9,6 +9,8 @@ import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/app_toast.dart';
+import '../kyc/widgets/kyc_form_widgets.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 
@@ -218,13 +220,8 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       if (!mounted) return;
       Navigator.of(context).pushNamed(AppRoutes.orderDetails, arguments: order);
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not load order: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (!context.mounted) return;
+      AppToast.show(context, 'Could not load order: $e');
     } finally {
       if (mounted) setState(() => _openingOrderId = null);
     }
@@ -246,52 +243,9 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
           // Search bar
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: TextField(
+            child: KycSearchInput(
               controller: _searchController,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: 'Search by Order ID, Store or Customer…',
-                hintStyle: TextStyle(
-                  color: scheme.onSurface.withValues(alpha: 0.4),
-                  fontSize: 13,
-                ),
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: searching
-                      ? AppTheme.oceanBlue
-                      : scheme.onSurface.withValues(alpha: 0.4),
-                ),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 20),
-                        color: scheme.onSurface.withValues(alpha: 0.6),
-                        onPressed: _clearSearch,
-                      )
-                    : null,
-                filled: true,
-                fillColor: scheme.surface,
-                contentPadding: const EdgeInsets.symmetric(
-                  vertical: 13,
-                  horizontal: 16,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(
-                    color: scheme.onSurface.withValues(alpha: 0.12),
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(
-                    color: scheme.onSurface.withValues(alpha: 0.12),
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide:
-                      const BorderSide(color: AppTheme.oceanBlue, width: 1.5),
-                ),
-              ),
+              hint: 'Search by Order ID, Store or Customer…',
             ),
           ),
 

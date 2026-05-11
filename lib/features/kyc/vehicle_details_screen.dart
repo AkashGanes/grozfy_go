@@ -5,6 +5,7 @@ import '../../core/state/app_scope.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/skeleton_loader.dart';
+import 'widgets/kyc_form_widgets.dart';
 
 class VehicleDetailsScreen extends StatefulWidget {
   const VehicleDetailsScreen({super.key});
@@ -75,8 +76,6 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     final bool forceEdit =
         args is Map<String, dynamic> && args['force_edit'] == true;
 
-    // Fast path: vehicle data already in memory from persisted cache —
-    // navigate straight to details without any network calls.
     final Map<String, dynamic>? cached = app.submittedVehicleRaw;
     if (!forceEdit && cached != null && cached.isNotEmpty && mounted) {
       _initialized = true;
@@ -256,301 +255,548 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
         ? <String>['No employees found']
         : _employeeOptions;
 
-    if (!_initialized) {
-      return AppShell(
-        title: 'Vehicle Registration',
-        subtitle: 'Loading vehicle details…',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SectionLabel('Required Details'),
-            FrostCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: List.generate(6, (_) => const SkeletonFormField()),
-              ),
-            ),
-            const SizedBox(height: 14),
-            const SectionLabel('Additional Details'),
-            FrostCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: List.generate(6, (_) => const SkeletonFormField()),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    final bool canSubmit = _initialized &&
+        !_busy &&
+        _selectedFuel != null &&
+        _selectedUom != null;
 
-    return AppShell(
-      title: 'Vehicle Registration',
-      subtitle: 'Add all vehicle details from ERP schema',
-      loading: _busy,
-      child: Form(
-        key: _formKey,
-        autovalidateMode: AutovalidateMode.onUserInteraction,
-        child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SectionLabel('Required Details'),
-          FrostCard(
-            child: Column(
+    return Scaffold(
+      backgroundColor: KycColors.pageBg(context),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextFormField(
-                  controller: _licensePlateCtrl,
-                  textCapitalization: TextCapitalization.characters,
-                  validator: validateLicensePlate,
-                  decoration: const InputDecoration(
-                    labelText: 'License Plate *',
-                    prefixIcon: Icon(Icons.confirmation_number_outlined),
-                    helperText: ' ',
-                  ),
+                KycHeader(
+                  title: 'Vehicle Registration',
+                  subtitle: 'Add all vehicle details from ERP schema',
+                  assetPath: 'assets/images/scooter_vehicle.png',
+                  onBack: () => Navigator.of(context).maybePop(),
                 ),
-                TextFormField(
-                  controller: _makeCtrl,
-                  validator: validateVehicleName,
-                  decoration: const InputDecoration(
-                    labelText: 'Make *',
-                    prefixIcon: Icon(Icons.factory_outlined),
-                    helperText: ' ',
-                  ),
-                ),
-                TextFormField(
-                  controller: _modelCtrl,
-                  validator: validateVehicleName,
-                  decoration: const InputDecoration(
-                    labelText: 'Model *',
-                    prefixIcon: Icon(Icons.directions_car_outlined),
-                    helperText: ' ',
-                  ),
-                ),
-                TextFormField(
-                  controller: _odometerCtrl,
-                  keyboardType: TextInputType.number,
-                  validator: validateOdometer,
-                  decoration: const InputDecoration(
-                    labelText: 'Odometer Value (Last) *',
-                    prefixIcon: Icon(Icons.speed_outlined),
-                    helperText: ' ',
-                  ),
-                ),
-                const SizedBox(height: 4),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedFuel,
-                  items: fuelOptions
-                      .map(
-                        (value) => DropdownMenuItem<String>(
-                          value: value,
-                          child: Text(value),
+                Expanded(
+                  child: !_initialized
+                      ? _buildSkeleton()
+                      : Form(
+                          key: _formKey,
+                          autovalidateMode:
+                              AutovalidateMode.onUserInteraction,
+                          child: ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            children: [
+                              const KycSectionHeading('Required Details'),
+                              KycFieldCard(
+                                icon: Icons.confirmation_number_outlined,
+                                label: 'License Plate',
+                                child: _baseTextField(
+                                  controller: _licensePlateCtrl,
+                                  hint: 'Enter license plate',
+                                  textCapitalization:
+                                      TextCapitalization.characters,
+                                  validator: validateLicensePlate,
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.factory_outlined,
+                                label: 'Make',
+                                child: _baseTextField(
+                                  controller: _makeCtrl,
+                                  hint: 'Enter make',
+                                  validator: validateVehicleName,
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.directions_car_outlined,
+                                label: 'Model',
+                                child: _baseTextField(
+                                  controller: _modelCtrl,
+                                  hint: 'Enter model',
+                                  validator: validateVehicleName,
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.speed_outlined,
+                                label: 'Odometer Value (Last)',
+                                child: _baseTextField(
+                                  controller: _odometerCtrl,
+                                  hint: 'Enter odometer value',
+                                  keyboardType: TextInputType.number,
+                                  validator: validateOdometer,
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.local_gas_station_outlined,
+                                label: 'Fuel Type',
+                                trailing: Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: KycColors.textHint(context),
+                                ),
+                                onTap: () async {
+                                  final picked = await _pickFromList(
+                                    title: 'Select Fuel Type',
+                                    items: fuelOptions,
+                                    current: _selectedFuel,
+                                  );
+                                  if (picked != null) {
+                                    setState(() => _selectedFuel = picked);
+                                  }
+                                },
+                                child: _staticValue(
+                                  _selectedFuel,
+                                  'Select fuel type',
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.straighten_outlined,
+                                label: 'Fuel UOM',
+                                trailing: Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: KycColors.textHint(context),
+                                ),
+                                onTap: () async {
+                                  final picked = await _pickFromList(
+                                    title: 'Select Fuel UOM',
+                                    items: uomOptions,
+                                    current: _selectedUom,
+                                  );
+                                  if (picked != null) {
+                                    setState(() => _selectedUom = picked);
+                                  }
+                                },
+                                child: _staticValue(
+                                  _selectedUom,
+                                  'Select unit',
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const KycSectionHeading('Additional Details'),
+                              KycFieldCard(
+                                icon: Icons.calendar_month_outlined,
+                                label: 'Acquisition Date',
+                                trailing: Icon(
+                                  Icons.calendar_today_outlined,
+                                  color: KycColors.textHint(context),
+                                  size: 20,
+                                ),
+                                onTap: () => _pickDate(_acquisitionDateCtrl),
+                                child: _readonlyText(
+                                  _acquisitionDateCtrl,
+                                  'Select acquisition date',
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.location_on_outlined,
+                                label: 'Location',
+                                child: _baseTextField(
+                                  controller: _locationCtrl,
+                                  hint: 'Enter location',
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.pin_outlined,
+                                label: 'Chassis Number',
+                                child: _baseTextField(
+                                  controller: _chassisNoCtrl,
+                                  hint: 'Enter chassis number',
+                                  textCapitalization:
+                                      TextCapitalization.characters,
+                                  validator: validateChassisNumber,
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.currency_rupee_outlined,
+                                label: 'Vehicle Value',
+                                child: _baseTextField(
+                                  controller: _vehicleValueCtrl,
+                                  hint: 'Enter vehicle value',
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                          decimal: true),
+                                  validator: validateVehicleValue,
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.badge_outlined,
+                                label: 'Employee',
+                                trailing: Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: KycColors.textHint(context),
+                                ),
+                                onTap: () async {
+                                  final picked = await _pickFromList(
+                                    title: 'Select Employee',
+                                    items: employeeOptions,
+                                    current: _selectedEmployee,
+                                  );
+                                  if (picked != null &&
+                                      picked != 'No employees found') {
+                                    setState(
+                                        () => _selectedEmployee = picked);
+                                  }
+                                },
+                                child: _staticValue(
+                                  employeeOptions
+                                          .contains(_selectedEmployee)
+                                      ? _selectedEmployee
+                                      : null,
+                                  'Select employee',
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.shield_outlined,
+                                label: 'Insurance Company',
+                                child: _baseTextField(
+                                  controller: _insuranceCompanyCtrl,
+                                  hint: 'Enter insurance company',
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.policy_outlined,
+                                label: 'Policy Number',
+                                child: _baseTextField(
+                                  controller: _policyNoCtrl,
+                                  hint: 'Enter policy number',
+                                  textCapitalization:
+                                      TextCapitalization.characters,
+                                  validator: validatePolicyNumber,
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.event_available_outlined,
+                                label: 'Insurance Start Date',
+                                trailing: Icon(
+                                  Icons.calendar_today_outlined,
+                                  color: KycColors.textHint(context),
+                                  size: 20,
+                                ),
+                                onTap: () => _pickDate(_startDateCtrl),
+                                child: _readonlyText(
+                                  _startDateCtrl,
+                                  'Select start date',
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.event_busy_outlined,
+                                label: 'Insurance End Date',
+                                trailing: Icon(
+                                  Icons.calendar_today_outlined,
+                                  color: KycColors.textHint(context),
+                                  size: 20,
+                                ),
+                                onTap: () => _pickDate(_endDateCtrl),
+                                child: _readonlyText(
+                                  _endDateCtrl,
+                                  'Select end date',
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.eco_outlined,
+                                label: 'Last Carbon Check Date',
+                                trailing: Icon(
+                                  Icons.calendar_today_outlined,
+                                  color: KycColors.textHint(context),
+                                  size: 20,
+                                ),
+                                onTap: () => _pickDate(_carbonCheckDateCtrl),
+                                child: _readonlyText(
+                                  _carbonCheckDateCtrl,
+                                  'Select last carbon check date',
+                                ),
+                              ),
+                              KycFieldCard(
+                                icon: Icons.palette_outlined,
+                                label: 'Color',
+                                child: _baseTextField(
+                                  controller: _colorCtrl,
+                                  hint: 'Enter vehicle color',
+                                  validator: validateColor,
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: KycFieldCard(
+                                      icon: Icons.tire_repair_outlined,
+                                      label: 'Wheels',
+                                      child: _baseTextField(
+                                        controller: _wheelsCtrl,
+                                        hint: 'e.g. 2',
+                                        keyboardType: TextInputType.number,
+                                        validator: validatePositiveInt,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: KycFieldCard(
+                                      icon: Icons.sensor_door_outlined,
+                                      label: 'Doors',
+                                      child: _baseTextField(
+                                        controller: _doorsCtrl,
+                                        hint: 'e.g. 0',
+                                        keyboardType: TextInputType.number,
+                                        validator: validatePositiveInt,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      )
-                      .toList(),
-                  onChanged: (String? value) {
-                    if (value != null) {
-                      setState(() => _selectedFuel = value);
-                    }
-                  },
-                  decoration: const InputDecoration(
-                    labelText: 'Fuel Type *',
-                    prefixIcon: Icon(Icons.local_gas_station_outlined),
-                  ),
                 ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedUom,
-                  items: uomOptions
-                      .map(
-                        (value) => DropdownMenuItem<String>(
-                          value: value,
-                          child: Text(value),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (String? value) {
-                    setState(() => _selectedUom = value);
-                  },
-                  decoration: const InputDecoration(
-                    labelText: 'Fuel UOM *',
-                    prefixIcon: Icon(Icons.straighten_outlined),
-                  ),
+                KycPrimaryButton(
+                  label: 'Submit Vehicle Details',
+                  onPressed: canSubmit ? _submit : null,
                 ),
               ],
             ),
-          ),
-          const SizedBox(height: 14),
-          const SectionLabel('Additional Details'),
-          FrostCard(
-            child: Column(
-              children: [
-                _dateField(
-                  controller: _acquisitionDateCtrl,
-                  label: 'Acquisition Date',
-                  icon: Icons.calendar_month_outlined,
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _locationCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Location',
-                    prefixIcon: Icon(Icons.location_on_outlined),
+            if (_busy)
+              const Positioned.fill(
+                child: ColoredBox(
+                  color: Colors.black26,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(kKycAccent),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _chassisNoCtrl,
-                  textCapitalization: TextCapitalization.characters,
-                  validator: validateChassisNumber,
-                  decoration: const InputDecoration(
-                    labelText: 'Chassis Number',
-                    prefixIcon: Icon(Icons.pin_outlined),
-                    helperText: ' ',
-                  ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSkeleton() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      children: List.generate(8, (_) => const SkeletonFormField()),
+    );
+  }
+
+  Widget _baseTextField({
+    required TextEditingController controller,
+    required String hint,
+    TextInputType? keyboardType,
+    TextCapitalization textCapitalization = TextCapitalization.none,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      textCapitalization: textCapitalization,
+      validator: validator,
+      style: kycInputStyle(context),
+      decoration: kycHintDecoration(hint, hintColor: KycColors.textHint(context)),
+    );
+  }
+
+  Widget _readonlyText(TextEditingController controller, String hint) {
+    return TextFormField(
+      controller: controller,
+      readOnly: true,
+      enableInteractiveSelection: false,
+      style: kycInputStyle(context),
+      decoration: kycHintDecoration(hint, hintColor: KycColors.textHint(context)),
+    );
+  }
+
+  Widget _staticValue(String? value, String hint) {
+    final hasValue = value != null && value.trim().isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Text(
+        hasValue ? value : hint,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
+          color: hasValue ? KycColors.textPrimary(context) : KycColors.textHint(context),
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _pickFromList({
+    required String title,
+    required List<String> items,
+    String? current,
+  }) {
+    return showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: KycColors.cardBg(context),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return _ListPickerSheet(
+          title: title,
+          items: items,
+          current: current,
+        );
+      },
+    );
+  }
+}
+
+class _ListPickerSheet extends StatefulWidget {
+  const _ListPickerSheet({
+    required this.title,
+    required this.items,
+    required this.current,
+  });
+
+  final String title;
+  final List<String> items;
+  final String? current;
+
+  @override
+  State<_ListPickerSheet> createState() => _ListPickerSheetState();
+}
+
+class _ListPickerSheetState extends State<_ListPickerSheet> {
+  late final TextEditingController _queryCtrl;
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _queryCtrl = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _queryCtrl.dispose();
+    super.dispose();
+  }
+
+  List<String> get _filtered {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return widget.items;
+    return widget.items
+        .where((item) => item.toLowerCase().contains(q))
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final results = _filtered;
+    return SafeArea(
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: FractionallySizedBox(
+          heightFactor: 0.82,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: KycColors.sheetGrabber(context),
+                  borderRadius: BorderRadius.circular(99),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _vehicleValueCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  validator: validateVehicleValue,
-                  decoration: const InputDecoration(
-                    labelText: 'Vehicle Value',
-                    prefixIcon: Icon(Icons.currency_rupee_outlined),
-                    helperText: ' ',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: employeeOptions.contains(_selectedEmployee)
-                      ? _selectedEmployee
-                      : null,
-                  items: employeeOptions
-                      .map(
-                        (value) => DropdownMenuItem<String>(
-                          value: value,
-                          child: Text(value),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (String? value) {
-                    if (value == null || value == 'No employees found') {
-                      return;
-                    }
-                    setState(() => _selectedEmployee = value);
-                  },
-                  decoration: const InputDecoration(
-                    labelText: 'Employee',
-                    prefixIcon: Icon(Icons.badge_outlined),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _insuranceCompanyCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Insurance Company',
-                    prefixIcon: Icon(Icons.shield_outlined),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _policyNoCtrl,
-                  textCapitalization: TextCapitalization.characters,
-                  validator: validatePolicyNumber,
-                  decoration: const InputDecoration(
-                    labelText: 'Policy Number',
-                    prefixIcon: Icon(Icons.policy_outlined),
-                    helperText: ' ',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _dateField(
-                  controller: _startDateCtrl,
-                  label: 'Insurance Start Date',
-                  icon: Icons.event_available_outlined,
-                ),
-                const SizedBox(height: 12),
-                _dateField(
-                  controller: _endDateCtrl,
-                  label: 'Insurance End Date',
-                  icon: Icons.event_busy_outlined,
-                ),
-                const SizedBox(height: 12),
-                _dateField(
-                  controller: _carbonCheckDateCtrl,
-                  label: 'Last Carbon Check Date',
-                  icon: Icons.eco_outlined,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _colorCtrl,
-                  validator: validateColor,
-                  decoration: const InputDecoration(
-                    labelText: 'Color',
-                    prefixIcon: Icon(Icons.palette_outlined),
-                    helperText: ' ',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+                child: Row(
                   children: [
                     Expanded(
-                      child: TextFormField(
-                        controller: _wheelsCtrl,
-                        keyboardType: TextInputType.number,
-                        validator: validatePositiveInt,
-                        decoration: const InputDecoration(
-                          labelText: 'Wheels',
-                          prefixIcon: Icon(Icons.tire_repair_outlined),
-                          helperText: ' ',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _doorsCtrl,
-                        keyboardType: TextInputType.number,
-                        validator: validatePositiveInt,
-                        decoration: const InputDecoration(
-                          labelText: 'Doors',
-                          prefixIcon: Icon(Icons.sensor_door_outlined),
-                          helperText: ' ',
+                      child: Text(
+                        widget.title,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: KycColors.textPrimary(context),
                         ),
                       ),
                     ),
                   ],
                 ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: KycSearchInput(
+                  controller: _queryCtrl,
+                  hint: 'Search '
+                      '${widget.title.replaceAll(RegExp(r'^Select\s+'), '').toLowerCase()}',
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+              ),
+              if (results.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: KycColors.accentSoft(context),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(
+                          Icons.search_off_rounded,
+                          color: kKycAccent,
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No matching options',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: KycColors.textPrimary(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '${results.length} ${results.length == 1 ? 'result' : 'results'}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: KycColors.textSecondary(context),
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                    itemCount: results.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 6),
+                    itemBuilder: (context, i) {
+                      final item = results[i];
+                      return KycResultTile(
+                        label: item,
+                        selected: item == widget.current,
+                        onTap: () => Navigator.of(context).pop(item),
+                      );
+                    },
+                  ),
+                ),
               ],
-            ),
+            ],
           ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed:
-                (_busy ||
-                    !_initialized ||
-                    _selectedFuel == null ||
-                    _selectedUom == null)
-                ? null
-                : _submit,
-            child: const Text('Submit Vehicle Details'),
-          ),
-        ],
+        ),
       ),
-      ),
-    );
-  }
-
-  Widget _dateField({
-    required TextEditingController controller,
-    required String label,
-    required IconData icon,
-  }) {
-    return TextField(
-      controller: controller,
-      readOnly: true,
-      onTap: () => _pickDate(controller),
-      decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
     );
   }
 }

@@ -9,6 +9,7 @@ import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/app_toast.dart';
 
 class LocationTrackingScreen extends StatefulWidget {
   const LocationTrackingScreen({super.key});
@@ -223,29 +224,19 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () async {
-                          final scaffoldMessenger = ScaffoldMessenger.of(
-                            context,
-                          );
                           if (app.isTracking) {
                             app.stopTracking();
                             _timer?.cancel();
-                            scaffoldMessenger.showSnackBar(
-                              const SnackBar(content: Text('Tracking stopped')),
-                            );
+                            AppToast.show(context, 'Tracking stopped');
                           } else {
                             final String? error = await app.startTracking();
+                            if (!context.mounted) return;
                             if (error != null) {
-                              scaffoldMessenger.showSnackBar(
-                                SnackBar(content: Text(error)),
-                              );
+                              AppToast.show(context, error);
                               return;
                             }
                             _startTimer(app);
-                            scaffoldMessenger.showSnackBar(
-                              const SnackBar(
-                                content: Text('Live tracking started'),
-                              ),
-                            );
+                            AppToast.show(context, 'Live tracking started');
                             // Center map on current position after tracking starts
                             Future.delayed(
                               const Duration(milliseconds: 500),

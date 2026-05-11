@@ -321,10 +321,11 @@ class _ItemsStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = items.take(4).toList();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? const Color(0xFF1B1E2A) : Colors.white,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -396,10 +397,12 @@ class _ItemChip extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF101828),
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? const Color(0xFFF2F4F7)
+                      : const Color(0xFF101828),
                 ),
               ),
               const SizedBox(height: 6),
