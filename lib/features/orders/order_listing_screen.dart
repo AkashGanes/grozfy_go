@@ -238,6 +238,12 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       title: 'Available Orders',
       subtitle: 'Browse nearby orders before accepting',
       scrollable: false,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.more_horiz_rounded),
+          onPressed: () {},
+        ),
+      ],
       child: Column(
         children: [
           // Search bar
@@ -421,123 +427,259 @@ class _FullOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color cardBg =
+        isDark ? const Color(0xFF1B1E2A) : Colors.white;
+    final Color cardBorder =
+        isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE4E7EC);
+    final Color textPrimary =
+        isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
+    final Color textSecondary =
+        isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
+    final Color accent = const Color(0xFF1F5FE8);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: FrostCard(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      order.orderId,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
+      child: Material(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            InkWell(
+              onTap: onTap,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  border: Border.all(color: cardBorder),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black
+                          .withValues(alpha: isDark ? 0.25 : 0.04),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.orange.shade200),
-                    ),
-                    child: Text(
-                      order.assignmentStatus.name.toUpperCase(),
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.orange.shade700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              _Row(Icons.store_rounded, 'Store', order.storeName),
-              _Row(Icons.person_rounded, 'Customer', order.customerName),
-              _Row(Icons.location_on_rounded, 'Drop', order.deliveryAddress),
-              _Row(Icons.route_rounded, 'Distance', '${order.distanceKm} km'),
-              if (order.estimatedEarnings > 0)
-                _Row(
-                  Icons.currency_rupee_rounded,
-                  'Earnings',
-                  'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
+                  ],
                 ),
-              if (order.orderItems.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                const Divider(height: 1),
-                const SizedBox(height: 8),
-                Text(
-                  'Items',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: scheme.onSurface.withValues(alpha: 0.6),
+                child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              order.orderId,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                                color: textPrimary,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF3E2),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                            child: const Text(
+                              'UNASSIGNED',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFFB87707),
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      _MetaRow(
+                        icon: Icons.store_rounded,
+                        iconColor: const Color(0xFF2D6CDF),
+                        iconBg: isDark
+                            ? const Color(0xFF1A2C4F)
+                            : const Color(0xFFE5EEFB),
+                        label: 'Store',
+                        value: order.storeName,
+                        labelColor: textSecondary,
+                        valueColor: textPrimary,
+                      ),
+                      _MetaRow(
+                        icon: Icons.person_rounded,
+                        iconColor: const Color(0xFF1AB36A),
+                        iconBg: isDark
+                            ? const Color(0xFF14352A)
+                            : const Color(0xFFE7F7EE),
+                        label: 'Customer',
+                        value: order.customerName,
+                        labelColor: textSecondary,
+                        valueColor: textPrimary,
+                      ),
+                      _MetaRow(
+                        icon: Icons.location_on_rounded,
+                        iconColor: const Color(0xFF7C3AED),
+                        iconBg: isDark
+                            ? const Color(0xFF2D2148)
+                            : const Color(0xFFEFE9FE),
+                        label: 'Drop',
+                        value: order.deliveryAddress,
+                        labelColor: textSecondary,
+                        valueColor: textPrimary,
+                      ),
+                      _MetaRow(
+                        icon: Icons.route_rounded,
+                        iconColor: const Color(0xFFF38B19),
+                        iconBg: isDark
+                            ? const Color(0xFF3A2613)
+                            : const Color(0xFFFFEFDA),
+                        label: 'Distance',
+                        value: '${order.distanceKm.toStringAsFixed(2)} km',
+                        labelColor: textSecondary,
+                        valueColor: textPrimary,
+                      ),
+                      _MetaRow(
+                        icon: Icons.currency_rupee_rounded,
+                        iconColor: const Color(0xFF1AB36A),
+                        iconBg: isDark
+                            ? const Color(0xFF14352A)
+                            : const Color(0xFFE7F7EE),
+                        label: 'Earnings',
+                        value: order.estimatedEarnings > 0
+                            ? 'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}'
+                            : 'Rs. 0',
+                        labelColor: textSecondary,
+                        valueColor: textPrimary,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 4),
-                ...order.orderItems.map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(top: 3),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.circle,
-                          size: 5,
-                          color: scheme.onSurface.withValues(alpha: 0.4),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                  child: Material(
+                    color: accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    child: InkWell(
+                      onTap: onTap,
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        height: 48,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Text(
+                              'View Details',
+                              style: TextStyle(
+                                color: accent,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                            ),
+                            Positioned(
+                              right: 14,
+                              child: Icon(
+                                Icons.chevron_right_rounded,
+                                color: accent,
+                                size: 22,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            item.name,
-                            style: const TextStyle(fontSize: 12),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        Text(
-                          'x${item.quantity}  Rs. ${(item.price * item.quantity).toStringAsFixed(0)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: scheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ],
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: onTap,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.oceanBlue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: const Text(
-                    'View Details',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
+            ),
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 4,
+              child: IgnorePointer(
+                child: ColoredBox(color: accent),
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _MetaRow extends StatelessWidget {
+  const _MetaRow({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+    required this.label,
+    required this.value,
+    required this.labelColor,
+    required this.valueColor,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
+  final String label;
+  final String value;
+  final Color labelColor;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 14, color: iconColor),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 76,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: labelColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                color: valueColor,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -680,48 +822,6 @@ class _Highlight extends StatelessWidget {
             ),
           ),
           TextSpan(text: text.substring(idx + query.length)),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Shared row widget ─────────────────────────────────────────────────────────
-
-class _Row extends StatelessWidget {
-  const _Row(this.icon, this.label, this.value);
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 15,
-            color: scheme.onSurface.withValues(alpha: 0.5),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 62,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: scheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(value, style: const TextStyle(fontSize: 13)),
-          ),
         ],
       ),
     );

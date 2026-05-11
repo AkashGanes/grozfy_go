@@ -375,11 +375,19 @@ class _KycSearchInputState extends State<KycSearchInput> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      height: 48,
+      height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
-        color: KycColors.searchFill(context),
+        color: KycColors.cardBg(context),
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: KycColors.cardBorder(context)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -433,7 +441,7 @@ class _KycSearchInputState extends State<KycSearchInput> {
                 decoration: BoxDecoration(
                   color: isDark
                       ? const Color(0xFF3D4255)
-                      : Colors.white,
+                      : KycColors.searchFill(context),
                   borderRadius: BorderRadius.circular(99),
                 ),
                 alignment: Alignment.center,

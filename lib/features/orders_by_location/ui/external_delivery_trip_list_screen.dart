@@ -70,37 +70,45 @@ class _ExternalDeliveryTripListScreenState
 
     try {
       final trips = await _repository!.fetchTripPage(limitStart: pageKey);
+      if (!mounted) return;
+      final controller = _pagingController;
+      if (controller == null) return;
       ConnectivityService().reportNetworkSuccess();
       // Warm the cache on every successful page so the list survives a
       // future offline open.
       await OfflineTripManager().cacheTripSummariesPage(trips);
+      if (!mounted) return;
       final items = trips.map((t) => TripRow(t) as TripListItem).toList();
       final isLast = trips.length < ExternalDeliveryRepository.pageSize;
       if (isLast) {
-        _pagingController!.appendLastPage(items);
+        controller.appendLastPage(items);
       } else {
-        _pagingController!.appendPage(items, pageKey + trips.length);
+        controller.appendPage(items, pageKey + trips.length);
       }
     } catch (e) {
       if (_isNetworkError(e)) {
         // The package listener can lag — flip the connectivity flag
         // ourselves so the offline banner shows immediately.
         ConnectivityService().reportNetworkFailure();
+        if (!mounted) return;
         _serveFromCache(pageKey);
         return;
       }
-      _pagingController!.error = e;
+      if (!mounted) return;
+      _pagingController?.error = e;
     }
   }
 
   void _serveFromCache(int pageKey) {
+    final controller = _pagingController;
+    if (controller == null || !mounted) return;
     if (pageKey == 0) {
       final cached = OfflineTripManager().getCachedTripSummaries();
-      _pagingController!.appendLastPage(
+      controller.appendLastPage(
         cached.map((t) => TripRow(t) as TripListItem).toList(),
       );
     } else {
-      _pagingController!.appendLastPage(const []);
+      controller.appendLastPage(const []);
     }
   }
 
