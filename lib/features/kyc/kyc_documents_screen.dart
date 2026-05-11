@@ -82,6 +82,17 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     _existingLicenseUrl ??= app.existingLicenseUrl;
     _existingAadharUrl ??= app.existingAadharUrl;
     _existingPanUrl ??= app.existingPanUrl;
+    _issuingDate ??= _parseDate(app.existingIssuingDate);
+    _expiryDate ??= _parseDate(app.existingExpiryDate);
+  }
+
+  static DateTime? _parseDate(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return DateTime.parse(raw);
+    } catch (_) {
+      return null;
+    }
   }
 
   @override

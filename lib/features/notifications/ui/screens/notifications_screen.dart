@@ -249,15 +249,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                       onChanged: () async {
                         await _refresh();
                       },
-                    )
-                        .animate()
-                        .fadeIn(
-                          delay: Duration(
-                            milliseconds: (index * 50).clamp(0, 300),
-                          ),
-                          duration: 220.ms,
-                        )
-                        .slideY(begin: 0.08, end: 0);
+                    );
                   },
                 ),
               ),

@@ -746,9 +746,6 @@ class _ExternalDeliveryTripDetailsScreenState
                 ),
               ),
             )
-                .animate()
-                .fadeIn(delay: 100.ms, duration: 240.ms)
-                .slideY(begin: 0.05, end: 0)
           else
             ...orderedStops.map(
               (entry) => Padding(
@@ -772,19 +769,7 @@ class _ExternalDeliveryTripDetailsScreenState
                     ],
                   ),
                 ),
-              )
-                  .animate()
-                  .fadeIn(
-                    delay: (100 + (entry.key * 70)).ms,
-                    duration: 250.ms,
-                  )
-                  .slideY(begin: 0.06, end: 0)
-                  .scale(
-                    begin: const Offset(0.985, 0.985),
-                    end: const Offset(1, 1),
-                    duration: 240.ms,
-                    curve: Curves.easeOutCubic,
-                  ),
+              ),
             ),
         ],
       ),

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../core/navigation/app_routes.dart';
@@ -36,7 +35,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   String? _searchError;
   Timer? _debounce;
 
-  // Track which result is being tapped (to show per-card loading)
+  // Track which search-result card is being opened
   String? _openingOrderId;
 
   @override
@@ -70,53 +69,78 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     final app = _app;
     if (app == null) {
       if (!mounted) return;
-      _pagingController.error = 'App controller is not available';
+      _pagingController.error = 'App not ready';
       return;
     }
 
     try {
-      final summaries = await _repository.fetchPage(
+      final orders = await _fetchOrdersEnriched(app, pageKey);
+      if (!mounted) return;
+      final isLast = orders.length < _pageSize;
+      if (isLast) {
+        _pagingController.appendLastPage(orders);
+      } else {
+        _pagingController.appendPage(orders, pageKey + orders.length);
+      }
+    } catch (e, st) {
+      debugPrint('[OrderListing] _fetchPage error: $e');
+      debugPrint('[OrderListing] stacktrace: $st');
+      if (!mounted) return;
+      _pagingController.error = e;
+    }
+  }
+
+  // Tries one single enriched call (frappe.desk.reportview.get) that returns
+  // all fields at once. Falls back to concurrent fetchDetail calls if that
+  // endpoint is unavailable or returns an unexpected format.
+  Future<List<DeliveryOrder>> _fetchOrdersEnriched(
+    AppController app,
+    int pageKey,
+  ) async {
+    try {
+      final details = await _repository.fetchPageEnriched(
         limitStart: pageKey,
         limitPageLength: _pageSize,
-        orderBy: 'modified desc',
         filters: <List<dynamic>>[
           <dynamic>['External Delivery', 'status', '=', 'Pending'],
         ],
       );
-
-      final pageOrders = await Future.wait(
-        summaries.map((s) async {
-          try {
-            final detail = await _repository.fetchDetail(s.name);
-            return app.buildDeliveryOrderFromDetail(detail);
-          } catch (e) {
-            debugPrint('fetch_detail_warn: ${s.name} $e');
-            return null;
-          }
-        }),
-      );
-
-      // The screen may have been popped (and the controller disposed) while
-      // these awaits were in flight. Touching the controller after dispose
-      // throws — bail out instead.
-      if (!mounted) return;
-
-      final orders = pageOrders.whereType<DeliveryOrder>().toList()
+      return details
+          .map((d) => app.buildDeliveryOrderFromDetail(d))
+          .toList()
         ..sort((a, b) {
           final c = a.distanceKm.compareTo(b.distanceKm);
           return c != 0 ? c : a.orderId.compareTo(b.orderId);
         });
-
-      final isLast = summaries.length < _pageSize;
-      if (isLast) {
-        _pagingController.appendLastPage(orders);
-      } else {
-        _pagingController.appendPage(orders, pageKey + summaries.length);
-      }
     } catch (e) {
-      if (!mounted) return;
-      _pagingController.error = e;
+      debugPrint('[OrderListing] enriched fetch failed, using fallback: $e');
     }
+
+    // Fallback: summary list + concurrent detail fetches (no address resolve).
+    final summaries = await _repository.fetchPage(
+      limitStart: pageKey,
+      limitPageLength: _pageSize,
+      orderBy: 'modified desc',
+      filters: <List<dynamic>>[
+        <dynamic>['External Delivery', 'status', '=', 'Pending'],
+      ],
+    );
+    final results = await Future.wait(
+      summaries.map((s) async {
+        try {
+          final d = await _repository.fetchDetail(s.name, resolveAddress: false);
+          return app.buildDeliveryOrderFromDetail(d);
+        } catch (e) {
+          debugPrint('[OrderListing] detail warn: ${s.name} $e');
+          return null;
+        }
+      }),
+    );
+    return results.whereType<DeliveryOrder>().toList()
+      ..sort((a, b) {
+        final c = a.distanceKm.compareTo(b.distanceKm);
+        return c != 0 ? c : a.orderId.compareTo(b.orderId);
+      });
   }
 
   // ── Search ─────────────────────────────────────────────────────────────────
@@ -204,10 +228,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     } finally {
       if (mounted) setState(() => _openingOrderId = null);
     }
-  }
-
-  void _openFullOrder(BuildContext context, DeliveryOrder order) {
-    Navigator.of(context).pushNamed(AppRoutes.orderDetails, arguments: order);
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -391,13 +411,12 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         noItemsFoundIndicatorBuilder: (_) => const _EmptyState(),
         itemBuilder: (context, order, index) {
           return _FullOrderCard(
-                order: order,
-                searchQuery: '',
-                onTap: () => _openFullOrder(context, order),
-              )
-              .animate()
-              .fadeIn(delay: (index * 35).ms, duration: 220.ms)
-              .slideY(begin: 0.04, end: 0);
+            order: order,
+            onTap: () => Navigator.of(context).pushNamed(
+              AppRoutes.orderDetails,
+              arguments: order,
+            ),
+          );
         },
       ),
     );
@@ -428,30 +447,22 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         final summary = _searchResults[index];
         final isOpening = _openingOrderId == summary.name;
         return _SearchResultCard(
-              summary: summary,
-              query: _searchQuery,
-              isLoading: isOpening,
-              onTap: isOpening ? null : () => _openSearchResult(summary),
-            )
-            .animate()
-            .fadeIn(delay: (index * 30).ms, duration: 200.ms)
-            .slideY(begin: 0.03, end: 0);
+          summary: summary,
+          query: _searchQuery,
+          isLoading: isOpening,
+          onTap: isOpening ? null : () => _openSearchResult(summary),
+        );
       },
     );
   }
 }
 
-// ── Full detail card (normal list) ────────────────────────────────────────────
+// ── Full detail card ──────────────────────────────────────────────────────────
 
 class _FullOrderCard extends StatelessWidget {
-  const _FullOrderCard({
-    required this.order,
-    required this.searchQuery,
-    required this.onTap,
-  });
+  const _FullOrderCard({required this.order, required this.onTap});
 
   final DeliveryOrder order;
-  final String searchQuery;
   final VoidCallback onTap;
 
   @override
@@ -468,9 +479,8 @@ class _FullOrderCard extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: _Highlight(
-                      text: order.orderId,
-                      query: searchQuery,
+                    child: Text(
+                      order.orderId,
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,
@@ -499,25 +509,16 @@ class _FullOrderCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 10),
-              _Row(
-                Icons.store_rounded,
-                'Store',
-                order.storeName,
-                q: searchQuery,
-              ),
-              _Row(
-                Icons.person_rounded,
-                'Customer',
-                order.customerName,
-                q: searchQuery,
-              ),
+              _Row(Icons.store_rounded, 'Store', order.storeName),
+              _Row(Icons.person_rounded, 'Customer', order.customerName),
               _Row(Icons.location_on_rounded, 'Drop', order.deliveryAddress),
               _Row(Icons.route_rounded, 'Distance', '${order.distanceKm} km'),
-              _Row(
-                Icons.currency_rupee_rounded,
-                'Earnings',
-                'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
-              ),
+              if (order.estimatedEarnings > 0)
+                _Row(
+                  Icons.currency_rupee_rounded,
+                  'Earnings',
+                  'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
+                ),
               if (order.orderItems.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 const Divider(height: 1),
@@ -734,12 +735,11 @@ class _Highlight extends StatelessWidget {
 // ── Shared row widget ─────────────────────────────────────────────────────────
 
 class _Row extends StatelessWidget {
-  const _Row(this.icon, this.label, this.value, {this.q = ''});
+  const _Row(this.icon, this.label, this.value);
 
   final IconData icon;
   final String label;
   final String value;
-  final String q;
 
   @override
   Widget build(BuildContext context) {
@@ -766,13 +766,7 @@ class _Row extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: q.isNotEmpty
-                ? _Highlight(
-                    text: value,
-                    query: q,
-                    style: const TextStyle(fontSize: 13),
-                  )
-                : Text(value, style: const TextStyle(fontSize: 13)),
+            child: Text(value, style: const TextStyle(fontSize: 13)),
           ),
         ],
       ),

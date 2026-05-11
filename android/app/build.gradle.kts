@@ -26,7 +26,7 @@ android {
         // Pinned to 23 so flutter_secure_storage's EncryptedSharedPreferences
         // backend is available; it survives app updates and OEM key rotations
         // far better than the raw Keystore fallback.
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

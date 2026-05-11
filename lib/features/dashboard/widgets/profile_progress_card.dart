@@ -32,6 +32,7 @@ class ProfileProgressCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pct = (completeness.percentage.clamp(0.0, 1.0) * 100).round();
+    final isComplete = completeness.percentage >= 1.0;
 
     return Container(
       decoration: BoxDecoration(
@@ -76,7 +77,7 @@ class ProfileProgressCard extends StatelessWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      _CircularPercent(percent: pct),
+                      _CircularPercent(percent: pct, isComplete: isComplete),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
@@ -108,39 +109,41 @@ class ProfileProgressCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: completeness.percentage,
-                      minHeight: 8,
-                      backgroundColor: Colors.white.withValues(alpha: 0.22),
-                      valueColor: const AlwaysStoppedAnimation<Color>(
-                        Color(0xFF1AB36A),
+                  if (!isComplete) ...[
+                    const SizedBox(height: 14),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(99),
+                      child: LinearProgressIndicator(
+                        value: completeness.percentage,
+                        minHeight: 8,
+                        backgroundColor: Colors.white.withValues(alpha: 0.22),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          Color(0xFF1AB36A),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Text(
-                        progressLabel(
-                          completeness.completedCount,
-                          completeness.totalCount,
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Text(
+                          progressLabel(
+                            completeness.completedCount,
+                            completeness.totalCount,
+                          ),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.85),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                        const Spacer(),
+                        _CompleteButton(
+                          label: tapToCompleteLabel,
+                          onTap: onTapComplete,
                         ),
-                      ),
-                      const Spacer(),
-                      _CompleteButton(
-                        label: tapToCompleteLabel,
-                        onTap: onTapComplete,
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   _ItemsStrip(
                     items: completeness.items,
@@ -171,8 +174,9 @@ class ProfileProgressCard extends StatelessWidget {
 }
 
 class _CircularPercent extends StatelessWidget {
-  const _CircularPercent({required this.percent});
+  const _CircularPercent({required this.percent, this.isComplete = false});
   final int percent;
+  final bool isComplete;
 
   @override
   Widget build(BuildContext context) {
@@ -182,25 +186,41 @@ class _CircularPercent extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          SizedBox(
-            width: 88,
-            height: 88,
-            child: CircularProgressIndicator(
-              value: percent / 100,
-              strokeWidth: 6,
-              backgroundColor: Colors.white.withValues(alpha: 0.22),
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(Color(0xFF1AB36A)),
+          if (!isComplete)
+            SizedBox(
+              width: 88,
+              height: 88,
+              child: CircularProgressIndicator(
+                value: percent / 100,
+                strokeWidth: 6,
+                backgroundColor: Colors.white.withValues(alpha: 0.22),
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(Color(0xFF1AB36A)),
+              ),
             ),
-          ),
-          Text(
-            '$percent%',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-              fontSize: 20,
+          if (isComplete)
+            Container(
+              width: 64,
+              height: 64,
+              decoration: const BoxDecoration(
+                color: Color(0xFF1AB36A),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_rounded,
+                color: Colors.white,
+                size: 30,
+              ),
+            )
+          else
+            Text(
+              '$percent%',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 20,
+              ),
             ),
-          ),
         ],
       ),
     );
