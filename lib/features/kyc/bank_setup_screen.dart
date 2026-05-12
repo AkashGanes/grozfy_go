@@ -29,7 +29,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   Map<String, String> _linkDoctypeByField = <String, String>{};
 
   String? _selectedBank;
-  String? _selectedCompanyAccount;
   String? _selectedAccountType;
   String? _selectedAccountSubtype;
   String? _selectedCompany;
@@ -85,7 +84,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       if (bankData != null) {
         _accountNameCtrl.text = bankData['account_name']?.toString() ?? '';
         _selectedBank = bankData['bank']?.toString();
-        _selectedCompanyAccount = bankData['account']?.toString();
         _selectedAccountType = bankData['account_type']?.toString();
         _selectedAccountSubtype = bankData['account_subtype']?.toString();
         _selectedCompany = bankData['company']?.toString();
@@ -104,9 +102,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
 
   String? _doctypeForField(String fieldname) {
     final String? configured = _linkDoctypeByField[fieldname];
-    if (fieldname == 'account') {
-      return 'Account';
-    }
     if (configured == null || configured.trim().isEmpty) {
       return null;
     }
@@ -168,7 +163,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     final String? error = await app.submitBankDetails(
       accountName: _accountNameCtrl.text,
       bank: _selectedBank ?? '',
-      account: _selectedCompanyAccount,
       accountType: _selectedAccountType,
       accountSubtype: _selectedAccountSubtype,
       disabled: false,
@@ -252,19 +246,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
                                 doctype: _doctypeForField('bank'),
                                 onChanged: (v) =>
                                     setState(() => _selectedBank = v),
-                              ),
-                              _linkFieldCard(
-                                label: 'Company Account',
-                                icon: Icons.business_center_outlined,
-                                value: _selectedCompanyAccount,
-                                doctype: _doctypeForField('account'),
-                                filters: const <String, dynamic>{
-                                  'account_type': 'Bank',
-                                  'company': 'LyncSpace',
-                                  'is_group': 0,
-                                },
-                                onChanged: (v) => setState(
-                                    () => _selectedCompanyAccount = v),
                               ),
                               _linkFieldCard(
                                 label: 'Account Type',

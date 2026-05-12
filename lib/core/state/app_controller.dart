@@ -2150,20 +2150,6 @@ class AppController extends ChangeNotifier {
           data = await fetchVehicleByName(vehicleFromDriver);
         }
       }
-      // Fallback: search by driver name
-      if (data == null && _driverName != null) {
-        _logApi('vehicle.hydrate', 'search by driver=$_driverName');
-        final String? name = await _findResourceName(
-          doctype: 'Vehicle',
-          filters: <List<String>>[
-            <String>['Vehicle', 'driver', '=', _driverName!],
-          ],
-          fields: <String>['name'],
-        );
-        if (name != null) {
-          data = await _fetchResourceDoc('Vehicle', name);
-        }
-      }
       if (data == null) {
         _logApi('vehicle.hydrate', 'no vehicle found');
         return;
@@ -2601,7 +2587,6 @@ class AppController extends ChangeNotifier {
   Future<String?> submitBankDetails({
     required String accountName,
     required String bank,
-    String? account,
     String? accountType,
     String? accountSubtype,
     bool disabled = false,
@@ -2627,7 +2612,6 @@ class AppController extends ChangeNotifier {
       return 'Disabled account cannot be marked as default';
     }
 
-    final String? normalizedAccount = _nullIfBlank(account);
     final String? normalizedAccountType = _nullIfBlank(accountType);
     final String? normalizedAccountSubtype = _nullIfBlank(accountSubtype);
     final String? normalizedCompany = _nullIfBlank(company);
@@ -2673,13 +2657,7 @@ class AppController extends ChangeNotifier {
     final Map<String, dynamic> body = <String, dynamic>{
       'account_name': normalizedAccountName,
       'bank': normalizedBank,
-      'disabled': disabled ? 1 : 0,
-      'is_default': isDefault ? 1 : 0,
-      'is_company_account': isCompanyAccount ? 1 : 0,
     };
-    if (normalizedAccount != null) {
-      body['account'] = normalizedAccount;
-    }
     if (normalizedAccountType != null) {
       body['account_type'] = normalizedAccountType;
     }
