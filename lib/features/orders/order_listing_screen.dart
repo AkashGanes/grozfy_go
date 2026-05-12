@@ -14,6 +14,22 @@ import '../kyc/widgets/kyc_form_widgets.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 
+// ── Paged list item types ─────────────────────────────────────────────────────
+
+sealed class _ListItem {}
+
+class _HeaderItem extends _ListItem {
+  _HeaderItem(this.storeName);
+  final String storeName;
+}
+
+class _OrderItem extends _ListItem {
+  _OrderItem(this.order);
+  final DeliveryOrder order;
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
+
 class OrderListingScreen extends StatefulWidget {
   const OrderListingScreen({super.key});
 
@@ -26,7 +42,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   static const Duration _searchDebounce = Duration(milliseconds: 450);
 
   late final ExternalDeliveryRepository _repository;
-  late final PagingController<int, DeliveryOrder> _pagingController;
+  late final PagingController<int, _ListItem> _pagingController;
   final TextEditingController _searchController = TextEditingController();
   AppController? _app;
 
@@ -37,6 +53,12 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   String? _searchError;
   Timer? _debounce;
 
+  // Store filter state
+  String? _selectedStore;
+
+  // Grouping tracker — reset when a new page-0 fetch begins
+  String? _lastGroupStore;
+
   // Track which search-result card is being opened
   String? _openingOrderId;
 
@@ -44,7 +66,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   void initState() {
     super.initState();
     _repository = ExternalDeliveryRepository();
-    _pagingController = PagingController<int, DeliveryOrder>(firstPageKey: 0)
+    _pagingController = PagingController<int, _ListItem>(firstPageKey: 0)
       ..addPageRequestListener(_fetchPage);
     _searchController.addListener(_onSearchChanged);
   }
@@ -65,6 +87,195 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     super.dispose();
   }
 
+  // ── Store picker ───────────────────────────────────────────────────────────
+
+  Future<void> _showStorePicker() async {
+    List<String> stores = [];
+    bool loading = true;
+    bool fetchStarted = false;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            final ColorScheme scheme = Theme.of(ctx).colorScheme;
+            if (loading && !fetchStarted) {
+              fetchStarted = true;
+              _repository.fetchStoreNames().then((names) {
+                setModal(() {
+                  stores = names;
+                  loading = false;
+                });
+              }).catchError((_) {
+                setModal(() => loading = false);
+              });
+            }
+
+            return Container(
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                MediaQuery.of(ctx).padding.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: scheme.onSurface.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'Filter by Store',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Pending orders will be filtered by your selected store.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: scheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (loading)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: AppTheme.oceanBlue,
+                        ),
+                      ),
+                    )
+                  else if (stores.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(
+                        child: Text(
+                          'No stores found',
+                          style: TextStyle(
+                            color: scheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(ctx).size.height * 0.5,
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: stores.length + 1,
+                        separatorBuilder: (context, _) =>
+                            const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          if (i == 0) {
+                            final selected = _selectedStore == null;
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              leading: Icon(
+                                Icons.public_rounded,
+                                color: selected
+                                    ? AppTheme.oceanBlue
+                                    : Colors.black38,
+                              ),
+                              title: Text(
+                                'All Stores',
+                                style: TextStyle(
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: selected
+                                      ? AppTheme.oceanBlue
+                                      : scheme.onSurface,
+                                ),
+                              ),
+                              trailing: selected
+                                  ? const Icon(
+                                      Icons.check_circle_rounded,
+                                      color: AppTheme.oceanBlue,
+                                    )
+                                  : null,
+                              onTap: () {
+                                Navigator.of(ctx).pop();
+                                if (_selectedStore != null) {
+                                  setState(() => _selectedStore = null);
+                                  _lastGroupStore = null;
+                                  _pagingController.refresh();
+                                }
+                              },
+                            );
+                          }
+
+                          final store = stores[i - 1];
+                          final selected = _selectedStore == store;
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              Icons.store_rounded,
+                              color: selected
+                                  ? AppTheme.oceanBlue
+                                  : scheme.onSurface.withValues(alpha: 0.4),
+                            ),
+                            title: Text(
+                              store,
+                              style: TextStyle(
+                                fontWeight: selected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: selected
+                                    ? AppTheme.oceanBlue
+                                    : scheme.onSurface,
+                              ),
+                            ),
+                            trailing: selected
+                                ? const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: AppTheme.oceanBlue,
+                                  )
+                                : null,
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              if (_selectedStore != store) {
+                                setState(() => _selectedStore = store);
+                                _lastGroupStore = null;
+                                _pagingController.refresh();
+                              }
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // ── Normal paginated fetch ─────────────────────────────────────────────────
 
   Future<void> _fetchPage(int pageKey) async {
@@ -75,14 +286,27 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       return;
     }
 
+    // Reset grouping tracker at the start of each new list
+    if (pageKey == 0) _lastGroupStore = null;
+
     try {
       final orders = await _fetchOrdersEnriched(app, pageKey);
       if (!mounted) return;
+
+      final items = <_ListItem>[];
+      for (final order in orders) {
+        if (order.storeName != _lastGroupStore) {
+          items.add(_HeaderItem(order.storeName));
+          _lastGroupStore = order.storeName;
+        }
+        items.add(_OrderItem(order));
+      }
+
       final isLast = orders.length < _pageSize;
       if (isLast) {
-        _pagingController.appendLastPage(orders);
+        _pagingController.appendLastPage(items);
       } else {
-        _pagingController.appendPage(orders, pageKey + orders.length);
+        _pagingController.appendPage(items, pageKey + orders.length);
       }
     } catch (e, st) {
       debugPrint('[OrderListing] _fetchPage error: $e');
@@ -92,28 +316,25 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     }
   }
 
-  // Tries one single enriched call (frappe.desk.reportview.get) that returns
-  // all fields at once. Falls back to concurrent fetchDetail calls if that
-  // endpoint is unavailable or returns an unexpected format.
   Future<List<DeliveryOrder>> _fetchOrdersEnriched(
     AppController app,
     int pageKey,
   ) async {
+    final storeFilter = _selectedStore != null && _selectedStore!.isNotEmpty
+        ? [<dynamic>['External Delivery', 'store_name', '=', _selectedStore]]
+        : <List<dynamic>>[];
+
     try {
       final details = await _repository.fetchPageEnriched(
         limitStart: pageKey,
         limitPageLength: _pageSize,
+        orderBy: 'store_name asc, modified desc',
         filters: <List<dynamic>>[
           <dynamic>['External Delivery', 'status', '=', 'Pending'],
+          ...storeFilter,
         ],
       );
-      return details
-          .map((d) => app.buildDeliveryOrderFromDetail(d))
-          .toList()
-        ..sort((a, b) {
-          final c = a.distanceKm.compareTo(b.distanceKm);
-          return c != 0 ? c : a.orderId.compareTo(b.orderId);
-        });
+      return details.map((d) => app.buildDeliveryOrderFromDetail(d)).toList();
     } catch (e) {
       debugPrint('[OrderListing] enriched fetch failed, using fallback: $e');
     }
@@ -122,7 +343,8 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     final summaries = await _repository.fetchPage(
       limitStart: pageKey,
       limitPageLength: _pageSize,
-      orderBy: 'modified desc',
+      storeName: _selectedStore,
+      orderBy: 'store_name asc, modified desc',
       filters: <List<dynamic>>[
         <dynamic>['External Delivery', 'status', '=', 'Pending'],
       ],
@@ -138,11 +360,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         }
       }),
     );
-    return results.whereType<DeliveryOrder>().toList()
-      ..sort((a, b) {
-        final c = a.distanceKm.compareTo(b.distanceKm);
-        return c != 0 ? c : a.orderId.compareTo(b.orderId);
-      });
+    return results.whereType<DeliveryOrder>().toList();
   }
 
   // ── Search ─────────────────────────────────────────────────────────────────
@@ -171,13 +389,14 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       _searchError = null;
     });
     try {
-      // Frappe: AND (status=Pending) AND (name LIKE % OR store_name LIKE % OR customer_name LIKE %)
       final results = await _repository.fetchPage(
         limitStart: 0,
         limitPageLength: 100,
         orderBy: 'modified desc',
         filters: <List<dynamic>>[
           <dynamic>['External Delivery', 'status', '=', 'Pending'],
+          if (_selectedStore != null)
+            <dynamic>['External Delivery', 'store_name', '=', _selectedStore],
         ],
         orFilters: <List<dynamic>>[
           <dynamic>['External Delivery', 'name', 'like', '%$query%'],
@@ -209,7 +428,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     });
   }
 
-  // Open a search-result card: fetch full detail then navigate.
   Future<void> _openSearchResult(ExternalDelivery summary) async {
     final app = _app;
     if (app == null) return;
@@ -236,19 +454,20 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
 
     return AppShell(
       title: 'Available Orders',
-      subtitle: 'Browse nearby orders before accepting',
+      subtitle: _selectedStore ?? 'All Stores',
       scrollable: false,
       actions: [
         IconButton(
-          icon: const Icon(Icons.more_horiz_rounded),
-          onPressed: () {},
+          icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
+          tooltip: 'Filter by store',
+          onPressed: _showStorePicker,
         ),
       ],
       child: Column(
         children: [
           // Search bar
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: 10),
             child: KycSearchInput(
               controller: _searchController,
               hint: 'Search by Order ID, Store or Customer…',
@@ -338,7 +557,10 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             child: searching
                 ? _buildSearchView()
                 : RefreshIndicator(
-                    onRefresh: () async => _pagingController.refresh(),
+                    onRefresh: () async {
+                      _lastGroupStore = null;
+                      _pagingController.refresh();
+                    },
                     color: Colors.orange,
                     child: _buildPagedList(),
                   ),
@@ -351,13 +573,13 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   // ── Normal paginated list ──────────────────────────────────────────────────
 
   Widget _buildPagedList() {
-    return PagedListView<int, DeliveryOrder>(
+    return PagedListView<int, _ListItem>(
       pagingController: _pagingController,
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
       padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
-      builderDelegate: PagedChildBuilderDelegate<DeliveryOrder>(
+      builderDelegate: PagedChildBuilderDelegate<_ListItem>(
         firstPageProgressIndicatorBuilder: (_) =>
             const Center(child: CircularProgressIndicator()),
         newPageProgressIndicatorBuilder: (_) => const Padding(
@@ -368,8 +590,13 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             _ErrorState(onRetry: _pagingController.refresh),
         newPageErrorIndicatorBuilder: (_) =>
             _ErrorState(onRetry: _pagingController.retryLastFailedRequest),
-        noItemsFoundIndicatorBuilder: (_) => const _EmptyState(),
-        itemBuilder: (context, order, index) {
+        noItemsFoundIndicatorBuilder: (_) =>
+            _EmptyState(storeName: _selectedStore),
+        itemBuilder: (context, item, index) {
+          if (item is _HeaderItem) {
+            return _StoreHeaderWidget(storeName: item.storeName);
+          }
+          final order = (item as _OrderItem).order;
           return _FullOrderCard(
             order: order,
             onTap: () => Navigator.of(context).pushNamed(
@@ -417,6 +644,56 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   }
 }
 
+// ── Store section header ──────────────────────────────────────────────────────
+
+class _StoreHeaderWidget extends StatelessWidget {
+  const _StoreHeaderWidget({required this.storeName});
+
+  final String storeName;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 12, 2, 6),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: isDark
+                  ? const Color(0xFF1A2C4F)
+                  : const Color(0xFFE5EEFB),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.store_rounded,
+              size: 15,
+              color: Color(0xFF2D6CDF),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              storeName,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: isDark
+                    ? const Color(0xFFF2F4F7)
+                    : const Color(0xFF101828),
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Full detail card ──────────────────────────────────────────────────────────
 
 class _FullOrderCard extends StatelessWidget {
@@ -428,15 +705,14 @@ class _FullOrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color cardBg =
-        isDark ? const Color(0xFF1B1E2A) : Colors.white;
+    final Color cardBg = isDark ? const Color(0xFF1B1E2A) : Colors.white;
     final Color cardBorder =
         isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE4E7EC);
     final Color textPrimary =
         isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
     final Color textSecondary =
         isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
-    final Color accent = const Color(0xFF1F5FE8);
+    const Color accent = Color(0xFF1F5FE8);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -463,145 +739,146 @@ class _FullOrderCard extends StatelessWidget {
                   ],
                 ),
                 child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(
-                              order.orderId,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                                color: textPrimary,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  order.orderId,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                    color: textPrimary,
+                                  ),
+                                ),
                               ),
-                            ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFEF3E2),
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
+                                child: const Text(
+                                  'UNASSIGNED',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFFB87707),
+                                    letterSpacing: 0.6,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFEF3E2),
-                              borderRadius: BorderRadius.circular(99),
-                            ),
-                            child: const Text(
-                              'UNASSIGNED',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFFB87707),
-                                letterSpacing: 0.6,
-                              ),
-                            ),
+                          const SizedBox(height: 10),
+                          _MetaRow(
+                            icon: Icons.store_rounded,
+                            iconColor: const Color(0xFF2D6CDF),
+                            iconBg: isDark
+                                ? const Color(0xFF1A2C4F)
+                                : const Color(0xFFE5EEFB),
+                            label: 'Store',
+                            value: order.storeName,
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
+                          ),
+                          _MetaRow(
+                            icon: Icons.person_rounded,
+                            iconColor: const Color(0xFF1AB36A),
+                            iconBg: isDark
+                                ? const Color(0xFF14352A)
+                                : const Color(0xFFE7F7EE),
+                            label: 'Customer',
+                            value: order.customerName,
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
+                          ),
+                          _MetaRow(
+                            icon: Icons.location_on_rounded,
+                            iconColor: const Color(0xFF7C3AED),
+                            iconBg: isDark
+                                ? const Color(0xFF2D2148)
+                                : const Color(0xFFEFE9FE),
+                            label: 'Drop',
+                            value: order.deliveryAddress,
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
+                          ),
+                          _MetaRow(
+                            icon: Icons.route_rounded,
+                            iconColor: const Color(0xFFF38B19),
+                            iconBg: isDark
+                                ? const Color(0xFF3A2613)
+                                : const Color(0xFFFFEFDA),
+                            label: 'Distance',
+                            value:
+                                '${order.distanceKm.toStringAsFixed(2)} km',
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
+                          ),
+                          _MetaRow(
+                            icon: Icons.currency_rupee_rounded,
+                            iconColor: const Color(0xFF1AB36A),
+                            iconBg: isDark
+                                ? const Color(0xFF14352A)
+                                : const Color(0xFFE7F7EE),
+                            label: 'Earnings',
+                            value: order.estimatedEarnings > 0
+                                ? 'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}'
+                                : 'Rs. 0',
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
-                      _MetaRow(
-                        icon: Icons.store_rounded,
-                        iconColor: const Color(0xFF2D6CDF),
-                        iconBg: isDark
-                            ? const Color(0xFF1A2C4F)
-                            : const Color(0xFFE5EEFB),
-                        label: 'Store',
-                        value: order.storeName,
-                        labelColor: textSecondary,
-                        valueColor: textPrimary,
-                      ),
-                      _MetaRow(
-                        icon: Icons.person_rounded,
-                        iconColor: const Color(0xFF1AB36A),
-                        iconBg: isDark
-                            ? const Color(0xFF14352A)
-                            : const Color(0xFFE7F7EE),
-                        label: 'Customer',
-                        value: order.customerName,
-                        labelColor: textSecondary,
-                        valueColor: textPrimary,
-                      ),
-                      _MetaRow(
-                        icon: Icons.location_on_rounded,
-                        iconColor: const Color(0xFF7C3AED),
-                        iconBg: isDark
-                            ? const Color(0xFF2D2148)
-                            : const Color(0xFFEFE9FE),
-                        label: 'Drop',
-                        value: order.deliveryAddress,
-                        labelColor: textSecondary,
-                        valueColor: textPrimary,
-                      ),
-                      _MetaRow(
-                        icon: Icons.route_rounded,
-                        iconColor: const Color(0xFFF38B19),
-                        iconBg: isDark
-                            ? const Color(0xFF3A2613)
-                            : const Color(0xFFFFEFDA),
-                        label: 'Distance',
-                        value: '${order.distanceKm.toStringAsFixed(2)} km',
-                        labelColor: textSecondary,
-                        valueColor: textPrimary,
-                      ),
-                      _MetaRow(
-                        icon: Icons.currency_rupee_rounded,
-                        iconColor: const Color(0xFF1AB36A),
-                        iconBg: isDark
-                            ? const Color(0xFF14352A)
-                            : const Color(0xFFE7F7EE),
-                        label: 'Earnings',
-                        value: order.estimatedEarnings > 0
-                            ? 'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}'
-                            : 'Rs. 0',
-                        labelColor: textSecondary,
-                        valueColor: textPrimary,
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                  child: Material(
-                    color: accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      onTap: onTap,
-                      borderRadius: BorderRadius.circular(12),
-                      child: SizedBox(
-                        height: 48,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Text(
-                              'View Details',
-                              style: TextStyle(
-                                color: accent,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
-                              ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                      child: Material(
+                        color: accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          onTap: onTap,
+                          borderRadius: BorderRadius.circular(12),
+                          child: SizedBox(
+                            height: 48,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Text(
+                                  'View Details',
+                                  style: TextStyle(
+                                    color: accent,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Positioned(
+                                  right: 14,
+                                  child: Icon(
+                                    Icons.chevron_right_rounded,
+                                    color: accent,
+                                    size: 22,
+                                  ),
+                                ),
+                              ],
                             ),
-                            Positioned(
-                              right: 14,
-                              child: Icon(
-                                Icons.chevron_right_rounded,
-                                color: accent,
-                                size: 22,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
             ),
             Positioned(
               left: 0,
@@ -870,11 +1147,16 @@ class _SearchEmpty extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState();
+  const _EmptyState({this.storeName});
+
+  final String? storeName;
 
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
+    final msg = storeName != null
+        ? 'No pending orders for $storeName'
+        : 'No available orders';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 48),
       child: Column(
@@ -886,7 +1168,7 @@ class _EmptyState extends StatelessWidget {
             color: scheme.onSurface.withValues(alpha: 0.4),
           ),
           const SizedBox(height: 12),
-          const Text('No available orders'),
+          Text(msg),
         ],
       ),
     );
