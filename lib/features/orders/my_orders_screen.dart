@@ -764,11 +764,11 @@ class _MoreScreenState extends State<MoreScreen> {
           'Available Orders',
           AppRoutes.orderListing,
         ),
-        _menuItem(
-          Icons.location_on_rounded,
-          'Orders by Location',
-          AppRoutes.ordersByLocation,
-        ),
+        // _menuItem(
+        //   Icons.location_on_rounded,
+        //   'Orders by Location',
+        //   AppRoutes.ordersByLocation,
+        // ),
         _menuItem(
           Icons.route_rounded,
           'External Trips',
