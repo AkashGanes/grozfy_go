@@ -778,7 +778,7 @@ class _MoreScreenState extends State<MoreScreen> {
         _menuItem(
           Icons.monetization_on_rounded,
           'Earnings History',
-          AppRoutes.settings,
+          AppRoutes.earnings,
         ),
         _menuItem(
           Icons.car_rental_rounded,

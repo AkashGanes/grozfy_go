@@ -4,12 +4,14 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
+import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 import '../constants/api_constants.dart';
 import '../localization/app_strings.dart';
@@ -17,6 +19,7 @@ import '../localization/localized_text.dart';
 import '../models/app_models.dart';
 import '../navigation/app_routes.dart';
 import '../services/connectivity_service.dart';
+import '../services/timing_sync_engine.dart';
 import '../services/fcm_service.dart';
 import '../services/location_ping_service.dart';
 import '../services/secure_token_storage.dart';
@@ -26,6 +29,8 @@ import '../utils/validators.dart' as app_validators;
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
 import '../../features/orders_by_location/repository/external_delivery_repository.dart';
+import '../database/app_database.dart';
+import '../database/partner_timing_log_dao.dart';
 import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
@@ -227,6 +232,41 @@ class AppController extends ChangeNotifier {
     completionRate: 94,
     totalDeliveries: 412,
   );
+
+  final PartnerTimingLogDao? _timingDao;
+
+  AppController({PartnerTimingLogDao? timingDao}) : _timingDao = timingDao;
+
+  void _writeTimingEvent({
+    required String eventType,
+    String? tripRef,
+    String? stopRef,
+    String? remarks,
+    String? driverOverride,
+  }) {
+    final dao = _timingDao;
+    if (dao == null) return;
+    final driver =
+        driverOverride ?? _driverName ?? _profile?.mobile ?? 'unknown';
+    final now = DateTime.now().toIso8601String();
+    unawaited(
+      dao
+          .insertEvent(
+            PartnerTimingLogsCompanion(
+              eventUuid: Value(const Uuid().v4()),
+              partner: Value(driver),
+              eventType: Value(eventType),
+              eventTime: Value(now),
+              tripName: Value(tripRef),
+              stopName: Value(stopRef),
+              remarks: Value(remarks),
+              createdAt: Value(now),
+            ),
+          )
+          .then((_) => TimingSyncEngine().triggerFlush())
+          .catchError((Object e) => _logApi('timing_event_error', e.toString())),
+    );
+  }
 
   bool get bootstrapped => _bootstrapped;
   bool get isLoggedIn => _isLoggedIn;
@@ -1360,6 +1400,7 @@ class AppController extends ChangeNotifier {
       unawaited(FCMService().subscribe(this));
 
       notifyListeners();
+      _writeTimingEvent(eventType: TimingEventType.login);
       unawaited(_backgroundSync());
 
       return null;
@@ -1640,10 +1681,15 @@ class AppController extends ChangeNotifier {
     final String? accessToRevoke = _sessionToken;
     final String? refreshToRevoke = _refreshToken;
     final String tokenTypeSnapshot = _tokenType;
+    final String? driverAtLogout = _driverName ?? _profile?.mobile;
 
     // Clear in-memory state first. notifyListeners() runs synchronously so
     // any listener that routes on auth state (or the login route below)
     // sees the logged-out state immediately.
+    _writeTimingEvent(
+      eventType: TimingEventType.logout,
+      driverOverride: driverAtLogout,
+    );
     _isLoggedIn = false;
     _sessionToken = null;
     _tokenType = 'Bearer';
@@ -3149,6 +3195,17 @@ class AppController extends ChangeNotifier {
         activeOrder: _activeOrder,
       );
       notifyListeners();
+      if (status == OrderStatus.reachedPickup) {
+        _writeTimingEvent(
+          eventType: TimingEventType.pickupReached,
+          tripRef: _activeTripId,
+        );
+      } else if (status == OrderStatus.pickedUp) {
+        _writeTimingEvent(
+          eventType: TimingEventType.pickedUp,
+          tripRef: _activeTripId,
+        );
+      }
       return null;
     } catch (e) {
       return e.toString().replaceFirst('Exception: ', '');
@@ -3447,6 +3504,10 @@ class AppController extends ChangeNotifier {
         activeOrder: _activeOrder,
       );
       notifyListeners();
+      _writeTimingEvent(
+        eventType: TimingEventType.tripAccepted,
+        tripRef: _activeTripId,
+      );
       return null;
     } catch (e) {
       return e.toString().replaceFirst('Exception: ', '');

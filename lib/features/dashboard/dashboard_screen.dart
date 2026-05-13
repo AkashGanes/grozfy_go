@@ -23,6 +23,7 @@ import 'widgets/batch_pickup_card.dart';
 import 'widgets/current_location_card.dart';
 import 'widgets/dashboard_greeting_header.dart';
 import 'widgets/profile_progress_card.dart';
+import '../stats/widgets/daily_summary_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -249,6 +250,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   Navigator.of(context).pushNamed(AppRoutes.kycDocuments),
             ),
           ],
+          const SizedBox(height: 14),
+          const DailySummaryCard(),
           const SizedBox(height: 14),
           CurrentLocationCard(
             title: app.t('current_location'),

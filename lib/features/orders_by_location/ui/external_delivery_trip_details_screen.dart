@@ -1,9 +1,18 @@
 import 'dart:convert';
 
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 
+import '../../../core/database/app_database.dart';
+import '../../../core/database/database_providers.dart';
+import '../../../core/database/partner_timing_log_dao.dart';
+import '../../../core/services/timing_sync_engine.dart';
+import '../../../core/state/providers.dart';
+import 'trip_stage_timeline_widget.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
@@ -14,18 +23,18 @@ import 'delivery_proof_sheet.dart';
 import 'failed_delivery_bottom_sheet.dart';
 import 'trip_stop_map_screen.dart';
 
-class ExternalDeliveryTripDetailsScreen extends StatefulWidget {
+class ExternalDeliveryTripDetailsScreen extends ConsumerStatefulWidget {
   const ExternalDeliveryTripDetailsScreen({super.key, required this.tripName});
 
   final String tripName;
 
   @override
-  State<ExternalDeliveryTripDetailsScreen> createState() =>
+  ConsumerState<ExternalDeliveryTripDetailsScreen> createState() =>
       _ExternalDeliveryTripDetailsScreenState();
 }
 
 class _ExternalDeliveryTripDetailsScreenState
-    extends State<ExternalDeliveryTripDetailsScreen> {
+    extends ConsumerState<ExternalDeliveryTripDetailsScreen> {
   late Future<ExternalDeliveryTrip> _future;
   static const List<String> _stopStatusOptions = <String>[
     'Pending',
@@ -205,7 +214,10 @@ class _ExternalDeliveryTripDetailsScreenState
     final remaining = (trip.totalStops - trip.completedStops).clamp(0, trip.totalStops);
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      child: FrostCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FrostCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -312,6 +324,13 @@ class _ExternalDeliveryTripDetailsScreenState
             duration: 280.ms,
             curve: Curves.easeOutCubic,
           ),
+          const SizedBox(height: 12),
+          TripStageTimelineWidget(tripName: trip.name)
+              .animate()
+              .fadeIn(delay: 120.ms, duration: 260.ms)
+              .slideY(begin: 0.05, end: 0),
+        ],
+      ),
     );
   }
 
@@ -713,6 +732,10 @@ class _ExternalDeliveryTripDetailsScreenState
     setState(() => _returningToStore = true);
     try {
       await ExternalDeliveryRepository().markReturnedToStore(trip: trip);
+      _writeTimingEvent(
+        eventType: TimingEventType.tripCompleted,
+        tripRef: trip.name.isEmpty ? null : trip.name,
+      );
       if (!mounted) return;
       showInfoSnack(context, 'Order marked Returned. Trip completed.');
       setState(() {
@@ -864,6 +887,33 @@ class _ExternalDeliveryTripDetailsScreenState
     }
   }
 
+  void _writeTimingEvent({
+    required String eventType,
+    String? tripRef,
+    String? stopRef,
+  }) {
+    final dao = ref.read(partnerTimingLogDaoProvider);
+    final driver =
+        ref.read(appControllerProvider).driverName ??
+        ref.read(appControllerProvider).profile?.mobile ??
+        'unknown';
+    final now = DateTime.now().toIso8601String();
+    dao
+        .insertEvent(
+          PartnerTimingLogsCompanion(
+            eventUuid: Value(const Uuid().v4()),
+            partner: Value(driver),
+            eventType: Value(eventType),
+            eventTime: Value(now),
+            tripName: Value(tripRef),
+            stopName: Value(stopRef),
+            createdAt: Value(now),
+          ),
+        )
+        .then((_) => TimingSyncEngine().triggerFlush())
+        .catchError((Object e) => debugPrint('timing_event_error: $e'));
+  }
+
   Future<void> _handleDeliveredStop(ExternalDeliveryTripStop stop) async {
     final photoPath = await showDeliveryProofSheet(context);
     if (!mounted) return;
@@ -890,6 +940,11 @@ class _ExternalDeliveryTripDetailsScreenState
         parentTripName: parentTripName,
         orderName: stop.externalDelivery.trim(),
         newStatus: 'Delivered',
+      );
+      _writeTimingEvent(
+        eventType: TimingEventType.stopDelivered,
+        tripRef: parentTripName.isEmpty ? null : parentTripName,
+        stopRef: stopName.isEmpty ? null : stopName,
       );
       if (!mounted) return;
       final isConnected = ConnectivityService().isConnected;
@@ -986,6 +1041,11 @@ class _ExternalDeliveryTripDetailsScreenState
           orderName: orderName,
           newStatus: 'Failed',
         );
+        _writeTimingEvent(
+          eventType: TimingEventType.stopFailed,
+          tripRef: parentTripName.isEmpty ? null : parentTripName,
+          stopRef: stopName.isEmpty ? null : stopName,
+        );
         if (!mounted) return;
         showInfoSnack(
           context,
@@ -1015,6 +1075,15 @@ class _ExternalDeliveryTripDetailsScreenState
         shouldCreateReturnTrip: createReturn == true,
       );
       if (!mounted) return;
+      _writeTimingEvent(
+        eventType: TimingEventType.stopFailed,
+        tripRef: (stop.rawFields['parent'] ?? '').toString().trim().isEmpty
+            ? null
+            : (stop.rawFields['parent'] ?? '').toString().trim(),
+        stopRef: (stop.rawFields['name'] ?? '').toString().trim().isEmpty
+            ? null
+            : (stop.rawFields['name'] ?? '').toString().trim(),
+      );
       showInfoSnack(context, processResult.message);
       setState(() {
         _future = _loadTrip();
