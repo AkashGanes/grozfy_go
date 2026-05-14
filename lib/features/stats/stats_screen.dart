@@ -16,6 +16,8 @@ class StatsScreen extends ConsumerWidget {
       title: 'My Stats',
       child: Column(
         children: [
+          _DailySection(),
+          const SizedBox(height: 14),
           _MonthlySection(),
           const SizedBox(height: 14),
           _LifetimeSection(),
@@ -23,6 +25,145 @@ class StatsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+// ── Daily section ─────────────────────────────────────────────────────────────
+
+class _DailySection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(dailySummaryProvider);
+
+    return FrostCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.today_rounded, size: 15, color: AppTheme.oceanBlue),
+              SizedBox(width: 6),
+              Text(
+                'Today',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.nightBlue,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          async.when(
+            loading: _buildLoading,
+            error: (e, _) => _buildError(e),
+            data: _buildData,
+          ),
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(duration: 260.ms)
+        .slideY(begin: 0.04, end: 0);
+  }
+
+  Widget _buildLoading() {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppTheme.oceanBlue,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError(Object e) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Text(
+        e.toString().replaceFirst('Exception: ', ''),
+        style: const TextStyle(color: Colors.black54, fontSize: 12),
+      ),
+    );
+  }
+
+  Widget _buildData(DailySummary s) {
+    if (s.tripsCompleted == 0 && s.dutyHours == Duration.zero) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text(
+          'No activity today.',
+          style: TextStyle(color: Colors.black45, fontSize: 13),
+        ),
+      );
+    }
+    return Row(
+      children: [
+        _statTile(
+          'Duty Hours',
+          _fmtDuration(s.dutyHours),
+          Icons.access_time_rounded,
+          AppTheme.oceanBlue,
+        ),
+        const SizedBox(width: 10),
+        _statTile(
+          'Trips Today',
+          '${s.tripsCompleted}',
+          Icons.check_circle_outline,
+          const Color(0xFF2E7D32),
+        ),
+        const SizedBox(width: 10),
+        _statTile(
+          'Avg Trip',
+          _fmtDuration(s.avgTripDuration),
+          Icons.timer_outlined,
+          AppTheme.mango,
+        ),
+      ],
+    );
+  }
+
+  Widget _statTile(String label, String value, IconData icon, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(height: 6),
+            Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: AppTheme.nightBlue,
+                fontSize: 17,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.black45, fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _fmtDuration(Duration d) {
+    if (d.inHours > 0) {
+      final mins = d.inMinutes.remainder(60);
+      return '${d.inHours}h ${mins}m';
+    }
+    if (d.inMinutes > 0) return '${d.inMinutes} min';
+    return '0 min';
   }
 }
 
@@ -114,7 +255,14 @@ class _MonthlySection extends ConsumerWidget {
               AppTheme.mango,
             ),
             const SizedBox(width: 10),
-            const Expanded(child: SizedBox.shrink()),
+            _statTile(
+              'On-Time Stops',
+              s.onTimePercent != null
+                  ? '${s.onTimePercent!.toStringAsFixed(0)}%'
+                  : '—',
+              Icons.verified_outlined,
+              AppTheme.oceanBlue,
+            ),
           ],
         ),
       ],

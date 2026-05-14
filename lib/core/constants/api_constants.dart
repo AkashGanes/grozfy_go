@@ -36,7 +36,7 @@ class ApiConstants {
 
   // Partner Timing Log Server Script endpoint (single URL, GET + POST).
   // POST: {events: [{event_uuid, driver, event_type, occurred_at, trip_ref, stop_ref}]}
-  // GET:  ?driver=...&type=daily|monthly|lifetime  → {status, type, logs: [...]}
+  // GET:  ?driver=...&type=daily|monthly|lifetime&month=...&year=...  → {status, type, logs: [...]}
   static const String partnerTimingLog =
       '$erpBaseUrl/api/method/partner_timing_log';
 

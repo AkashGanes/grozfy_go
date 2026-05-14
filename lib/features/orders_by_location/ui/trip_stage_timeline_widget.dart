@@ -12,14 +12,13 @@ class TripStageTimelineWidget extends ConsumerWidget {
   final String tripName;
 
   static const Map<String, String> _labels = {
-    'login': 'Driver Login',
-    'logout': 'Driver Logout',
+    'driver_login': 'Driver Login',
+    'driver_logout': 'Driver Logout',
     'trip_accepted': 'Trip Accepted',
     'pickup_reached': 'Pickup Reached',
     'picked_up': 'Picked Up',
     'stop_delivered': 'Stop Delivered',
     'stop_failed': 'Stop Failed',
-    'trip_started': 'Trip Started',
     'trip_completed': 'Trip Completed',
   };
 
@@ -95,8 +94,29 @@ class TripStageTimelineWidget extends ConsumerWidget {
   Widget _buildContent(TimelineResult result) {
     return switch (result) {
       TimelineEmpty() => _buildEmpty(),
+      TimelinePending() => _buildPending(),
       TimelineData(:final events) => _buildTimeline(events),
     };
+  }
+
+  Widget _buildPending() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.oceanBlue),
+          ),
+          SizedBox(width: 8),
+          Text(
+            'Syncing trip data...',
+            style: TextStyle(color: Colors.black54, fontSize: 12),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildEmpty() {

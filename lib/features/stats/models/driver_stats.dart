@@ -23,6 +23,7 @@ class MonthlySummary {
     required this.tripsCompleted,
     required this.totalRoadTime,
     required this.avgTripDuration,
+    required this.onTimePercent,
   });
 
   final int month;
@@ -30,6 +31,8 @@ class MonthlySummary {
   final int tripsCompleted;
   final Duration totalRoadTime;
   final Duration avgTripDuration;
+  // Delivered stops / (delivered + failed stops) × 100, or null if no stops.
+  final double? onTimePercent;
 }
 
 class LifetimeStats {

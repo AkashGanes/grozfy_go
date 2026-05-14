@@ -11,14 +11,10 @@ import '../../../core/services/secure_token_storage.dart';
 import '../../orders_by_location/model/timing_event.dart';
 import '../models/driver_stats.dart';
 
-// ── Selected month state for the Stats screen ────────────────────────────────
-
 final selectedMonthProvider = StateProvider<({int month, int year})>((ref) {
   final now = DateTime.now();
   return (month: now.month, year: now.year);
 });
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 List<TimingEvent> _rowsToEvents(List<PartnerTimingLog> rows) {
   return rows
@@ -35,24 +31,19 @@ List<TimingEvent> _rowsToEvents(List<PartnerTimingLog> rows) {
       .toList();
 }
 
-/// Merges ERPNext events with locally-unsynced events, deduplicating by
-/// eventUuid. ERPNext events are listed first so they take precedence; local
-/// unsynced events fill in anything not yet on the server.
 List<TimingEvent> _merge(
   List<TimingEvent> erp,
-  List<TimingEvent> localUnsynced,
+  List<TimingEvent> local,
 ) {
   final seen = <String>{};
   final result = <TimingEvent>[];
-  for (final e in [...erp, ...localUnsynced]) {
+  for (final e in [...erp, ...local]) {
     if (seen.add(e.eventUuid)) result.add(e);
   }
   result.sort((a, b) => a.eventTime.compareTo(b.eventTime));
   return result;
 }
 
-/// Fetches events from ERPNext. Throws on network/server error so callers
-/// can catch and fall back to local data.
 Future<List<TimingEvent>> _fetchFromErpNext(
   Map<String, String> params,
 ) async {
@@ -84,22 +75,26 @@ Future<List<TimingEvent>> _fetchFromErpNext(
 
   final body = jsonDecode(response.body) as Map<String, dynamic>;
   final msg = body['message'];
-  if (msg is! Map) return [];
+  if (msg is! Map) {
+    throw Exception('Unexpected response format: message=${msg.runtimeType}');
+  }
   final logs = (msg as Map<String, dynamic>)['logs'];
-  if (logs == null || logs is! List) return [];
+  if (logs == null || logs is! List) {
+    throw Exception('Missing logs array in response');
+  }
 
-  return (logs as List)
+  final events = (logs as List)
       .whereType<Map<String, dynamic>>()
       .map(TimingEvent.fromJson)
       .toList()
     ..sort((a, b) => a.eventTime.compareTo(b.eventTime));
+
+  return events;
 }
 
-// ── Metric computation helpers ────────────────────────────────────────────────
-
 DailySummary _computeDaily(List<TimingEvent> events) {
-  final logins = events.where((e) => e.eventType == 'login').toList();
-  final logouts = events.where((e) => e.eventType == 'logout').toList();
+  final logins = events.where((e) => e.eventType == 'driver_login').toList();
+  final logouts = events.where((e) => e.eventType == 'driver_logout').toList();
 
   Duration dutyHours = Duration.zero;
   if (logins.isNotEmpty) {
@@ -122,12 +117,19 @@ MonthlySummary _computeMonthly(
   int month,
   int year,
 ) {
+  final delivered = events.where((e) => e.eventType == 'stop_delivered').length;
+  final failed = events.where((e) => e.eventType == 'stop_failed').length;
+  final totalStops = delivered + failed;
+  final onTimePercent =
+      totalStops > 0 ? (delivered / totalStops) * 100 : null;
+
   return MonthlySummary(
     month: month,
     year: year,
     tripsCompleted: events.where((e) => e.eventType == 'trip_completed').length,
     totalRoadTime: _totalTripTime(events),
     avgTripDuration: _avgTripDuration(events),
+    onTimePercent: onTimePercent,
   );
 }
 
@@ -222,21 +224,25 @@ int _longestStreak(List<TimingEvent> events) {
   return longest;
 }
 
-// ── Providers ─────────────────────────────────────────────────────────────────
-
-/// Daily: local DB only — today's events are always on-device.
 final dailySummaryProvider =
     FutureProvider.autoDispose<DailySummary>((ref) async {
   final dao = ref.read(partnerTimingLogDaoProvider);
   final now = DateTime.now();
   final startOfDay = DateTime(now.year, now.month, now.day);
   final endOfDay = startOfDay.add(const Duration(days: 1));
-  final rows = await dao.getEventsInRange(startOfDay, endOfDay);
-  return _computeDaily(_rowsToEvents(rows));
+
+  final allLocal = await dao.getEventsInRange(startOfDay, endOfDay);
+  final localEvents = _rowsToEvents(allLocal);
+
+  try {
+    final erpEvents = await _fetchFromErpNext({'type': 'daily'});
+    final merged = _merge(erpEvents, localEvents);
+    return _computeDaily(merged);
+  } catch (_) {
+    return _computeDaily(localEvents);
+  }
 });
 
-/// Monthly: ERPNext (complete history) merged with any local unsynced events.
-/// Falls back to local DB only when offline or after a reinstall with no data.
 final monthlySummaryProvider = FutureProvider.autoDispose
     .family<MonthlySummary, ({int month, int year})>((ref, period) async {
   final dao = ref.read(partnerTimingLogDaoProvider);
@@ -246,8 +252,7 @@ final monthlySummaryProvider = FutureProvider.autoDispose
       : DateTime(period.year + 1, 1, 1);
 
   final allLocal = await dao.getEventsInRange(start, end);
-  final localUnsynced =
-      _rowsToEvents(allLocal.where((r) => !r.isSynced).toList());
+  final localEvents = _rowsToEvents(allLocal);
 
   try {
     final erpEvents = await _fetchFromErpNext({
@@ -255,31 +260,24 @@ final monthlySummaryProvider = FutureProvider.autoDispose
       'month': period.month.toString().padLeft(2, '0'),
       'year': period.year.toString(),
     });
-    return _computeMonthly(
-      _merge(erpEvents, localUnsynced),
-      period.month,
-      period.year,
-    );
+    final merged = _merge(erpEvents, localEvents);
+    return _computeMonthly(merged, period.month, period.year);
   } catch (_) {
-    // Offline or server error — fall back to all local events for this period.
-    return _computeMonthly(_rowsToEvents(allLocal), period.month, period.year);
+    return _computeMonthly(localEvents, period.month, period.year);
   }
 });
 
-/// Lifetime: ERPNext (complete history across reinstalls/devices) merged with
-/// any local unsynced events. Falls back to local DB only when offline.
 final lifetimeStatsProvider =
     FutureProvider.autoDispose<LifetimeStats>((ref) async {
   final dao = ref.read(partnerTimingLogDaoProvider);
   final allLocal = await dao.getAllEvents();
-  final localUnsynced =
-      _rowsToEvents(allLocal.where((r) => !r.isSynced).toList());
+  final localEvents = _rowsToEvents(allLocal);
 
   try {
     final erpEvents = await _fetchFromErpNext({'type': 'lifetime'});
-    return _computeLifetime(_merge(erpEvents, localUnsynced));
+    final merged = _merge(erpEvents, localEvents);
+    return _computeLifetime(merged);
   } catch (_) {
-    // Offline or server error — fall back to all local events.
-    return _computeLifetime(_rowsToEvents(allLocal));
+    return _computeLifetime(localEvents);
   }
 });

@@ -1,16 +1,11 @@
 import 'dart:convert';
 
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:uuid/uuid.dart';
 
-import '../../../core/database/app_database.dart';
-import '../../../core/database/database_providers.dart';
 import '../../../core/database/partner_timing_log_dao.dart';
-import '../../../core/services/timing_sync_engine.dart';
 import '../../../core/state/providers.dart';
 import 'trip_stage_timeline_widget.dart';
 import '../../../core/services/connectivity_service.dart';
@@ -892,26 +887,11 @@ class _ExternalDeliveryTripDetailsScreenState
     String? tripRef,
     String? stopRef,
   }) {
-    final dao = ref.read(partnerTimingLogDaoProvider);
-    final driver =
-        ref.read(appControllerProvider).driverName ??
-        ref.read(appControllerProvider).profile?.mobile ??
-        'unknown';
-    final now = DateTime.now().toIso8601String();
-    dao
-        .insertEvent(
-          PartnerTimingLogsCompanion(
-            eventUuid: Value(const Uuid().v4()),
-            partner: Value(driver),
-            eventType: Value(eventType),
-            eventTime: Value(now),
-            tripName: Value(tripRef),
-            stopName: Value(stopRef),
-            createdAt: Value(now),
-          ),
-        )
-        .then((_) => TimingSyncEngine().triggerFlush())
-        .catchError((Object e) => debugPrint('timing_event_error: $e'));
+    ref.read(appControllerProvider).recordTimingEvent(
+      eventType: eventType,
+      tripRef: tripRef,
+      stopRef: stopRef,
+    );
   }
 
   Future<void> _handleDeliveredStop(ExternalDeliveryTripStop stop) async {

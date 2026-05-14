@@ -234,8 +234,24 @@ class AppController extends ChangeNotifier {
   );
 
   final PartnerTimingLogDao? _timingDao;
+  final Set<String> _recentEventKeys = {};
 
   AppController({PartnerTimingLogDao? timingDao}) : _timingDao = timingDao;
+
+  // Public entry-point for UI-triggered events (stop_delivered, stop_failed,
+  // trip_completed). The 10-second dedup window prevents double-fires from
+  // rapid taps while the action is still in flight.
+  void recordTimingEvent({
+    required String eventType,
+    String? tripRef,
+    String? stopRef,
+  }) {
+    final key = '$tripRef:$stopRef:$eventType';
+    if (_recentEventKeys.contains(key)) return;
+    _recentEventKeys.add(key);
+    Future.delayed(const Duration(seconds: 10), () => _recentEventKeys.remove(key));
+    _writeTimingEvent(eventType: eventType, tripRef: tripRef, stopRef: stopRef);
+  }
 
   void _writeTimingEvent({
     required String eventType,
@@ -249,11 +265,12 @@ class AppController extends ChangeNotifier {
     final driver =
         driverOverride ?? _driverName ?? _profile?.mobile ?? 'unknown';
     final now = DateTime.now().toIso8601String();
+    final uuid = const Uuid().v4();
     unawaited(
       dao
           .insertEvent(
             PartnerTimingLogsCompanion(
-              eventUuid: Value(const Uuid().v4()),
+              eventUuid: Value(uuid),
               partner: Value(driver),
               eventType: Value(eventType),
               eventTime: Value(now),
@@ -263,8 +280,12 @@ class AppController extends ChangeNotifier {
               createdAt: Value(now),
             ),
           )
-          .then((_) => TimingSyncEngine().triggerFlush())
-          .catchError((Object e) => _logApi('timing_event_error', e.toString())),
+          .then((_) {
+            TimingSyncEngine().triggerFlush();
+          })
+          .catchError((Object e) {
+            _logApi('timing_event_error', e.toString());
+          }),
     );
   }
 
@@ -2908,6 +2929,7 @@ class AppController extends ChangeNotifier {
     });
     if (_isOnline) {
       startTracking();
+      recordTimingEvent(eventType: TimingEventType.login);
       _notices.insert(
         0,
         AppNotice(
@@ -2918,6 +2940,7 @@ class AppController extends ChangeNotifier {
       );
     } else {
       stopTracking();
+      recordTimingEvent(eventType: TimingEventType.logout);
     }
 
     PartnerWidgetManager.updateWidget(

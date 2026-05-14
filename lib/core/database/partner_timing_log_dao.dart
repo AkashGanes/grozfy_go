@@ -33,9 +33,6 @@ class PartnerTimingLogDao extends DatabaseAccessor<FlowFleetDatabase>
         .get();
   }
 
-  /// Returns all events whose [eventTime] falls within [start, end).
-  /// ISO-8601 strings compare lexicographically in the same order as
-  /// chronologically, so plain string comparison is correct here.
   Future<List<PartnerTimingLog>> getEventsInRange(
     DateTime start,
     DateTime end,
@@ -57,19 +54,27 @@ class PartnerTimingLogDao extends DatabaseAccessor<FlowFleetDatabase>
           ..orderBy([(t) => OrderingTerm.asc(t.eventTime)]))
         .get();
   }
+
+  Future<void> migrateEventTypes() async {
+    await (update(partnerTimingLogs)
+          ..where((t) => t.eventType.equals('login')))
+        .write(const PartnerTimingLogsCompanion(eventType: Value('driver_login')));
+
+    await (update(partnerTimingLogs)
+          ..where((t) => t.eventType.equals('logout')))
+        .write(const PartnerTimingLogsCompanion(eventType: Value('driver_logout')));
+  }
 }
 
-/// Event type constants that mirror the ERPNext Partner Timing Log values.
 class TimingEventType {
   TimingEventType._();
 
-  static const String login = 'login';
-  static const String logout = 'logout';
+  static const String login = 'driver_login';
+  static const String logout = 'driver_logout';
   static const String tripAccepted = 'trip_accepted';
   static const String pickupReached = 'pickup_reached';
   static const String pickedUp = 'picked_up';
   static const String stopDelivered = 'stop_delivered';
   static const String stopFailed = 'stop_failed';
-  static const String tripStarted = 'trip_started';
   static const String tripCompleted = 'trip_completed';
 }

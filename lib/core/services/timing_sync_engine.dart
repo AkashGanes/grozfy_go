@@ -22,6 +22,8 @@ class TimingSyncEngine {
 
   Future<void> initialize(PartnerTimingLogDao dao) async {
     _dao = dao;
+    await dao.migrateEventTypes();
+
     final connectivity = ConnectivityService();
     _connectivitySubscription = connectivity.connectivityStream.listen((
       isConnected,
@@ -30,19 +32,14 @@ class TimingSyncEngine {
         unawaited(_flushToErpNext());
       }
     });
-    // Broadcast streams don't replay past events, so if the device is
-    // already online when we subscribe the listener never fires. Kick off
-    // an immediate drain so events from a previous offline session are not
-    // stuck until the next connectivity change.
-    if (await connectivity.checkConnectivity()) {
+
+    final online = await connectivity.checkConnectivity();
+    if (online) {
       unawaited(_flushToErpNext());
     }
   }
 
   Future<void> _flushToErpNext() async {
-    // Claim the lock synchronously before any await so two concurrent
-    // triggers (boot-time call + connectivity stream) don't both slip
-    // through the guard and double-send the same batch.
     if (_isSyncing) return;
     _isSyncing = true;
     try {
@@ -66,6 +63,7 @@ class TimingSyncEngine {
           .toList();
 
       final headers = await _authHeaders();
+
       final response = await http
           .post(
             Uri.parse(ApiConstants.recordTimingEvents),
@@ -75,21 +73,36 @@ class TimingSyncEngine {
           .timeout(_networkTimeout);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        for (final event in events) {
+        // null = key absent (old server → mark all as fallback)
+        // non-null = key present; empty set means 0 successes → mark none
+        Set<String>? syncedUuids;
+        try {
+          final body = jsonDecode(response.body) as Map<String, dynamic>;
+          final msg = body['message'];
+          if (msg is Map) {
+            final msgMap = msg as Map<String, dynamic>;
+            if (msgMap.containsKey('synced_uuids')) {
+              final uuidList = msgMap['synced_uuids'];
+              if (uuidList is List) {
+                syncedUuids = uuidList.map((e) => e.toString()).toSet();
+              }
+            }
+          }
+        } catch (_) {}
+
+        // If server returned synced_uuids, only mark confirmed UUIDs.
+        // If key absent (old server), fall back to marking all so the queue doesn't stall.
+        final toMark = syncedUuids != null
+            ? events.where((e) => syncedUuids!.contains(e.eventUuid)).toList()
+            : events;
+
+        for (final event in toMark) {
           try {
             await dao.markAsSynced(event.eventUuid);
-          } catch (e) {
-            debugPrint('[TimingSyncEngine] markAsSynced failed: $e');
-          }
+          } catch (_) {}
         }
-        debugPrint('[TimingSyncEngine] Synced ${events.length} timing events');
-      } else {
-        debugPrint(
-          '[TimingSyncEngine] Server returned ${response.statusCode} — will retry',
-        );
       }
-    } catch (e) {
-      debugPrint('[TimingSyncEngine] Flush failed: $e');
+    } catch (_) {
     } finally {
       _isSyncing = false;
     }
@@ -111,8 +124,6 @@ class TimingSyncEngine {
     return {'Accept': 'application/json'};
   }
 
-  /// Call this immediately after writing a timing event to local DB so events
-  /// are pushed to ERPNext without waiting for the next connectivity change.
   void triggerFlush() {
     unawaited(_flushToErpNext());
   }
