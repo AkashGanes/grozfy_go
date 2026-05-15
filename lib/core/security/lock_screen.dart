@@ -23,8 +23,10 @@ class _LockScreenState extends ConsumerState<LockScreen> {
     setState(() => _authenticating = true);
 
     final service = ref.read(localAuthServiceProvider);
+    final biometricOnly = ref.read(biometricOnlyProvider);
     final success = await service.authenticate(
       reason: 'Unlock to continue using the app',
+      biometricOnly: biometricOnly,
     );
 
     if (!mounted) return;

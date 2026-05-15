@@ -14,12 +14,9 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
     with TickerProviderStateMixin {
   bool _loaded = false;
   bool _deviceSupported = false;
-  int _autoLockIndex = 1;
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-
-  static const _autoLockOptions = ['30 sec', '1 min', '5 min', '15 min'];
 
   @override
   void initState() {
@@ -56,8 +53,10 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
       return;
     }
     final service = ref.read(localAuthServiceProvider);
+    final biometricOnly = ref.read(biometricOnlyProvider);
     final success = await service.authenticate(
       reason: 'Verify your identity to enable app lock',
+      biometricOnly: biometricOnly,
     );
     if (!mounted) return;
     if (success) {
@@ -78,6 +77,8 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final appLockEnabled = ref.watch(appLockEnabledProvider);
+    final autoLockIndex = ref.watch(autoLockIndexProvider);
+    final biometricOnly = ref.watch(biometricOnlyProvider);
     final toggleEnabled = _loaded && _deviceSupported;
 
     return Scaffold(
@@ -115,9 +116,9 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
                           _buildStatusBadge(scheme, isDark),
                         ],
                         const SizedBox(height: 12),
-                        _buildAutoLockCard(scheme, isDark, appLockEnabled),
+                        _buildAutoLockCard(scheme, isDark, appLockEnabled, autoLockIndex),
                         const SizedBox(height: 12),
-                        _buildAdvancedCard(scheme, isDark),
+                        _buildAdvancedCard(scheme, isDark, biometricOnly),
                         const SizedBox(height: 20),
                         _buildInfoCard(scheme, isDark),
                         if (_loaded && !_deviceSupported) ...[
@@ -476,7 +477,7 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
   // ── Auto-lock card ──────────────────────────────────────────────────────────
 
   Widget _buildAutoLockCard(
-      ColorScheme scheme, bool isDark, bool appLockEnabled) {
+      ColorScheme scheme, bool isDark, bool appLockEnabled, int autoLockIndex) {
     return _ThemedCard(
       scheme: scheme,
       isDark: isDark,
@@ -520,8 +521,13 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
               ),
               GestureDetector(
                 onTap: appLockEnabled
-                    ? () => setState(() => _autoLockIndex =
-                        (_autoLockIndex + 1) % _autoLockOptions.length)
+                    ? () {
+                        final next =
+                            (autoLockIndex + 1) % autoLockOptions.length;
+                        ref
+                            .read(autoLockIndexProvider.notifier)
+                            .setIndex(next);
+                      }
                     : null,
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -539,9 +545,7 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
                     ),
                   ),
                   child: Text(
-                    appLockEnabled
-                        ? _autoLockOptions[_autoLockIndex]
-                        : '—',
+                    appLockEnabled ? autoLockOptions[autoLockIndex] : '—',
                     style: TextStyle(
                       color: appLockEnabled
                           ? scheme.primary
@@ -561,7 +565,8 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
 
   // ── Advanced settings card ──────────────────────────────────────────────────
 
-  Widget _buildAdvancedCard(ColorScheme scheme, bool isDark) {
+  Widget _buildAdvancedCard(
+      ColorScheme scheme, bool isDark, bool biometricOnly) {
     return _ThemedCard(
       scheme: scheme,
       isDark: isDark,
@@ -575,24 +580,18 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
             scheme: scheme,
             isDark: isDark,
             icon: Icons.fingerprint_rounded,
-            title: 'Biometric Authentication',
-            subtitle: 'Use fingerprint or face to unlock',
-            trailing: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: scheme.secondary.withValues(alpha: isDark ? 0.18 : 0.12),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                'ON',
-                style: TextStyle(
-                  color: scheme.secondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                ),
-              ),
+            title: 'Biometric Only',
+            subtitle: biometricOnly
+                ? 'PIN/password fallback disabled'
+                : 'Allows PIN/password as fallback',
+            trailing: Switch(
+              value: biometricOnly,
+              onChanged: (v) =>
+                  ref.read(biometricOnlyProvider.notifier).toggle(v),
+              activeThumbColor: Colors.white,
+              activeTrackColor: scheme.primary,
+              inactiveThumbColor: scheme.onSurface.withValues(alpha: 0.4),
+              inactiveTrackColor: scheme.onSurface.withValues(alpha: 0.12),
             ),
           ),
           const SizedBox(height: 2),
@@ -605,7 +604,7 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
             isDark: isDark,
             icon: Icons.notifications_off_outlined,
             title: 'Hide Notifications When Locked',
-            subtitle: 'Mask content on the lock screen',
+            subtitle: 'Coming soon',
             trailing: Icon(
               Icons.chevron_right_rounded,
               color: scheme.onSurface.withValues(alpha: 0.35),
