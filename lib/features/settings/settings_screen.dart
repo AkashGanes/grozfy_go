@@ -1,17 +1,79 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:local_auth/local_auth.dart';
 
 import '../../core/localization/app_strings.dart';
+import '../../core/security/app_lock_provider.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  bool _loaded = false;
+  bool _deviceSupported = false;
+  List<String> _biometricLabels = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDeviceCapabilities();
+  }
+
+  Future<void> _loadDeviceCapabilities() async {
+    final service = ref.read(localAuthServiceProvider);
+    final supported = await service.isDeviceSupported();
+    final biometrics = await service.getAvailableBiometrics();
+    if (!mounted) return;
+    setState(() {
+      _deviceSupported = supported;
+      _biometricLabels = biometrics.map((type) {
+        switch (type) {
+          case BiometricType.fingerprint:
+            return 'Fingerprint';
+          case BiometricType.face:
+            return 'Face ID';
+          case BiometricType.iris:
+            return 'Iris';
+          default:
+            return null;
+        }
+      }).whereType<String>().toList();
+      _loaded = true;
+    });
+  }
+
+  Future<void> _onToggle(bool enabled) async {
+    if (!enabled) {
+      await ref.read(appLockEnabledProvider.notifier).toggle(false);
+      return;
+    }
+    final service = ref.read(localAuthServiceProvider);
+    final success = await service.authenticate(
+      reason: 'Verify your identity to enable app lock',
+    );
+    if (!mounted) return;
+    if (success) {
+      await ref.read(appLockEnabledProvider.notifier).toggle(true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Authentication failed. App lock was not enabled.'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final controller = ref.watch(appControllerProvider);
+    final appLockEnabled = ref.watch(appLockEnabledProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -28,9 +90,86 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 16),
           _buildLanguageCustomizationSection(context, controller),
           const SizedBox(height: 16),
+          _buildSecuritySection(context, appLockEnabled),
+          const SizedBox(height: 16),
           _buildResetButton(context, controller),
           const SizedBox(height: 16),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSecuritySection(BuildContext context, bool appLockEnabled) {
+    final theme = Theme.of(context);
+    final toggleEnabled = _loaded && _deviceSupported;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.lock_outline,
+                  color: theme.colorScheme.primary,
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Security',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'App Lock',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (_biometricLabels.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          _biometricLabels.join(' · '),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ],
+                      if (_loaded && !_deviceSupported) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'No screen lock configured. Set up a PIN or password in device settings first.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: appLockEnabled,
+                  onChanged: toggleEnabled ? _onToggle : null,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

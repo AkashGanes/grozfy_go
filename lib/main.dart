@@ -11,6 +11,8 @@ import 'core/services/offline_storage_service.dart';
 import 'core/services/offline_trip_manager.dart';
 import 'core/services/sync_manager.dart';
 import 'core/navigation/app_routes.dart';
+import 'core/security/app_lock_provider.dart';
+import 'core/security/lock_screen.dart';
 import 'core/state/providers.dart';
 import 'core/state/app_scope.dart';
 import 'core/theme/app_theme.dart';
@@ -72,6 +74,9 @@ void main() async {
 
   // Configure background location ping service
   await LocationPingService.initialize();
+
+  // Load persisted app lock preference before the first frame
+  await container.read(appLockEnabledProvider.notifier).initialize();
 
   runApp(
     UncontrolledProviderScope(container: container, child: const GrozfyGoApp()),
@@ -147,7 +152,11 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
         supportedLocales: AppLocalizations.supportedLocales,
         initialRoute: AppRoutes.splash,
         builder: (context, child) {
-          return NoInternetWrapper(child: child ?? const SizedBox.shrink());
+          Widget content = child ?? const SizedBox.shrink();
+          if (controller.isLoggedIn) {
+            content = _AppLockObserver(child: content);
+          }
+          return NoInternetWrapper(child: content);
         },
         onGenerateRoute: (RouteSettings settings) {
           switch (settings.name) {
@@ -358,6 +367,58 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
           }
         },
       ),
+    );
+  }
+}
+
+class _AppLockObserver extends ConsumerStatefulWidget {
+  const _AppLockObserver({required this.child});
+  final Widget child;
+
+  @override
+  ConsumerState<_AppLockObserver> createState() => _AppLockObserverState();
+}
+
+class _AppLockObserverState extends ConsumerState<_AppLockObserver>
+    with WidgetsBindingObserver {
+  bool _wasPaused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (ref.read(appLockEnabledProvider)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(appLockedProvider.notifier).lock();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!ref.read(appLockEnabledProvider)) return;
+
+    if (state == AppLifecycleState.paused) {
+      _wasPaused = true;
+    } else if (state == AppLifecycleState.resumed && _wasPaused) {
+      _wasPaused = false;
+      ref.read(appLockedProvider.notifier).lock();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        widget.child,
+        if (ref.watch(appLockedProvider)) const LockScreen(),
+      ],
     );
   }
 }
