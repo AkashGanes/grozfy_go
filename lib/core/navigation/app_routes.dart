@@ -29,4 +29,5 @@ class AppRoutes {
   static const myOrders = '/my-orders';
   static const more = '/more';
   static const earnings = '/earnings';
+  static const security = '/security';
 }

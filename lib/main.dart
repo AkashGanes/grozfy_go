@@ -42,6 +42,7 @@ import 'features/orders/order_status_screen.dart';
 import 'features/orders/order_tracking_screen.dart';
 import 'features/permissions/location_permission_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/security/security_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/splash/splash_screen.dart';
 
@@ -355,6 +356,10 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
             case AppRoutes.more:
               return MaterialPageRoute<void>(
                 builder: (_) => const MoreScreen(),
+              );
+            case AppRoutes.security:
+              return MaterialPageRoute<void>(
+                builder: (_) => const SecurityScreen(),
               );
             case AppRoutes.earnings:
               return MaterialPageRoute<void>(

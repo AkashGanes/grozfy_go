@@ -775,6 +775,7 @@ class _MoreScreenState extends State<MoreScreen> {
           AppRoutes.externalDeliveryTripList,
         ),
         _menuItem(Icons.settings_rounded, 'Settings', AppRoutes.settings),
+        _menuItem(Icons.security_rounded, 'Security', AppRoutes.security),
         _menuItem(
           Icons.monetization_on_rounded,
           'Earnings History',
