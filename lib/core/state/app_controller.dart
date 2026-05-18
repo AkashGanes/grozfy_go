@@ -270,6 +270,12 @@ class AppController extends ChangeNotifier {
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
   String? get serverProfileImageUrl => _serverProfileImageUrl;
+  String? get serverProfileImageFullUrl {
+    if (_serverProfileImageUrl == null) return null;
+    return _serverProfileImageUrl!.startsWith('http')
+        ? _serverProfileImageUrl
+        : '${ApiConstants.erpBaseUrl}$_serverProfileImageUrl';
+  }
   ThemeMode get themeMode => _themeMode;
   Color get backgroundColor => Color(_backgroundColorValue);
   Color get accentColor => Color(_accentColorValue);
@@ -4320,12 +4326,29 @@ class AppController extends ChangeNotifier {
       }
 
       await _syncServerProfileImageFromEmployee(employeeDoc);
+      // Employee image takes priority. If no employee record exists,
+      // fall back to User.user_image (where uploads go when employee is unlinked).
+      if (employeeDoc == null && loggedUser != null) {
+        await _syncProfileImageFromUser(loggedUser);
+      }
     } catch (e) {
       _profileDetailsError = e.toString().replaceFirst('Exception: ', '');
     } finally {
       _profileDetailsLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _syncProfileImageFromUser(String userName) async {
+    try {
+      final Map<String, dynamic>? userDoc = await _fetchResourceDoc('User', userName);
+      final String? userImage = _nullIfBlank(userDoc?['user_image']?.toString());
+      if (userImage != null) {
+        _serverProfileImageUrl = userImage;
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_prefServerProfileImageUrl, userImage);
+      }
+    } catch (_) {}
   }
 
   Future<String?> _fetchLoggedUser() async {
