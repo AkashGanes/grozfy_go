@@ -103,49 +103,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     ).then((_) => _licenseDialogShowing = false);
   }
 
-  Future<void> _confirmAndLogout() async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Log out?'),
-          content: const Text(
-            'You will need to sign in again to continue.',
-          ),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: () => Navigator.of(dialogContext).pop(true),
-                    child: const Text('Log out'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-    if (confirmed != true) return;
-    await _app.logout();
-    if (!mounted) return;
-    Navigator.of(context)
-        .pushNamedAndRemoveUntil(AppRoutes.login, (route) => false);
-  }
-
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -194,7 +151,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             hasUnreadNotifications: unreadCount > 0,
             onNotificationsTap: () =>
                 Navigator.of(context).pushNamed(AppRoutes.notifications),
-            onLogoutTap: _confirmAndLogout,
             onAvatarTap: () =>
                 Navigator.of(context).pushNamed(AppRoutes.profile),
           );

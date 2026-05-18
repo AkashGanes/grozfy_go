@@ -8,7 +8,6 @@ class DashboardGreetingHeader extends StatelessWidget {
     this.avatarInitial,
     this.hasUnreadNotifications = false,
     this.onNotificationsTap,
-    this.onLogoutTap,
     this.onAvatarTap,
   });
 
@@ -17,7 +16,6 @@ class DashboardGreetingHeader extends StatelessWidget {
   final String? avatarInitial;
   final bool hasUnreadNotifications;
   final VoidCallback? onNotificationsTap;
-  final VoidCallback? onLogoutTap;
   final VoidCallback? onAvatarTap;
 
   String _greeting() {
@@ -103,11 +101,6 @@ class DashboardGreetingHeader extends StatelessWidget {
             icon: Icons.notifications_none_rounded,
             badge: hasUnreadNotifications,
             onTap: onNotificationsTap,
-          ),
-          const SizedBox(width: 10),
-          _IconButtonChip(
-            icon: Icons.logout_rounded,
-            onTap: onLogoutTap,
           ),
         ],
       ),
