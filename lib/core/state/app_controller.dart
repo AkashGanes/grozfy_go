@@ -633,6 +633,14 @@ class AppController extends ChangeNotifier {
       hydrateVehicleFromBackend(),
       hydrateBankFromBackend(),
     ]);
+    // Restore an in-progress order that was lost when SharedPreferences were
+    // cleared (e.g. after logout/login). Only runs when there's no order in
+    // local state — normal boot restores via _restoreActiveOrder instead.
+    if (_activeOrder == null &&
+        _driverName != null &&
+        _driverName!.isNotEmpty) {
+      await _tryRestoreActiveOrderByDriver();
+    }
   }
 
   Future<void> initializeConnectivity() async {
@@ -3393,6 +3401,16 @@ class AppController extends ChangeNotifier {
         );
       }
 
+      // Stamp driver on the order record so it is queryable by driver after
+      // logout/login (SharedPreferences are cleared on logout).
+      try {
+        if (_driverName != null && _driverName!.isNotEmpty) {
+          await _orderRepository.setDriverOnOrder(orderId, _driverName!);
+        }
+      } catch (e) {
+        _logApi('accept_order_driver_stamp_warn', 'non-fatal: $e');
+      }
+
       _availableOrders.removeWhere((order) => order.orderId == orderId);
       final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
         orderId,
@@ -3554,6 +3572,65 @@ class AppController extends ChangeNotifier {
       await _persistActiveOrderId(null);
       await _persistActiveTripId(null);
       notifyListeners();
+    }
+  }
+
+  /// Fallback restore used after logout/login when SharedPreferences no longer
+  /// hold an active order ID. Queries the server for in-progress trips assigned
+  /// to the logged-in driver and restores state if one is found.
+  Future<void> _tryRestoreActiveOrderByDriver() async {
+    if (_driverName == null || _driverName!.isEmpty) return;
+    try {
+      final trip = await _orderRepository.fetchFirstActiveTripWithOrders(_driverName!);
+      if (trip == null || trip.stops.isEmpty) return;
+
+      const terminalStatuses = {
+        'delivered', 'cancelled', 'failed', 'returned', 'return initiated',
+      };
+
+      ExternalDeliveryDetail? detail;
+      for (final stop in trip.stops) {
+        final id = stop.externalDelivery.trim();
+        if (id.isEmpty) continue;
+        if (terminalStatuses.contains(stop.status.trim().toLowerCase())) continue;
+        try {
+          detail = await _orderRepository.fetchDetail(id);
+          break;
+        } catch (_) {}
+      }
+      if (detail == null) return;
+
+      final OrderStatus status = _mapExternalStatus(detail.status);
+      if (status == OrderStatus.delivered ||
+          status == OrderStatus.cancelled ||
+          status == OrderStatus.rejected ||
+          status == OrderStatus.pending) {
+        return;
+      }
+
+      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
+        orderStatus: status,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+        assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+        deliveryPartnerLocation: _partnerLiveLocation,
+      );
+      _activeTripId = trip.name;
+      _replaceAcceptedOrder(_activeOrder!);
+      await _persistActiveOrderId(_activeOrder!.orderId);
+      await _persistActiveTripId(trip.name);
+      unawaited(_startLocationPingIfReady());
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
+      );
+      _logApi(
+        'restore_active_order_by_driver',
+        'order=${_activeOrder!.orderId} trip=${trip.name}',
+      );
+      notifyListeners();
+    } catch (e) {
+      _logApi('restore_active_order_by_driver_warn', e.toString());
     }
   }
 
