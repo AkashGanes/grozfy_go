@@ -11,6 +11,8 @@ import 'core/services/offline_storage_service.dart';
 import 'core/services/offline_trip_manager.dart';
 import 'core/services/sync_manager.dart';
 import 'core/navigation/app_routes.dart';
+import 'core/security/app_lock_provider.dart';
+import 'core/security/lock_screen.dart';
 import 'core/state/providers.dart';
 import 'core/state/app_scope.dart';
 import 'core/theme/app_theme.dart';
@@ -40,6 +42,7 @@ import 'features/orders/order_status_screen.dart';
 import 'features/orders/order_tracking_screen.dart';
 import 'features/permissions/location_permission_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/security/security_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/splash/splash_screen.dart';
 
@@ -72,6 +75,11 @@ void main() async {
 
   // Configure background location ping service
   await LocationPingService.initialize();
+
+  // Load persisted security preferences before the first frame
+  await container.read(appLockEnabledProvider.notifier).initialize();
+  await container.read(autoLockIndexProvider.notifier).initialize();
+  await container.read(biometricOnlyProvider.notifier).initialize();
 
   runApp(
     UncontrolledProviderScope(container: container, child: const GrozfyGoApp()),
@@ -147,7 +155,11 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
         supportedLocales: AppLocalizations.supportedLocales,
         initialRoute: AppRoutes.splash,
         builder: (context, child) {
-          return NoInternetWrapper(child: child ?? const SizedBox.shrink());
+          Widget content = child ?? const SizedBox.shrink();
+          if (controller.isLoggedIn) {
+            content = _AppLockObserver(child: content);
+          }
+          return NoInternetWrapper(child: content);
         },
         onGenerateRoute: (RouteSettings settings) {
           switch (settings.name) {
@@ -347,6 +359,10 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
               return MaterialPageRoute<void>(
                 builder: (_) => const MoreScreen(),
               );
+            case AppRoutes.security:
+              return MaterialPageRoute<void>(
+                builder: (_) => const SecurityScreen(),
+              );
             case AppRoutes.earnings:
               return MaterialPageRoute<void>(
                 builder: (_) => const MoreScreen(),
@@ -358,6 +374,64 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
           }
         },
       ),
+    );
+  }
+}
+
+class _AppLockObserver extends ConsumerStatefulWidget {
+  const _AppLockObserver({required this.child});
+  final Widget child;
+
+  @override
+  ConsumerState<_AppLockObserver> createState() => _AppLockObserverState();
+}
+
+class _AppLockObserverState extends ConsumerState<_AppLockObserver>
+    with WidgetsBindingObserver {
+  DateTime? _pausedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (ref.read(appLockEnabledProvider)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(appLockedProvider.notifier).lock();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!ref.read(appLockEnabledProvider)) return;
+
+    if (state == AppLifecycleState.paused) {
+      _pausedAt = DateTime.now();
+    } else if (state == AppLifecycleState.resumed && _pausedAt != null) {
+      final elapsed = DateTime.now().difference(_pausedAt!);
+      _pausedAt = null;
+      final index = ref.read(autoLockIndexProvider);
+      final threshold = autoLockThreshold(index);
+      // threshold == null means "Immediately" — always lock on resume
+      if (threshold == null || elapsed >= threshold) {
+        ref.read(appLockedProvider.notifier).lock();
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        widget.child,
+        if (ref.watch(appLockedProvider)) const LockScreen(),
+      ],
     );
   }
 }

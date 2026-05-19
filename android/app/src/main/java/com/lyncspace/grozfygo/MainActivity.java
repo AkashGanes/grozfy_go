@@ -1,5 +1,5 @@
 package com.lyncspace.grozfygo;
 
-import io.flutter.embedding.android.FlutterActivity;
+import io.flutter.embedding.android.FlutterFragmentActivity;
 
-public final class MainActivity extends FlutterActivity {}
+public final class MainActivity extends FlutterFragmentActivity {}
