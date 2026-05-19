@@ -1367,8 +1367,11 @@ class AppController extends ChangeNotifier {
       // Update FCM token on login
       unawaited(FCMService().subscribe(this));
 
+      // Hydrate profile, vehicle, and bank before notifying listeners so the
+      // dashboard renders with complete data (no race between navigation and
+      // background fetch). The login screen's _busy spinner covers this wait.
+      await _backgroundSync();
       notifyListeners();
-      unawaited(_backgroundSync());
 
       return null;
     } catch (e) {
@@ -1589,8 +1592,9 @@ class AppController extends ChangeNotifier {
       _pendingRegistrationMobile = null;
 
       await _persistSession(responseData);
+
+      await _backgroundSync();
       notifyListeners();
-      unawaited(_backgroundSync());
 
       return null;
     } catch (e) {
@@ -2574,6 +2578,15 @@ class AppController extends ChangeNotifier {
         _prefVehicleRawJson,
         jsonEncode(finalData),
       );
+      // Keep Driver.vehicle in sync so the Driver doc is the source of truth
+      // for vehicle identity after logout (SharedPreferences are cleared).
+      if (finalName != null) {
+        try {
+          await _setDriverField('vehicle', finalName);
+        } catch (e) {
+          _logApi('vehicle.submit.driver_link_warn', 'non-fatal: $e');
+        }
+      }
       notifyListeners();
       _logApi(
         'vehicle.submit',
@@ -2737,11 +2750,25 @@ class AppController extends ChangeNotifier {
         upiId: normalizedIban,
         verified: true,
       );
+      final String? resolvedBankName =
+          _nullIfBlank(_submittedBankRaw?['name']?.toString()) ?? bankName;
       await _persistBankIdentity(
-        bankDocName:
-            _nullIfBlank(_submittedBankRaw?['name']?.toString()) ?? bankName,
+        bankDocName: resolvedBankName,
         accountName: normalizedAccountName,
       );
+      // Keep Driver.custom_bank_account in sync so the Driver doc is the
+      // source of truth for bank identity after logout (SharedPreferences
+      // are cleared). Uses custom_ prefix — Frappe adds it to all fields
+      // created via Customize Form (unlike 'vehicle' which is a standard field).
+      _logApi('bank.submit', 'resolvedBankName=$resolvedBankName driverName=$_driverName');
+      if (resolvedBankName != null) {
+        try {
+          await _setDriverField('custom_bank_account', resolvedBankName);
+          _logApi('bank.submit', 'driver_link set custom_bank_account=$resolvedBankName');
+        } catch (e) {
+          _logApi('bank.submit.driver_link_warn', 'non-fatal: $e');
+        }
+      }
       if (_submittedBankRaw != null) {
         final SharedPreferences submitPrefs =
             await SharedPreferences.getInstance();
@@ -4247,6 +4274,22 @@ class AppController extends ChangeNotifier {
     }());
   }
 
+  /// Sets a single field on the logged-in driver's Frappe Driver doc.
+  /// Used to keep Driver.vehicle in sync so server-side hydration works after
+  /// logout/re-login without relying on local SharedPreferences.
+  Future<void> _setDriverField(String fieldname, Object value) async {
+    if (_driverName == null || _driverName!.isEmpty) return;
+    final Uri uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    await authorizedPostJson(uri, <String, dynamic>{
+      'doctype': 'Driver',
+      'name': _driverName!,
+      'fieldname': fieldname,
+      'value': value,
+    });
+  }
+
   void _logApi(String tag, String value) {
     final String line = '[API] $tag => $value';
     // Keep debugPrint for Flutter tooling and print for plain logcat visibility.
@@ -4389,6 +4432,31 @@ class AppController extends ChangeNotifier {
                   prefs.setString(_prefDriverName, fetchedName),
             );
           }
+        }
+
+        // Seed vehicle lookup key from the Driver doc's link field.
+        // SharedPreferences are wiped on logout so this restores the
+        // primary key that hydrateVehicleFromBackend() needs after re-login.
+        final String? vehicleFromDriverDoc =
+            _nullIfBlank(driverDoc['vehicle']?.toString());
+        if (vehicleFromDriverDoc != null) {
+          _writePref(
+            (SharedPreferences prefs) =>
+                prefs.setString(_prefVehicleName, vehicleFromDriverDoc),
+          );
+        }
+
+        // Seed bank lookup key from the Driver doc's link field.
+        // Mirrors the vehicle seeding above — Driver.custom_bank_account is
+        // the source of truth after logout clears SharedPreferences.
+        // Uses custom_ prefix because the field was added via Customize Form.
+        final String? bankFromDriverDoc =
+            _nullIfBlank(driverDoc['custom_bank_account']?.toString());
+        if (bankFromDriverDoc != null) {
+          _writePref(
+            (SharedPreferences prefs) =>
+                prefs.setString(_prefBankDocName, bankFromDriverDoc),
+          );
         }
       }
 
