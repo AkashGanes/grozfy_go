@@ -400,7 +400,7 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'profile_photo',
         description: 'profile_photo_desc',
-        isCompleted: _profileImagePath != null,
+        isCompleted: _profileImagePath != null || _serverProfileImageUrl != null,
         route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
