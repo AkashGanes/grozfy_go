@@ -1,10 +1,13 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_toast.dart';
 
 /// Shows the proof-of-delivery capture bottom sheet.
 /// Returns the local file path if the driver captured/selected a photo,
@@ -142,11 +145,41 @@ class _DeliveryProofSheet extends StatefulWidget {
 class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
   XFile? _pickedFile;
 
+  static const int _maxFileSizeBytes = 5 * 1024 * 1024; // 5 MB
+
   Future<void> _pickPhoto(ImageSource source) async {
     final picker = ImagePicker();
-    final file = await picker.pickImage(source: source, imageQuality: 80);
-    if (file != null && mounted) {
-      setState(() => _pickedFile = file);
+
+    // Pick at full quality to get the original file for size validation
+    final original = await picker.pickImage(source: source);
+    if (original == null || !mounted) return;
+
+    final fileSize = await File(original.path).length();
+    if (fileSize > _maxFileSizeBytes) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          'Selected image exceeds 5 MB limit. Please choose a smaller image.',
+        );
+      }
+      return;
+    }
+
+    // Original is within limit — compress before preview/upload
+    final compressed = await FlutterImageCompress.compressWithFile(
+      original.path,
+      quality: 80,
+    );
+    if (compressed == null || !mounted) return;
+
+    final tempDir = await getTemporaryDirectory();
+    final tempFile = File(
+      '${tempDir.path}/proof_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+    await tempFile.writeAsBytes(compressed);
+
+    if (mounted) {
+      setState(() => _pickedFile = XFile(tempFile.path));
     }
   }
 
