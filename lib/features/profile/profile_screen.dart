@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/profile_image_validator.dart';
 import '../../core/widgets/app_shell.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -878,29 +880,47 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _pickImage() async {
-    final XFile? file = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 80,
-      maxWidth: 1024,
+    // Pick at full quality so we validate the original dimensions.
+    final XFile? file = await _picker.pickImage(source: ImageSource.gallery);
+    if (file == null) return;
+    if (!mounted) return;
+
+    // Validate original dimensions and aspect ratio before any processing.
+    final String? dimensionError =
+        await ProfileImageValidator.validate(file.path);
+    if (dimensionError != null) {
+      if (mounted) showInfoSnack(context, dimensionError);
+      return;
+    }
+
+    // Dimensions valid — compress before handing off to the upload flow.
+    final Uint8List? compressed = await FlutterImageCompress.compressWithFile(
+      file.path,
+      minWidth: 1024,
+      minHeight: 1024,
+      quality: 80,
     );
-    if (file == null) {
+    if (compressed == null) {
+      if (mounted) {
+        showInfoSnack(context, 'Failed to process image. Please try again.');
+      }
       return;
     }
-    if (!mounted) {
-      return;
-    }
-    final bool shouldUpload = await _confirmProfileImageUpload(file.path);
-    if (!mounted || !shouldUpload) {
-      return;
-    }
+    final Directory tempDir = await getTemporaryDirectory();
+    final File tempFile = File(
+      '${tempDir.path}/profile_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+    await tempFile.writeAsBytes(compressed);
+
+    if (!mounted) return;
+    final bool shouldUpload = await _confirmProfileImageUpload(tempFile.path);
+    if (!mounted || !shouldUpload) return;
 
     showInfoSnack(context, t('uploading_profile_image'));
     final String? error = await ref
         .read(appControllerProvider)
-        .updateProfileImageAndSync(pickedPath: file.path);
-    if (!mounted) {
-      return;
-    }
+        .updateProfileImageAndSync(pickedPath: tempFile.path);
+    if (!mounted) return;
     if (error != null) {
       showInfoSnack(context, error);
     } else {

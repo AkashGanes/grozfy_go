@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -22,6 +20,7 @@ import '../services/location_ping_service.dart';
 import '../services/secure_token_storage.dart';
 import '../services/sync_manager.dart';
 import '../utils/formatters.dart';
+import '../utils/profile_image_validator.dart';
 import '../utils/validators.dart' as app_validators;
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
@@ -93,10 +92,10 @@ class AppController extends ChangeNotifier {
   static const String _prefActiveOrderId = 'active_order_id';
   static const String _prefActiveTripId = 'active_trip_id';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
-  static const int _profileImageMinDimension = 200;
-  static const int _profileImageMaxDimension = 4096;
-  static const double _profileImageMinAspectRatio = 0.5;
-  static const double _profileImageMaxAspectRatio = 2.0;
+  static const int _profileImageMinDimension = 300;
+  static const int _profileImageMaxDimension = 5000;
+  static const double _profileImageMinAspectRatio = 0.75;
+  static const double _profileImageMaxAspectRatio = 1.33;
   static const Set<String> _profileImageAllowedExtensions = <String>{
     '.jpg',
     '.jpeg',
@@ -1111,37 +1110,24 @@ class AppController extends ChangeNotifier {
 
     if (size.width < _profileImageMinDimension ||
         size.height < _profileImageMinDimension) {
-      return 'Image dimensions must be at least 200 x 200 px.';
+      return 'Image dimensions must be at least $_profileImageMinDimension x $_profileImageMinDimension px.';
     }
     if (size.width > _profileImageMaxDimension ||
         size.height > _profileImageMaxDimension) {
-      return 'Image dimensions must be below 4096 x 4096 px.';
+      return 'Image dimensions must not exceed $_profileImageMaxDimension x $_profileImageMaxDimension px.';
     }
 
     final double ratio = size.width / size.height;
     if (ratio < _profileImageMinAspectRatio ||
         ratio > _profileImageMaxAspectRatio) {
-      return 'Image aspect ratio must be between 1:2 and 2:1.';
+      return 'Image aspect ratio must be between 3:4 and 4:3.';
     }
 
     return null;
   }
 
-  Future<Size?> _readImageSize(File file) async {
-    try {
-      final ui.Codec codec = await ui.instantiateImageCodec(
-        await file.readAsBytes(),
-      );
-      final ui.FrameInfo frame = await codec.getNextFrame();
-      final ui.Image image = frame.image;
-      final Size size = Size(image.width.toDouble(), image.height.toDouble());
-      image.dispose();
-      codec.dispose();
-      return size;
-    } catch (_) {
-      return null;
-    }
-  }
+  Future<Size?> _readImageSize(File file) =>
+      ProfileImageValidator.readDimensions(file);
 
   Future<void> setSelectedLocation({
     required double latitude,
