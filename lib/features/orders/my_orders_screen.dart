@@ -6,7 +6,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
-import '../../core/widgets/app_bottom_nav.dart';
+import '../../core/widgets/app_shell.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 
@@ -19,6 +19,7 @@ class MyOrdersScreen extends ConsumerStatefulWidget {
 
 class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
   int _selectedTab = 0;
+  bool _isNavigating = false;
 
   final ExternalDeliveryRepository _repo = ExternalDeliveryRepository();
 
@@ -94,138 +95,50 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
     }
   }
 
+  void _handleTabTap(int index) {
+    if (_isNavigating || index == 1) return;
+    setState(() => _isNavigating = true);
+    if (index == 0) {
+      // Pop back to the existing Dashboard — no new instance pushed.
+      Navigator.of(context).maybePop().whenComplete(
+        () {
+          if (mounted) setState(() => _isNavigating = false);
+        },
+      );
+    } else if (index == 2) {
+      // Replace this screen so the stack stays: Dashboard → More.
+      Navigator.of(context)
+          .pushReplacement(
+            NoAnimRoute(builder: (_) => const MoreScreen()),
+          )
+          .whenComplete(
+            () {
+              if (mounted) setState(() => _isNavigating = false);
+            },
+          );
+    } else {
+      setState(() => _isNavigating = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final activeOrder = ref.watch(appControllerProvider).activeOrder;
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isDark
-                ? [
-                    Theme.of(context).colorScheme.surface,
-                    Theme.of(context).scaffoldBackgroundColor,
-                  ]
-                : const [
-                    Color(0xFFF1F7FF),
-                    Color(0xFFE8F5F0),
-                    Color(0xFFFFF5E6),
-                  ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Stack(
-          children: [
-            _buildBackdrop(),
-            SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  _buildHeader(),
-                  _buildTabBar(activeOrder),
-                  Expanded(
-                    child: _selectedTab == 0
-                        ? _buildActiveList(activeOrder)
-                        : _buildPastList(),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: AppBottomNav(
-        currentIndex: 1,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.of(context).pushNamed(AppRoutes.dashboard);
-          } else if (index == 2) {
-            Navigator.of(context).pushNamed(AppRoutes.more);
-          }
-        },
-      ),
-    );
-  }
-
-  Widget _buildBackdrop() {
-    return IgnorePointer(
-      child: Stack(
+    return AppShell(
+      title: 'My Orders',
+      subtitle: 'Track your deliveries',
+      padding: EdgeInsets.zero,
+      scrollable: false,
+      showBottomNav: true,
+      bottomNavIndex: 1,
+      onBottomNavTap: _handleTabTap,
+      child: Column(
         children: [
-          Positioned(
-            left: -40,
-            top: -40,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          Positioned(
-            right: -20,
-            top: 80,
-            child: Transform.rotate(
-              angle: 0.8,
-              child: Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: AppTheme.mango.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 30,
-            bottom: -40,
-            child: Container(
-              width: 140,
-              height: 140,
-              decoration: BoxDecoration(
-                color: AppTheme.mint.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-      child: Row(
-        children: [
-          if (Navigator.canPop(context))
-            IconButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: const Icon(Icons.arrow_back_rounded, size: 22),
-            ),
+          _buildTabBar(activeOrder),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'My Orders',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  'Track your deliveries',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: scheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
+            child: _selectedTab == 0
+                ? _buildActiveList(activeOrder)
+                : _buildPastList(),
           ),
         ],
       ),
@@ -284,8 +197,8 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
                   child: Center(
                     child: Text(
                       _isPastLoading
-                        ? 'Past'
-                        : 'Past (${_pastOrders.length})',
+                          ? 'Past'
+                          : 'Past (${_pastOrders.length})',
                       style: TextStyle(
                         color: _selectedTab == 1
                             ? Colors.white
@@ -335,9 +248,9 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
             children: [
               const Icon(Icons.error_outline, size: 48, color: Colors.red),
               const SizedBox(height: 12),
-              Text(
+              const Text(
                 'Failed to load orders',
-                style: const TextStyle(fontWeight: FontWeight.w600),
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               Text(
@@ -373,97 +286,133 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
       ),
     );
   }
-
-  Widget _buildBottomNav() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(
-              icon: Icons.home_rounded,
-              label: 'Home',
-              isSelected: false,
-              onTap: () => Navigator.of(context).pushNamed(AppRoutes.dashboard),
-            ),
-            _NavItem(
-              icon: Icons.local_shipping_rounded,
-              label: 'My Orders',
-              isSelected: true,
-              onTap: () {},
-            ),
-            _NavItem(
-              icon: Icons.more_horiz_rounded,
-              label: 'More',
-              isSelected: false,
-              onTap: () => Navigator.of(context).pushNamed(AppRoutes.more),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-
 }
 
-class _NavItem extends StatelessWidget {
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
+// ---------------------------------------------------------------------------
+
+class MoreScreen extends StatefulWidget {
+  const MoreScreen({super.key});
+
+  @override
+  State<MoreScreen> createState() => _MoreScreenState();
+}
+
+class _MoreScreenState extends State<MoreScreen> {
+  bool _isNavigating = false;
+
+  void _handleTabTap(int index) {
+    if (_isNavigating || index == 2) return;
+    setState(() => _isNavigating = true);
+    if (index == 0) {
+      // Pop back to the existing Dashboard — no new instance pushed.
+      Navigator.of(context).maybePop().whenComplete(
+        () {
+          if (mounted) setState(() => _isNavigating = false);
+        },
+      );
+    } else if (index == 1) {
+      // Replace this screen so the stack stays: Dashboard → My Orders.
+      Navigator.of(context)
+          .pushReplacement(
+            NoAnimRoute(builder: (_) => const MyOrdersScreen()),
+          )
+          .whenComplete(
+            () {
+              if (mounted) setState(() => _isNavigating = false);
+            },
+          );
+    } else {
+      setState(() => _isNavigating = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected
-                  ? AppTheme.oceanBlue
-                  : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-              size: 24,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected
-                    ? AppTheme.oceanBlue
-                    : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-              ),
-            ),
-          ],
+    return AppShell(
+      title: 'More',
+      subtitle: 'Quick Access',
+      padding: EdgeInsets.zero,
+      scrollable: false,
+      showBottomNav: true,
+      bottomNavIndex: 2,
+      onBottomNavTap: _handleTabTap,
+      child: _buildMenu(),
+    );
+  }
+
+  Widget _buildMenu() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _menuItem(Icons.person_rounded, 'My Profile', AppRoutes.profile),
+        _menuItem(
+          Icons.list_alt_rounded,
+          'Available Orders',
+          AppRoutes.orderListing,
         ),
+        _menuItem(
+          Icons.location_on_rounded,
+          'Orders by Location',
+          AppRoutes.ordersByLocation,
+        ),
+        _menuItem(
+          Icons.route_rounded,
+          'External Trips',
+          AppRoutes.externalDeliveryTripList,
+        ),
+        _menuItem(Icons.settings_rounded, 'Settings', AppRoutes.settings),
+        _menuItem(
+          Icons.monetization_on_rounded,
+          'Earnings History',
+          AppRoutes.earnings,
+        ),
+        _menuItem(
+          Icons.car_rental_rounded,
+          'Vehicle',
+          AppRoutes.vehicleDetails,
+        ),
+        _menuItem(
+          Icons.account_balance_rounded,
+          'Bank Details',
+          AppRoutes.bankSetup,
+        ),
+        _menuItem(
+          Icons.description_rounded,
+          'Documents',
+          AppRoutes.kycDocuments,
+        ),
+        _menuItem(Icons.help_rounded, 'Support', AppRoutes.settings),
+      ],
+    );
+  }
+
+  Widget _menuItem(IconData icon, String label, String route) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: AppTheme.oceanBlue, size: 20),
+        ),
+        title: Text(label, style: const TextStyle(fontSize: 14)),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: scheme.onSurface.withValues(alpha: 0.4),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        tileColor: scheme.surface.withValues(alpha: 0.8),
+        onTap: () => Navigator.of(context).pushNamed(route),
       ),
     );
   }
 }
 
+// ---------------------------------------------------------------------------
 
 class _OrderCard extends StatelessWidget {
   const _OrderCard({required this.order, this.onTap});
@@ -530,9 +479,10 @@ class _OrderCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            _buildInfo(Icons.store_rounded, order.storeName),
-            _buildInfo(Icons.more_horiz_rounded, order.customerName),
+            _buildInfo(context, Icons.store_rounded, order.storeName),
+            _buildInfo(context, Icons.more_horiz_rounded, order.customerName),
             _buildInfo(
+              context,
               Icons.location_on_rounded,
               order.drop.isNotEmpty ? order.drop : order.deliveryAddress,
             ),
@@ -573,25 +523,17 @@ class _OrderCard extends StatelessWidget {
     );
   }
 
-  Widget _buildInfo(IconData icon, String text) {
-    return Builder(
-      builder: (context) {
-        final ColorScheme scheme = Theme.of(context).colorScheme;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                size: 14,
-                color: scheme.onSurface.withValues(alpha: 0.6),
-              ),
-              const SizedBox(width: 6),
-              Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
-            ],
-          ),
-        );
-      },
+  Widget _buildInfo(BuildContext context, IconData icon, String text) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: scheme.onSurface.withValues(alpha: 0.6)),
+          const SizedBox(width: 6),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
+        ],
+      ),
     );
   }
 
@@ -614,255 +556,5 @@ class _OrderCard extends StatelessWidget {
       case OrderStatus.cancelled:
         return Colors.red;
     }
-  }
-}
-
-class MoreScreen extends StatefulWidget {
-  const MoreScreen({super.key});
-
-  @override
-  State<MoreScreen> createState() => _MoreScreenState();
-}
-
-class _MoreScreenState extends State<MoreScreen> {
-  @override
-  Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isDark
-                ? [
-                    Theme.of(context).colorScheme.surface,
-                    Theme.of(context).scaffoldBackgroundColor,
-                  ]
-                : const [
-                    Color(0xFFF1F7FF),
-                    Color(0xFFE8F5F0),
-                    Color(0xFFFFF5E6),
-                  ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Stack(
-          children: [
-            _buildBackdrop(),
-            SafeArea(
-              child: Column(
-                children: [
-                  _buildHeader(),
-                  Expanded(child: _buildMenu()),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: AppBottomNav(
-        currentIndex: 2,
-        onTap: (index) {
-          if (index == 0) {
-            Navigator.of(context).pushNamed(AppRoutes.dashboard);
-          } else if (index == 1) {
-            Navigator.of(context).pushNamed(AppRoutes.myOrders);
-          }
-        },
-      ),
-    );
-  }
-
-  Widget _buildBackdrop() {
-    return IgnorePointer(
-      child: Stack(
-        children: [
-          Positioned(
-            left: -40,
-            top: -40,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          Positioned(
-            right: -20,
-            top: 80,
-            child: Transform.rotate(
-              angle: 0.8,
-              child: Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: AppTheme.mango.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 30,
-            bottom: -40,
-            child: Container(
-              width: 140,
-              height: 140,
-              decoration: BoxDecoration(
-                color: AppTheme.mint.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.of(context).maybePop(),
-            icon: const Icon(Icons.arrow_back_rounded, size: 22),
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'More',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  'Quick Access',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMenu() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _menuItem(Icons.person_rounded, 'My Profile', AppRoutes.profile),
-        _menuItem(
-          Icons.list_alt_rounded,
-          'Available Orders',
-          AppRoutes.orderListing,
-        ),
-        _menuItem(
-          Icons.location_on_rounded,
-          'Orders by Location',
-          AppRoutes.ordersByLocation,
-        ),
-        _menuItem(
-          Icons.route_rounded,
-          'External Trips',
-          AppRoutes.externalDeliveryTripList,
-        ),
-        _menuItem(Icons.settings_rounded, 'Settings', AppRoutes.settings),
-        _menuItem(
-          Icons.monetization_on_rounded,
-          'Earnings History',
-          AppRoutes.settings,
-        ),
-        _menuItem(
-          Icons.car_rental_rounded,
-          'Vehicle',
-          AppRoutes.vehicleDetails,
-        ),
-        _menuItem(
-          Icons.account_balance_rounded,
-          'Bank Details',
-          AppRoutes.bankSetup,
-        ),
-        _menuItem(
-          Icons.description_rounded,
-          'Documents',
-          AppRoutes.kycDocuments,
-        ),
-        _menuItem(Icons.help_rounded, 'Support', AppRoutes.settings),
-      ],
-    );
-  }
-
-  Widget _menuItem(IconData icon, String label, String route) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppTheme.oceanBlue.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: AppTheme.oceanBlue, size: 20),
-        ),
-        title: Text(label, style: const TextStyle(fontSize: 14)),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: scheme.onSurface.withValues(alpha: 0.4),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        tileColor: scheme.surface.withValues(alpha: 0.8),
-        onTap: () => Navigator.of(context).pushNamed(route),
-      ),
-    );
-  }
-
-  Widget _buildBottomNav() {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _NavItem(
-              icon: Icons.home_rounded,
-              label: 'Home',
-              isSelected: false,
-              onTap: () => Navigator.of(context).pushNamed(AppRoutes.dashboard),
-            ),
-            _NavItem(
-              icon: Icons.local_shipping_rounded,
-              label: 'My Orders',
-              isSelected: false,
-              onTap: () => Navigator.of(context).maybePop(),
-            ),
-            _NavItem(
-              icon: Icons.more_horiz_rounded,
-              label: 'More',
-              isSelected: true,
-              onTap: () {},
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

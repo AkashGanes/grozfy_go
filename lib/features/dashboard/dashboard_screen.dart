@@ -16,6 +16,7 @@ import '../notifications/providers/notification_providers.dart';
 import '../profile/profile_completeness_sheet.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
+import '../orders/my_orders_screen.dart';
 import 'widgets/active_order_card.dart';
 import 'widgets/availability_card.dart';
 import 'widgets/available_deliveries_card.dart';
@@ -169,13 +170,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         setState(() => _isNavigating = true);
         if (index == 1) {
           Navigator.of(context)
-              .pushNamed(AppRoutes.myOrders)
+              .push(NoAnimRoute(builder: (_) => const MyOrdersScreen()))
               .whenComplete(() {
                 if (mounted) setState(() => _isNavigating = false);
               });
         } else if (index == 2) {
           Navigator.of(context)
-              .pushNamed(AppRoutes.more)
+              .push(NoAnimRoute(builder: (_) => const MoreScreen()))
               .whenComplete(() {
                 if (mounted) setState(() => _isNavigating = false);
               });
