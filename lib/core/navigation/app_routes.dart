@@ -1,3 +1,25 @@
+import 'package:flutter/material.dart';
+
+/// Zero-duration route used for bottom-nav tab switches so there is no slide
+/// animation in any direction — all three tabs feel like a single surface.
+class NoAnimRoute<T> extends MaterialPageRoute<T> {
+  NoAnimRoute({required super.builder, super.settings});
+
+  @override
+  Duration get transitionDuration => Duration.zero;
+
+  @override
+  Duration get reverseTransitionDuration => Duration.zero;
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => child;
+}
+
 class AppRoutes {
   static const splash = '/';
   static const language = '/language';

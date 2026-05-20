@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/localization/app_strings.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -18,15 +19,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final controller = ref.watch(appControllerProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(controller.t('settings')),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: ListView(
+    return AppShell(
+      title: controller.t('settings'),
+      padding: EdgeInsets.zero,
+      scrollable: false,
+      child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _buildThemeCustomizationSection(context, controller),
