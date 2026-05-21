@@ -15,6 +15,7 @@ import '../../core/constants/api_constants.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/authed_network_image.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -727,7 +728,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final String fullUrl = serverImageUrl.startsWith('http')
           ? serverImageUrl
           : '${ApiConstants.erpBaseUrl}$serverImageUrl';
-      avatarContent = _AuthedNetworkImage(
+      avatarContent = AuthedNetworkImage(
         url: fullUrl,
         authHeaders: app.buildAuthHeaders(),
         size: 88,
@@ -1530,71 +1531,5 @@ class _DriverAttachment {
       return parsed.pathSegments.last;
     }
     return 'Attachment';
-  }
-}
-
-/// Fetches a Frappe-hosted image with Bearer auth headers, then displays it.
-/// Bare NetworkImage fails when Frappe redirects requests through session middleware.
-class _AuthedNetworkImage extends StatefulWidget {
-  const _AuthedNetworkImage({
-    required this.url,
-    required this.authHeaders,
-    required this.size,
-  });
-
-  final String url;
-  final Map<String, String> authHeaders;
-  final double size;
-
-  @override
-  State<_AuthedNetworkImage> createState() => _AuthedNetworkImageState();
-}
-
-class _AuthedNetworkImageState extends State<_AuthedNetworkImage> {
-  Uint8List? _bytes;
-  bool _failed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final response = await http
-          .get(Uri.parse(widget.url), headers: widget.authHeaders)
-          .timeout(const Duration(seconds: 15));
-      if (!mounted) return;
-      if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
-        setState(() => _bytes = response.bodyBytes);
-      } else {
-        setState(() => _failed = true);
-      }
-    } catch (_) {
-      if (mounted) setState(() => _failed = true);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_bytes != null) {
-      return Image.memory(
-        _bytes!,
-        fit: BoxFit.cover,
-        width: widget.size,
-        height: widget.size,
-        errorBuilder: (context, e, s) =>
-            const Icon(Icons.person_rounded, size: 42),
-      );
-    }
-    if (_failed) return const Icon(Icons.person_rounded, size: 42);
-    return SizedBox(
-      width: widget.size,
-      height: widget.size,
-      child: const Center(
-        child: CircularProgressIndicator(strokeWidth: 2),
-      ),
-    );
   }
 }
