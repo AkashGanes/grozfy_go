@@ -680,8 +680,9 @@ class AppController extends ChangeNotifier {
 
     _bootstrapped = true;
 
-    // Initialize Notifications
-    unawaited(FCMService().subscribe(this));
+    // Subscribe to FCM only when driver is online so offline drivers
+    // don't receive order notifications.
+    if (_isOnline) unawaited(FCMService().subscribe(this));
 
     notifyListeners();
 
@@ -1708,6 +1709,7 @@ class AppController extends ChangeNotifier {
     final String? refreshToRevoke = _refreshToken;
     final String tokenTypeSnapshot = _tokenType;
     final String? driverAtLogout = _driverName ?? _profile?.mobile;
+    final bool wasOnline = _isOnline;
 
     // Clear in-memory state first. notifyListeners() runs synchronously so
     // any listener that routes on auth state (or the login route below)
@@ -1791,7 +1793,7 @@ class AppController extends ChangeNotifier {
           tokenType: tokenTypeSnapshot,
         ),
       );
-      unawaited(FCMService().unsubscribeWithToken(bearerToken: accessToRevoke));
+      if (wasOnline) unawaited(FCMService().unsubscribeWithToken(bearerToken: accessToRevoke));
     }
   }
 
@@ -2936,6 +2938,7 @@ class AppController extends ChangeNotifier {
     if (_isOnline) {
       startTracking();
       recordTimingEvent(eventType: TimingEventType.login);
+      unawaited(FCMService().subscribe(this));
       _notices.insert(
         0,
         AppNotice(
@@ -2947,6 +2950,7 @@ class AppController extends ChangeNotifier {
     } else {
       stopTracking();
       recordTimingEvent(eventType: TimingEventType.logout);
+      unawaited(FCMService().unsubscribe(this));
     }
 
     PartnerWidgetManager.updateWidget(

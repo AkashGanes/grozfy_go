@@ -4,12 +4,19 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/html_utils.dart';
 
 @pragma('vm:entry-point')
 Future<void> fcmBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   debugPrint("Handling a background message: ${message.messageId}");
+
+  final prefs = await SharedPreferences.getInstance();
+  if (prefs.getBool('is_online') != true) {
+    debugPrint('FCM Background: driver is offline, dropping notification');
+    return;
+  }
 
   // Create the notification channel (important for Android 8+)
   const AndroidNotificationChannel channel = AndroidNotificationChannel(

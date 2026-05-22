@@ -9,6 +9,7 @@ import 'notification_navigation_handler.dart';
 import '../utils/html_utils.dart';
 
 import '../../features/notifications/providers/notification_providers.dart';
+import '../state/providers.dart';
 
 class FCMInitializer {
   static final FCMInitializer _instance = FCMInitializer._internal();
@@ -81,6 +82,13 @@ class FCMInitializer {
         'data=${message.data}',
       );
       debugPrint("FCM Foreground: ${message.notification?.title}");
+
+      final isOnline = _container?.read(appControllerProvider).isOnline ?? false;
+      if (!isOnline) {
+        debugPrint('FCM Foreground: driver is offline, dropping notification');
+        return;
+      }
+
       _showForegroundNotify(message);
 
       // REAL-TIME REFRESH
