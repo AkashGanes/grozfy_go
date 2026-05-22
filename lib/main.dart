@@ -9,7 +9,9 @@ import 'core/services/fcm_initializer.dart';
 import 'core/services/location_ping_service.dart';
 import 'core/services/offline_storage_service.dart';
 import 'core/services/offline_trip_manager.dart';
+import 'core/database/database_providers.dart';
 import 'core/services/sync_manager.dart';
+import 'core/services/timing_sync_engine.dart';
 import 'core/navigation/app_routes.dart';
 import 'core/security/app_lock_provider.dart';
 import 'core/security/lock_screen.dart';
@@ -33,6 +35,7 @@ import 'features/orders/navigation_screen.dart';
 import 'features/orders/delivery_list_screen.dart';
 import 'features/orders/delivery_tracking_screen.dart';
 import 'features/orders_by_location/ui/external_delivery_trip_details_screen.dart';
+import 'features/stats/stats_screen.dart';
 import 'features/orders_by_location/ui/external_delivery_trip_list_screen.dart';
 import 'features/orders_by_location/ui/orders_by_location_screen.dart';
 import 'features/orders/order_details_screen.dart';
@@ -61,6 +64,7 @@ void main() async {
   ConnectivityService().startMonitoring();
   await SyncManager().initialize();
   await OfflineTripManager().initialize();
+  await TimingSyncEngine().initialize(container.read(partnerTimingLogDaoProvider));
 
   // Initialize Firebase
   try {
@@ -365,7 +369,7 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
               );
             case AppRoutes.earnings:
               return MaterialPageRoute<void>(
-                builder: (_) => const MoreScreen(),
+                builder: (_) => const StatsScreen(),
               );
             default:
               return MaterialPageRoute<void>(

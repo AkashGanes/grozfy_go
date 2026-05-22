@@ -33,4 +33,14 @@ class ApiConstants {
   // retries from the offline queue are idempotent.
   static const String driverLocationPing =
       '$erpBaseUrl/api/method/grozfy.api.driver.record_location_ping';
+
+  // Partner Timing Log Server Script endpoint (single URL, GET + POST).
+  // POST: {events: [{event_uuid, driver, event_type, occurred_at, trip_ref, stop_ref}]}
+  // GET:  ?driver=...&type=daily|monthly|lifetime&month=...&year=...  → {status, type, logs: [...]}
+  static const String partnerTimingLog =
+      '$erpBaseUrl/api/method/partner_timing_log';
+
+  // Keep aliases so existing callers compile without change.
+  static const String recordTimingEvents = partnerTimingLog;
+  static const String getTimingEvents = partnerTimingLog;
 }

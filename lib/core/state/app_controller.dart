@@ -2,12 +2,15 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+
+import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 import '../constants/api_constants.dart';
 import '../localization/app_strings.dart';
@@ -15,6 +18,7 @@ import '../localization/localized_text.dart';
 import '../models/app_models.dart';
 import '../navigation/app_routes.dart';
 import '../services/connectivity_service.dart';
+import '../services/timing_sync_engine.dart';
 import '../services/fcm_service.dart';
 import '../services/location_ping_service.dart';
 import '../services/secure_token_storage.dart';
@@ -25,6 +29,8 @@ import '../utils/validators.dart' as app_validators;
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
 import '../../features/orders_by_location/repository/external_delivery_repository.dart';
+import '../database/app_database.dart';
+import '../database/partner_timing_log_dao.dart';
 import '../widgets/partner_widget_manager.dart';
 
 class AppController extends ChangeNotifier {
@@ -226,6 +232,62 @@ class AppController extends ChangeNotifier {
     completionRate: 94,
     totalDeliveries: 412,
   );
+
+  final PartnerTimingLogDao? _timingDao;
+  final Set<String> _recentEventKeys = {};
+
+  AppController({PartnerTimingLogDao? timingDao}) : _timingDao = timingDao;
+
+  // Public entry-point for UI-triggered events (stop_delivered, stop_failed,
+  // trip_completed). The 10-second dedup window prevents double-fires from
+  // rapid taps while the action is still in flight.
+  void recordTimingEvent({
+    required String eventType,
+    String? tripRef,
+    String? stopRef,
+  }) {
+    final key = '$tripRef:$stopRef:$eventType';
+    if (_recentEventKeys.contains(key)) return;
+    _recentEventKeys.add(key);
+    Future.delayed(const Duration(seconds: 10), () => _recentEventKeys.remove(key));
+    _writeTimingEvent(eventType: eventType, tripRef: tripRef, stopRef: stopRef);
+  }
+
+  void _writeTimingEvent({
+    required String eventType,
+    String? tripRef,
+    String? stopRef,
+    String? remarks,
+    String? driverOverride,
+  }) {
+    final dao = _timingDao;
+    if (dao == null) return;
+    final driver =
+        driverOverride ?? _driverName ?? _profile?.mobile ?? 'unknown';
+    final now = DateTime.now().toIso8601String();
+    final uuid = const Uuid().v4();
+    unawaited(
+      dao
+          .insertEvent(
+            PartnerTimingLogsCompanion(
+              eventUuid: Value(uuid),
+              partner: Value(driver),
+              eventType: Value(eventType),
+              eventTime: Value(now),
+              tripName: Value(tripRef),
+              stopName: Value(stopRef),
+              remarks: Value(remarks),
+              createdAt: Value(now),
+            ),
+          )
+          .then((_) {
+            TimingSyncEngine().triggerFlush();
+          })
+          .catchError((Object e) {
+            _logApi('timing_event_error', e.toString());
+          }),
+    );
+  }
 
   bool get bootstrapped => _bootstrapped;
   bool get isLoggedIn => _isLoggedIn;
@@ -1364,6 +1426,7 @@ class AppController extends ChangeNotifier {
       // background fetch). The login screen's _busy spinner covers this wait.
       await _backgroundSync();
       notifyListeners();
+      _writeTimingEvent(eventType: TimingEventType.login);
 
       return null;
     } catch (e) {
@@ -1644,10 +1707,15 @@ class AppController extends ChangeNotifier {
     final String? accessToRevoke = _sessionToken;
     final String? refreshToRevoke = _refreshToken;
     final String tokenTypeSnapshot = _tokenType;
+    final String? driverAtLogout = _driverName ?? _profile?.mobile;
 
     // Clear in-memory state first. notifyListeners() runs synchronously so
     // any listener that routes on auth state (or the login route below)
     // sees the logged-out state immediately.
+    _writeTimingEvent(
+      eventType: TimingEventType.logout,
+      driverOverride: driverAtLogout,
+    );
     _isLoggedIn = false;
     _sessionToken = null;
     _tokenType = 'Bearer';
@@ -2867,6 +2935,7 @@ class AppController extends ChangeNotifier {
     });
     if (_isOnline) {
       startTracking();
+      recordTimingEvent(eventType: TimingEventType.login);
       _notices.insert(
         0,
         AppNotice(
@@ -2877,6 +2946,7 @@ class AppController extends ChangeNotifier {
       );
     } else {
       stopTracking();
+      recordTimingEvent(eventType: TimingEventType.logout);
     }
 
     PartnerWidgetManager.updateWidget(
@@ -3154,6 +3224,17 @@ class AppController extends ChangeNotifier {
         activeOrder: _activeOrder,
       );
       notifyListeners();
+      if (status == OrderStatus.reachedPickup) {
+        _writeTimingEvent(
+          eventType: TimingEventType.pickupReached,
+          tripRef: _activeTripId,
+        );
+      } else if (status == OrderStatus.pickedUp) {
+        _writeTimingEvent(
+          eventType: TimingEventType.pickedUp,
+          tripRef: _activeTripId,
+        );
+      }
       return null;
     } catch (e) {
       return e.toString().replaceFirst('Exception: ', '');
@@ -3462,6 +3543,10 @@ class AppController extends ChangeNotifier {
         activeOrder: _activeOrder,
       );
       notifyListeners();
+      _writeTimingEvent(
+        eventType: TimingEventType.tripAccepted,
+        tripRef: _activeTripId,
+      );
       return null;
     } catch (e) {
       return e.toString().replaceFirst('Exception: ', '');
