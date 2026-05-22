@@ -18,6 +18,7 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
   DeliveryOrder? _order;
   Timer? _timer;
   int _secondsLeft = 28;
+  bool _resolved = false;
 
   @override
   void initState() {
@@ -43,6 +44,7 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
     _timer = Timer.periodic(const Duration(seconds: 1), (Timer timer) {
       if (_secondsLeft <= 1) {
         timer.cancel();
+        if (mounted) setState(() => _secondsLeft = 0);
         _resolveOrder(accept: false, timeout: true);
         return;
       }
@@ -53,8 +55,11 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
   }
 
   void _resolveOrder({required bool accept, bool timeout = false}) {
-    final app = AppScope.of(context);
+    if (_resolved || !mounted) return;
+    setState(() => _resolved = true);
+
     _timer?.cancel();
+    final app = AppScope.of(context);
     app.respondToOrderRequest(accept: accept);
 
     if (accept) {
@@ -119,14 +124,14 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _resolveOrder(accept: false),
+                    onPressed: _resolved ? null : () => _resolveOrder(accept: false),
                     child: const Text('Reject'),
                   ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () => _resolveOrder(accept: true),
+                    onPressed: _resolved ? null : () => _resolveOrder(accept: true),
                     child: const Text('Accept'),
                   ),
                 ),

@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -22,6 +20,7 @@ import '../services/location_ping_service.dart';
 import '../services/secure_token_storage.dart';
 import '../services/sync_manager.dart';
 import '../utils/formatters.dart';
+import '../utils/profile_image_validator.dart';
 import '../utils/validators.dart' as app_validators;
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
@@ -93,10 +92,10 @@ class AppController extends ChangeNotifier {
   static const String _prefActiveOrderId = 'active_order_id';
   static const String _prefActiveTripId = 'active_trip_id';
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
-  static const int _profileImageMinDimension = 200;
-  static const int _profileImageMaxDimension = 4096;
-  static const double _profileImageMinAspectRatio = 0.5;
-  static const double _profileImageMaxAspectRatio = 2.0;
+  static const int _profileImageMinDimension = 300;
+  static const int _profileImageMaxDimension = 5000;
+  static const double _profileImageMinAspectRatio = 0.75;
+  static const double _profileImageMaxAspectRatio = 1.33;
   static const Set<String> _profileImageAllowedExtensions = <String>{
     '.jpg',
     '.jpeg',
@@ -400,7 +399,7 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'profile_photo',
         description: 'profile_photo_desc',
-        isCompleted: _profileImagePath != null,
+        isCompleted: _profileImagePath != null || _serverProfileImageUrl != null,
         route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
@@ -633,6 +632,14 @@ class AppController extends ChangeNotifier {
       hydrateVehicleFromBackend(),
       hydrateBankFromBackend(),
     ]);
+    // Restore an in-progress order that was lost when SharedPreferences were
+    // cleared (e.g. after logout/login). Only runs when there's no order in
+    // local state — normal boot restores via _restoreActiveOrder instead.
+    if (_activeOrder == null &&
+        _driverName != null &&
+        _driverName!.isNotEmpty) {
+      await _tryRestoreActiveOrderByDriver();
+    }
   }
 
   Future<void> initializeConnectivity() async {
@@ -1103,37 +1110,24 @@ class AppController extends ChangeNotifier {
 
     if (size.width < _profileImageMinDimension ||
         size.height < _profileImageMinDimension) {
-      return 'Image dimensions must be at least 200 x 200 px.';
+      return 'Image dimensions must be at least $_profileImageMinDimension x $_profileImageMinDimension px.';
     }
     if (size.width > _profileImageMaxDimension ||
         size.height > _profileImageMaxDimension) {
-      return 'Image dimensions must be below 4096 x 4096 px.';
+      return 'Image dimensions must not exceed $_profileImageMaxDimension x $_profileImageMaxDimension px.';
     }
 
     final double ratio = size.width / size.height;
     if (ratio < _profileImageMinAspectRatio ||
         ratio > _profileImageMaxAspectRatio) {
-      return 'Image aspect ratio must be between 1:2 and 2:1.';
+      return 'Image aspect ratio must be between 3:4 and 4:3.';
     }
 
     return null;
   }
 
-  Future<Size?> _readImageSize(File file) async {
-    try {
-      final ui.Codec codec = await ui.instantiateImageCodec(
-        await file.readAsBytes(),
-      );
-      final ui.FrameInfo frame = await codec.getNextFrame();
-      final ui.Image image = frame.image;
-      final Size size = Size(image.width.toDouble(), image.height.toDouble());
-      image.dispose();
-      codec.dispose();
-      return size;
-    } catch (_) {
-      return null;
-    }
-  }
+  Future<Size?> _readImageSize(File file) =>
+      ProfileImageValidator.readDimensions(file);
 
   Future<void> setSelectedLocation({
     required double latitude,
@@ -1359,8 +1353,11 @@ class AppController extends ChangeNotifier {
       // Update FCM token on login
       unawaited(FCMService().subscribe(this));
 
+      // Hydrate profile, vehicle, and bank before notifying listeners so the
+      // dashboard renders with complete data (no race between navigation and
+      // background fetch). The login screen's _busy spinner covers this wait.
+      await _backgroundSync();
       notifyListeners();
-      unawaited(_backgroundSync());
 
       return null;
     } catch (e) {
@@ -1581,8 +1578,9 @@ class AppController extends ChangeNotifier {
       _pendingRegistrationMobile = null;
 
       await _persistSession(responseData);
+
+      await _backgroundSync();
       notifyListeners();
-      unawaited(_backgroundSync());
 
       return null;
     } catch (e) {
@@ -2566,6 +2564,15 @@ class AppController extends ChangeNotifier {
         _prefVehicleRawJson,
         jsonEncode(finalData),
       );
+      // Keep Driver.vehicle in sync so the Driver doc is the source of truth
+      // for vehicle identity after logout (SharedPreferences are cleared).
+      if (finalName != null) {
+        try {
+          await _setDriverField('vehicle', finalName);
+        } catch (e) {
+          _logApi('vehicle.submit.driver_link_warn', 'non-fatal: $e');
+        }
+      }
       notifyListeners();
       _logApi(
         'vehicle.submit',
@@ -2729,11 +2736,25 @@ class AppController extends ChangeNotifier {
         upiId: normalizedIban,
         verified: true,
       );
+      final String? resolvedBankName =
+          _nullIfBlank(_submittedBankRaw?['name']?.toString()) ?? bankName;
       await _persistBankIdentity(
-        bankDocName:
-            _nullIfBlank(_submittedBankRaw?['name']?.toString()) ?? bankName,
+        bankDocName: resolvedBankName,
         accountName: normalizedAccountName,
       );
+      // Keep Driver.custom_bank_account in sync so the Driver doc is the
+      // source of truth for bank identity after logout (SharedPreferences
+      // are cleared). Uses custom_ prefix — Frappe adds it to all fields
+      // created via Customize Form (unlike 'vehicle' which is a standard field).
+      _logApi('bank.submit', 'resolvedBankName=$resolvedBankName driverName=$_driverName');
+      if (resolvedBankName != null) {
+        try {
+          await _setDriverField('custom_bank_account', resolvedBankName);
+          _logApi('bank.submit', 'driver_link set custom_bank_account=$resolvedBankName');
+        } catch (e) {
+          _logApi('bank.submit.driver_link_warn', 'non-fatal: $e');
+        }
+      }
       if (_submittedBankRaw != null) {
         final SharedPreferences submitPrefs =
             await SharedPreferences.getInstance();
@@ -3393,6 +3414,16 @@ class AppController extends ChangeNotifier {
         );
       }
 
+      // Stamp driver on the order record so it is queryable by driver after
+      // logout/login (SharedPreferences are cleared on logout).
+      try {
+        if (_driverName != null && _driverName!.isNotEmpty) {
+          await _orderRepository.setDriverOnOrder(orderId, _driverName!);
+        }
+      } catch (e) {
+        _logApi('accept_order_driver_stamp_warn', 'non-fatal: $e');
+      }
+
       _availableOrders.removeWhere((order) => order.orderId == orderId);
       final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
         orderId,
@@ -3554,6 +3585,65 @@ class AppController extends ChangeNotifier {
       await _persistActiveOrderId(null);
       await _persistActiveTripId(null);
       notifyListeners();
+    }
+  }
+
+  /// Fallback restore used after logout/login when SharedPreferences no longer
+  /// hold an active order ID. Queries the server for in-progress trips assigned
+  /// to the logged-in driver and restores state if one is found.
+  Future<void> _tryRestoreActiveOrderByDriver() async {
+    if (_driverName == null || _driverName!.isEmpty) return;
+    try {
+      final trip = await _orderRepository.fetchFirstActiveTripWithOrders(_driverName!);
+      if (trip == null || trip.stops.isEmpty) return;
+
+      const terminalStatuses = {
+        'delivered', 'cancelled', 'failed', 'returned', 'return initiated',
+      };
+
+      ExternalDeliveryDetail? detail;
+      for (final stop in trip.stops) {
+        final id = stop.externalDelivery.trim();
+        if (id.isEmpty) continue;
+        if (terminalStatuses.contains(stop.status.trim().toLowerCase())) continue;
+        try {
+          detail = await _orderRepository.fetchDetail(id);
+          break;
+        } catch (_) {}
+      }
+      if (detail == null) return;
+
+      final OrderStatus status = _mapExternalStatus(detail.status);
+      if (status == OrderStatus.delivered ||
+          status == OrderStatus.cancelled ||
+          status == OrderStatus.rejected ||
+          status == OrderStatus.pending) {
+        return;
+      }
+
+      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
+        orderStatus: status,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+        assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+        deliveryPartnerLocation: _partnerLiveLocation,
+      );
+      _activeTripId = trip.name;
+      _replaceAcceptedOrder(_activeOrder!);
+      await _persistActiveOrderId(_activeOrder!.orderId);
+      await _persistActiveTripId(trip.name);
+      unawaited(_startLocationPingIfReady());
+      PartnerWidgetManager.updateWidget(
+        isOnline: _isOnline,
+        todayEarnings: _earnings.today,
+        activeOrder: _activeOrder,
+      );
+      _logApi(
+        'restore_active_order_by_driver',
+        'order=${_activeOrder!.orderId} trip=${trip.name}',
+      );
+      notifyListeners();
+    } catch (e) {
+      _logApi('restore_active_order_by_driver_warn', e.toString());
     }
   }
 
@@ -4170,6 +4260,22 @@ class AppController extends ChangeNotifier {
     }());
   }
 
+  /// Sets a single field on the logged-in driver's Frappe Driver doc.
+  /// Used to keep Driver.vehicle in sync so server-side hydration works after
+  /// logout/re-login without relying on local SharedPreferences.
+  Future<void> _setDriverField(String fieldname, Object value) async {
+    if (_driverName == null || _driverName!.isEmpty) return;
+    final Uri uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    await authorizedPostJson(uri, <String, dynamic>{
+      'doctype': 'Driver',
+      'name': _driverName!,
+      'fieldname': fieldname,
+      'value': value,
+    });
+  }
+
   void _logApi(String tag, String value) {
     final String line = '[API] $tag => $value';
     // Keep debugPrint for Flutter tooling and print for plain logcat visibility.
@@ -4312,6 +4418,31 @@ class AppController extends ChangeNotifier {
                   prefs.setString(_prefDriverName, fetchedName),
             );
           }
+        }
+
+        // Seed vehicle lookup key from the Driver doc's link field.
+        // SharedPreferences are wiped on logout so this restores the
+        // primary key that hydrateVehicleFromBackend() needs after re-login.
+        final String? vehicleFromDriverDoc =
+            _nullIfBlank(driverDoc['vehicle']?.toString());
+        if (vehicleFromDriverDoc != null) {
+          _writePref(
+            (SharedPreferences prefs) =>
+                prefs.setString(_prefVehicleName, vehicleFromDriverDoc),
+          );
+        }
+
+        // Seed bank lookup key from the Driver doc's link field.
+        // Mirrors the vehicle seeding above — Driver.custom_bank_account is
+        // the source of truth after logout clears SharedPreferences.
+        // Uses custom_ prefix because the field was added via Customize Form.
+        final String? bankFromDriverDoc =
+            _nullIfBlank(driverDoc['custom_bank_account']?.toString());
+        if (bankFromDriverDoc != null) {
+          _writePref(
+            (SharedPreferences prefs) =>
+                prefs.setString(_prefBankDocName, bankFromDriverDoc),
+          );
         }
       }
 

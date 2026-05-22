@@ -769,6 +769,63 @@ class ExternalDeliveryRepository {
     return (createdDoc['name'] ?? '').toString();
   }
 
+  /// Stamps the logged-in driver's name on the External Delivery order record.
+  /// Called after order acceptance so the order is queryable by driver even
+  /// when SharedPreferences are cleared (e.g. after logout/login).
+  Future<void> setDriverOnOrder(String orderName, String driverName) {
+    _logApi('set_driver_on_order', 'order=$orderName driver=$driverName');
+    return _setDocValue(
+      doctype: 'External Delivery',
+      name: orderName,
+      fieldname: 'driver',
+      value: driverName,
+    );
+  }
+
+  /// Returns the first in-progress [ExternalDeliveryTrip] for [driverName].
+  /// [driverName] is passed in explicitly so callers don't depend on
+  /// SharedPreferences being flushed yet (avoids a race on login restore).
+  Future<ExternalDeliveryTrip?> fetchFirstActiveTripWithOrders(
+    String driverName,
+  ) async {
+    // Terminal stop statuses — anything else means the stop (and trip) is active.
+    const terminalStopStatuses = {
+      'delivered', 'failed', 'returned', 'return initiated', 'cancelled',
+    };
+
+    final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+      queryParameters: {
+        'fields': jsonEncode(['name', 'status']),
+        'filters': jsonEncode([
+          ['External Delivery Trip', 'driver', '=', driverName],
+          ['External Delivery Trip', 'status', 'not in', ['Completed', 'Cancelled']],
+        ]),
+        'limit_page_length': '5',
+        'order_by': 'modified desc',
+      },
+    );
+    _logApi('fetch_first_active_trip request', tripUri.toString());
+    final tripResp = await _get(tripUri, headers: await _authHeaders());
+    if (!_okCodes.contains(tripResp.statusCode)) return null;
+
+    final tripRows = (jsonDecode(tripResp.body)['data']) as List?;
+    if (tripRows == null || tripRows.isEmpty) return null;
+
+    for (final row in tripRows) {
+      final tripName = (row as Map<String, dynamic>)['name']?.toString() ?? '';
+      if (tripName.isEmpty) continue;
+      try {
+        final trip = await fetchTripDetails(tripName);
+        // Return this trip if any stop is not yet in a terminal state.
+        final hasActiveStop = trip.stops.any(
+          (s) => !terminalStopStatuses.contains(s.status.trim().toLowerCase()),
+        );
+        if (hasActiveStop) return trip;
+      } catch (_) {}
+    }
+    return null;
+  }
+
   /// Creates a single-stop trip using only the order name string.
   /// Used by the order acceptance flow in [AppController]. The trip lands
   /// in Draft state — its `status` field carries the lifecycle, since the
