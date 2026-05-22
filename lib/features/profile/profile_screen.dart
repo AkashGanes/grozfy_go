@@ -11,6 +11,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:image_cropper/image_cropper.dart';
 
 import '../../core/constants/api_constants.dart';
 import '../../core/state/providers.dart';
@@ -78,9 +79,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       detailsSection = _buildErrorState(app.profileDetailsError!, app);
     } else if (!hasDriver) {
       detailsStateKey = 'empty';
-      detailsSection = FrostCard(
-        child: Text(t('no_driver_details_found')),
-      );
+      detailsSection = FrostCard(child: Text(t('no_driver_details_found')));
     } else {
       detailsStateKey = 'data';
       detailsSection = _buildDriverDetails(driver, app);
@@ -434,10 +433,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           child: Container(
             width: 124,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.04),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.1),
               ),
             ),
             child: Column(
@@ -457,11 +460,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             fallbackHeaders: fallbackHeaders,
                           )
                         : Container(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                             alignment: Alignment.center,
                             child: Icon(
                               Icons.insert_drive_file_outlined,
-                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.6),
                               size: 30,
                             ),
                           ),
@@ -504,7 +511,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             appBar: AppBar(
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
-                  title: Text(_labelFromKey(item.fieldKey)),
+              title: Text(_labelFromKey(item.fieldKey)),
             ),
             body: Center(
               child: InteractiveViewer(
@@ -544,13 +551,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               if (item.isImage)
                 ListTile(
                   leading: const Icon(Icons.visibility_outlined),
-                title: Text(t('preview')),
+                  title: Text(t('preview')),
                   onTap: () => Navigator.of(context).pop('preview'),
                 )
               else
                 ListTile(
                   leading: const Icon(Icons.open_in_new_rounded),
-                title: Text(t('open')),
+                  title: Text(t('open')),
                   onTap: () => Navigator.of(context).pop('open'),
                 ),
             ],
@@ -759,9 +766,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               children: [
                 CircleAvatar(
                   radius: 44,
-                  backgroundColor: isDark ? scheme.surfaceContainerHighest : Colors.white,
+                  backgroundColor: isDark
+                      ? scheme.surfaceContainerHighest
+                      : Colors.white,
                   child: ClipOval(
-                    child: SizedBox(width: 88, height: 88, child: avatarContent),
+                    child: SizedBox(
+                      width: 88,
+                      height: 88,
+                      child: avatarContent,
+                    ),
                   ),
                 ),
                 Positioned(
@@ -838,7 +851,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           Text(
             t('edit_name_phone_number_email_and_profile_picture'),
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
           const SizedBox(height: 12),
@@ -886,9 +901,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (file == null) return;
     if (!mounted) return;
 
+    final CroppedFile? croppedFile = await ImageCropper().cropImage(
+      sourcePath: file.path,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: t('crop_image'),
+          toolbarColor: Theme.of(context).colorScheme.primary,
+          toolbarWidgetColor: Colors.white,
+          initAspectRatio: CropAspectRatioPreset.original,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(title: t('crop_image')),
+      ],
+    );
+    if (croppedFile == null) return;
+    if (!mounted) return;
+
     // Validate original dimensions and aspect ratio before any processing.
-    final String? dimensionError =
-        await ProfileImageValidator.validate(file.path);
+    final String? dimensionError = await ProfileImageValidator.validate(
+      croppedFile.path,
+    );
     if (dimensionError != null) {
       if (mounted) showInfoSnack(context, dimensionError);
       return;
@@ -896,7 +928,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
     // Dimensions valid — compress before handing off to the upload flow.
     final Uint8List? compressed = await FlutterImageCompress.compressWithFile(
-      file.path,
+      croppedFile.path,
       minWidth: 1024,
       minHeight: 1024,
       quality: 80,
@@ -1508,7 +1540,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Text(
               key,
               style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.6),
                 fontWeight: FontWeight.w600,
               ),
             ),
