@@ -1,10 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+
+import '../../../core/widgets/authed_network_image.dart';
 
 class DashboardGreetingHeader extends StatelessWidget {
   const DashboardGreetingHeader({
     super.key,
     required this.name,
     this.avatarUrl,
+    this.avatarAuthHeaders,
+    this.avatarLocalPath,
     this.avatarInitial,
     this.hasUnreadNotifications = false,
     this.onNotificationsTap,
@@ -13,6 +19,8 @@ class DashboardGreetingHeader extends StatelessWidget {
 
   final String name;
   final String? avatarUrl;
+  final Map<String, String>? avatarAuthHeaders;
+  final String? avatarLocalPath;
   final String? avatarInitial;
   final bool hasUnreadNotifications;
   final VoidCallback? onNotificationsTap;
@@ -51,15 +59,7 @@ class DashboardGreetingHeader extends StatelessWidget {
                   ),
                 ],
               ),
-              child: ClipOval(
-                child: avatarUrl != null && avatarUrl!.isNotEmpty
-                    ? Image.network(
-                        avatarUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => _initialAvatar(scheme),
-                      )
-                    : _initialAvatar(scheme),
-              ),
+              child: ClipOval(child: _buildAvatar(scheme)),
             ),
           ),
           const SizedBox(width: 14),
@@ -105,6 +105,41 @@ class DashboardGreetingHeader extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildAvatar(ColorScheme scheme) {
+    final fallback = _initialAvatar(scheme);
+
+    if (avatarLocalPath != null && File(avatarLocalPath!).existsSync()) {
+      return Image.file(
+        File(avatarLocalPath!),
+        fit: BoxFit.cover,
+        width: 52,
+        height: 52,
+        errorBuilder: (_, __, ___) => fallback,
+      );
+    }
+
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      final headers = avatarAuthHeaders ?? const {};
+      if (headers.isNotEmpty) {
+        return AuthedNetworkImage(
+          url: avatarUrl!,
+          authHeaders: headers,
+          size: 52,
+          fallback: fallback,
+        );
+      }
+      return Image.network(
+        avatarUrl!,
+        fit: BoxFit.cover,
+        width: 52,
+        height: 52,
+        errorBuilder: (_, __, ___) => fallback,
+      );
+    }
+
+    return fallback;
   }
 
   Widget _initialAvatar(ColorScheme scheme) {

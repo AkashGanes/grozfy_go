@@ -151,6 +151,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             name: partnerName,
             avatarUrl: app.serverProfileImageFullUrl,
             avatarInitial: partnerName.isNotEmpty ? partnerName[0] : '?',
+            avatarLocalPath: app.profileImagePath,
+            avatarUrl: app.serverProfileImageUrl,
+            avatarAuthHeaders: app.buildAuthHeaders(),
             hasUnreadNotifications: unreadCount > 0,
             onNotificationsTap: () =>
                 Navigator.of(context).pushNamed(AppRoutes.notifications),
@@ -162,25 +165,27 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ProfileProgressCard(
-            completeness: app.profileCompleteness,
-            progressTitle: app.t('profile_progress'),
-            subtitleBuilder: (c, t) => c == t
-                ? "You're good to go. Ride & earn!"
-                : 'Your profile is $c/$t complete. Keep going!',
-            progressLabel: (c, t) => '$c of $t completed',
-            tapToCompleteLabel: app.t('tap_to_complete'),
-            pendingLabel: app.t('pending'),
-            verifiedLabel: app.t('verified'),
-            itemLabel: (item) => app.t(item.name),
-            onTapComplete: () => showProfileCompletenessSheet(context),
-            onItemTap: (item) {
-              if (item.route != null) {
-                Navigator.of(context).pushNamed(item.route!);
-              }
-            },
-          ),
-          const SizedBox(height: 14),
+          if (app.profileCompleteness.percentage < 1.0) ...[
+            ProfileProgressCard(
+              completeness: app.profileCompleteness,
+              progressTitle: app.t('profile_progress'),
+              subtitleBuilder: (c, t) => c == t
+                  ? "You're good to go. Ride & earn!"
+                  : 'Your profile is $c/$t complete. Keep going!',
+              progressLabel: (c, t) => '$c of $t completed',
+              tapToCompleteLabel: app.t('tap_to_complete'),
+              pendingLabel: app.t('pending'),
+              verifiedLabel: app.t('verified'),
+              itemLabel: (item) => app.t(item.name),
+              onTapComplete: () => showProfileCompletenessSheet(context),
+              onItemTap: (item) {
+                if (item.route != null) {
+                  Navigator.of(context).pushNamed(item.route!);
+                }
+              },
+            ),
+            const SizedBox(height: 14),
+          ],
           AvailabilityCard(
             title: app.t('availability'),
             isOnline: app.isOnline,
