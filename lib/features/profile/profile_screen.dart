@@ -946,8 +946,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     await tempFile.writeAsBytes(compressed);
 
     if (!mounted) return;
-    final bool shouldUpload = await _confirmProfileImageUpload(tempFile.path);
-    if (!mounted || !shouldUpload) return;
 
     showInfoSnack(context, t('uploading_profile_image'));
     final String? error = await ref
@@ -1006,44 +1004,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     } else {
       showInfoSnack(context, t('profile_image_removed'));
     }
-  }
-
-  Future<bool> _confirmProfileImageUpload(String imagePath) async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(t('upload_profile_image')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(
-                  File(imagePath),
-                  width: 170,
-                  height: 170,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(t('do_you_want_to_upload_this_image')),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(t('cancel')),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(t('upload')),
-            ),
-          ],
-        );
-      },
-    );
-    return confirmed == true;
   }
 
   Future<void> _saveBasicInfo() async {
