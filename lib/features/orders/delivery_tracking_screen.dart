@@ -79,6 +79,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
   bool _isFollowMode = true;
   bool _isMinimized = false;
   bool _isLoading = true;
+  String _loadingMessage = 'Getting your location...';
   double _distanceToDestination = 0;
   bool _hasArrived = false;
   String? _errorMessage;
@@ -129,6 +130,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
   Future<void> _initializeLocation() async {
     setState(() {
       _isLoading = true;
+      _loadingMessage = 'Checking location permission...';
       _errorMessage = null;
     });
 
@@ -141,6 +143,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
       });
       return;
     }
+
+    setState(() => _loadingMessage = 'Acquiring GPS signal...');
 
     try {
       final position = await Geolocator.getCurrentPosition(
@@ -920,9 +924,49 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
 
           if (_isLoading)
             Container(
-              color: Colors.black.withValues(alpha: 0.3),
-              child: const Center(
-                child: CircularProgressIndicator(color: _primaryColor),
+              color: Colors.black.withValues(alpha: 0.45),
+              child: Center(
+                child: Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 28,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(color: _primaryColor),
+                        const SizedBox(height: 20),
+                        const Icon(
+                          Icons.location_searching,
+                          color: _primaryColor,
+                          size: 32,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _loadingMessage,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'This may take a few seconds',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: scheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
 
