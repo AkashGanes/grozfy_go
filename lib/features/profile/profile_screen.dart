@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -901,19 +902,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (file == null) return;
     if (!mounted) return;
 
-    final CroppedFile? croppedFile = await ImageCropper().cropImage(
-      sourcePath: file.path,
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: t('crop_image'),
-          toolbarColor: Theme.of(context).colorScheme.primary,
-          toolbarWidgetColor: Colors.white,
-          initAspectRatio: CropAspectRatioPreset.original,
-          lockAspectRatio: false,
-        ),
-        IOSUiSettings(title: t('crop_image')),
-      ],
-    );
+    CroppedFile? croppedFile;
+    try {
+      croppedFile = await ImageCropper().cropImage(
+        sourcePath: file.path,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: t('crop_image'),
+            toolbarColor: Theme.of(context).colorScheme.primary,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false,
+          ),
+          IOSUiSettings(title: t('crop_image')),
+        ],
+      );
+    } on PlatformException catch (e) {
+      if (mounted) showInfoSnack(context, 'Crop failed: ${e.message}');
+      return;
+    }
     if (croppedFile == null) return;
     if (!mounted) return;
 
