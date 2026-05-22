@@ -64,7 +64,7 @@ class AvailabilityCard extends StatelessWidget {
                       label: isOnline ? onlineLabel : offlineLabel,
                       tone: isOnline
                           ? StatusPillTone.success
-                          : StatusPillTone.neutral,
+                          : StatusPillTone.danger,
                       icon: Icons.circle,
                       dense: true,
                     ),

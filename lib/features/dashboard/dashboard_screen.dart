@@ -149,7 +149,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               .maybeWhen(data: (v) => v, orElse: () => 0);
           return DashboardGreetingHeader(
             name: partnerName,
-            avatarUrl: app.serverProfileImageFullUrl,
             avatarInitial: partnerName.isNotEmpty ? partnerName[0] : '?',
             avatarLocalPath: app.profileImagePath,
             avatarUrl: app.serverProfileImageUrl,
@@ -216,6 +215,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           const SizedBox(height: 14),
           const DailySummaryCard(),
           const SizedBox(height: 14),
+          _ActiveOrderSection(app: app),
+          const SizedBox(height: 14),
           CurrentLocationCard(
             title: app.t('current_location'),
             changeLabel: app.hasSelectedLocation ? 'Change' : 'Select',
@@ -252,8 +253,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             onAction: () =>
                 Navigator.of(context).pushNamed(AppRoutes.ordersByLocation),
           ),
-          const SizedBox(height: 14),
-          _ActiveOrderSection(app: app),
           const SizedBox(height: 8),
         ],
       ),
