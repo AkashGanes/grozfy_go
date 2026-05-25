@@ -91,6 +91,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return OrderStatus.delivered;
       case OrderStatus.cancelled:
         return OrderStatus.cancelled;
+      case OrderStatus.returned:
+        return OrderStatus.returned;
     }
   }
 
@@ -112,6 +114,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return 'Completed';
       case OrderStatus.cancelled:
         return 'Cancelled';
+      case OrderStatus.returned:
+        return 'Returned';
     }
   }
 

@@ -394,71 +394,80 @@ class ExternalDeliveryRepository {
         .toList();
   }
 
-  /// Fetches past orders for the logged-in driver directly from trip stop data.
-  /// Uses the same source as the trip page so IDs always match what the driver
-  /// sees there. Only terminal-status stops are included.
+  /// Fetches past orders for the logged-in driver directly from
+  /// `External Delivery` using the `driver` field added in the backend.
   Future<List<ExternalDelivery>> fetchPastOrdersForDriver() async {
     final driver = await _getLoggedInDriver();
-
-    // 1. Get ALL trips for this driver (any status/docstatus).
-    final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+    final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
       queryParameters: {
-        'fields': jsonEncode(['name']),
+        'fields': jsonEncode(_fields),
         'filters': jsonEncode([
-          ['External Delivery Trip', 'driver', '=', driver],
+          ['External Delivery', 'driver', '=', driver],
+          [
+            'External Delivery',
+            'status',
+            'in',
+            <String>[
+              'Delivered',
+              'Cancelled',
+              'Failed',
+              'Returned',
+              'Return Initiated',
+            ],
+          ],
         ]),
         'limit_page_length': '50',
         'order_by': 'modified desc',
       },
     );
-    _logApi('fetch_past_trips request', tripUri.toString());
-    final tripResp = await _get(tripUri, headers: await _authHeaders());
-    if (!_okCodes.contains(tripResp.statusCode)) {
-      throw Exception(_extractErrorMessage(tripResp));
+    _logApi('fetch_past_orders request', uri.toString());
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
     }
-    final tripRows = (jsonDecode(tripResp.body)['data']) as List;
-    if (tripRows.isEmpty) return [];
 
-    // 2. Fetch trip details in parallel.
-    final tripNames = tripRows
-        .map((r) => (r as Map<String, dynamic>)['name']?.toString() ?? '')
-        .where((n) => n.isNotEmpty)
+    final data = (jsonDecode(resp.body)['data']) as List;
+    return data
+        .map((row) => ExternalDelivery.fromJson(row as Map<String, dynamic>))
         .toList();
+  }
 
-    final tripDetails = await Future.wait(
-      tripNames.map((n) => fetchTripDetails(n).catchError((_) => null)),
+  /// Fetches active orders for the logged-in driver directly from
+  /// `External Delivery` using the backend `driver` field.
+  Future<List<ExternalDelivery>> fetchActiveOrdersForDriverDirect() async {
+    final driver = await _getLoggedInDriver();
+    final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
+      queryParameters: {
+        'fields': jsonEncode(_fields),
+        'filters': jsonEncode([
+          ['External Delivery', 'driver', '=', driver],
+          [
+            'External Delivery',
+            'status',
+            'in',
+            <String>[
+              'Accepted',
+              'Added to Trip',
+              'Reached Pickup',
+              'Picked Up',
+              'Out for Delivery',
+            ],
+          ],
+        ]),
+        'limit_page_length': '20',
+        'order_by': 'modified desc',
+      },
     );
-
-    // 3. Build ExternalDelivery objects directly from trip stop data.
-    //    This guarantees orderId == stop.externalDelivery (same ID as trip page)
-    //    and avoids a second batch query against External Delivery.
-    const terminalStatuses = {
-      'delivered', 'cancelled', 'returned', 'failed',
-    };
-
-    final seen = <String>{};
-    final results = <ExternalDelivery>[];
-    for (final trip in tripDetails.whereType<ExternalDeliveryTrip>()) {
-      for (final stop in trip.stops) {
-        final id = stop.externalDelivery.trim();
-        if (id.isEmpty) continue;
-        if (!terminalStatuses.contains(stop.status.trim().toLowerCase())) continue;
-        if (!seen.add(id)) continue;
-        results.add(
-          ExternalDelivery(
-            name: id,
-            storeUrl: '',
-            storeName: '',
-            customerName: stop.customer,
-            status: stop.status,
-            creation: '',
-            modified: '',
-            deliveryAddress: stop.address.isNotEmpty ? stop.address : null,
-          ),
-        );
-      }
+    _logApi('fetch_active_orders request', uri.toString());
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
     }
-    return results;
+
+    final data = (jsonDecode(resp.body)['data']) as List;
+    return data
+        .map((row) => ExternalDelivery.fromJson(row as Map<String, dynamic>))
+        .toList();
   }
 
   /// Fetches all External Delivery records with [status] using server-side

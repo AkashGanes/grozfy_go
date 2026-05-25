@@ -3789,9 +3789,10 @@ class AppController extends ChangeNotifier {
       case 'cancelled':
       case 'canceled':
       case 'failed':
-      case 'return initiated':
-      case 'returned':
         return OrderStatus.cancelled;
+      case 'returned':
+      case 'return initiated':
+        return OrderStatus.returned;
       case 'pending':
       default:
         return OrderStatus.pending;

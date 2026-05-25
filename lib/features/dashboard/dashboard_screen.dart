@@ -475,6 +475,7 @@ class _ActiveOrderSection extends StatelessWidget {
       case OrderStatus.rejected:
       case OrderStatus.delivered:
       case OrderStatus.cancelled:
+      case OrderStatus.returned:
         return null;
     }
   }

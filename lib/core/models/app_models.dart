@@ -13,6 +13,7 @@ enum OrderStatus {
   outForDelivery,
   delivered,
   cancelled,
+  returned,
 }
 
 typedef OrderProgressStatus = OrderStatus;
@@ -583,6 +584,8 @@ extension OrderStatusLabel on OrderProgressStatus {
         return 'delivered';
       case OrderStatus.cancelled:
         return 'cancelled';
+      case OrderStatus.returned:
+        return 'returned';
     }
   }
 

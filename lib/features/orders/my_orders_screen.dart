@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:grozfy_go/core/widgets/app_bottom_nav.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
@@ -23,15 +24,21 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
 
   final ExternalDeliveryRepository _repo = ExternalDeliveryRepository();
 
+  List<DeliveryOrder> _activeOrders = [];
+  bool _isActiveLoading = true;
+  String? _activeError;
+  Future<void>? _activeFuture;
+
   List<DeliveryOrder> _pastOrders = [];
   bool _isPastLoading = true;
   String? _pastError;
   Future<void>? _pastFuture;
+  bool _pastLoadRequested = false;
 
   @override
   void initState() {
     super.initState();
-    _loadPastOrders();
+    _loadActiveOrders();
   }
 
   DeliveryOrder _summaryToOrder(ExternalDelivery s) {
@@ -66,9 +73,41 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
 
   Future<void> _loadPastOrders() async {
     if (_pastFuture != null) return;
+    _pastLoadRequested = true;
     _pastFuture = _doLoadPast();
     await _pastFuture;
     _pastFuture = null;
+  }
+
+  Future<void> _loadActiveOrders() async {
+    if (_activeFuture != null) return;
+    _activeFuture = _doLoadActive();
+    await _activeFuture;
+    _activeFuture = null;
+  }
+
+  Future<void> _doLoadActive() async {
+    setState(() {
+      _isActiveLoading = true;
+      _activeError = null;
+    });
+    try {
+      final summaries = await _repo.fetchActiveOrdersForDriverDirect();
+      final orders = summaries.map(_summaryToOrder).toList();
+      if (mounted) {
+        setState(() {
+          _activeOrders = orders;
+          _isActiveLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _activeError = e.toString();
+          _isActiveLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _doLoadPast() async {
@@ -123,21 +162,74 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeOrder = ref.watch(appControllerProvider).activeOrder;
-    return AppShell(
-      title: 'My Orders',
-      subtitle: 'Track your deliveries',
-      padding: EdgeInsets.zero,
-      scrollable: false,
-      showBottomNav: true,
-      bottomNavIndex: 1,
-      onBottomNavTap: _handleTabTap,
-      child: Column(
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final appActiveOrder = ref.watch(appControllerProvider).activeOrder;
+    final List<DeliveryOrder> activeOrders = _activeOrders.isNotEmpty
+        ? _activeOrders
+        : (appActiveOrder != null ? [appActiveOrder] : const []);
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: isDark
+                ? [
+                    Theme.of(context).colorScheme.surface,
+                    Theme.of(context).scaffoldBackgroundColor,
+                  ]
+                : const [
+                    Color(0xFFF1F7FF),
+                    Color(0xFFE8F5F0),
+                    Color(0xFFFFF5E6),
+                  ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Stack(
+          children: [
+            _buildBackdrop(),
+            SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  _buildHeader(),
+                  _buildTabBar(activeOrders),
+                  Expanded(
+                    child: _selectedTab == 0
+                        ? _buildActiveList(activeOrders)
+                        : _buildPastList(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: AppBottomNav(
+        currentIndex: 1,
+        onTap: (index) {
+          if (index == 0) {
+            Navigator.of(context).pushNamed(AppRoutes.dashboard);
+          } else if (index == 2) {
+            Navigator.of(context).pushNamed(AppRoutes.more);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildBackdrop() {
+    final appActiveOrder = ref.watch(appControllerProvider).activeOrder;
+    final List<DeliveryOrder> activeOrders = _activeOrders.isNotEmpty
+        ? _activeOrders
+        : (appActiveOrder != null ? [appActiveOrder] : const []);
+    return IgnorePointer(
+      child: Stack(
         children: [
-          _buildTabBar(activeOrder),
+          _buildTabBar(activeOrders),
           Expanded(
             child: _selectedTab == 0
-                ? _buildActiveList(activeOrder)
+                ? _buildActiveList(activeOrders)
                 : _buildPastList(),
           ),
         ],
@@ -145,7 +237,7 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
     );
   }
 
-  Widget _buildTabBar(DeliveryOrder? activeOrder) {
+  Widget _buildTabBar(List<DeliveryOrder> activeOrders) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -170,7 +262,7 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
                   ),
                   child: Center(
                     child: Text(
-                      activeOrder != null ? 'Active (1)' : 'Active (0)',
+                      'Active (${activeOrders.length})',
                       style: TextStyle(
                         color: _selectedTab == 0
                             ? Colors.white
@@ -185,7 +277,12 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
             ),
             Expanded(
               child: GestureDetector(
-                onTap: () => setState(() => _selectedTab = 1),
+                onTap: () {
+                  setState(() => _selectedTab = 1);
+                  if (!_pastLoadRequested && _pastFuture == null) {
+                    _loadPastOrders();
+                  }
+                },
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
@@ -217,26 +314,60 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
     );
   }
 
-  Widget _buildActiveList(DeliveryOrder? activeOrder) {
-    if (activeOrder == null) {
-      return const Center(child: Text('No active orders.'));
-    }
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      children: [
-        _OrderCard(
-          order: activeOrder,
-          onTap: () => Navigator.of(context).pushNamed(
-            AppRoutes.orderDetails,
-            arguments: activeOrder,
+  Widget _buildActiveList(List<DeliveryOrder> activeOrders) {
+    if (_activeError != null && activeOrders.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 12),
+              Text(
+                'Failed to load active orders',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _activeError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadActiveOrders,
+                child: const Text('Retry'),
+              ),
+            ],
           ),
         ),
-      ],
+      );
+    }
+    if (activeOrders.isEmpty && _isActiveLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (activeOrders.isEmpty) {
+      return const Center(child: Text('No active orders.'));
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      itemCount: activeOrders.length,
+      itemBuilder: (context, index) {
+        final order = activeOrders[index];
+        return _OrderCard(
+          order: order,
+          onTap: () => Navigator.of(context).pushNamed(
+            AppRoutes.orderDetails,
+            arguments: order,
+          ),
+        );
+      },
     );
   }
 
   Widget _buildPastList() {
-    if (_isPastLoading) {
+    if (!_pastLoadRequested || _isPastLoading) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_pastError != null) {
@@ -286,6 +417,8 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
       ),
     );
   }
+  
+  _buildHeader() {}
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +688,8 @@ class _OrderCard extends StatelessWidget {
         return AppTheme.mint;
       case OrderStatus.cancelled:
         return Colors.red;
+      case OrderStatus.returned:
+        return Colors.brown;
     }
   }
 }
