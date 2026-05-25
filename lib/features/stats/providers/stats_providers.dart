@@ -280,9 +280,20 @@ final lifetimeStatsProvider =
 });
 
 /// Total delivered orders for the logged-in driver.
-/// Single API call summing completes_stops across all driver trips.
+/// Yields the SharedPreferences cache immediately (no loading flash),
+/// then silently refreshes from ERPNext and updates the cache.
 final deliveredOrderCountProvider =
-    FutureProvider.autoDispose<int>((ref) async {
+    StreamProvider.autoDispose<int>((ref) async* {
+  final prefs = await SharedPreferences.getInstance();
+  final cached = prefs.getInt('delivered_order_count');
+  if (cached != null) yield cached;
+
   final repo = ExternalDeliveryRepository();
-  return repo.fetchDeliveredCountForDriver();
+  try {
+    final count = await repo.fetchDeliveredCountForDriver();
+    await prefs.setInt('delivered_order_count', count);
+    yield count;
+  } catch (_) {
+    if (cached == null) rethrow;
+  }
 });
