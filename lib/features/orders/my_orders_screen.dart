@@ -459,6 +459,200 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
 
 // ---------------------------------------------------------------------------
 
+class MoreScreen extends ConsumerStatefulWidget {
+  const MoreScreen({super.key});
+
+  @override
+  ConsumerState<MoreScreen> createState() => _MoreScreenState();
+}
+
+class _MoreScreenState extends ConsumerState<MoreScreen> {
+  bool _isNavigating = false;
+
+  void _handleTabTap(int index) {
+    if (_isNavigating || index == 2) return;
+    setState(() => _isNavigating = true);
+    if (index == 0) {
+      // Pop back to the existing Dashboard — no new instance pushed.
+      Navigator.of(context).maybePop().whenComplete(
+        () {
+          if (mounted) setState(() => _isNavigating = false);
+        },
+      );
+    } else if (index == 1) {
+      // Replace this screen so the stack stays: Dashboard → My Orders.
+      Navigator.of(context)
+          .pushReplacement(
+            NoAnimRoute(builder: (_) => const MyOrdersScreen()),
+          )
+          .whenComplete(
+            () {
+              if (mounted) setState(() => _isNavigating = false);
+            },
+          );
+    } else {
+      setState(() => _isNavigating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppShell(
+      title: 'More',
+      subtitle: 'Quick Access',
+      padding: EdgeInsets.zero,
+      scrollable: false,
+      showBottomNav: true,
+      bottomNavIndex: 2,
+      onBottomNavTap: _handleTabTap,
+      child: _buildMenu(),
+    );
+  }
+
+  Widget _buildMenu() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _menuItem(Icons.person_rounded, 'My Profile', AppRoutes.profile),
+        _menuItem(
+          Icons.list_alt_rounded,
+          'Available Orders',
+          AppRoutes.orderListing,
+        ),
+        _menuItem(
+          Icons.location_on_rounded,
+          'Orders by Location',
+          AppRoutes.ordersByLocation,
+        ),
+        _menuItem(
+          Icons.route_rounded,
+          'External Trips',
+          AppRoutes.externalDeliveryTripList,
+        ),
+        _menuItem(Icons.settings_rounded, 'Settings', AppRoutes.settings),
+        _menuItem(
+          Icons.monetization_on_rounded,
+          'Earnings History',
+          AppRoutes.earnings,
+        ),
+        _menuItem(
+          Icons.car_rental_rounded,
+          'Vehicle',
+          AppRoutes.vehicleDetails,
+        ),
+        _menuItem(
+          Icons.account_balance_rounded,
+          'Bank Details',
+          AppRoutes.bankSetup,
+        ),
+        _menuItem(
+          Icons.description_rounded,
+          'Documents',
+          AppRoutes.kycDocuments,
+        ),
+        _menuItem(Icons.help_rounded, 'Support', AppRoutes.settings),
+        _logoutItem(),
+      ],
+    );
+  }
+
+  Future<void> _confirmAndLogout() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Log out?'),
+          content: const Text('You will need to sign in again to continue.'),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          actions: [
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('Log out'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true) return;
+    await ref.read(appControllerProvider).logout();
+    if (!mounted) return;
+    Navigator.of(context)
+        .pushNamedAndRemoveUntil(AppRoutes.login, (route) => false);
+  }
+
+  Widget _logoutItem() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.red.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.logout_rounded, color: Colors.red, size: 20),
+        ),
+        title: const Text(
+          'Log out',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.red,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        tileColor:
+            Theme.of(context).colorScheme.surface.withValues(alpha: 0.8),
+        onTap: _confirmAndLogout,
+      ),
+    );
+  }
+
+  Widget _menuItem(IconData icon, String label, String route) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: AppTheme.oceanBlue, size: 20),
+        ),
+        title: Text(label, style: const TextStyle(fontSize: 14)),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: scheme.onSurface.withValues(alpha: 0.4),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        tileColor: scheme.surface.withValues(alpha: 0.8),
+        onTap: () => Navigator.of(context).pushNamed(route),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
 class _OrderCard extends StatelessWidget {
   const _OrderCard({required this.order, this.onTap});
   final DeliveryOrder order;
@@ -630,133 +824,5 @@ class _OrderCard extends StatelessWidget {
       case OrderStatus.returned:
         return Colors.brown;
     }
-  }
-}
-
-// ---------------------------------------------------------------------------
-
-class MoreScreen extends StatefulWidget {
-  const MoreScreen({super.key});
-
-  @override
-  State<MoreScreen> createState() => _MoreScreenState();
-}
-
-class _MoreScreenState extends State<MoreScreen> {
-  bool _isNavigating = false;
-
-  void _handleTabTap(int index) {
-    if (_isNavigating || index == 2) return;
-    setState(() => _isNavigating = true);
-    if (index == 0) {
-      Navigator.of(context).maybePop().whenComplete(
-        () {
-          if (mounted) setState(() => _isNavigating = false);
-        },
-      );
-    } else if (index == 1) {
-      Navigator.of(context)
-          .pushReplacement(
-            NoAnimRoute(builder: (_) => const MyOrdersScreen()),
-          )
-          .whenComplete(
-            () {
-              if (mounted) setState(() => _isNavigating = false);
-            },
-          );
-    } else {
-      setState(() => _isNavigating = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AppShell(
-      title: 'More',
-      subtitle: 'Quick Access',
-      padding: EdgeInsets.zero,
-      scrollable: false,
-      showBottomNav: true,
-      bottomNavIndex: 2,
-      onBottomNavTap: _handleTabTap,
-      child: _buildMenu(),
-    );
-  }
-
-  Widget _buildMenu() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        _menuItem(Icons.person_rounded, 'My Profile', AppRoutes.profile),
-        _menuItem(
-          Icons.list_alt_rounded,
-          'Available Orders',
-          AppRoutes.orderListing,
-        ),
-        _menuItem(
-          Icons.location_on_rounded,
-          'Orders by Location',
-          AppRoutes.ordersByLocation,
-        ),
-        _menuItem(
-          Icons.route_rounded,
-          'External Trips',
-          AppRoutes.externalDeliveryTripList,
-        ),
-        _menuItem(
-          Icons.inventory_2_rounded,
-          'Return Pickups',
-          AppRoutes.pickupPool,
-        ),
-        _menuItem(Icons.settings_rounded, 'Settings', AppRoutes.settings),
-        _menuItem(
-          Icons.monetization_on_rounded,
-          'Earnings History',
-          AppRoutes.earnings,
-        ),
-        _menuItem(
-          Icons.car_rental_rounded,
-          'Vehicle',
-          AppRoutes.vehicleDetails,
-        ),
-        _menuItem(
-          Icons.account_balance_rounded,
-          'Bank Details',
-          AppRoutes.bankSetup,
-        ),
-        _menuItem(
-          Icons.description_rounded,
-          'Documents',
-          AppRoutes.kycDocuments,
-        ),
-        _menuItem(Icons.lock_rounded, 'Security', AppRoutes.security),
-        _menuItem(Icons.help_rounded, 'Support', AppRoutes.support),
-      ],
-    );
-  }
-
-  Widget _menuItem(IconData icon, String label, String route) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppTheme.oceanBlue.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: AppTheme.oceanBlue, size: 20),
-        ),
-        title: Text(label, style: const TextStyle(fontSize: 14)),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: scheme.onSurface.withValues(alpha: 0.4),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        tileColor: scheme.surface.withValues(alpha: 0.8),
-        onTap: () => Navigator.of(context).pushNamed(route),
-      ),
-    );
   }
 }

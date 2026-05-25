@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/localization/app_strings.dart';
-import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
@@ -32,8 +31,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _buildLanguageCustomizationSection(context, controller),
           const SizedBox(height: 16),
           _buildResetButton(context, controller),
-          const SizedBox(height: 16),
-          _buildLogoutButton(context, controller),
           const SizedBox(height: 16),
         ],
       ),
@@ -493,68 +490,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         side: BorderSide(
           color: theme.colorScheme.outline.withValues(alpha: 0.5),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmAndLogout(
-    BuildContext context,
-    dynamic controller,
-  ) async {
-    final bool? confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Log out?'),
-          content: const Text(
-            'You will need to sign in again to continue.',
-          ),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          actions: [
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('Cancel'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: () => Navigator.of(dialogContext).pop(true),
-                    child: const Text('Log out'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-    if (confirmed != true) return;
-    await controller.logout();
-    if (!context.mounted) return;
-    Navigator.of(context)
-        .pushNamedAndRemoveUntil(AppRoutes.login, (route) => false);
-  }
-
-  Widget _buildLogoutButton(BuildContext context, dynamic controller) {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.logout_rounded, color: Colors.red),
-        title: const Text(
-          'Log out',
-          style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
-        ),
-        onTap: () => _confirmAndLogout(context, controller),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
         ),
       ),
     );
