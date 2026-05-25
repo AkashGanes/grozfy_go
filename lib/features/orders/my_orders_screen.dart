@@ -748,35 +748,32 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    // Stats strip
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 12,
-                        horizontal: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.14),
+                    const SizedBox(height: 14),
+                    // Stats chips
+                    Row(
+                      children: [
+                        _statChip(
+                          icon: Icons.local_shipping_outlined,
+                          iconBg: Colors.white.withValues(alpha: 0.18),
+                          value: '$deliveries',
+                          label: 'Deliveries',
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          _statCell('$deliveries', 'Deliveries'),
-                          _vertRule(),
-                          _statCell(
-                            '${rating.toStringAsFixed(1)} ★',
-                            'Rating',
-                          ),
-                          _vertRule(),
-                          _statCell(
-                            '₹${weekEarnings.toStringAsFixed(0)}',
-                            'This Week',
-                          ),
-                        ],
-                      ),
+                        const SizedBox(width: 8),
+                        _statChip(
+                          icon: Icons.star_rounded,
+                          iconBg: const Color(0xFFF6A623).withValues(alpha: 0.28),
+                          iconColor: const Color(0xFFF6A623),
+                          value: rating.toStringAsFixed(1),
+                          label: 'Rating',
+                        ),
+                        const SizedBox(width: 8),
+                        _statChip(
+                          icon: Icons.account_balance_wallet_outlined,
+                          iconBg: Colors.white.withValues(alpha: 0.18),
+                          value: '₹${weekEarnings.toStringAsFixed(0)}',
+                          label: 'This Week',
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -829,15 +826,40 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
         ),
       );
 
-  Widget _statCell(String value, String label) => Expanded(
+  Widget _statChip({
+    required IconData icon,
+    required String value,
+    required String label,
+    required Color iconBg,
+    Color iconColor = Colors.white,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.11),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+        ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 17),
+            ),
+            const SizedBox(height: 8),
             Text(
               value,
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 15,
+                fontSize: 16,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -853,14 +875,9 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
             ),
           ],
         ),
-      );
-
-  Widget _vertRule() => Container(
-        width: 1,
-        height: 28,
-        margin: const EdgeInsets.symmetric(horizontal: 2),
-        color: Colors.white.withValues(alpha: 0.2),
-      );
+      ),
+    );
+  }
 
   // ── Sections ──────────────────────────────────────────────────────────────
 
