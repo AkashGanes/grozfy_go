@@ -514,6 +514,31 @@ class ExternalDeliveryRepository {
         .toList();
   }
 
+  /// Returns total delivered orders for the logged-in driver.
+  /// Sums `completes_stops` across all driver trips in a single API call.
+  /// `completes_stops` is only incremented when a stop is set to 'Delivered'.
+  Future<int> fetchDeliveredCountForDriver() async {
+    final driver = await _getLoggedInDriver();
+    final uri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+      queryParameters: {
+        'fields': jsonEncode(['completes_stops']),
+        'filters': jsonEncode([
+          ['External Delivery Trip', 'driver', '=', driver],
+        ]),
+        'limit_page_length': '0',
+      },
+    );
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+    final rows = (jsonDecode(resp.body)['data']) as List;
+    return rows.fold<int>(0, (sum, row) {
+      final v = (row as Map<String, dynamic>)['completes_stops'];
+      return sum + ((v is num) ? v.toInt() : 0);
+    });
+  }
+
   Future<ExternalDeliveryDetail> fetchDetail(
     String name, {
     bool resolveAddress = true,

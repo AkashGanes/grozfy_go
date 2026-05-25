@@ -10,6 +10,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/services/secure_token_storage.dart';
 import '../../orders_by_location/model/timing_event.dart';
+import '../../orders_by_location/repository/external_delivery_repository.dart';
 import '../models/driver_stats.dart';
 
 final selectedMonthProvider = StateProvider<({int month, int year})>((ref) {
@@ -276,4 +277,12 @@ final lifetimeStatsProvider =
   } catch (_) {
     return _computeLifetime(localEvents);
   }
+});
+
+/// Total delivered orders for the logged-in driver.
+/// Single API call summing completes_stops across all driver trips.
+final deliveredOrderCountProvider =
+    FutureProvider.autoDispose<int>((ref) async {
+  final repo = ExternalDeliveryRepository();
+  return repo.fetchDeliveredCountForDriver();
 });

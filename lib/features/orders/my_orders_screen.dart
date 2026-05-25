@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,10 +10,12 @@ import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/authed_network_image.dart';
 import '../dashboard/widgets/dashboard_colors.dart';
 import '../dashboard/widgets/section_card.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../stats/providers/stats_providers.dart';
 
 class MyOrdersScreen extends ConsumerStatefulWidget {
   const MyOrdersScreen({super.key});
@@ -499,6 +503,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(appControllerProvider);
+    final deliveriesAsync = ref.watch(deliveredOrderCountProvider);
     return AppShell(
       title: 'More',
       padding: EdgeInsets.zero,
@@ -506,15 +511,15 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
       showBottomNav: true,
       bottomNavIndex: 2,
       onBottomNavTap: _handleTabTap,
-      child: _buildContent(controller),
+      child: _buildContent(controller, deliveriesAsync),
     );
   }
 
-  Widget _buildContent(dynamic controller) {
+  Widget _buildContent(dynamic controller, AsyncValue<int> deliveriesAsync) {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
       children: [
-        _buildProfileCard(controller)
+        _buildProfileCard(controller, deliveriesAsync)
             .animate()
             .fadeIn(duration: 280.ms)
             .slideY(begin: 0.04, end: 0),
@@ -608,15 +613,13 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
 
   // ── Profile card ──────────────────────────────────────────────────────────
 
-  Widget _buildProfileCard(dynamic controller) {
+  Widget _buildProfileCard(dynamic controller, AsyncValue<int> deliveriesAsync) {
     final String name =
         (controller.profile?.fullName as String?) ?? 'Partner';
     final String phone = (controller.profile?.mobile as String?) ?? '';
     final bool isOnline = controller.isOnline as bool;
     final String partnerId = (controller.driverName as String?) ?? '';
-    final int deliveries = controller.performance.totalDeliveries as int;
     final double rating = controller.performance.rating as double;
-    final double weekEarnings = controller.earnings.week as double;
 
     final parts = name.trim().split(RegExp(r'\s+'));
     final String initials = parts.length >= 2
@@ -673,25 +676,17 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                     Row(
                       children: [
                         Container(
-                          width: 58,
-                          height: 58,
+                          width: 62,
+                          height: 62,
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.16),
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.35),
-                              width: 2,
+                              color: Colors.white.withValues(alpha: 0.45),
+                              width: 2.5,
                             ),
                           ),
-                          child: Center(
-                            child: Text(
-                              initials,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
+                          child: ClipOval(
+                            child: _buildAvatar(controller, initials),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -755,23 +750,21 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                         _statChip(
                           icon: Icons.local_shipping_outlined,
                           iconBg: Colors.white.withValues(alpha: 0.18),
-                          value: '$deliveries',
+                          value: deliveriesAsync.when(
+                            data: (c) => '$c',
+                            loading: () => '…',
+                            error: (e, s) => '—',
+                          ),
                           label: 'Deliveries',
+                          isLoading: deliveriesAsync.isLoading,
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         _statChip(
                           icon: Icons.star_rounded,
                           iconBg: const Color(0xFFF6A623).withValues(alpha: 0.28),
                           iconColor: const Color(0xFFF6A623),
                           value: rating.toStringAsFixed(1),
                           label: 'Rating',
-                        ),
-                        const SizedBox(width: 8),
-                        _statChip(
-                          icon: Icons.account_balance_wallet_outlined,
-                          iconBg: Colors.white.withValues(alpha: 0.18),
-                          value: '₹${weekEarnings.toStringAsFixed(0)}',
-                          label: 'This Week',
                         ),
                       ],
                     ),
@@ -791,6 +784,55 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: Colors.white.withValues(alpha: alpha),
+        ),
+      );
+
+  Widget _buildAvatar(dynamic controller, String initials) {
+    final String? localPath = controller.profileImagePath as String?;
+    final String? serverUrl = controller.serverProfileImageFullUrl as String?;
+    final Map<String, String> headers =
+        controller.buildAuthHeaders() as Map<String, String>;
+    final fallback = _initialsAvatar(initials);
+
+    if (localPath != null && File(localPath).existsSync()) {
+      return Image.file(
+        File(localPath),
+        fit: BoxFit.cover,
+        width: 62,
+        height: 62,
+        errorBuilder: (context, e, s) => fallback,
+      );
+    }
+    if (serverUrl != null && serverUrl.isNotEmpty) {
+      if (headers.isNotEmpty) {
+        return AuthedNetworkImage(
+          url: serverUrl,
+          authHeaders: headers,
+          size: 62,
+          fallback: fallback,
+        );
+      }
+      return Image.network(
+        serverUrl,
+        fit: BoxFit.cover,
+        width: 62,
+        height: 62,
+        errorBuilder: (context, e, s) => fallback,
+      );
+    }
+    return fallback;
+  }
+
+  Widget _initialsAvatar(String initials) => Container(
+        color: Colors.white.withValues(alpha: 0.18),
+        alignment: Alignment.center,
+        child: Text(
+          initials,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       );
 
@@ -832,6 +874,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
     required String label,
     required Color iconBg,
     Color iconColor = Colors.white,
+    bool isLoading = false,
   }) {
     return Expanded(
       child: Container(
@@ -854,15 +897,24 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
               child: Icon(icon, color: iconColor, size: 17),
             ),
             const SizedBox(height: 8),
-            Text(
-              value,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+            isLoading
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white.withValues(alpha: 0.8),
+                    ),
+                  )
+                : Text(
+                    value,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
             const SizedBox(height: 2),
             Text(
               label,
