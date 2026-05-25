@@ -422,6 +422,7 @@ class DeliveryOrder {
     this.acceptedAt,
     this.completedAt,
     this.deliveryPartnerLocation,
+    this.createdAt,
   });
 
   final String id;
@@ -450,6 +451,7 @@ class DeliveryOrder {
   final DateTime? acceptedAt;
   final DateTime? completedAt;
   final GeoLocation? deliveryPartnerLocation;
+  final DateTime? createdAt;
 
   double get totalAmount =>
       orderItems.fold(0, (sum, item) => sum + (item.price * item.quantity));
@@ -481,6 +483,7 @@ class DeliveryOrder {
     DateTime? acceptedAt,
     DateTime? completedAt,
     GeoLocation? deliveryPartnerLocation,
+    DateTime? createdAt,
   }) {
     return DeliveryOrder(
       id: id ?? this.id,
@@ -511,6 +514,7 @@ class DeliveryOrder {
       completedAt: completedAt ?? this.completedAt,
       deliveryPartnerLocation:
           deliveryPartnerLocation ?? this.deliveryPartnerLocation,
+      createdAt: createdAt ?? this.createdAt,
     );
   }
 }

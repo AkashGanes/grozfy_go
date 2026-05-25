@@ -129,6 +129,7 @@ class ExternalDeliveryRepository {
     'creation',
     'modified',
     'store_name',
+    'store_url',
     'customer_name',
     'status',
     'delivery_address',
@@ -396,7 +397,10 @@ class ExternalDeliveryRepository {
 
   /// Fetches past orders for the logged-in driver directly from
   /// `External Delivery` using the `driver` field added in the backend.
-  Future<List<ExternalDelivery>> fetchPastOrdersForDriver() async {
+  Future<List<ExternalDelivery>> fetchPastOrdersForDriver({
+    int limitStart = 0,
+    int limitPageLength = 20,
+  }) async {
     final driver = await _getLoggedInDriver();
     final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
       queryParameters: {
@@ -416,7 +420,8 @@ class ExternalDeliveryRepository {
             ],
           ],
         ]),
-        'limit_page_length': '50',
+        'limit_start': '$limitStart',
+        'limit_page_length': '$limitPageLength',
         'order_by': 'modified desc',
       },
     );
