@@ -473,14 +473,12 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
     if (_isNavigating || index == 2) return;
     setState(() => _isNavigating = true);
     if (index == 0) {
-      // Pop back to the existing Dashboard — no new instance pushed.
       Navigator.of(context).maybePop().whenComplete(
         () {
           if (mounted) setState(() => _isNavigating = false);
         },
       );
     } else if (index == 1) {
-      // Replace this screen so the stack stays: Dashboard → My Orders.
       Navigator.of(context)
           .pushReplacement(
             NoAnimRoute(builder: (_) => const MyOrdersScreen()),
@@ -497,62 +495,392 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final controller = ref.watch(appControllerProvider);
     return AppShell(
       title: 'More',
-      subtitle: 'Quick Access',
       padding: EdgeInsets.zero,
       scrollable: false,
       showBottomNav: true,
       bottomNavIndex: 2,
       onBottomNavTap: _handleTabTap,
-      child: _buildMenu(),
+      child: _buildContent(controller),
     );
   }
 
-  Widget _buildMenu() {
+  Widget _buildContent(dynamic controller) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
-        _menuItem(Icons.person_rounded, 'My Profile', AppRoutes.profile),
-        _menuItem(
-          Icons.list_alt_rounded,
-          'Available Orders',
-          AppRoutes.orderListing,
-        ),
-        _menuItem(
-          Icons.location_on_rounded,
-          'Orders by Location',
-          AppRoutes.ordersByLocation,
-        ),
-        _menuItem(
-          Icons.route_rounded,
-          'External Trips',
-          AppRoutes.externalDeliveryTripList,
-        ),
-        _menuItem(Icons.settings_rounded, 'Settings', AppRoutes.settings),
-        _menuItem(
-          Icons.monetization_on_rounded,
-          'Earnings History',
-          AppRoutes.earnings,
-        ),
-        _menuItem(
-          Icons.car_rental_rounded,
-          'Vehicle',
-          AppRoutes.vehicleDetails,
-        ),
-        _menuItem(
-          Icons.account_balance_rounded,
-          'Bank Details',
-          AppRoutes.bankSetup,
-        ),
-        _menuItem(
-          Icons.description_rounded,
-          'Documents',
-          AppRoutes.kycDocuments,
-        ),
-        _menuItem(Icons.help_rounded, 'Support', AppRoutes.settings),
+        _buildProfileCard(controller),
+        const SizedBox(height: 24),
+        _buildSection('Earnings & Trips', [
+          _sectionTile(
+            Icons.monetization_on_rounded,
+            'Earnings Summary',
+            AppRoutes.earnings,
+          ),
+          _divider(),
+          _sectionTile(
+            Icons.analytics_rounded,
+            'External Delivery Trips',
+            AppRoutes.externalDeliveryTripList,
+            isNew: true,
+          ),
+          _divider(),
+          _sectionTile(
+            Icons.history_rounded,
+            'Available Orders',
+            AppRoutes.orderListing,
+          ),
+        ]),
+        const SizedBox(height: 20),
+        _buildSection('Account', [
+          _sectionTile(
+            Icons.description_rounded,
+            'Documents / KYC',
+            AppRoutes.kycDocuments,
+          ),
+          _divider(),
+          _sectionTile(
+            Icons.car_rental_rounded,
+            'Vehicle Details',
+            AppRoutes.vehicleDetails,
+          ),
+          _divider(),
+          _sectionTile(
+            Icons.account_balance_rounded,
+            'Bank Details',
+            AppRoutes.bankSetup,
+          ),
+          _divider(),
+          _sectionTile(
+            Icons.settings_rounded,
+            'Settings',
+            AppRoutes.settings,
+          ),
+        ]),
+        const SizedBox(height: 20),
+        _buildSection('Support', [
+          _sectionTile(
+            Icons.help_outline_rounded,
+            'Help & Support',
+            AppRoutes.settings,
+          ),
+          _divider(),
+          _sectionTile(
+            Icons.privacy_tip_outlined,
+            'Terms & Privacy',
+            AppRoutes.settings,
+          ),
+        ]),
+        const SizedBox(height: 24),
         _logoutItem(),
       ],
+    );
+  }
+
+  Widget _buildProfileCard(dynamic controller) {
+    final String name =
+        (controller.profile?.fullName as String?) ?? 'Partner';
+    final String phone = (controller.profile?.mobile as String?) ?? '';
+    final bool isOnline = controller.isOnline as bool;
+    final String partnerId = (controller.driverName as String?) ?? '';
+    final int totalDeliveries =
+        controller.performance.totalDeliveries as int;
+    final double rating = controller.performance.rating as double;
+    final double weekEarnings = controller.earnings.week as double;
+
+    final parts = name.trim().split(RegExp(r'\s+'));
+    final String initials = parts.length >= 2
+        ? '${parts.first[0]}${parts.last[0]}'.toUpperCase()
+        : name.isNotEmpty
+            ? name[0].toUpperCase()
+            : 'P';
+
+    return GestureDetector(
+      onTap: () => Navigator.of(context).pushNamed(AppRoutes.profile),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [AppTheme.oceanBlue, Color(0xFF0d2f5e)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.oceanBlue.withValues(alpha: 0.35),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.4),
+                      width: 2,
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      initials,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isOnline
+                                  ? const Color(0xFF22C55E)
+                                  : Colors.white.withValues(alpha: 0.22),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              isOnline ? 'Online' : 'Offline',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (phone.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          phone,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                      if (partnerId.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'ID: $partnerId',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.white.withValues(alpha: 0.55),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                _statChip(label: 'Deliveries', value: '$totalDeliveries'),
+                const SizedBox(width: 8),
+                _statChip(
+                  label: 'Rating',
+                  value: rating.toStringAsFixed(1),
+                  icon: Icons.star_rounded,
+                ),
+                const SizedBox(width: 8),
+                _statChip(
+                  label: 'This Week',
+                  value: '₹${weekEarnings.toStringAsFixed(0)}',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statChip({
+    required String label,
+    required String value,
+    IconData? icon,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: Colors.white, size: 13),
+                  const SizedBox(width: 2),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              )
+            else
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.62),
+                fontSize: 10,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSection(String title, List<Widget> tiles) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface.withValues(alpha: 0.45),
+              letterSpacing: 0.8,
+            ),
+          ),
+        ),
+        Card(
+          margin: EdgeInsets.zero,
+          elevation: 0,
+          color: scheme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(children: tiles),
+        ),
+      ],
+    );
+  }
+
+  Widget _divider() {
+    return Divider(
+      height: 1,
+      indent: 56,
+      endIndent: 16,
+      color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.12),
+    );
+  }
+
+  Widget _sectionTile(
+    IconData icon,
+    String label,
+    String route, {
+    bool isNew = false,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: AppTheme.oceanBlue, size: 18),
+      ),
+      title: Row(
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          ),
+          if (isNew) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppTheme.mint,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text(
+                'NEW',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: scheme.onSurface.withValues(alpha: 0.3),
+        size: 20,
+      ),
+      onTap: () => Navigator.of(context).pushNamed(route),
     );
   }
 
@@ -598,16 +926,20 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
   }
 
   Widget _logoutItem() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: Colors.red.withValues(alpha: 0.06),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.red.withValues(alpha: 0.1),
+            color: Colors.red.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: const Icon(Icons.logout_rounded, color: Colors.red, size: 20),
+          child: const Icon(Icons.logout_rounded, color: Colors.red, size: 18),
         ),
         title: const Text(
           'Log out',
@@ -617,35 +949,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        tileColor:
-            Theme.of(context).colorScheme.surface.withValues(alpha: 0.8),
         onTap: _confirmAndLogout,
-      ),
-    );
-  }
-
-  Widget _menuItem(IconData icon, String label, String route) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: AppTheme.oceanBlue.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: AppTheme.oceanBlue, size: 20),
-        ),
-        title: Text(label, style: const TextStyle(fontSize: 14)),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          color: scheme.onSurface.withValues(alpha: 0.4),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        tileColor: scheme.surface.withValues(alpha: 0.8),
-        onTap: () => Navigator.of(context).pushNamed(route),
       ),
     );
   }
