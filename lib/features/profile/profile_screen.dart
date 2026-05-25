@@ -17,7 +17,7 @@ import 'package:image_cropper/image_cropper.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/utils/profile_image_validator.dart';
+// import '../../core/utils/profile_image_validator.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/authed_network_image.dart';
 
@@ -925,15 +925,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (!mounted) return;
 
     // Validate original dimensions and aspect ratio before any processing.
-    final String? dimensionError = await ProfileImageValidator.validate(
-      croppedFile.path,
-    );
-    if (dimensionError != null) {
-      if (mounted) showInfoSnack(context, dimensionError);
-      return;
-    }
+    // final String? dimensionError = await ProfileImageValidator.validate(
+    //   croppedFile.path,
+    // );
+    // if (dimensionError != null) {
+    //   if (mounted) showInfoSnack(context, dimensionError);
+    //   return;
+    // }
 
-    // Dimensions valid — compress before handing off to the upload flow.
+    // Compress before handing off to the upload flow.
     final Uint8List? compressed = await FlutterImageCompress.compressWithFile(
       croppedFile.path,
       minWidth: 1024,

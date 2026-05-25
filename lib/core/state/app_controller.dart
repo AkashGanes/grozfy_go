@@ -1025,12 +1025,12 @@ class AppController extends ChangeNotifier {
     if (sourcePath.isEmpty || !File(sourcePath).existsSync()) {
       return 'Selected image is unavailable. Pick another image.';
     }
-    final String? imageValidationError = await _validateProfileImage(
-      sourcePath,
-    );
-    if (imageValidationError != null) {
-      return imageValidationError;
-    }
+    // final String? imageValidationError = await _validateProfileImage(
+    //   sourcePath,
+    // );
+    // if (imageValidationError != null) {
+    //   return imageValidationError;
+    // }
 
     _profileImageSyncing = true;
     _profileImageSyncError = null;
