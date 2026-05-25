@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/app_models.dart';
@@ -7,6 +8,8 @@ import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
+import '../dashboard/widgets/dashboard_colors.dart';
+import '../dashboard/widgets/section_card.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 
@@ -509,75 +512,101 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
 
   Widget _buildContent(dynamic controller) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
       children: [
-        _buildProfileCard(controller),
+        _buildProfileCard(controller)
+            .animate()
+            .fadeIn(duration: 280.ms)
+            .slideY(begin: 0.04, end: 0),
         const SizedBox(height: 24),
-        _buildSection('Earnings & Trips', [
-          _sectionTile(
-            Icons.monetization_on_rounded,
-            'Earnings Summary',
-            AppRoutes.earnings,
-          ),
-          _divider(),
-          _sectionTile(
-            Icons.analytics_rounded,
-            'External Delivery Trips',
-            AppRoutes.externalDeliveryTripList,
-            isNew: true,
-          ),
-          _divider(),
-          _sectionTile(
-            Icons.history_rounded,
-            'Available Orders',
-            AppRoutes.orderListing,
-          ),
-        ]),
+        _buildSection(
+          'Earnings & Trips',
+          [
+            _tile(
+              icon: Icons.monetization_on_rounded,
+              label: 'Earnings Summary',
+              route: AppRoutes.earnings,
+              color: const Color(0xFF2D6CDF),
+            ),
+            _divider(),
+            _tile(
+              icon: Icons.route_rounded,
+              label: 'External Delivery Trips',
+              route: AppRoutes.externalDeliveryTripList,
+              color: const Color(0xFF7C3AED),
+              isNew: true,
+            ),
+            _divider(),
+            _tile(
+              icon: Icons.list_alt_rounded,
+              label: 'Available Orders',
+              route: AppRoutes.orderListing,
+              color: const Color(0xFF0891B2),
+            ),
+          ],
+        ).animate().fadeIn(duration: 280.ms, delay: 60.ms).slideY(begin: 0.04, end: 0),
         const SizedBox(height: 20),
-        _buildSection('Account', [
-          _sectionTile(
-            Icons.description_rounded,
-            'Documents / KYC',
-            AppRoutes.kycDocuments,
-          ),
-          _divider(),
-          _sectionTile(
-            Icons.car_rental_rounded,
-            'Vehicle Details',
-            AppRoutes.vehicleDetails,
-          ),
-          _divider(),
-          _sectionTile(
-            Icons.account_balance_rounded,
-            'Bank Details',
-            AppRoutes.bankSetup,
-          ),
-          _divider(),
-          _sectionTile(
-            Icons.settings_rounded,
-            'Settings',
-            AppRoutes.settings,
-          ),
-        ]),
+        _buildSection(
+          'Account',
+          [
+            _tile(
+              icon: Icons.shield_outlined,
+              label: 'Documents / KYC',
+              route: AppRoutes.kycDocuments,
+              color: const Color(0xFF7C3AED),
+            ),
+            _divider(),
+            _tile(
+              icon: Icons.two_wheeler_rounded,
+              label: 'Vehicle Details',
+              route: AppRoutes.vehicleDetails,
+              color: const Color(0xFF1AB36A),
+            ),
+            _divider(),
+            _tile(
+              icon: Icons.account_balance_outlined,
+              label: 'Bank Details',
+              route: AppRoutes.bankSetup,
+              color: const Color(0xFF2D6CDF),
+            ),
+            _divider(),
+            _tile(
+              icon: Icons.settings_outlined,
+              label: 'Settings',
+              route: AppRoutes.settings,
+              color: const Color(0xFF6B7280),
+            ),
+          ],
+        ).animate().fadeIn(duration: 280.ms, delay: 120.ms).slideY(begin: 0.04, end: 0),
         const SizedBox(height: 20),
-        _buildSection('Support', [
-          _sectionTile(
-            Icons.help_outline_rounded,
-            'Help & Support',
-            AppRoutes.settings,
-          ),
-          _divider(),
-          _sectionTile(
-            Icons.privacy_tip_outlined,
-            'Terms & Privacy',
-            AppRoutes.settings,
-          ),
-        ]),
+        _buildSection(
+          'Support',
+          [
+            _tile(
+              icon: Icons.help_outline_rounded,
+              label: 'Help & Support',
+              route: AppRoutes.settings,
+              color: const Color(0xFFF6A623),
+            ),
+            _divider(),
+            _tile(
+              icon: Icons.privacy_tip_outlined,
+              label: 'Terms & Privacy',
+              route: AppRoutes.settings,
+              color: const Color(0xFF6B7280),
+            ),
+          ],
+        ).animate().fadeIn(duration: 280.ms, delay: 180.ms).slideY(begin: 0.04, end: 0),
         const SizedBox(height: 24),
-        _logoutItem(),
+        _logoutItem()
+            .animate()
+            .fadeIn(duration: 280.ms, delay: 240.ms)
+            .slideY(begin: 0.04, end: 0),
       ],
     );
   }
+
+  // ── Profile card ──────────────────────────────────────────────────────────
 
   Widget _buildProfileCard(dynamic controller) {
     final String name =
@@ -585,8 +614,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
     final String phone = (controller.profile?.mobile as String?) ?? '';
     final bool isOnline = controller.isOnline as bool;
     final String partnerId = (controller.driverName as String?) ?? '';
-    final int totalDeliveries =
-        controller.performance.totalDeliveries as int;
+    final int deliveries = controller.performance.totalDeliveries as int;
     final double rating = controller.performance.rating as double;
     final double weekEarnings = controller.earnings.week as double;
 
@@ -600,289 +628,333 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
     return GestureDetector(
       onTap: () => Navigator.of(context).pushNamed(AppRoutes.profile),
       child: Container(
-        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [AppTheme.oceanBlue, Color(0xFF0d2f5e)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           boxShadow: [
             BoxShadow(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.35),
-              blurRadius: 18,
-              offset: const Offset(0, 6),
+              color: const Color(0xFF1A3FA6).withValues(alpha: 0.28),
+              blurRadius: 26,
+              offset: const Offset(0, 12),
             ),
           ],
         ),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 54,
-                  height: 54,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
+            children: [
+              // Gradient background — matches ProfileProgressCard
+              const Positioned.fill(
+                child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.4),
-                      width: 2,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      initials,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF1C4E80), Color(0xFF0C2A4A)],
                     ),
                   ),
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+              ),
+              // Decorative circles
+              Positioned(
+                right: -50,
+                top: -40,
+                child: _decorCircle(160, 0.10),
+              ),
+              Positioned(
+                right: 70,
+                bottom: -55,
+                child: _decorCircle(110, 0.07),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 20, 18, 16),
+                child: Column(
+                  children: [
+                    // Avatar row
+                    Row(
+                      children: [
+                        Container(
+                          width: 58,
+                          height: 58,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.35),
+                              width: 2,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: isOnline
-                                  ? const Color(0xFF22C55E)
-                                  : Colors.white.withValues(alpha: 0.22),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
+                          child: Center(
                             child: Text(
-                              isOnline ? 'Online' : 'Offline',
+                              initials,
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      name,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w800,
+                                        height: 1.2,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _onlineBadge(isOnline),
+                                ],
+                              ),
+                              if (phone.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  phone,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.78),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                              if (partnerId.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Partner ID: $partnerId',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.5),
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          color: Colors.white.withValues(alpha: 0.45),
+                          size: 16,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // Stats strip
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.14),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          _statCell('$deliveries', 'Deliveries'),
+                          _vertRule(),
+                          _statCell(
+                            '${rating.toStringAsFixed(1)} ★',
+                            'Rating',
+                          ),
+                          _vertRule(),
+                          _statCell(
+                            '₹${weekEarnings.toStringAsFixed(0)}',
+                            'This Week',
                           ),
                         ],
                       ),
-                      if (phone.isNotEmpty) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          phone,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.75),
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                      if (partnerId.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          'ID: $partnerId',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.white.withValues(alpha: 0.55),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                _statChip(label: 'Deliveries', value: '$totalDeliveries'),
-                const SizedBox(width: 8),
-                _statChip(
-                  label: 'Rating',
-                  value: rating.toStringAsFixed(1),
-                  icon: Icons.star_rounded,
-                ),
-                const SizedBox(width: 8),
-                _statChip(
-                  label: 'This Week',
-                  value: '₹${weekEarnings.toStringAsFixed(0)}',
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _statChip({
-    required String label,
-    required String value,
-    IconData? icon,
-  }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+  Widget _decorCircle(double size, double alpha) => Container(
+        width: size,
+        height: size,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: alpha),
         ),
-        child: Column(
+      );
+
+  Widget _onlineBadge(bool isOnline) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: isOnline
+              ? const Color(0xFF1AB36A)
+              : Colors.white.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (icon != null)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, color: Colors.white, size: 13),
-                  const SizedBox(width: 2),
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              )
-            else
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
+            Container(
+              width: 5,
+              height: 5,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
               ),
-            const SizedBox(height: 3),
+            ),
+            const SizedBox(width: 4),
             Text(
-              label,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.62),
+              isOnline ? 'Online' : 'Offline',
+              style: const TextStyle(
+                color: Colors.white,
                 fontSize: 10,
+                fontWeight: FontWeight.w700,
               ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),
-      ),
-    );
-  }
+      );
+
+  Widget _statCell(String value, String label) => Expanded(
+        child: Column(
+          children: [
+            Text(
+              value,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _vertRule() => Container(
+        width: 1,
+        height: 28,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        color: Colors.white.withValues(alpha: 0.2),
+      );
+
+  // ── Sections ──────────────────────────────────────────────────────────────
 
   Widget _buildSection(String title, List<Widget> tiles) {
-    final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
             title.toUpperCase(),
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: scheme.onSurface.withValues(alpha: 0.45),
+              color: DashColors.textSecondary(context),
               letterSpacing: 0.8,
             ),
           ),
         ),
-        Card(
-          margin: EdgeInsets.zero,
-          elevation: 0,
-          color: scheme.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+        SectionCard(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          borderRadius: 18,
           child: Column(children: tiles),
         ),
       ],
     );
   }
 
-  Widget _divider() {
-    return Divider(
-      height: 1,
-      indent: 56,
-      endIndent: 16,
-      color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.12),
-    );
-  }
+  Widget _divider() => Divider(
+        height: 1,
+        indent: 62,
+        endIndent: 16,
+        color: DashColors.cardBorder(context).withValues(alpha: 0.7),
+      );
 
-  Widget _sectionTile(
-    IconData icon,
-    String label,
-    String route, {
+  Widget _tile({
+    required IconData icon,
+    required String label,
+    required String route,
+    required Color color,
     bool isNew = false,
   }) {
-    final scheme = Theme.of(context).colorScheme;
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
       leading: Container(
-        padding: const EdgeInsets.all(8),
+        width: 38,
+        height: 38,
         decoration: BoxDecoration(
-          color: AppTheme.oceanBlue.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Icon(icon, color: AppTheme.oceanBlue, size: 18),
+        child: Icon(icon, color: color, size: 19),
       ),
       title: Row(
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: DashColors.textPrimary(context),
+              ),
+            ),
           ),
-          if (isNew) ...[
-            const SizedBox(width: 8),
+          if (isNew)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: AppTheme.mint,
-                borderRadius: BorderRadius.circular(4),
+                color: const Color(0xFF1AB36A).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
               ),
               child: const Text(
                 'NEW',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: Color(0xFF118A52),
                   fontSize: 9,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.5,
                 ),
               ),
             ),
-          ],
         ],
       ),
       trailing: Icon(
         Icons.chevron_right_rounded,
-        color: scheme.onSurface.withValues(alpha: 0.3),
+        color: DashColors.textSecondary(context).withValues(alpha: 0.5),
         size: 20,
       ),
       onTap: () => Navigator.of(context).pushNamed(route),
     );
   }
+
+  // ── Logout ────────────────────────────────────────────────────────────────
 
   Future<void> _confirmAndLogout() async {
     final bool? confirmed = await showDialog<bool>(
@@ -926,28 +998,36 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
   }
 
   Widget _logoutItem() {
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      color: Colors.red.withValues(alpha: 0.06),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    return SectionCard(
+      padding: EdgeInsets.zero,
+      borderRadius: 18,
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
         leading: Container(
-          padding: const EdgeInsets.all(8),
+          width: 38,
+          height: 38,
           decoration: BoxDecoration(
-            color: Colors.red.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(10),
+            color: const Color(0xFFE8384F).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: const Icon(Icons.logout_rounded, color: Colors.red, size: 18),
+          child: const Icon(
+            Icons.logout_rounded,
+            color: Color(0xFFE8384F),
+            size: 19,
+          ),
         ),
         title: const Text(
           'Log out',
           style: TextStyle(
             fontSize: 14,
-            color: Colors.red,
             fontWeight: FontWeight.w600,
+            color: Color(0xFFB7283A),
           ),
+        ),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: const Color(0xFFE8384F).withValues(alpha: 0.4),
+          size: 20,
         ),
         onTap: _confirmAndLogout,
       ),
