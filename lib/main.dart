@@ -19,6 +19,7 @@ import 'core/state/providers.dart';
 import 'core/state/app_scope.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/login_screen.dart';
+import 'features/auth/otp_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/notifications/ui/screens/notifications_screen.dart';
@@ -178,6 +179,11 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
             case AppRoutes.login:
               return MaterialPageRoute<void>(
                 builder: (_) => const LoginScreen(),
+              );
+            case AppRoutes.otp:
+              return MaterialPageRoute<void>(
+                settings: settings,
+                builder: (_) => const OtpScreen(),
               );
             case AppRoutes.register:
               return MaterialPageRoute<void>(

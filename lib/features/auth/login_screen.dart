@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
+import 'auth_widgets.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -15,26 +17,13 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final TextEditingController _mobileCtrl = TextEditingController();
-  final TextEditingController _otpCtrl = TextEditingController();
-
   bool _busy = false;
-  bool _otpSent = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _mobileCtrl.addListener(_onMobileChanged);
-  }
 
   @override
   void dispose() {
-    _mobileCtrl.removeListener(_onMobileChanged);
     _mobileCtrl.dispose();
-    _otpCtrl.dispose();
     super.dispose();
   }
-
-  void _onMobileChanged() => setState(() {});
 
   bool get _isMobileValid =>
       RegExp(r'^[6-9]\d{9}$').hasMatch(_mobileCtrl.text.trim());
@@ -44,58 +33,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _busy = true);
     final String message = await app.sendOtp(_mobileCtrl.text.trim());
     if (!mounted) return;
-    setState(() {
-      _busy = false;
-      if (message.contains('successfully')) {
-        _otpSent = true;
-      }
-    });
-    showInfoSnack(context, message);
-  }
-
-  Future<void> _login() async {
-    final app = ref.read(appControllerProvider);
-    setState(() => _busy = true);
-
-    final String? error = await app.loginWithOtp(
-      mobile: _mobileCtrl.text.trim(),
-      otp: _otpCtrl.text.trim(),
-    );
-
-    if (!mounted) return;
     setState(() => _busy = false);
 
-    if (error == 'ACCOUNT_NOT_FOUND') {
-      Navigator.of(context)
-          .pushNamedAndRemoveUntil(AppRoutes.register, (route) => false);
-      return;
-    }
-
-    if (error != null) {
-      // Reset to mobile input if OTP expired or too many attempts
-      final lowerErr = error.toLowerCase();
-      if (lowerErr.contains('expired') || lowerErr.contains('too many')) {
-        setState(() {
-          _otpSent = false;
-          _otpCtrl.clear();
-        });
-      }
-      showInfoSnack(context, error);
-      return;
-    }
-
-    if (!app.profileCompleted) {
-      Navigator.of(context)
-          .pushNamedAndRemoveUntil(AppRoutes.register, (route) => false);
-    } else if (!app.isKycComplete) {
-      Navigator.of(context)
-          .pushNamedAndRemoveUntil(AppRoutes.kycDocuments, (route) => false);
-    } else if (!app.hasSelectedLocation) {
-      Navigator.of(context)
-          .pushNamedAndRemoveUntil(AppRoutes.currentLocation, (route) => false);
+    if (message.contains('successfully')) {
+      Navigator.of(context).pushNamed(
+        AppRoutes.otp,
+        arguments: _mobileCtrl.text.trim(),
+      );
     } else {
-      Navigator.of(context)
-          .pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
+      showInfoSnack(context, message);
     }
   }
 
@@ -103,104 +49,205 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final app = ref.watch(appControllerProvider);
     final theme = Theme.of(context);
+    final bool isDark = theme.brightness == Brightness.dark;
+    final Color textColor = isDark ? Colors.white : AppTheme.nightBlue;
+    final Color mutedColor =
+        isDark ? Colors.white54 : const Color(0xFF8A9BB0);
+    final Color inputBg =
+        isDark ? theme.colorScheme.surface : Colors.white;
+    final Color borderColor =
+        isDark ? Colors.white12 : const Color(0xFFDDE3EC);
 
-    return AppShell(
-      title: app.t('login'),
-      subtitle: app.t('login_subtitle'),
-      loading: _busy,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          FrostCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  app.t('mobile_number'),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+    return AuthBackground(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 40),
+              const AuthStepPill(step: 1),
+              const SizedBox(height: 28),
+              Text(
+                'Enter your mobile\nnumber',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  color: textColor,
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _mobileCtrl,
-                  keyboardType: TextInputType.phone,
-                  maxLength: 10,
-                  enabled: !_otpSent || !_busy,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: InputDecoration(
-                    hintText: app.t('enter_mobile'),
-                    prefixIcon: const Icon(Icons.phone_android_rounded),
-                    prefixText: '+91  ',
-                    counterText: '',
-                    suffixIcon: _isMobileValid
-                        ? const Icon(Icons.check_circle, color: Colors.green)
-                        : null,
-                  ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                "We'll send a one-time password\nto verify your identity",
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: mutedColor, height: 1.5),
+              ),
+              const SizedBox(height: 32),
+              // Phone input container
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                decoration: BoxDecoration(
+                  color: inputBg,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: borderColor),
+                  boxShadow: isDark
+                      ? null
+                      : [
+                          BoxShadow(
+                            color:
+                                AppTheme.oceanBlue.withValues(alpha: 0.06),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                 ),
-                const SizedBox(height: 16),
-                if (!_otpSent)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isMobileValid && !_busy ? _sendOtp : null,
-                      child: Text(_busy ? app.t('sending_otp') : app.t('send_otp')),
+                child: Row(
+                  children: [
+                    // Country badge
+                    Container(
+                      margin: const EdgeInsets.all(4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : const Color(0xFFF1F4F9),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            '🇮🇳',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '+91',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: textColor,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                if (_otpSent) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        app.t('otp'),
-                        style: theme.textTheme.titleSmall?.copyWith(
+                    // Vertical divider
+                    Container(
+                      width: 1,
+                      height: 28,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      color: borderColor,
+                    ),
+                    // Text field
+                    Expanded(
+                      child: TextField(
+                        controller: _mobileCtrl,
+                        keyboardType: TextInputType.phone,
+                        maxLength: 10,
+                        autofocus: true,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        onChanged: (_) => setState(() {}),
+                        onSubmitted: (_) {
+                          if (_isMobileValid && !_busy) _sendOtp();
+                        },
+                        style: TextStyle(
+                          fontSize: 16,
                           fontWeight: FontWeight.w600,
+                          color: textColor,
+                        ),
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          hintText: 'Enter mobile number',
+                          hintStyle: TextStyle(
+                            color: mutedColor,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          counterText: '',
+                          filled: false,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 14,
+                          ),
                         ),
                       ),
-                      TextButton.icon(
-                        onPressed: _busy
-                            ? null
-                            : () => setState(() {
-                                  _otpSent = false;
-                                  _otpCtrl.clear();
-                                }),
-                        icon: const Icon(Icons.edit, size: 16),
-                        label: Text(app.t('change_number')),
+                    ),
+                    if (_isMobileValid)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: Icon(
+                          Icons.check_circle_rounded,
+                          color: Colors.green.shade500,
+                          size: 20,
+                        ),
                       ),
-                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 12,
+                    color: mutedColor.withValues(alpha: 0.65),
                   ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _otpCtrl,
-                    keyboardType: TextInputType.number,
-                    autofocus: true,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    decoration: InputDecoration(
-                      hintText: app.t('enter_otp'),
-                      prefixIcon: const Icon(Icons.shield_rounded),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: _busy ? null : _sendOtp,
-                      child: Text(app.t('resend_otp')),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _busy ? null : _login,
-                      child: Text(_busy ? app.t('verifying') : app.t('verify_login')),
+                  const SizedBox(width: 5),
+                  Text(
+                    'Standard SMS rates may apply',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: mutedColor.withValues(alpha: 0.65),
                     ),
                   ),
                 ],
-              ],
-            ),
+              ),
+              const Spacer(),
+              ElevatedButton(
+                onPressed: _isMobileValid && !_busy ? _sendOtp : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isMobileValid
+                      ? AppTheme.nightBlue
+                      : (isDark
+                            ? Colors.grey.shade800
+                            : Colors.grey.shade300),
+                  foregroundColor:
+                      _isMobileValid ? Colors.white : Colors.grey.shade500,
+                  disabledBackgroundColor: isDark
+                      ? Colors.grey.shade800
+                      : Colors.grey.shade300,
+                  disabledForegroundColor: Colors.grey.shade500,
+                  minimumSize: const Size.fromHeight(56),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 0,
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+                child: _busy
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(app.t('send_otp')),
+              ),
+              const SizedBox(height: 32),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
