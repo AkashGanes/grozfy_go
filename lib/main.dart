@@ -35,6 +35,8 @@ import 'features/orders/navigation_screen.dart';
 import 'features/orders/delivery_list_screen.dart';
 import 'features/orders/delivery_tracking_screen.dart';
 import 'features/orders_by_location/ui/external_delivery_trip_details_screen.dart';
+import 'features/pickup_jobs/ui/pickup_pool_screen.dart';
+import 'features/pickup_jobs/ui/pickup_job_detail_screen.dart';
 import 'features/stats/stats_screen.dart';
 import 'features/orders_by_location/ui/external_delivery_trip_list_screen.dart';
 import 'features/orders_by_location/ui/orders_by_location_screen.dart';
@@ -366,6 +368,15 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
             case AppRoutes.security:
               return MaterialPageRoute<void>(
                 builder: (_) => const SecurityScreen(),
+              );
+            case AppRoutes.pickupPool:
+              return MaterialPageRoute<void>(
+                builder: (_) => const PickupPoolScreen(),
+              );
+            case AppRoutes.pickupJobDetail:
+              final jobName = settings.arguments as String? ?? '';
+              return MaterialPageRoute<void>(
+                builder: (_) => PickupJobDetailScreen(pickupJobName: jobName),
               );
             case AppRoutes.earnings:
               return MaterialPageRoute<void>(

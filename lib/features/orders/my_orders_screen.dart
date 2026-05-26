@@ -360,6 +360,11 @@ class _MoreScreenState extends State<MoreScreen> {
           'External Trips',
           AppRoutes.externalDeliveryTripList,
         ),
+        _menuItem(
+          Icons.inventory_2_rounded,
+          'Return Pickups',
+          AppRoutes.pickupPool,
+        ),
         _menuItem(Icons.settings_rounded, 'Settings', AppRoutes.settings),
         _menuItem(
           Icons.monetization_on_rounded,
