@@ -344,6 +344,7 @@ class AppController extends ChangeNotifier {
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
   DeliveryOrder? get activeOrder => _activeOrder;
+  String? get activeTripId => _activeTripId;
 
   void createMockActiveOrder() {
     if (_activeOrder == null) {

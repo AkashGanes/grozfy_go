@@ -18,6 +18,7 @@ import '../model/external_delivery.dart';
 import '../repository/external_delivery_repository.dart';
 import 'delivery_proof_sheet.dart';
 import 'failed_delivery_bottom_sheet.dart';
+import 'recall_interstitial_sheet.dart';
 import 'trip_stop_map_screen.dart';
 
 class ExternalDeliveryTripDetailsScreen extends ConsumerStatefulWidget {
@@ -103,7 +104,7 @@ class _ExternalDeliveryTripDetailsScreenState
     final trip = await _loadTrip();
     _cachedTrip = trip;
     for (final s in trip.stops) {
-      if (s.status.trim().toLowerCase() == 'recall pending') {
+      if (_isRecallPendingStatus(s.status)) {
         _seenRecallPending.add(_stopKey(s));
       }
     }
@@ -122,16 +123,10 @@ class _ExternalDeliveryTripDetailsScreenState
       final prev = _cachedTrip;
       for (final stop in fresh.stops) {
         final key = _stopKey(stop);
-        final prevStatus = prev?.stops
-                .where((s) => _stopKey(s) == key)
-                .firstOrNull
-                ?.status
-                .trim()
-                .toLowerCase() ??
-            '';
-        final newStatus = stop.status.trim().toLowerCase();
-        if (newStatus == 'recall pending' &&
-            prevStatus != 'recall pending' &&
+        final prevStop =
+            prev?.stops.where((s) => _stopKey(s) == key).firstOrNull;
+        if (_isRecallPendingStatus(stop.status) &&
+            !_isRecallPendingStatus(prevStop?.status ?? '') &&
             !_seenRecallPending.contains(key)) {
           _seenRecallPending.add(key);
           hasNewRecall = true;
@@ -139,10 +134,26 @@ class _ExternalDeliveryTripDetailsScreenState
       }
       _cachedTrip = fresh;
       if (hasNewRecall) {
-        showInfoSnack(context, 'Order recalled — return items to store');
         setState(() => _future = Future.value(fresh));
+        await _showRecallInterstitial(fresh);
       }
     } catch (_) {}
+  }
+
+  /// Full-screen bottom sheet that fires the moment a Recall Pending is detected.
+  /// Driver must tap "Got it" before interacting with anything else.
+  Future<void> _showRecallInterstitial(ExternalDeliveryTrip trip) async {
+    if (!mounted) return;
+    final recallCount =
+        trip.stops.where((s) => _isRecallPendingStatus(s.status)).length;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      builder: (_) => RecallInterstitialSheet(recallCount: recallCount),
+    );
   }
 
   Future<void> _restorePersistedRecallRetries(ExternalDeliveryTrip trip) async {
@@ -854,12 +865,20 @@ class _ExternalDeliveryTripDetailsScreenState
   Widget _stopsTab(ExternalDeliveryTrip trip) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final orderedStops = trip.stops.asMap().entries.toList();
+    final recallPendingStops =
+        trip.stops.where((s) => _isRecallPendingStatus(s.status)).toList();
+    final hasRecall = recallPendingStops.isNotEmpty;
+
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       child: Column(
         children: [
           if (trip.isReturnTrip) ...[
             _returnTripBanner(trip),
+            const SizedBox(height: 10),
+          ],
+          if (hasRecall) ...[
+            _recallTripBanner(recallPendingStops.length),
             const SizedBox(height: 10),
           ],
           if (trip.stops.isEmpty)
@@ -873,8 +892,7 @@ class _ExternalDeliveryTripDetailsScreenState
             )
           else
             ...orderedStops.map((entry) {
-              final isRecall = entry.value.status.trim().toLowerCase() ==
-                  'recall pending';
+              final isRecall = _isRecallPendingStatus(entry.value.status);
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: isRecall
@@ -905,57 +923,156 @@ class _ExternalDeliveryTripDetailsScreenState
     );
   }
 
-  // ── Recall card + confirmation ─────────────────────────────────────────────
+  // ── Recall trip-level banner ──────────────────────────────────────────────
 
-  Widget _recallStopCard(ExternalDeliveryTrip trip, ExternalDeliveryTripStop stop) {
+  Widget _recallTripBanner(int count) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
       decoration: BoxDecoration(
-        color: _recallAmber,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: _recallOrange.withValues(alpha: 0.5),
-          width: 1.5,
-        ),
+        color: _recallOrange,
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: _recallOrange.withValues(alpha: 0.08),
-            blurRadius: 12,
+            color: _recallOrange.withValues(alpha: 0.35),
+            blurRadius: 14,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded,
-                  color: _recallOrange, size: 18),
-              const SizedBox(width: 8),
-              const Text(
-                'Recall — Return to Store',
-                style: TextStyle(
-                  color: _recallOrange,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                ),
-              ),
-            ],
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.u_turn_left_rounded,
+                color: Colors.white, size: 18),
           ),
-          const SizedBox(height: 10),
-          const Divider(height: 1, color: Color(0xFFFFCC80)),
-          const SizedBox(height: 12),
-          _stopHeader(stop),
-          const SizedBox(height: 12),
-          _stopInfoCard(stop, isRecall: true),
-          const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0xFFFFCC80)),
-          const SizedBox(height: 10),
-          _stopActionButtons(trip, stop),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  count == 1
+                      ? 'Order Recalled — Turn Around'
+                      : '$count Orders Recalled — Turn Around',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                const Text(
+                  'Return items to store and confirm at the dock',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
-    );
+    )
+        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .shimmer(
+          duration: 1800.ms,
+          color: Colors.white.withValues(alpha: 0.15),
+        );
+  }
+
+  // ── Recall stop card ──────────────────────────────────────────────────────
+
+  Widget _recallStopCard(ExternalDeliveryTrip trip, ExternalDeliveryTripStop stop) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _recallAmber,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: _recallOrange.withValues(alpha: 0.6),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: _recallOrange.withValues(alpha: 0.12),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Solid orange header strip
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+              color: _recallOrange,
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded,
+                      color: Colors.white, size: 17),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'RECALL — RETURN TO STORE',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 12,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'Customer Cancelled',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Body
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _stopHeader(stop),
+                  const SizedBox(height: 12),
+                  _stopInfoCard(stop, isRecall: true),
+                  const SizedBox(height: 12),
+                  const Divider(height: 1, color: Color(0xFFFFCC80)),
+                  const SizedBox(height: 10),
+                  _stopActionButtons(trip, stop),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    )
+        .animate()
+        .fadeIn(duration: 300.ms)
+        .slideY(begin: 0.06, end: 0, duration: 300.ms, curve: Curves.easeOut);
   }
 
   Future<void> _handleConfirmRecall(ExternalDeliveryTripStop stop) async {
@@ -1075,11 +1192,14 @@ class _ExternalDeliveryTripDetailsScreenState
     required String stopStatus,
   }) {
     final normalizedTripStatus = tripStatus.trim().toLowerCase();
-    final normalizedStopStatus = stopStatus.trim().toLowerCase();
+    // Normalise underscores so 'recall_pending' == 'recall pending'
+    final normalizedStopStatus =
+        stopStatus.trim().toLowerCase().replaceAll('_', ' ');
     const lockedStopStatuses = <String>{
       'delivered',
       'returned',
       'failed',
+      'recall pending',
     };
 
     if (normalizedTripStatus == 'completed') {
@@ -1097,6 +1217,11 @@ class _ExternalDeliveryTripDetailsScreenState
     final rowName = (stop.rawFields['name'] ?? '').toString().trim();
     if (rowName.isNotEmpty) return rowName;
     return '${stop.externalDelivery}-${stop.stop}';
+  }
+
+  bool _isRecallPendingStatus(String status) {
+    final s = status.trim().toLowerCase().replaceAll('_', ' ');
+    return s == 'recall pending';
   }
 
   Future<void> _updateStopStatus(
@@ -1399,7 +1524,8 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _stopHeader(ExternalDeliveryTripStop stop) {
-    final statusNorm = stop.status.trim().toLowerCase();
+    final statusNorm =
+        stop.status.trim().toLowerCase().replaceAll('_', ' ');
     final Color statusColor;
     if (statusNorm == 'delivered' || statusNorm == 'returned') {
       statusColor = const Color(0xFF2E7D32);
@@ -1606,7 +1732,10 @@ class _ExternalDeliveryTripDetailsScreenState
   Widget _stopActionButtons(ExternalDeliveryTrip trip, ExternalDeliveryTripStop stop) {
     final stopKey = _stopKey(stop);
     final isUpdating = _updatingStops.contains(stopKey);
-    final isRecallPending = stop.status.trim().toLowerCase() == 'recall pending';
+    final isRecallPending = _isRecallPendingStatus(stop.status);
+    // If ANY stop on the trip is Recall Pending, disable Delivered on ALL other stops.
+    final tripHasRecall =
+        trip.stops.any((s) => _isRecallPendingStatus(s.status));
 
     if (isUpdating) {
       return const Center(
@@ -1648,6 +1777,47 @@ class _ExternalDeliveryTripDetailsScreenState
       );
     }
 
+    // When the trip has an active recall, block "Delivered" on all other stops.
+    // Driver must resolve the recall first.
+    if (tripHasRecall) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: _recallOrange.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _recallOrange.withValues(alpha: 0.25)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.lock_outline, size: 14, color: _recallOrange),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Resolve recalled order first before marking others delivered',
+                style: TextStyle(
+                  color: _recallOrange,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Scrub Delivered/Failed from the popup options list
+    final menuOptions = _stopStatusOptions
+        .where((s) => s != 'Delivered' && s != 'Failed')
+        .toSet()
+      ..addAll([
+        if (stop.status.trim().isNotEmpty &&
+            stop.status.trim() != 'Delivered' &&
+            stop.status.trim() != 'Failed')
+          stop.status.trim(),
+      ]);
+
     return Row(
       children: [
         Expanded(
@@ -1671,11 +1841,7 @@ class _ExternalDeliveryTripDetailsScreenState
         PopupMenuButton<String>(
           onSelected: (status) => _updateStopStatus(stop, status),
           itemBuilder: (context) {
-            final options = <String>{
-              ..._stopStatusOptions,
-              if (stop.status.trim().isNotEmpty) stop.status.trim(),
-            }.toList();
-            return options
+            return menuOptions
                 .map((s) => PopupMenuItem<String>(value: s, child: Text(s)))
                 .toList();
           },
@@ -1731,6 +1897,6 @@ class _ExternalDeliveryTripDetailsScreenState
     final uri = Uri(scheme: 'tel', path: phone);
     if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
-
 }
+
 
