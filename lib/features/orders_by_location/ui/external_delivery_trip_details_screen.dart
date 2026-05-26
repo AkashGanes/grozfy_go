@@ -1145,18 +1145,10 @@ class _ExternalDeliveryTripDetailsScreenState
     final stopKey = _stopKey(stop);
     setState(() => _updatingStops.add(stopKey));
     try {
-      final result = await ExternalDeliveryRepository()
-          .confirmRecallReceivedAtStore(
-        externalDelivery: stop.externalDelivery,
-      );
+      await ExternalDeliveryRepository()
+          .confirmRecallReturn(stop: stop, orderName: stop.externalDelivery);
       if (!mounted) return;
-      final alreadyReturned = result['already_returned'] == true;
-      showInfoSnack(
-        context,
-        alreadyReturned
-            ? 'Already confirmed'
-            : 'Recall confirmed — items returned to store.',
-      );
+      showInfoSnack(context, 'Recall confirmed — items returned to store.');
       unawaited(_clearPersistedRecallRetry(stop.externalDelivery));
       setState(() {
         _recallRetryStops.remove(stopKey);

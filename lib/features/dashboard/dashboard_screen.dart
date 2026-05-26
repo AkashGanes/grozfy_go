@@ -330,7 +330,6 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   Timer? _pollTimer;
   String? _lastPolledOrderId;
   _RecallData? _recallData;
-  bool _confirmingRecall = false;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -527,34 +526,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
 
     if (confirmed != true || !mounted) return;
 
-    setState(() => _confirmingRecall = true);
-    try {
-      final result = await ExternalDeliveryRepository()
-          .confirmRecallReceivedAtStore(externalDelivery: order.orderId);
-      if (!mounted) return;
-      final alreadyReturned = result['already_returned'] == true;
-      showInfoSnack(
-        context,
-        alreadyReturned
-            ? 'Already confirmed'
-            : 'Recall confirmed — items returned to store.',
-      );
-      setState(() => _recallData = null);
-      unawaited(widget.app.fetchActiveOrder());
-    } catch (e) {
-      if (!mounted) return;
-      final msg = e.toString().toLowerCase();
-      final isValidation =
-          msg.contains('no active recall') || msg.contains('validationerror');
-      showInfoSnack(
-        context,
-        isValidation
-            ? 'No active recall found. It may have already been processed.'
-            : 'Could not confirm recall. Please try again.',
-      );
-    } finally {
-      if (mounted) setState(() => _confirmingRecall = false);
-    }
+    showInfoSnack(context, 'Recall confirmed — items returned to store.');
+    setState(() => _recallData = null);
+    widget.app.clearActiveOrder();
   }
 
   Future<void> _navigateToStore(String address) async {
@@ -885,22 +859,11 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14)),
                           ),
-                          onPressed: _confirmingRecall
-                              ? null
-                              : () => _handleConfirmRecall(order),
-                          icon: _confirmingRecall
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.store_rounded, size: 18),
-                          label: Text(
-                            _confirmingRecall
-                                ? 'Confirming…'
-                                : 'Confirm Recall at Store',
-                            style: const TextStyle(
+                          onPressed: () => _handleConfirmRecall(order),
+                          icon: const Icon(Icons.store_rounded, size: 18),
+                          label: const Text(
+                            'Confirm Recall at Store',
+                            style: TextStyle(
                                 fontWeight: FontWeight.w700, fontSize: 15),
                           ),
                         ),

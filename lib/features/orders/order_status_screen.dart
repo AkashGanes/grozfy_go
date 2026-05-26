@@ -41,7 +41,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Timer? _pollTimer;
   String? _lastPolledOrderId;
   _RecallData? _recallData;
-  bool _confirmingRecall = false;
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
@@ -227,38 +226,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     if (confirmed != true || !mounted) return;
 
-    setState(() => _confirmingRecall = true);
-    try {
-      final result = await ExternalDeliveryRepository()
-          .confirmRecallReceivedAtStore(externalDelivery: order.orderId);
-      if (!mounted) return;
-      final alreadyReturned = result['already_returned'] == true;
-      AppToast.show(
-        context,
-        alreadyReturned
-            ? 'Already confirmed'
-            : 'Recall confirmed — items returned to store.',
-      );
-      setState(() => _recallData = null);
-      final app = AppScope.of(context);
-      unawaited(app.fetchActiveOrder());
-      if (mounted) {
-        Navigator.of(context)
-            .pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      final msg = e.toString().toLowerCase();
-      final isValidation =
-          msg.contains('no active recall') || msg.contains('validationerror');
-      AppToast.show(
-        context,
-        isValidation
-            ? 'No active recall found. It may have already been processed.'
-            : 'Could not confirm recall. Please try again.',
-      );
-    } finally {
-      if (mounted) setState(() => _confirmingRecall = false);
+    AppToast.show(context, 'Recall confirmed — items returned to store.');
+    final app = AppScope.of(context);
+    app.clearActiveOrder();
+    if (mounted) {
+      Navigator.of(context)
+          .pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
     }
   }
 
@@ -662,24 +635,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14)),
                           ),
-                          onPressed: _confirmingRecall
-                              ? null
-                              : () => _handleConfirmRecall(order),
-                          icon: _confirmingRecall
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.store_rounded, size: 18),
-                          label: Text(
-                            _confirmingRecall
-                                ? 'Confirming…'
-                                : 'Confirm Recall at Store',
-                            style: const TextStyle(
+                          onPressed: () => _handleConfirmRecall(order),
+                          icon: const Icon(Icons.store_rounded, size: 18),
+                          label: const Text(
+                            'Confirm Recall at Store',
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 15,
                             ),

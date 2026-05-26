@@ -1553,6 +1553,22 @@ class ExternalDeliveryRepository {
     }
   }
 
+  /// Confirms a recall return at the store:
+  /// 1. Sets the trip stop status to 'Returned'.
+  /// 2. Explicitly sets the External Delivery record status to 'Returned'
+  ///    and store_notified=1, overriding any generic server-side hook that
+  ///    would otherwise mark the delivery as 'Failed'.
+  Future<void> confirmRecallReturn({
+    required ExternalDeliveryTripStop stop,
+    required String orderName,
+  }) async {
+    await updateTripStopStatus(stop: stop, newStatus: _returnedStatus);
+    await _updateExternalDeliveryFields(orderName, {
+      'status': _returnedStatus,
+      'store_notified': 1,
+    });
+  }
+
   Future<Map<String, dynamic>> confirmRecallReceivedAtStore({
     required String externalDelivery,
   }) async {
