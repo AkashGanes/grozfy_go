@@ -76,14 +76,22 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     final bool forceEdit =
         args is Map<String, dynamic> && args['force_edit'] == true;
 
-    final Map<String, dynamic>? cached = app.submittedVehicleRaw;
-    if (!forceEdit && cached != null && cached.isNotEmpty && mounted) {
-      _initialized = true;
-      Navigator.of(context).pushReplacementNamed(
-        AppRoutes.vehicleSubmittedDetails,
-        arguments: cached,
-      );
-      return;
+    // Always fetch a fresh profile and force-refresh vehicle data so we
+    // reliably detect an existing vehicle even when SharedPreferences were
+    // cleared (e.g. after reinstall) or the background sync hasn't finished.
+    if (!forceEdit) {
+      await app.fetchLoggedInEmployeeDriverProfile();
+      await app.hydrateVehicleFromBackend(forceRefresh: true);
+
+      final Map<String, dynamic>? fresh = app.submittedVehicleRaw;
+      if (fresh != null && fresh.isNotEmpty && mounted) {
+        _initialized = true;
+        Navigator.of(context).pushReplacementNamed(
+          AppRoutes.vehicleSubmittedDetails,
+          arguments: fresh,
+        );
+        return;
+      }
     }
 
     if (app.loggedProfileDetails?.driver == null) {
