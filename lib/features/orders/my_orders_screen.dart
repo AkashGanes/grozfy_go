@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -475,6 +476,18 @@ class MoreScreen extends ConsumerStatefulWidget {
 
 class _MoreScreenState extends ConsumerState<MoreScreen> {
   bool _isNavigating = false;
+  String _appVersion = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() => _appVersion = info.version);
+  }
 
   void _handleTabTap(int index) {
     if (_isNavigating || index == 2) return;
@@ -602,7 +615,21 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
             ),
           ],
         ).animate().fadeIn(duration: 280.ms, delay: 180.ms).slideY(begin: 0.04, end: 0),
-        const SizedBox(height: 24),
+        if (_appVersion.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 16, bottom: 4),
+            child: Center(
+              child: Text(
+                'Version $_appVersion',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade500,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          ).animate().fadeIn(duration: 280.ms, delay: 210.ms),
+        const SizedBox(height: 12),
         _logoutItem()
             .animate()
             .fadeIn(duration: 280.ms, delay: 240.ms)
