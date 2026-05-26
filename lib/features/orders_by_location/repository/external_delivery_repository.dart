@@ -1553,6 +1553,33 @@ class ExternalDeliveryRepository {
     }
   }
 
+  Future<Map<String, dynamic>> confirmRecallReceivedAtStore({
+    required String externalDelivery,
+  }) async {
+    final uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/grozfy_go.grozfy_go.api.driver.confirm_recall_received_at_store',
+    );
+    _logApi(
+      'confirm_recall request',
+      'POST $uri external_delivery=$externalDelivery',
+    );
+    final resp = await _post(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'external_delivery': externalDelivery}),
+    );
+    _logApi(
+      'confirm_recall response',
+      'code=${resp.statusCode} body=${resp.body}',
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final message = decoded['message'];
+    return message is Map<String, dynamic> ? message : {};
+  }
+
   Future<void> _setDocValue({
     required String doctype,
     required String name,
