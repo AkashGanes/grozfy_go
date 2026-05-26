@@ -52,4 +52,5 @@ class AppRoutes {
   static const more = '/more';
   static const earnings = '/earnings';
   static const security = '/security';
+  static const support = '/support';
 }
