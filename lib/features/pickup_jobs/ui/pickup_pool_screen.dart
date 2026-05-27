@@ -50,7 +50,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
     if (!ConnectivityService().isConnected || !mounted) return;
     try {
       final jobs = await PickupJobRepository().fetchPool();
-      if (mounted) setState(() => _future = Future.value(jobs));
+      if (mounted) setState(() { _future = Future.value(jobs); });
     } catch (_) {}
   }
 
@@ -98,27 +98,28 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
           showInfoSnack(context, error.isNotEmpty ? error : 'Could not accept job');
         }
         // Refresh pool to remove the claimed job
-        setState(() => _future = _loadPool());
+        setState(() { _future = _loadPool(); });
         return;
       }
 
-      // Success — navigate to the new trip detail
-      if (result.deliveryTrip.isNotEmpty) {
-        setState(() => _future = _loadPool());
-        if (mounted) {
-          Navigator.of(context).pushNamed(
-            AppRoutes.externalDeliveryTripDetails,
-            arguments: result.deliveryTrip,
-          );
-        }
-      } else {
-        showInfoSnack(context, 'Pickup claimed — check My Orders for trip details.');
-        setState(() => _future = _loadPool());
+      // Success — navigate to pickup job detail (Mark Picked Up flow)
+      setState(() { _future = _loadPool(); });
+      if (mounted) {
+        Navigator.of(context).pushNamed(
+          AppRoutes.pickupJobDetail,
+          arguments: job.name,
+        );
       }
     } catch (e) {
       if (!mounted) return;
-      showInfoSnack(
-          context, e.toString().replaceFirst('Exception: ', ''));
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      if (msg.toLowerCase().contains('already_claimed') ||
+          msg.toLowerCase().contains('already claimed')) {
+        showInfoSnack(context, 'Someone else got it first');
+        setState(() { _future = _loadPool(); });
+      } else {
+        showInfoSnack(context, msg.isNotEmpty ? msg : 'Could not accept job');
+      }
     } finally {
       if (mounted) setState(() => _acceptingJobs.remove(job.name));
     }
@@ -170,8 +171,9 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
           return RefreshIndicator(
             color: AppTheme.oceanBlue,
             onRefresh: () async {
-              setState(() => _future = _loadPool());
-              await _future;
+              final next = _loadPool();
+              setState(() { _future = next; });
+              await next;
             },
             child: ListView.builder(
               physics: const BouncingScrollPhysics(
@@ -228,7 +230,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
                   style: const TextStyle(color: Colors.black54)),
               const SizedBox(height: 14),
               ElevatedButton(
-                onPressed: () => setState(() => _future = _loadPool()),
+                onPressed: () => setState(() { _future = _loadPool(); }),
                 child: const Text('Retry'),
               ),
             ],

@@ -100,7 +100,7 @@ class _PickupJobDetailScreenState
           .markPickedUp(job.name, proofPhotoPath: photoPath);
       if (!mounted) return;
       showInfoSnack(context, 'Picked up — head to the store.');
-      setState(() => _future = _loadJob());
+      setState(() { _future = _loadJob(); });
     } catch (e) {
       if (!mounted) return;
       showInfoSnack(
@@ -162,16 +162,27 @@ class _PickupJobDetailScreenState
 
     setState(() => _isSubmitting = true);
     try {
-      final result =
-          await PickupJobRepository().confirmCompleted(job.name);
-      if (!mounted) return;
-      final alreadyReceived = result['already_received'] == true;
-      if (alreadyReceived) {
-        showInfoSnack(context, 'Already confirmed');
+      await PickupJobRepository().confirmCompleted(job.name);
+      // Update the trip stop status in ERPNext.
+      if (job.deliveryTrip != null && job.deliveryTrip!.isNotEmpty) {
+        try {
+          await PickupJobRepository().updatePickupTripStopCompleted(
+            tripName: job.deliveryTrip!,
+            pickupJobName: job.name,
+          );
+        } catch (e) {
+          debugPrint('[PickupJob] trip stop update failed: $e');
+          if (mounted) {
+            showInfoSnack(context,
+                'Stop update: ${e.toString().replaceFirst('Exception: ', '')}');
+          }
+        }
       } else {
-        _showCompletionDialog();
+        debugPrint('[PickupJob] deliveryTrip is empty — skipping stop update');
       }
-      setState(() => _future = _loadJob());
+      if (!mounted) return;
+      _showCompletionDialog();
+      setState(() { _future = _loadJob(); });
     } catch (e) {
       if (!mounted) return;
       showInfoSnack(
@@ -287,7 +298,7 @@ class _PickupJobDetailScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _statusBanner(job).animate().fadeIn(duration: 220.ms),
+                _progressCard(job).animate().fadeIn(duration: 220.ms),
                 const SizedBox(height: 12),
                 _detailCard(job)
                     .animate()
@@ -304,36 +315,108 @@ class _PickupJobDetailScreenState
     );
   }
 
-  Widget _statusBanner(PickupJob job) {
-    final status = job.status.trim();
-    final isTerminal = status.toLowerCase() == 'received at store' ||
-        status.toLowerCase() == 'failed' ||
-        status.toLowerCase() == 'cancelled';
-    final color = _statusColor(status);
+  Widget _progressCard(PickupJob job) {
+    final statusNorm = job.status.trim().toLowerCase();
+    final pickedUp =
+        statusNorm == 'picked up' || statusNorm == 'received at store';
+    final completed = statusNorm == 'received at store';
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+    final steps = <_ProgressStep>[
+      const _ProgressStep(
+        label: 'Job Claimed',
+        sublabel: 'Added to your trip',
+        done: true,
       ),
-      child: Row(
+      _ProgressStep(
+        label: 'Items Collected',
+        sublabel: 'Picked up from customer',
+        done: pickedUp,
+      ),
+      _ProgressStep(
+        label: 'Dropped at Store',
+        sublabel: 'Received at store',
+        done: completed,
+      ),
+    ];
+
+    return FrostCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(_statusIcon(status), size: 18, color: color),
-          const SizedBox(width: 8),
-          Text(
-            status.isEmpty ? 'Pending' : status,
+          const Text(
+            'Pickup Progress',
             style: TextStyle(
-                color: color, fontWeight: FontWeight.w700, fontSize: 14),
+              color: AppTheme.nightBlue,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
           ),
-          if (isTerminal) ...[
-            const Spacer(),
-            const Icon(Icons.lock_outline, size: 14, color: Colors.black38),
-          ],
+          const SizedBox(height: 14),
+          for (int i = 0; i < steps.length; i++)
+            _buildStep(steps[i], isLast: i == steps.length - 1),
         ],
       ),
+    );
+  }
+
+  Widget _buildStep(_ProgressStep step, {required bool isLast}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: step.done ? AppTheme.oceanBlue : Colors.transparent,
+                border: step.done
+                    ? null
+                    : Border.all(color: Colors.black26, width: 1.5),
+              ),
+              child: step.done
+                  ? const Icon(Icons.check, size: 13, color: Colors.white)
+                  : null,
+            ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 28,
+                color: step.done
+                    ? AppTheme.oceanBlue.withValues(alpha: 0.3)
+                    : Colors.black12,
+              ),
+          ],
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  step.label,
+                  style: TextStyle(
+                    color:
+                        step.done ? AppTheme.nightBlue : Colors.black38,
+                    fontWeight:
+                        step.done ? FontWeight.w600 : FontWeight.w400,
+                    fontSize: 13,
+                  ),
+                ),
+                if (step.sublabel.isNotEmpty)
+                  Text(
+                    step.sublabel,
+                    style: const TextStyle(
+                        color: Colors.black38, fontSize: 11),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -518,41 +601,17 @@ class _PickupJobDetailScreenState
     );
   }
 
-  Color _statusColor(String status) {
-    switch (status.trim().toLowerCase()) {
-      case 'pending':
-        return Colors.black45;
-      case 'offered':
-        return AppTheme.mango;
-      case 'added to trip':
-        return AppTheme.oceanBlue;
-      case 'picked up':
-        return const Color(0xFF35C2B5); // mint
-      case 'received at store':
-        return const Color(0xFF2E7D32);
-      case 'failed':
-      case 'cancelled':
-        return Colors.red;
-      default:
-        return Colors.black45;
-    }
-  }
+}
 
-  IconData _statusIcon(String status) {
-    switch (status.trim().toLowerCase()) {
-      case 'added to trip':
-        return Icons.local_shipping_outlined;
-      case 'picked up':
-        return Icons.inventory_2_outlined;
-      case 'received at store':
-        return Icons.check_circle_rounded;
-      case 'failed':
-      case 'cancelled':
-        return Icons.cancel_outlined;
-      default:
-        return Icons.hourglass_empty_rounded;
-    }
-  }
+class _ProgressStep {
+  const _ProgressStep({
+    required this.label,
+    required this.sublabel,
+    required this.done,
+  });
+  final String label;
+  final String sublabel;
+  final bool done;
 }
 
 // ── Pickup proof sheet ────────────────────────────────────────────────────────

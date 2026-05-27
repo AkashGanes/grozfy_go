@@ -142,6 +142,75 @@ class PickupJobRepository {
     return message is Map<String, dynamic> ? message : {};
   }
 
+  // ── Update trip stop status after drop-at-store ──────────────────────────
+
+  Future<void> updatePickupTripStopCompleted({
+    required String tripName,
+    required String pickupJobName,
+  }) async {
+    // Fetch the parent trip document — driver has read permission on this,
+    // unlike direct child-table queries which Frappe blocks with PermissionError.
+    final tripUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/External%20Delivery%20Trip/${Uri.encodeComponent(tripName)}',
+    );
+    _logApi('pickup_trip_fetch request', 'GET trip=$tripName');
+    final tripResp = await _get(tripUri, headers: await _authHeaders());
+    _logApi('pickup_trip_fetch response',
+        'code=${tripResp.statusCode} body=${tripResp.body}');
+
+    if (!_okCodes.contains(tripResp.statusCode)) {
+      throw Exception(_extractErrorMessage(tripResp));
+    }
+
+    final tripData =
+        (jsonDecode(tripResp.body)['data']) as Map<String, dynamic>;
+    final rawStops = tripData['pickup_stops'];
+    if (rawStops is! List || rawStops.isEmpty) {
+      throw Exception('No pickup_stops in trip $tripName');
+    }
+
+    // Find the child row for this pickup job.
+    String? stopName;
+    for (final s in rawStops) {
+      if (s is! Map<String, dynamic>) continue;
+      final pj = (s['pickup_job'] ?? '').toString().trim();
+      if (pj == pickupJobName) {
+        stopName = (s['name'] ?? '').toString().trim();
+        break;
+      }
+    }
+
+    if (stopName == null || stopName.isEmpty) {
+      final keys = rawStops.isNotEmpty && rawStops.first is Map
+          ? (rawStops.first as Map).keys.join(', ')
+          : 'unknown';
+      throw Exception(
+          'Stop for $pickupJobName not found. Stop fields: $keys');
+    }
+
+    final setValueUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    _logApi('pickup_stop_status_update request',
+        'POST name=$stopName → Received at Store');
+    final statusResp = await _post(
+      setValueUri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'doctype': 'External Delivery Trip Pickup Stop',
+        'name': stopName,
+        'fieldname': 'status',
+        'value': 'Received at Store',
+      }),
+    );
+    _logApi('pickup_stop_status_update response',
+        'code=${statusResp.statusCode} body=${statusResp.body}');
+
+    if (!_okCodes.contains(statusResp.statusCode)) {
+      throw Exception(_extractErrorMessage(statusResp));
+    }
+  }
+
   // ── Fetch single job (for detail screen refresh) ──────────────────────────
 
   Future<PickupJob> fetchJob(String name) async {

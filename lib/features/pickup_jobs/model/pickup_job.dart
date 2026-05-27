@@ -13,6 +13,7 @@ class PickupJob {
     this.dropLatitude,
     this.dropLongitude,
     this.scheduledWindow,
+    this.deliveryTrip,
   });
 
   final String name;
@@ -28,6 +29,7 @@ class PickupJob {
   final double? dropLatitude;
   final double? dropLongitude;
   final String? scheduledWindow;
+  final String? deliveryTrip;
 
   factory PickupJob.fromJson(Map<String, dynamic> m) {
     double? toD(dynamic v) {
@@ -50,6 +52,7 @@ class PickupJob {
       dropLatitude: toD(m['drop_latitude']),
       dropLongitude: toD(m['drop_longitude']),
       scheduledWindow: m['scheduled_window']?.toString(),
+      deliveryTrip: m['delivery_trip']?.toString(),
     );
   }
 }
