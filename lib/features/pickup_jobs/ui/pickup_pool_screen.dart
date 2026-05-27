@@ -25,12 +25,14 @@ class PickupPoolScreen extends ConsumerStatefulWidget {
 class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
   late Future<List<PickupJob>> _future;
   final Set<String> _acceptingJobs = {};
+  PickupJob? _activePickupJob;
   Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
     _future = _loadPool();
+    _loadActiveJob();
     _pollTimer = Timer.periodic(
       const Duration(seconds: 30),
       (_) => _silentRefresh(),
@@ -43,14 +45,25 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
     super.dispose();
   }
 
-  Future<List<PickupJob>> _loadPool() =>
-      PickupJobRepository().fetchPool();
+  Future<List<PickupJob>> _loadPool() => PickupJobRepository().fetchPool();
+
+  Future<void> _loadActiveJob() async {
+    final job = await PickupJobRepository().loadActivePickupJob();
+    if (mounted) setState(() => _activePickupJob = job);
+  }
 
   Future<void> _silentRefresh() async {
     if (!ConnectivityService().isConnected || !mounted) return;
     try {
-      final jobs = await PickupJobRepository().fetchPool();
-      if (mounted) setState(() { _future = Future.value(jobs); });
+      final results = await Future.wait([
+        PickupJobRepository().fetchPool(),
+        PickupJobRepository().loadActivePickupJob(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _future = Future.value(results[0] as List<PickupJob>);
+        _activePickupJob = results[1] as PickupJob?;
+      });
     } catch (_) {}
   }
 
@@ -97,18 +110,20 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
         } else {
           showInfoSnack(context, error.isNotEmpty ? error : 'Could not accept job');
         }
-        // Refresh pool to remove the claimed job
         setState(() { _future = _loadPool(); });
         return;
       }
 
-      // Success — navigate to pickup job detail (Mark Picked Up flow)
+      // Save job + trip name so the detail screen can load the trip stop.
+      await PickupJobRepository().saveActiveJob(job.name);
+      if (result.deliveryTrip.isNotEmpty) {
+        await PickupJobRepository().saveActiveTrip(result.deliveryTrip);
+      }
       setState(() { _future = _loadPool(); });
       if (mounted) {
-        Navigator.of(context).pushNamed(
-          AppRoutes.pickupJobDetail,
-          arguments: job.name,
-        );
+        Navigator.of(context)
+            .pushNamed(AppRoutes.pickupJobDetail, arguments: job.name)
+            .then((_) => _loadActiveJob());
       }
     } catch (e) {
       if (!mounted) return;
@@ -129,83 +144,112 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = ref.read(appControllerProvider);
+    final controller = ref.watch(appControllerProvider);
     final driverLat = controller.currentLatitude;
     final driverLng = controller.currentLongitude;
+
+    final hasActiveDelivery = controller.activeOrder != null;
+    final hasActivePickup = _activePickupJob != null;
+    final isBlocked = hasActiveDelivery || hasActivePickup;
 
     return AppShell(
       title: 'Pickup Pool',
       subtitle: 'Available return pickups',
       scrollable: false,
-      child: FutureBuilder<List<PickupJob>>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return _loadingView();
-          }
-          if (snapshot.hasError) {
-            return _errorView(
-              snapshot.error.toString().replaceFirst('Exception: ', ''),
-            );
-          }
-          final jobs = snapshot.data ?? [];
-          if (jobs.isEmpty) return _emptyView();
+      child: Column(
+        children: [
+          if (isBlocked)
+            _PoolBlockBanner(
+              isDeliveryOrder: hasActiveDelivery,
+              activePickupJobName:
+                  hasActivePickup ? _activePickupJob!.name : null,
+              onViewTap: () {
+                if (hasActiveDelivery) {
+                  Navigator.of(context).pushNamed(AppRoutes.orderStatus);
+                } else {
+                  Navigator.of(context)
+                      .pushNamed(
+                        AppRoutes.pickupJobDetail,
+                        arguments: _activePickupJob!.name,
+                      )
+                      .then((_) => _loadActiveJob());
+                }
+              },
+            ),
+          Expanded(
+            child: FutureBuilder<List<PickupJob>>(
+              future: _future,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return _loadingView();
+                }
+                if (snapshot.hasError) {
+                  return _errorView(
+                    snapshot.error.toString().replaceFirst('Exception: ', ''),
+                  );
+                }
+                final jobs = snapshot.data ?? [];
+                if (jobs.isEmpty) return _emptyView();
 
-          // Sort by distance if GPS available; otherwise by creation desc
-          final sorted = List<PickupJob>.from(jobs);
-          if (driverLat != null && driverLng != null) {
-            sorted.sort((a, b) {
-              final da = _distanceKm(
-                  a.pickupLatitude, a.pickupLongitude, driverLat, driverLng);
-              final db = _distanceKm(
-                  b.pickupLatitude, b.pickupLongitude, driverLat, driverLng);
-              if (da == null && db == null) return 0;
-              if (da == null) return 1;
-              if (db == null) return -1;
-              return da.compareTo(db);
-            });
-          } else {
-            sorted.sort((a, b) => b.creation.compareTo(a.creation));
-          }
+                final sorted = List<PickupJob>.from(jobs);
+                if (driverLat != null && driverLng != null) {
+                  sorted.sort((a, b) {
+                    final da = _distanceKm(a.pickupLatitude, a.pickupLongitude,
+                        driverLat, driverLng);
+                    final db = _distanceKm(b.pickupLatitude, b.pickupLongitude,
+                        driverLat, driverLng);
+                    if (da == null && db == null) return 0;
+                    if (da == null) return 1;
+                    if (db == null) return -1;
+                    return da.compareTo(db);
+                  });
+                } else {
+                  sorted.sort((a, b) => b.creation.compareTo(a.creation));
+                }
 
-          return RefreshIndicator(
-            color: AppTheme.oceanBlue,
-            onRefresh: () async {
-              final next = _loadPool();
-              setState(() { _future = next; });
-              await next;
-            },
-            child: ListView.builder(
-              physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics()),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: sorted.length,
-              itemBuilder: (context, index) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _JobCard(
-                  job: sorted[index],
-                  distanceLabel: _distanceLabel(_distanceKm(
-                    sorted[index].pickupLatitude,
-                    sorted[index].pickupLongitude,
-                    driverLat,
-                    driverLng,
-                  )),
-                  isAccepting: _acceptingJobs.contains(sorted[index].name),
-                  onAccept: () => _acceptJob(sorted[index]),
-                  onDetail: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          PickupJobDetailScreen(pickupJobName: sorted[index].name),
+                return RefreshIndicator(
+                  color: AppTheme.oceanBlue,
+                  onRefresh: () async {
+                    final next = _loadPool();
+                    setState(() { _future = next; });
+                    await Future.wait([next, _loadActiveJob()]);
+                  },
+                  child: ListView.builder(
+                    physics: const BouncingScrollPhysics(
+                        parent: AlwaysScrollableScrollPhysics()),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    itemCount: sorted.length,
+                    itemBuilder: (context, index) => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _JobCard(
+                        job: sorted[index],
+                        distanceLabel: _distanceLabel(_distanceKm(
+                          sorted[index].pickupLatitude,
+                          sorted[index].pickupLongitude,
+                          driverLat,
+                          driverLng,
+                        )),
+                        isAccepting:
+                            _acceptingJobs.contains(sorted[index].name),
+                        onAccept: () => _acceptJob(sorted[index]),
+                        onDetail: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => PickupJobDetailScreen(
+                                pickupJobName: sorted[index].name),
+                          ),
+                        ),
+                      ).animate().fadeIn(
+                        delay: Duration(milliseconds: index * 40),
+                        duration: 200.ms,
+                      ),
                     ),
                   ),
-                ).animate().fadeIn(
-                  delay: Duration(milliseconds: index * 40),
-                  duration: 200.ms,
-                ),
-              ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -268,6 +312,69 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
           ),
         ),
       );
+}
+
+// ── Blocking banner ───────────────────────────────────────────────────────────
+
+class _PoolBlockBanner extends StatelessWidget {
+  const _PoolBlockBanner({
+    required this.isDeliveryOrder,
+    required this.activePickupJobName,
+    required this.onViewTap,
+  });
+
+  final bool isDeliveryOrder;
+  final String? activePickupJobName;
+  final VoidCallback onViewTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final message = isDeliveryOrder
+        ? 'Active delivery order in progress — finish it before claiming a pickup.'
+        : 'Pickup job in progress — complete it before claiming another.';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.mango.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.mango.withValues(alpha: 0.40)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: AppTheme.mango, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: AppTheme.mango,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onViewTap,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'View →',
+              style: TextStyle(
+                color: AppTheme.mango,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ── Pool card ─────────────────────────────────────────────────────────────────

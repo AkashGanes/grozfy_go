@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/navigation/app_routes.dart';
 import '../../../core/database/partner_timing_log_dao.dart';
 import '../../../core/state/providers.dart';
 import 'trip_stage_timeline_widget.dart';
@@ -918,6 +919,249 @@ class _ExternalDeliveryTripDetailsScreenState
                       ),
               );
             }),
+          if (trip.pickupStops.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _pickupStopsSectionHeader(trip.pickupStops.length),
+            const SizedBox(height: 8),
+            ...trip.pickupStops.map(
+              (ps) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _pickupStopCard(ps),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── Pickup stops ──────────────────────────────────────────────────────────
+
+  Widget _pickupStopsSectionHeader(int count) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(20),
+            border:
+                Border.all(color: AppTheme.oceanBlue.withValues(alpha: 0.25)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.inventory_2_outlined,
+                  size: 13, color: AppTheme.oceanBlue),
+              const SizedBox(width: 6),
+              Text(
+                'Pickup Stops ($count)',
+                style: const TextStyle(
+                  color: AppTheme.oceanBlue,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _pickupStopCard(PickupTripStop ps) {
+    final statusNorm = ps.status.trim().toLowerCase();
+    final Color statusColor;
+    switch (statusNorm) {
+      case 'received at store':
+        statusColor = const Color(0xFF2E7D32);
+      case 'picked up':
+        statusColor = AppTheme.oceanBlue;
+      case 'failed':
+        statusColor = Colors.red;
+      default:
+        statusColor = AppTheme.mango;
+    }
+
+    // Only show navigate / call when the job is still actionable
+    final isTerminal = statusNorm == 'received at store' || statusNorm == 'failed';
+
+    return FrostCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              const Icon(Icons.inventory_2_outlined,
+                  size: 16, color: AppTheme.oceanBlue),
+              const SizedBox(width: 6),
+              Text(
+                'Pickup Stop ${ps.stop}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.nightBlue,
+                  fontSize: 14,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(20),
+                  border:
+                      Border.all(color: statusColor.withValues(alpha: 0.30)),
+                ),
+                child: Text(
+                  ps.status.isEmpty ? 'Pending' : ps.status,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Customer name
+          if (ps.customerName.isNotEmpty) ...[
+            _stopInfoRow(Icons.person_outline, ps.customerName),
+            const SizedBox(height: 6),
+          ],
+
+          // Pickup address (+ navigate button only when still actionable)
+          if (ps.pickupAddress.isNotEmpty) ...[
+            _stopInfoRow(Icons.my_location_outlined, ps.pickupAddress),
+            const SizedBox(height: 6),
+            if (!isTerminal) ...[
+              GestureDetector(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TripStopMapScreen(
+                      address: ps.pickupAddress,
+                      stopNumber: ps.stop,
+                    ),
+                  ),
+                ),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 9),
+                  decoration: BoxDecoration(
+                    color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                        color: AppTheme.oceanBlue.withValues(alpha: 0.2)),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.navigation_rounded,
+                          size: 15, color: AppTheme.oceanBlue),
+                      SizedBox(width: 6),
+                      Text(
+                        'Navigate to Pickup',
+                        style: TextStyle(
+                          color: AppTheme.oceanBlue,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
+          ],
+
+          // Customer mobile with call button (only when still actionable)
+          if (ps.customerMobile.isNotEmpty && !isTerminal) ...[
+            Row(
+              children: [
+                const Icon(Icons.phone_outlined,
+                    size: 15, color: Colors.black45),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(ps.customerMobile,
+                      style: const TextStyle(
+                          color: AppTheme.nightBlue, fontSize: 13)),
+                ),
+                GestureDetector(
+                  onTap: () => _launchCall(ps.customerMobile),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color:
+                              const Color(0xFF2E7D32).withValues(alpha: 0.3)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.call_rounded,
+                            size: 13, color: Color(0xFF2E7D32)),
+                        SizedBox(width: 4),
+                        Text('Call',
+                            style: TextStyle(
+                                color: Color(0xFF2E7D32),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+          ],
+
+          // Failure reason
+          if (ps.failureReasonCode.isNotEmpty) ...[
+            _stopInfoRow(Icons.error_outline_rounded, ps.failureReasonCode,
+                subtle: true),
+            const SizedBox(height: 6),
+          ],
+
+          // Pickup Job reference + tap to view
+          if (ps.pickupJob.isNotEmpty) ...[
+            const Divider(height: 1, color: Colors.black12),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () => Navigator.of(context).pushNamed(
+                AppRoutes.pickupJobDetail,
+                arguments: ps.pickupJob,
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.open_in_new_rounded,
+                      size: 14, color: AppTheme.oceanBlue),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      ps.pickupJob,
+                      style: const TextStyle(
+                        color: AppTheme.oceanBlue,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Text('View Job →',
+                      style: TextStyle(
+                          color: AppTheme.oceanBlue,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -24,6 +24,8 @@ class PickupJobRepository {
   PickupJobRepository();
 
   static const String _prefLanguageCode = 'language_code';
+  static const String _prefActivePickupJob = 'active_pickup_job';
+  static const String _prefActivePickupTrip = 'active_pickup_trip';
   static const Set<int> _okCodes = {200, 201};
   static const Duration _networkTimeout = Duration(seconds: 15);
   static const Duration _fileUploadTimeout = Duration(seconds: 60);
@@ -31,6 +33,60 @@ class PickupJobRepository {
   static final Uri _refreshTokenUri = Uri.parse(
     '${ApiConstants.erpBaseUrl}/api/method/frappe.integrations.oauth2.get_token',
   );
+
+  // ── Active job tracking (SharedPreferences) ──────────────────────────────
+
+  Future<void> saveActiveJob(String jobName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefActivePickupJob, jobName.trim());
+  }
+
+  Future<void> saveActiveTrip(String tripName) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefActivePickupTrip, tripName.trim());
+  }
+
+  Future<String?> loadActiveTrip() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getString(_prefActivePickupTrip)?.trim() ?? '';
+    return v.isEmpty ? null : v;
+  }
+
+  Future<void> clearActiveJob() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefActivePickupJob);
+    await prefs.remove(_prefActivePickupTrip);
+  }
+
+  /// Reads the stored job name, fetches its current status from ERPNext,
+  /// and returns it only if it is still in progress.
+  /// Clears storage automatically when the job is terminal or missing.
+  Future<PickupJob?> loadActivePickupJob() async {
+    final prefs = await SharedPreferences.getInstance();
+    final name = prefs.getString(_prefActivePickupJob)?.trim() ?? '';
+    if (name.isEmpty) return null;
+
+    try {
+      final job = await fetchJob(name);
+      final statusNorm = job.status.trim().toLowerCase();
+      const terminalStatuses = {
+        'received at store',
+        'failed',
+        'cancelled',
+        'pending',
+        'offered',
+      };
+      if (terminalStatuses.contains(statusNorm)) {
+        await clearActiveJob();
+        return null;
+      }
+      return job;
+    } catch (_) {
+      // Job no longer accessible (deleted / permission removed).
+      await clearActiveJob();
+      return null;
+    }
+  }
 
   // ── Pool ──────────────────────────────────────────────────────────────────
 
@@ -211,20 +267,129 @@ class PickupJobRepository {
     }
   }
 
-  // ── Fetch single job (for detail screen refresh) ──────────────────────────
+  // ── Fetch single job via getdoc (full document, all fields) ──────────────
 
   Future<PickupJob> fetchJob(String name) async {
     final uri = Uri.parse(
-      '${ApiConstants.erpBaseUrl}/api/resource/Pickup%20Job/${Uri.encodeComponent(name)}',
-    );
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.form.load.getdoc',
+    ).replace(queryParameters: {
+      'doctype': 'Pickup Job',
+      'name': name,
+    });
     _logApi('fetch_pickup_job request', uri.toString());
     final resp = await _get(uri, headers: await _authHeaders());
-    _logApi('fetch_pickup_job response', 'code=${resp.statusCode}');
+    _logApi('fetch_pickup_job response',
+        'code=${resp.statusCode} body=${resp.body}');
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));
     }
-    final data = (jsonDecode(resp.body)['data']) as Map<String, dynamic>;
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final docs = decoded['docs'];
+    if (docs is! List || docs.isEmpty) {
+      throw Exception('Pickup Job not found: $name');
+    }
+    final data = docs[0] as Map<String, dynamic>;
     return PickupJob.fromJson(data);
+  }
+
+  // ── Fetch pickup stop row from the associated delivery trip ──────────────
+
+  /// Finds the External Delivery Trip for [pickupJobName] and returns
+  /// `(stopData, errorMessage)`.  stopData is null when not found or on error.
+  Future<(Map<String, dynamic>?, String?)> fetchPickupTripStop({
+    required String pickupJobName,
+    String? hintTripName,
+  }) async {
+    try {
+      // Step 1 – resolve trip name
+      String? tripName = (hintTripName?.trim().isNotEmpty == true)
+          ? hintTripName
+          : null;
+      tripName ??= await _findTripNameForPickupJob(pickupJobName);
+
+      if (tripName == null || tripName.isEmpty) {
+        final msg = 'No delivery trip found for $pickupJobName';
+        _logApi('fetch_pickup_trip_stop', msg);
+        return (null, msg);
+      }
+
+      // Step 2 – fetch full trip document
+      final uri = Uri.parse(
+        '${ApiConstants.externalDeliveryTripList}/${Uri.encodeComponent(tripName)}',
+      );
+      _logApi('fetch_pickup_trip_stop request', 'GET trip=$tripName');
+      final resp = await _get(uri, headers: await _authHeaders());
+      _logApi('fetch_pickup_trip_stop response',
+          'code=${resp.statusCode} body=${resp.body}');
+
+      if (!_okCodes.contains(resp.statusCode)) {
+        return (null, 'Trip fetch failed (${resp.statusCode}): ${_extractErrorMessage(resp)}');
+      }
+
+      final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+      final data = decoded['data'];
+      if (data is! Map<String, dynamic>) {
+        return (null, 'Unexpected trip response format');
+      }
+
+      final rawStops = data['pickup_stops'];
+      if (rawStops is! List) {
+        return (null, 'No pickup_stops in trip $tripName');
+      }
+
+      for (final s in rawStops) {
+        if (s is! Map<String, dynamic>) continue;
+        if ((s['pickup_job'] ?? '').toString().trim() == pickupJobName) {
+          return ({
+            ...s,
+            '_trip_name': tripName,
+            '_trip_status': (data['status'] ?? '').toString(),
+            '_trip_date': (data['trip_date'] ?? '').toString(),
+            '_trip_driver': (data['driver'] ?? '').toString(),
+            '_trip_total_stops': data['total_stops'],
+            '_trip_completed_stops': data['completes_stops'],
+          }, null);
+        }
+      }
+      return (null, 'Stop for $pickupJobName not found in trip $tripName');
+    } catch (e) {
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      _logApi('fetch_pickup_trip_stop error', msg);
+      return (null, msg);
+    }
+  }
+
+  /// Queries the External Delivery Trip list filtering by the child table field
+  /// `pickup_job` to find which trip contains [pickupJobName].
+  Future<String?> _findTripNameForPickupJob(String pickupJobName) async {
+    final uri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+      queryParameters: {
+        'filters': jsonEncode([
+          [
+            'External Delivery Trip Pickup Stop',
+            'pickup_job',
+            '=',
+            pickupJobName,
+          ],
+        ]),
+        'fields': jsonEncode(['name']),
+        'limit': '1',
+      },
+    );
+    _logApi('find_trip_for_pickup_job request', uri.toString());
+    try {
+      final resp = await _get(uri, headers: await _authHeaders());
+      _logApi('find_trip_for_pickup_job response',
+          'code=${resp.statusCode} body=${resp.body}');
+      if (!_okCodes.contains(resp.statusCode)) return null;
+      final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+      final data = decoded['data'];
+      if (data is! List || data.isEmpty) return null;
+      final n = (data[0]['name'] ?? '').toString().trim();
+      return n.isEmpty ? null : n;
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── Photo upload ──────────────────────────────────────────────────────────

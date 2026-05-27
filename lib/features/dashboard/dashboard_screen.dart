@@ -30,6 +30,8 @@ import 'widgets/current_location_card.dart';
 import 'widgets/dashboard_greeting_header.dart';
 import 'widgets/profile_progress_card.dart';
 import '../stats/widgets/daily_summary_card.dart';
+import '../pickup_jobs/model/pickup_job.dart';
+import '../pickup_jobs/repository/pickup_job_repository.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -221,6 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           const DailySummaryCard(),
           const SizedBox(height: 14),
           _ActiveOrderSection(app: app),
+          const _ActivePickupJobSection(),
           const SizedBox(height: 14),
           CurrentLocationCard(
             title: app.t('current_location'),
@@ -1122,6 +1125,125 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     final hour12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
     final minute = d.minute.toString().padLeft(2, '0');
     return '$hour12:$minute $period';
+  }
+}
+
+// ── Active pickup job card ────────────────────────────────────────────────────
+
+class _ActivePickupJobSection extends StatefulWidget {
+  const _ActivePickupJobSection();
+
+  @override
+  State<_ActivePickupJobSection> createState() =>
+      _ActivePickupJobSectionState();
+}
+
+class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
+  PickupJob? _job;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final job = await PickupJobRepository().loadActivePickupJob();
+    if (mounted) setState(() => _job = job);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final job = _job;
+    if (job == null) return const SizedBox.shrink();
+
+    final statusNorm = job.status.trim().toLowerCase();
+    final statusColor =
+        statusNorm == 'picked up' ? const Color(0xFF35C2B5) : AppTheme.oceanBlue;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: GestureDetector(
+        onTap: () => Navigator.of(context)
+            .pushNamed(AppRoutes.pickupJobDetail, arguments: job.name)
+            .then((_) => _load()),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: AppTheme.oceanBlue.withValues(alpha: 0.20)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.inventory_2_outlined,
+                    size: 16, color: AppTheme.oceanBlue),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      job.name,
+                      style: const TextStyle(
+                        color: AppTheme.nightBlue,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (job.customerName.isNotEmpty)
+                      Text(
+                        job.customerName,
+                        style: const TextStyle(
+                            color: Colors.black45, fontSize: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  job.status,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.chevron_right_rounded,
+                  size: 18, color: Colors.black26),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
