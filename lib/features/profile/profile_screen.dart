@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/api_constants.dart';
+import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/profile_image_validator.dart';
@@ -38,7 +39,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _expandLicenseDetails = false;
   bool _expandDrivingCategory = false;
   bool _expandAdditionalDetails = false;
-  bool _expandAttachments = false;
 
   String t(String key) => ref.read(appControllerProvider).t(key);
 
@@ -286,16 +286,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final Map<String, String> additionalFields = _additionalDriverFields(
       driver,
     );
-    final List<_DriverAttachment> attachments = _extractDriverAttachments(
-      driver,
-    );
-    final Map<String, String> primaryImageHeaders = _primaryAttachmentHeaders(
-      app,
-    );
-    final Map<String, String> fallbackImageHeaders = <String, String>{
-      'Authorization': 'token ${app.sessionToken}',
-      'Accept': 'image/*',
-    };
 
     return FrostCard(
       child: Column(
@@ -382,24 +372,89 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               .fadeIn(duration: 300.ms)
               .slideY(begin: 0.08, end: 0),
           const SizedBox(height: 10),
-          _detailSection(
-                title: t('kyc_documents'),
-                subtitle: t('read_only_images_from_your_url_data'),
-                leadingIcon: Icons.attachment_rounded,
-                expanded: _expandAttachments,
-                onToggle: () {
-                  setState(() => _expandAttachments = !_expandAttachments);
-                },
-                child: _attachmentSection(
-                  attachments,
-                  primaryHeaders: primaryImageHeaders,
-                  fallbackHeaders: fallbackImageHeaders,
-                ),
-              )
+          _buildDocumentsNavCard(app)
               .animate(delay: 260.ms)
               .fadeIn(duration: 300.ms)
               .slideY(begin: 0.08, end: 0),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDocumentsNavCard(dynamic app) {
+    final int uploadedCount = [
+      app.existingLicenseUrl,
+      app.existingAadharUrl,
+      app.existingPanUrl,
+    ].where((u) => (u ?? '').toString().isNotEmpty).length;
+
+    final Color accent = const Color(0xFF2DBA9F);
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.of(context).pushNamed(AppRoutes.kycDocuments),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDark
+                ? scheme.surfaceContainerHighest
+                : scheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: scheme.outlineVariant.withValues(alpha: 0.6),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.folder_special_outlined,
+                  color: accent,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t('kyc_documents'),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                    Text(
+                      '$uploadedCount/3 documents uploaded — tap to manage',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: scheme.onSurface.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 14,
+                color: scheme.onSurface.withValues(alpha: 0.4),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
