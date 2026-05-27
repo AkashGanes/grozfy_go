@@ -15,6 +15,9 @@ import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/call_utils.dart';
 import '../../core/widgets/app_shell.dart';
+import '../../core/widgets/app_toast.dart';
+import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import 'widgets/order_timer_widget.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
@@ -37,6 +40,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   bool _isFetchingRoute = false;
   bool _hasInitialPosition = false;
   DateTime? _lastRouteFetchAt;
+  bool _syncing = false;
 
   static const String _osrmBase =
       'https://router.project-osrm.org/route/v1/driving';
@@ -274,6 +278,135 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   }
 
   double _rad(double deg) => deg * pi / 180;
+
+  // ---------------------------------------------------------------------------
+  // Status advancement helpers
+  // ---------------------------------------------------------------------------
+
+  OrderProgressStatus _nextStatus(OrderProgressStatus s) {
+    if (s == OrderStatus.accepted) return OrderStatus.reachedPickup;
+    if (s == OrderStatus.reachedPickup) return OrderStatus.pickedUp;
+    if (s == OrderStatus.pickedUp) return OrderStatus.outForDelivery;
+    if (s == OrderStatus.outForDelivery) return OrderStatus.delivered;
+    return s;
+  }
+
+  String _actionLabel(OrderProgressStatus s) {
+    if (s == OrderStatus.accepted) return 'Mark Reached Pickup';
+    if (s == OrderStatus.reachedPickup) return 'Mark Picked Up';
+    if (s == OrderStatus.pickedUp) return 'Start Out for Delivery';
+    if (s == OrderStatus.outForDelivery) return 'Mark Delivered';
+    return '';
+  }
+
+  Color _statusAccentColor(OrderProgressStatus s) {
+    if (s == OrderStatus.reachedPickup) return const Color(0xFFE65100);
+    if (s == OrderStatus.pickedUp) return const Color(0xFF6A1B9A);
+    if (s == OrderStatus.outForDelivery || s == OrderStatus.accepted) {
+      return AppTheme.oceanBlue;
+    }
+    if (s == OrderStatus.delivered) return const Color(0xFF2E7D32);
+    return AppTheme.oceanBlue;
+  }
+
+  IconData _statusIcon(OrderProgressStatus s) {
+    if (s == OrderStatus.reachedPickup) return Icons.store_rounded;
+    if (s == OrderStatus.pickedUp) return Icons.inventory_2_rounded;
+    if (s == OrderStatus.outForDelivery) return Icons.delivery_dining_rounded;
+    if (s == OrderStatus.delivered) return Icons.check_circle_rounded;
+    return Icons.local_shipping_rounded;
+  }
+
+  String _confirmTitle(OrderProgressStatus next) {
+    if (next == OrderStatus.reachedPickup) return 'Reached Pickup?';
+    if (next == OrderStatus.pickedUp) return 'Items Picked Up?';
+    if (next == OrderStatus.outForDelivery) return 'Start Delivery?';
+    if (next == OrderStatus.delivered) return 'Confirm Delivery?';
+    return 'Confirm?';
+  }
+
+  String _confirmBody(OrderProgressStatus next) {
+    if (next == OrderStatus.reachedPickup) {
+      return "Confirm you've arrived at the pickup location.";
+    }
+    if (next == OrderStatus.pickedUp) {
+      return "Confirm you've collected all items from the store.";
+    }
+    if (next == OrderStatus.outForDelivery) {
+      return "Confirm you're heading to the customer with the order.";
+    }
+    if (next == OrderStatus.delivered) {
+      return "Confirm the order has been handed to the customer.";
+    }
+    return 'Confirm status update.';
+  }
+
+  Future<void> _advanceStatus(BuildContext context) async {
+    final app = AppScope.of(context);
+    final order = app.activeOrder;
+    if (order == null || _syncing) return;
+    final navigator = Navigator.of(context);
+
+    final next = _nextStatus(order.orderStatus);
+    if (next == order.orderStatus) return;
+
+    setState(() => _syncing = true);
+
+    if (next == OrderStatus.delivered) {
+      final photoPath = await showDeliveryProofSheet(context);
+      if (!mounted) return;
+      if (photoPath != null) {
+        await ExternalDeliveryRepository().uploadProofPhoto(
+          orderName: order.orderId,
+          filePath: photoPath,
+        );
+        if (!mounted) return;
+      }
+    }
+
+    final error = await app.updateOrderStatus(next);
+
+    if (next == OrderStatus.delivered ||
+        next == OrderStatus.cancelled ||
+        next == OrderStatus.rejected) {
+      app.stopOrderTimer();
+    }
+
+    if (!context.mounted) return;
+    setState(() => _syncing = false);
+
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
+
+    if (next == OrderStatus.delivered) {
+      AppToast.show(context, 'Order delivered and earnings updated');
+      navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
+    }
+  }
+
+  Future<void> _showStatusConfirmSheet(
+    BuildContext context,
+    DeliveryOrder order,
+  ) async {
+    final next = _nextStatus(order.orderStatus);
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _TrackingStatusSheet(
+        title: _confirmTitle(next),
+        body: _confirmBody(next),
+        actionLabel: _actionLabel(order.orderStatus),
+        icon: _statusIcon(next),
+        color: _statusAccentColor(next),
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      await _advanceStatus(context);
+    }
+  }
 
   String _formatDist(double meters) {
     if (meters >= 1000) return '${(meters / 1000).toStringAsFixed(1)} km';
@@ -718,6 +851,20 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   _DeliveryProgressTimeline(status: order.orderStatus),
                   const SizedBox(height: 20),
 
+                  // ── Inline status action button ────────────────────────
+                  if (order.orderStatus != OrderStatus.delivered &&
+                      order.orderStatus != OrderStatus.cancelled &&
+                      order.orderStatus != OrderStatus.rejected) ...[
+                    _TrackingActionButton(
+                      label: _actionLabel(order.orderStatus),
+                      color: _statusAccentColor(order.orderStatus),
+                      icon: _statusIcon(_nextStatus(order.orderStatus)),
+                      syncing: _syncing,
+                      onTap: () => _showStatusConfirmSheet(context, order),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+
                   // Call customer button
                   if (order.customerPhone.isNotEmpty ||
                       order.contactNumber.isNotEmpty)
@@ -1078,6 +1225,184 @@ class _DeliveryProgressTimeline extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+// =============================================================================
+// Inline status action button shown in the tracking bottom sheet
+// =============================================================================
+
+class _TrackingActionButton extends StatelessWidget {
+  const _TrackingActionButton({
+    required this.label,
+    required this.color,
+    required this.icon,
+    required this.syncing,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color color;
+  final IconData icon;
+  final bool syncing;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (label.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: syncing ? null : onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        child: syncing
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white,
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Status confirmation bottom sheet (modal) for tracking screen
+// =============================================================================
+
+class _TrackingStatusSheet extends StatelessWidget {
+  const _TrackingStatusSheet({
+    required this.title,
+    required this.body,
+    required this.actionLabel,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final String body;
+  final String actionLabel;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        16,
+        24,
+        MediaQuery.of(context).padding.bottom + 20,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: scheme.onSurface.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 28),
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 38),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            title,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            body,
+            style: TextStyle(
+              fontSize: 14,
+              color: scheme.onSurface.withValues(alpha: 0.55),
+              height: 1.4,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: Text(
+                actionLabel,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Not Yet',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

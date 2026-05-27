@@ -135,7 +135,8 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
       // If the order is already en route, resume live tracking automatically
       // so the driver immediately sees their position and distance on reopen.
       if (mounted &&
-          detail.status.toLowerCase() == 'added to trip' &&
+          (detail.status.toLowerCase() == 'added to trip' ||
+           detail.status.toLowerCase() == 'picked up') &&
           _destination != null) {
         _startTracking();
       }
