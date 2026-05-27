@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/navigation/app_routes.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
@@ -180,7 +181,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
       return;
     }
     setState(() {
-      controller.text = _formatDate(picked);
+      controller.text = AppDateFormat.apiDate(picked);
     });
   }
 
@@ -196,11 +197,6 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
     }
   }
 
-  String _formatDate(DateTime date) {
-    final String month = date.month.toString().padLeft(2, '0');
-    final String day = date.day.toString().padLeft(2, '0');
-    return '${date.year}-$month-$day';
-  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;

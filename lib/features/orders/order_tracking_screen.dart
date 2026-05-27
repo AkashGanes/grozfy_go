@@ -14,6 +14,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/call_utils.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
@@ -413,8 +414,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     return '${meters.toStringAsFixed(0)} m';
   }
 
-  String _formatTime(DateTime t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -839,7 +838,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     _DetailRow(
                       icon: Icons.access_time_rounded,
                       label: 'Reached',
-                      value: _formatTime(order.reachedStoreAt!),
+                      value: AppDateFormat.time(order.reachedStoreAt),
                     ),
                   ],
                   const SizedBox(height: 16),

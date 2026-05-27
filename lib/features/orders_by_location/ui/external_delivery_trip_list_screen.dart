@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../../core/navigation/app_routes.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/state/app_scope.dart';
@@ -283,12 +284,6 @@ class _TripCard extends StatelessWidget {
   final ExternalDeliveryTripSummary trip;
   final VoidCallback onTap;
 
-  String _formatDate(String raw) {
-    if (raw.length < 10) return raw;
-    final parts = raw.substring(0, 10).split('-');
-    if (parts.length != 3) return raw.substring(0, 10);
-    return '${parts[2]}/${parts[1]}/${parts[0]}';
-  }
 
   String _docstatusLabel(BuildContext context, int docstatus) {
     final app = AppScope.of(context);
@@ -378,7 +373,7 @@ class _TripCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          _formatDate(trip.tripDate),
+                          AppDateFormat.dateFromString(trip.tripDate),
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.black45,

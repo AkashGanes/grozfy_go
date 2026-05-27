@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/providers.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
 import 'widgets/kyc_form_widgets.dart';
@@ -212,11 +213,6 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     });
   }
 
-  String _formatDate(DateTime date) =>
-      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-
-  String _formatDateDmy(DateTime date) =>
-      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -242,8 +238,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
       final String? error = await app.resubmitLicense(
         licenseNumber: _licenseNumberCtrl.text.trim(),
         licenseAttachmentUrl: licenseUrl,
-        issuingDate: _issuingDate != null ? _formatDate(_issuingDate!) : null,
-        expiryDate: _expiryDate != null ? _formatDate(_expiryDate!) : null,
+        issuingDate: _issuingDate != null ? AppDateFormat.apiDate(_issuingDate!) : null,
+        expiryDate: _expiryDate != null ? AppDateFormat.apiDate(_expiryDate!) : null,
       );
       if (!mounted) return;
       setState(() => _busy = false);
@@ -313,8 +309,8 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
           ? null
           : _licenseNumberCtrl.text.trim(),
       licenseAttachmentUrl: licenseUrl ?? _existingLicenseUrl,
-      issuingDate: _issuingDate != null ? _formatDate(_issuingDate!) : null,
-      expiryDate: _expiryDate != null ? _formatDate(_expiryDate!) : null,
+      issuingDate: _issuingDate != null ? AppDateFormat.apiDate(_issuingDate!) : null,
+      expiryDate: _expiryDate != null ? AppDateFormat.apiDate(_expiryDate!) : null,
       panNo: _panNoCtrl.text.trim().isEmpty ? null : _panNoCtrl.text.trim(),
       panAttachmentUrl: panUrl ?? _existingPanUrl,
     );
@@ -411,7 +407,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                                     : null,
                                 child: _staticText(
                                   _issuingDate != null
-                                      ? _formatDateDmy(_issuingDate!)
+                                      ? AppDateFormat.date(_issuingDate)
                                       : null,
                                   'Select date',
                                 ),
@@ -432,7 +428,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                                     : null,
                                 child: _staticText(
                                   _expiryDate != null
-                                      ? _formatDateDmy(_expiryDate!)
+                                      ? AppDateFormat.date(_expiryDate)
                                       : null,
                                   'Select date',
                                 ),

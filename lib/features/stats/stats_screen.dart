@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
 import 'models/driver_stats.dart';
 import 'providers/stats_providers.dart';
@@ -103,7 +104,7 @@ class _DailySection extends ConsumerWidget {
       children: [
         _statTile(
           'Duty Hours',
-          _fmtDuration(s.dutyHours),
+          AppDateFormat.duration(s.dutyHours),
           Icons.access_time_rounded,
           AppTheme.oceanBlue,
         ),
@@ -117,7 +118,7 @@ class _DailySection extends ConsumerWidget {
         const SizedBox(width: 10),
         _statTile(
           'Avg Trip',
-          _fmtDuration(s.avgTripDuration),
+          AppDateFormat.duration(s.avgTripDuration),
           Icons.timer_outlined,
           AppTheme.mango,
         ),
@@ -157,14 +158,6 @@ class _DailySection extends ConsumerWidget {
     );
   }
 
-  static String _fmtDuration(Duration d) {
-    if (d.inHours > 0) {
-      final mins = d.inMinutes.remainder(60);
-      return '${d.inHours}h ${mins}m';
-    }
-    if (d.inMinutes > 0) return '${d.inMinutes} min';
-    return '0 min';
-  }
 }
 
 // ── Monthly section ──────────────────────────────────────────────────────────
@@ -239,7 +232,7 @@ class _MonthlySection extends ConsumerWidget {
             const SizedBox(width: 10),
             _statTile(
               'Total Road Time',
-              _fmtDuration(s.totalRoadTime),
+              AppDateFormat.duration(s.totalRoadTime),
               Icons.route_outlined,
               AppTheme.oceanBlue,
             ),
@@ -250,7 +243,7 @@ class _MonthlySection extends ConsumerWidget {
           children: [
             _statTile(
               'Avg Trip Duration',
-              _fmtDuration(s.avgTripDuration),
+              AppDateFormat.duration(s.avgTripDuration),
               Icons.timer_outlined,
               AppTheme.mango,
             ),
@@ -301,14 +294,6 @@ class _MonthlySection extends ConsumerWidget {
     );
   }
 
-  static String _fmtDuration(Duration d) {
-    if (d.inHours > 0) {
-      final mins = d.inMinutes.remainder(60);
-      return '${d.inHours}h ${mins}m';
-    }
-    if (d.inMinutes > 0) return '${d.inMinutes} min';
-    return '0 min';
-  }
 }
 
 // ── Month selector row ────────────────────────────────────────────────────────
@@ -317,22 +302,6 @@ class _MonthSelector extends ConsumerWidget {
   const _MonthSelector({required this.period});
 
   final ({int month, int year}) period;
-
-  static const _months = [
-    '',
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -350,7 +319,7 @@ class _MonthSelector extends ConsumerWidget {
         const SizedBox(width: 6),
         Expanded(
           child: Text(
-            '${_months[period.month]} ${period.year}',
+            AppDateFormat.monthYearFromParts(period.month, period.year),
             style: const TextStyle(
               fontWeight: FontWeight.w700,
               color: AppTheme.nightBlue,
