@@ -851,6 +851,8 @@ class _StatusChip extends StatelessWidget {
       case OrderStatus.rejected:
       case OrderStatus.cancelled:
         return Colors.red;
+      case OrderStatus.returned:
+        return Colors.brown;
       default:
         return Colors.grey;
     }
