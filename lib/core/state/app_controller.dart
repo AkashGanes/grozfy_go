@@ -2235,6 +2235,29 @@ class AppController extends ChangeNotifier {
           data = await fetchVehicleByName(vehicleFromDriver);
         }
       }
+      // Final fallback: search Vehicle doctype by the driver's employee id.
+      // Catches cases where SharedPreferences were cleared and the Driver doc
+      // has no vehicle field set, but the Vehicle doc still has employee set.
+      if (data == null) {
+        final String? employeeFromDriver = _nullIfBlank(
+          _loggedProfileDetails?.driver?['employee']?.toString(),
+        );
+        if (employeeFromDriver != null) {
+          _logApi(
+            'vehicle.hydrate',
+            'fetch by employee=$employeeFromDriver',
+          );
+          final String? nameByEmployee = await _findResourceName(
+            doctype: 'Vehicle',
+            filters: <List<String>>[
+              <String>['Vehicle', 'employee', '=', employeeFromDriver],
+            ],
+          );
+          if (nameByEmployee != null) {
+            data = await fetchVehicleByName(nameByEmployee);
+          }
+        }
+      }
       if (data == null) {
         _logApi('vehicle.hydrate', 'no vehicle found');
         return;
