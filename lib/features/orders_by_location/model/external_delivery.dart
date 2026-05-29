@@ -32,7 +32,8 @@ class ExternalDelivery {
       status: (m['status'] ?? '').toString(),
       creation: (m['creation'] ?? '').toString(),
       modified: (m['modified'] ?? '').toString(),
-      deliveryAddress: m['delivery_address']?.toString().trim().isNotEmpty == true
+      deliveryAddress:
+          m['delivery_address']?.toString().trim().isNotEmpty == true
           ? m['delivery_address'].toString().trim()
           : null,
     );
@@ -106,8 +107,11 @@ class ExternalDeliveryTrip {
       stops: rawStops is List
           ? rawStops
                 .whereType<Map>()
-                .map((e) => ExternalDeliveryTripStop.fromJson(
-                      e.cast<String, dynamic>()))
+                .map(
+                  (e) => ExternalDeliveryTripStop.fromJson(
+                    e.cast<String, dynamic>(),
+                  ),
+                )
                 .toList()
           : const [],
       pickupStops: rawPickupStops is List
@@ -169,6 +173,7 @@ class PickupTripStop {
     required this.pickupAddress,
     required this.status,
     this.failureReasonCode = '',
+    this.rawFields = const {},
   });
 
   final int stop;
@@ -178,16 +183,18 @@ class PickupTripStop {
   final String pickupAddress;
   final String status;
   final String failureReasonCode;
+  final Map<String, dynamic> rawFields;
 
   factory PickupTripStop.fromJson(Map<String, dynamic> m) {
     return PickupTripStop(
       stop: (m['stop'] as num?)?.toInt() ?? 0,
       pickupJob: (m['pickup_job'] ?? '').toString(),
-      customerName: (m['customer_name'] ?? '').toString(),
-      customerMobile: (m['customer_mobile'] ?? '').toString(),
-      pickupAddress: (m['pickup_address'] ?? '').toString(),
+      customerName: (m['customer_name'] ?? m['customer'] ?? '').toString(),
+      customerMobile: (m['customer_mobile'] ?? m['mobile'] ?? '').toString(),
+      pickupAddress: (m['pickup_address'] ?? m['address'] ?? '').toString(),
       status: (m['status'] ?? '').toString(),
       failureReasonCode: (m['failure_reason_code'] ?? '').toString(),
+      rawFields: m,
     );
   }
 }
