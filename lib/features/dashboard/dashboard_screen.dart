@@ -342,6 +342,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   Timer? _pollTimer;
   String? _lastPolledOrderId;
   _RecallData? _recallData;
+  bool _recallCardExpanded = false;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -414,6 +415,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
               .toString()
               .trim();
           found = _RecallData(
+            orderId: order.orderId,
             customerName: recallStop.customer,
             customerPhone: recallStop.mobile,
             storeName: order.storeName,
@@ -429,6 +431,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
               resolveAddress: false,
             );
             found = _RecallData(
+              orderId: order.orderId,
               customerName: recallStop.customer.isNotEmpty
                   ? recallStop.customer
                   : detail.customerName,
@@ -458,6 +461,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         if (!mounted) return;
         if (_isRecallPending(detail.status)) {
           found = _RecallData(
+            orderId: order.orderId,
             customerName: detail.customerName,
             customerPhone: detail.contactMobile ?? '',
             storeName: detail.storeName,
@@ -490,6 +494,8 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       builder: (_) => RecallInterstitialSheet(
         customerName: data.customerName,
         storeName: data.storeName,
+        orderId: data.orderId,
+        itemCount: data.itemCount,
       ),
     );
   }
@@ -742,70 +748,84 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Status header — soft red tint ────────────────────────
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                      decoration: BoxDecoration(
-                        color: cancelRedBg,
-                        border: Border(
-                          bottom: BorderSide(
-                            color: cancelRedBorder,
-                            width: 0.5,
+                    // ── Status header — soft red tint — Tappable for expansion ─────
+                    InkWell(
+                      onTap: () => setState(
+                        () => _recallCardExpanded = !_recallCardExpanded,
+                      ),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                        decoration: BoxDecoration(
+                          color: cancelRedBg,
+                          border: Border(
+                            bottom: BorderSide(
+                              color: cancelRedBorder,
+                              width: 0.5,
+                            ),
                           ),
                         ),
-                      ),
-                      child: Row(
-                        children: [
-                          // Pulsing cancel icon.
-                          Container(
-                                width: 32,
-                                height: 32,
-                                decoration: BoxDecoration(
-                                  color: cancelRedFg.withValues(
-                                    alpha: isDark ? 0.28 : 0.14,
+                        child: Row(
+                          children: [
+                            // Pulsing cancel icon.
+                            Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: cancelRedFg.withValues(
+                                      alpha: isDark ? 0.28 : 0.14,
+                                    ),
+                                    shape: BoxShape.circle,
                                   ),
-                                  shape: BoxShape.circle,
+                                  child: Icon(
+                                    Icons.cancel_rounded,
+                                    color: cancelRedFg,
+                                    size: 18,
+                                  ),
+                                )
+                                .animate(onPlay: (c) => c.repeat(reverse: true))
+                                .scaleXY(
+                                  begin: 1,
+                                  end: 1.08,
+                                  duration: 1200.ms,
+                                  curve: Curves.easeInOut,
                                 ),
-                                child: Icon(
-                                  Icons.cancel_rounded,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Order Cancelled',
+                                style: TextStyle(
                                   color: cancelRedFg,
-                                  size: 18,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                  letterSpacing: -0.1,
                                 ),
-                              )
-                              .animate(onPlay: (c) => c.repeat(reverse: true))
-                              .scaleXY(
-                                begin: 1,
-                                end: 1.08,
-                                duration: 1200.ms,
-                                curve: Curves.easeInOut,
                               ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Order Cancelled',
+                            ),
+                            // Expand/Collapse icon.
+                            Icon(
+                              _recallCardExpanded
+                                  ? Icons.keyboard_arrow_up_rounded
+                                  : Icons.keyboard_arrow_down_rounded,
+                              size: 20,
+                              color: cancelRedFg.withValues(alpha: 0.6),
+                            ),
+                            const SizedBox(width: 8),
+                            // Timestamp badge.
+                            Text(
+                              timeStamp,
                               style: TextStyle(
-                                color: cancelRedFg,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                                letterSpacing: -0.1,
+                                color: DashColors.textSecondary(context),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
-                          ),
-                          // Timestamp badge.
-                          Text(
-                            timeStamp,
-                            style: TextStyle(
-                              color: DashColors.textSecondary(context),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
 
-                    // ── Body message ────────────────────────────────────────
+                    // ── Body message — Always shown ──────────────────────────
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                       child: Column(
@@ -823,234 +843,257 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                             ),
                           ),
                           const SizedBox(height: 3),
-                          Text(
-                            'while you were out for delivery.',
-                            style: TextStyle(
-                              color: DashColors.textSecondary(context),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w400,
-                              height: 1.4,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'while you were out for delivery.',
+                                  style: TextStyle(
+                                    color: DashColors.textSecondary(context),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w400,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                '#${order.orderId}',
+                                style: TextStyle(
+                                  color: DashColors.textTertiary(context),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
 
-                    // ── "Order Details" section ─────────────────────────────
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Section label with info icon.
-                          Row(
-                            children: [
-                              Text(
-                                'Order Details',
-                                style: TextStyle(
-                                  color: DashColors.textSecondary(context),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                              const SizedBox(width: 5),
-                              Icon(
-                                Icons.info_outline_rounded,
-                                size: 13,
-                                color: DashColors.textSecondary(
-                                  context,
-                                ).withValues(alpha: 0.55),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Divider(height: 1, color: divider),
-                          const SizedBox(height: 14),
-
-                          // Store row — icon + name + order ID + items badge.
-                          Row(
-                            children: [
-                              // Store avatar.
-                              Container(
-                                width: 42,
-                                height: 42,
-                                decoration: BoxDecoration(
-                                  color: DashColors.subtleFill(context),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: divider,
-                                    width: 0.5,
-                                  ),
-                                ),
-                                child: Icon(
-                                  Icons.store_rounded,
-                                  size: 20,
-                                  color: DashColors.textSecondary(context),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              // Store name + Order ID.
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      data.storeName.isNotEmpty
-                                          ? data.storeName
-                                          : 'Store',
-                                      style: TextStyle(
-                                        color: DashColors.textPrimary(context),
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      'Order ID: #${order.orderId}',
-                                      style: TextStyle(
-                                        color: DashColors.textSecondary(
-                                          context,
-                                        ),
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Items badge.
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: DashColors.subtleFill(context),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  itemLabel,
-                                  style: TextStyle(
-                                    color: DashColors.textPrimary(context),
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          // Address row.
-                          if (data.storeAddress.isNotEmpty) ...[
-                            const SizedBox(height: 14),
+                    // ── Expandable "Order Details" ───────────────────────────
+                    if (_recallCardExpanded)
+                      // ── "Order Details" section ─────────────────────────────
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Section label with info icon.
                             Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  child: Icon(
-                                    Icons.location_on,
-                                    size: 16,
-                                    color: cancelRedFg,
+                                Text(
+                                  'Order Details',
+                                  style: TextStyle(
+                                    color: DashColors.textSecondary(context),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 5),
+                                Icon(
+                                  Icons.info_outline_rounded,
+                                  size: 13,
+                                  color: DashColors.textSecondary(
+                                    context,
+                                  ).withValues(alpha: 0.55),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Divider(height: 1, color: divider),
+                            const SizedBox(height: 14),
+
+                            // Store row — icon + name + order ID + items badge.
+                            Row(
+                              children: [
+                                // Store avatar.
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    color: DashColors.subtleFill(context),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: divider,
+                                      width: 0.5,
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.store_rounded,
+                                    size: 20,
+                                    color: DashColors.textSecondary(context),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                // Store name + Order ID.
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        data.storeAddress,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
+                                        data.storeName.isNotEmpty
+                                            ? data.storeName
+                                            : 'Store',
                                         style: TextStyle(
-                                          color: DashColors.textTertiary(
+                                          color: DashColors.textPrimary(
                                             context,
                                           ),
-                                          fontSize: 12.5,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Order ID: #${order.orderId}',
+                                        style: TextStyle(
+                                          color: DashColors.textSecondary(
+                                            context,
+                                          ),
+                                          fontSize: 11.5,
                                           fontWeight: FontWeight.w500,
-                                          height: 1.4,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              ],
-                            ),
-                          ],
-
-                          // Customer phone row.
-                          if (data.customerPhone.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.phone_outlined,
-                                  size: 15,
-                                  color: DashColors.textSecondary(context),
-                                ),
                                 const SizedBox(width: 8),
-                                Expanded(
+                                // Items badge.
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: DashColors.subtleFill(context),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
                                   child: Text(
-                                    data.customerName.isNotEmpty
-                                        ? '${data.customerName} · ${data.customerPhone}'
-                                        : data.customerPhone,
+                                    itemLabel,
                                     style: TextStyle(
-                                      color: DashColors.textSecondary(context),
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w500,
+                                      color: DashColors.textPrimary(context),
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ),
-                                GestureDetector(
-                                  onTap: () => _launchCall(data.customerPhone),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 5,
+                              ],
+                            ),
+
+                            // Address row.
+                            if (data.storeAddress.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Icon(
+                                      Icons.location_on,
+                                      size: 16,
+                                      color: cancelRedFg,
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(
-                                        0xFF1AB36A,
-                                      ).withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Icon(
-                                          Icons.call_rounded,
-                                          size: 12,
-                                          color: isDark
-                                              ? const Color(0xFF4ADE80)
-                                              : const Color(0xFF16A34A),
-                                        ),
-                                        const SizedBox(width: 4),
                                         Text(
-                                          'Call',
+                                          data.storeAddress,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            color: isDark
-                                                ? const Color(0xFF4ADE80)
-                                                : const Color(0xFF16A34A),
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
+                                            color: DashColors.textTertiary(
+                                              context,
+                                            ),
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w500,
+                                            height: 1.4,
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
+
+                            // Customer phone row.
+                            if (data.customerPhone.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.phone_outlined,
+                                    size: 15,
+                                    color: DashColors.textSecondary(context),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      data.customerName.isNotEmpty
+                                          ? '${data.customerName} · ${data.customerPhone}'
+                                          : data.customerPhone,
+                                      style: TextStyle(
+                                        color: DashColors.textSecondary(
+                                          context,
+                                        ),
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  GestureDetector(
+                                    onTap: () =>
+                                        _launchCall(data.customerPhone),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(
+                                          0xFF1AB36A,
+                                        ).withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(20),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.call_rounded,
+                                            size: 12,
+                                            color: isDark
+                                                ? const Color(0xFF4ADE80)
+                                                : const Color(0xFF16A34A),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Call',
+                                            style: TextStyle(
+                                              color: isDark
+                                                  ? const Color(0xFF4ADE80)
+                                                  : const Color(0xFF16A34A),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    ),
 
                     // ── Action buttons ──────────────────────────────────────
                     Padding(
@@ -1447,12 +1490,14 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
 
 class _RecallData {
   const _RecallData({
+    required this.orderId,
     required this.customerName,
     required this.customerPhone,
     required this.storeName,
     required this.storeAddress,
     required this.itemCount,
   });
+  final String orderId;
   final String customerName;
   final String customerPhone;
   final String storeName;

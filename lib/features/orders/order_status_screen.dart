@@ -91,32 +91,42 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final tripId = app.activeTripId;
     if (tripId != null && tripId.isNotEmpty) {
       try {
-        final trip = await ExternalDeliveryRepository().fetchTripDetails(tripId);
+        final trip = await ExternalDeliveryRepository().fetchTripDetails(
+          tripId,
+        );
         if (!mounted) return;
 
         ExternalDeliveryTripStop? recallStop;
         for (final s in trip.stops) {
-          if (s.externalDelivery == order.orderId && _isRecallPending(s.status)) {
+          if (s.externalDelivery == order.orderId &&
+              _isRecallPending(s.status)) {
             recallStop = s;
             break;
           }
         }
 
         if (recallStop != null) {
-          final storeAddress =
-              (recallStop.rawFields['drop_address'] ?? '').toString().trim();
+          final storeAddress = (recallStop.rawFields['drop_address'] ?? '')
+              .toString()
+              .trim();
           found = _RecallData(
+            orderId: order.orderId,
             customerName: recallStop.customer,
             customerPhone: recallStop.mobile,
             storeName: order.storeName,
-            storeAddress: storeAddress.isNotEmpty ? storeAddress : order.storeAddress,
+            storeAddress: storeAddress.isNotEmpty
+                ? storeAddress
+                : order.storeAddress,
             itemCount: 0,
           );
           // Enrich with item count from detail (best-effort).
           try {
-            final detail = await ExternalDeliveryRepository()
-                .fetchDetail(order.orderId, resolveAddress: false);
+            final detail = await ExternalDeliveryRepository().fetchDetail(
+              order.orderId,
+              resolveAddress: false,
+            );
             found = _RecallData(
+              orderId: order.orderId,
               customerName: recallStop.customer.isNotEmpty
                   ? recallStop.customer
                   : detail.customerName,
@@ -139,11 +149,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     // Fallback: check the order record's own status field.
     if (found == null) {
       try {
-        final detail = await ExternalDeliveryRepository()
-            .fetchDetail(order.orderId, resolveAddress: false);
+        final detail = await ExternalDeliveryRepository().fetchDetail(
+          order.orderId,
+          resolveAddress: false,
+        );
         if (!mounted) return;
         if (_isRecallPending(detail.status)) {
           found = _RecallData(
+            orderId: order.orderId,
             customerName: detail.customerName,
             customerPhone: detail.contactMobile ?? '',
             storeName: detail.storeName,
@@ -174,6 +187,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       builder: (_) => RecallInterstitialSheet(
         customerName: data.customerName,
         storeName: data.storeName,
+        orderId: data.orderId,
+        itemCount: data.itemCount,
       ),
     );
   }
@@ -184,8 +199,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final data = _recallData;
     if (data == null) return;
 
-    final customerLabel =
-        data.customerName.isNotEmpty ? data.customerName : 'this customer';
+    final customerLabel = data.customerName.isNotEmpty
+        ? data.customerName
+        : 'this customer';
     final bodyText = data.itemCount > 0
         ? '${data.itemCount} item${data.itemCount == 1 ? '' : 's'} for $customerLabel — confirm return to store?'
         : 'Returning items for $customerLabel — confirm?';
@@ -215,7 +231,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               backgroundColor: _recallOrange,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Confirm'),
@@ -230,8 +247,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final app = AppScope.of(context);
     app.clearActiveOrder();
     if (mounted) {
-      Navigator.of(context)
-          .pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
+      Navigator.of(
+        context,
+      ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
     }
   }
 
@@ -351,8 +369,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         title: 'Order Status',
         subtitle: 'No active delivery',
         child: ElevatedButton(
-          onPressed: () => Navigator.of(context)
-              .pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false),
+          onPressed: () => Navigator.of(
+            context,
+          ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false),
           child: const Text('Back to Dashboard'),
         ),
       );
@@ -444,46 +463,50 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       children: [
         // ── Orange recall banner (shimmer) ────────────────────────────────────
         Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          decoration: BoxDecoration(
-            color: _recallOrange,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: _recallOrange.withValues(alpha: 0.35),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              decoration: BoxDecoration(
+                color: _recallOrange,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: _recallOrange.withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.u_turn_left_rounded, color: Colors.white, size: 20),
-              SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Order Recalled — Return to Store',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                      ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.u_turn_left_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Order Recalled — Return to Store',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Return items and confirm at the dock',
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ],
                     ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Return items and confirm at the dock',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        )
+            )
             .animate(onPlay: (c) => c.repeat(reverse: true))
             .shimmer(
               duration: 1800.ms,
@@ -494,165 +517,180 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
         // ── Recall detail card ────────────────────────────────────────────────
         Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF8E1),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: _recallOrange.withValues(alpha: 0.5),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: _recallOrange.withValues(alpha: 0.1),
-                blurRadius: 16,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: double.infinity,
-                  color: _recallOrange,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 11),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.warning_amber_rounded,
-                          color: Colors.white, size: 17),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'RECALL — RETURN TO STORE',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 12,
-                          letterSpacing: 0.6,
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text(
-                          'Customer Cancelled',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8E1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: _recallOrange.withValues(alpha: 0.5),
+                  width: 1.5,
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _infoRow(Icons.receipt_long_outlined, order.orderId,
-                          bold: true),
-                      const SizedBox(height: 8),
-
-                      if (data.customerName.isNotEmpty) ...[
-                        _infoRow(Icons.person_outline, data.customerName),
-                        const SizedBox(height: 6),
-                      ],
-
-                      if (data.customerPhone.isNotEmpty) ...[
-                        _callRow(data.customerPhone),
-                        const SizedBox(height: 6),
-                      ],
-
-                      if (data.storeName.isNotEmpty) ...[
-                        _infoRow(Icons.store_outlined, data.storeName),
-                        const SizedBox(height: 6),
-                      ],
-
-                      if (data.storeAddress.isNotEmpty) ...[
-                        _infoRow(
-                          Icons.location_on_outlined,
-                          data.storeAddress,
-                          label: 'Return to',
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-
-                      if (data.storeAddress.isNotEmpty) ...[
-                        GestureDetector(
-                          onTap: () => _navigateToStore(data.storeAddress),
-                          child: Container(
-                            width: double.infinity,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 10),
+                boxShadow: [
+                  BoxShadow(
+                    color: _recallOrange.withValues(alpha: 0.1),
+                    blurRadius: 16,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      color: _recallOrange,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 11,
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.warning_amber_rounded,
+                            color: Colors.white,
+                            size: 17,
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'RECALL — RETURN TO STORE',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12,
+                              letterSpacing: 0.6,
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
-                              color: _recallOrange.withValues(alpha: 0.07),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: _recallOrange.withValues(alpha: 0.3),
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'Customer Cancelled',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.store_rounded,
-                                    size: 15, color: _recallOrange),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Navigate to Store',
-                                  style: TextStyle(
-                                    color: _recallOrange,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _infoRow(
+                            Icons.receipt_long_outlined,
+                            order.orderId,
+                            bold: true,
+                          ),
+                          const SizedBox(height: 8),
+
+                          if (data.customerName.isNotEmpty) ...[
+                            _infoRow(Icons.person_outline, data.customerName),
+                            const SizedBox(height: 6),
+                          ],
+
+                          if (data.customerPhone.isNotEmpty) ...[
+                            _callRow(data.customerPhone),
+                            const SizedBox(height: 6),
+                          ],
+
+                          if (data.storeName.isNotEmpty) ...[
+                            _infoRow(Icons.store_outlined, data.storeName),
+                            const SizedBox(height: 6),
+                          ],
+
+                          if (data.storeAddress.isNotEmpty) ...[
+                            _infoRow(
+                              Icons.location_on_outlined,
+                              data.storeAddress,
+                              label: 'Return to',
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+
+                          if (data.storeAddress.isNotEmpty) ...[
+                            GestureDetector(
+                              onTap: () => _navigateToStore(data.storeAddress),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: _recallOrange.withValues(alpha: 0.07),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: _recallOrange.withValues(alpha: 0.3),
                                   ),
                                 ),
-                              ],
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.store_rounded,
+                                      size: 15,
+                                      color: _recallOrange,
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Navigate to Store',
+                                      style: TextStyle(
+                                        color: _recallOrange,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                          ],
+
+                          const Divider(height: 1, color: Color(0xFFFFCC80)),
+                          const SizedBox(height: 14),
+
+                          SizedBox(
+                            width: double.infinity,
+                            height: 52,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _recallOrange,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              onPressed: () => _handleConfirmRecall(order),
+                              icon: const Icon(Icons.store_rounded, size: 18),
+                              label: const Text(
+                                'Confirm Recall at Store',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 15,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 14),
-                      ],
-
-                      const Divider(height: 1, color: Color(0xFFFFCC80)),
-                      const SizedBox(height: 14),
-
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _recallOrange,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14)),
-                          ),
-                          onPressed: () => _handleConfirmRecall(order),
-                          icon: const Icon(Icons.store_rounded, size: 18),
-                          label: const Text(
-                            'Confirm Recall at Store',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                            ),
-                          ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        )
+              ),
+            )
             .animate()
             .fadeIn(duration: 280.ms)
             .slideY(begin: 0.05, end: 0, duration: 280.ms),
@@ -660,8 +698,12 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
-  Widget _infoRow(IconData icon, String text,
-      {String? label, bool bold = false}) {
+  Widget _infoRow(
+    IconData icon,
+    String text, {
+    String? label,
+    bool bold = false,
+  }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -713,7 +755,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                  color: const Color(0xFF2E7D32).withValues(alpha: 0.3)),
+                color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
+              ),
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
@@ -739,12 +782,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
 class _RecallData {
   const _RecallData({
+    required this.orderId,
     required this.customerName,
     required this.customerPhone,
     required this.storeName,
     required this.storeAddress,
     required this.itemCount,
   });
+  final String orderId;
   final String customerName;
   final String customerPhone;
   final String storeName;
