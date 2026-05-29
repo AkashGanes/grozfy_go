@@ -27,7 +27,9 @@ import 'widgets/availability_card.dart';
 import 'widgets/available_deliveries_card.dart';
 import 'widgets/batch_pickup_card.dart';
 import 'widgets/current_location_card.dart';
+import 'widgets/dashboard_colors.dart';
 import 'widgets/dashboard_greeting_header.dart';
+import 'widgets/status_pill.dart';
 import 'widgets/profile_progress_card.dart';
 import '../stats/widgets/daily_summary_card.dart';
 import '../pickup_jobs/model/pickup_job.dart';
@@ -228,7 +230,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           CurrentLocationCard(
             title: app.t('current_location'),
             changeLabel: app.hasSelectedLocation ? 'Change' : 'Select',
-            address: _firstLine(app.currentLocationLabel) ??
+            address:
+                _firstLine(app.currentLocationLabel) ??
                 app.t('location_not_selected'),
             subAddress: _restLines(app.currentLocationLabel) ?? '',
             latitude: app.currentLatitude,
@@ -246,8 +249,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             viewTripsLabel: app.t('view_trips'),
             onSelectOrders: () =>
                 Navigator.of(context).pushNamed(AppRoutes.ordersByLocation),
-            onViewTrips: () => Navigator.of(context)
-                .pushNamed(AppRoutes.externalDeliveryTripList),
+            onViewTrips: () => Navigator.of(
+              context,
+            ).pushNamed(AppRoutes.externalDeliveryTripList),
           ),
           const SizedBox(height: 14),
           AvailableDeliveriesCard(
@@ -281,7 +285,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (trimmed.isEmpty) return null;
     final parts = trimmed.split(RegExp(r'[,\n]'));
     if (parts.length <= 1) return null;
-    return parts.sublist(1).map((p) => p.trim()).where((p) => p.isNotEmpty)
+    return parts
+        .sublist(1)
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
         .join(', ');
   }
 }
@@ -328,7 +335,9 @@ class _ActiveOrderSection extends StatefulWidget {
 }
 
 class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
-  static const Color _recallOrange = Color(0xFFE65100);
+  // Recall uses the app's warm "warning" family (mango #F6A623 / tertiary),
+  // in a deeper shade that stays legible under white text in light & dark.
+  static const Color _recallAccent = Color(0xFFB26A06);
 
   Timer? _pollTimer;
   String? _lastPolledOrderId;
@@ -386,8 +395,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     final tripId = widget.app.activeTripId;
     if (tripId != null && tripId.isNotEmpty) {
       try {
-        final trip =
-            await ExternalDeliveryRepository().fetchTripDetails(tripId);
+        final trip = await ExternalDeliveryRepository().fetchTripDetails(
+          tripId,
+        );
         if (!mounted) return;
 
         ExternalDeliveryTripStop? recallStop;
@@ -400,8 +410,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         }
 
         if (recallStop != null) {
-          final storeAddress =
-              (recallStop.rawFields['drop_address'] ?? '').toString().trim();
+          final storeAddress = (recallStop.rawFields['drop_address'] ?? '')
+              .toString()
+              .trim();
           found = _RecallData(
             customerName: recallStop.customer,
             customerPhone: recallStop.mobile,
@@ -413,8 +424,10 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
           );
           // Enrich with item count from detail (best-effort).
           try {
-            final detail = await ExternalDeliveryRepository()
-                .fetchDetail(order.orderId, resolveAddress: false);
+            final detail = await ExternalDeliveryRepository().fetchDetail(
+              order.orderId,
+              resolveAddress: false,
+            );
             found = _RecallData(
               customerName: recallStop.customer.isNotEmpty
                   ? recallStop.customer
@@ -438,8 +451,10 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     // Fallback: check the order record's own status field.
     if (found == null) {
       try {
-        final detail = await ExternalDeliveryRepository()
-            .fetchDetail(order.orderId, resolveAddress: false);
+        final detail = await ExternalDeliveryRepository().fetchDetail(
+          order.orderId,
+          resolveAddress: false,
+        );
         if (!mounted) return;
         if (_isRecallPending(detail.status)) {
           found = _RecallData(
@@ -495,11 +510,10 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Row(
           children: [
-            Icon(Icons.store_rounded, color: _recallOrange),
+            Icon(Icons.store_rounded, color: _recallAccent),
             SizedBox(width: 8),
             Text(
               'Confirm Recall',
@@ -515,10 +529,11 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: _recallOrange,
+              backgroundColor: _recallAccent,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Confirm'),
@@ -619,8 +634,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         ActiveOrderAction(
           label: app.t('view_order'),
           icon: Icons.receipt_long_outlined,
-          onTap: () => Navigator.of(context)
-              .pushNamed(AppRoutes.orderDetails, arguments: order),
+          onTap: () => Navigator.of(
+            context,
+          ).pushNamed(AppRoutes.orderDetails, arguments: order),
         ),
         ActiveOrderAction(
           label: app.t('navigate'),
@@ -635,16 +651,14 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         ActiveOrderAction(
           label: app.t('track_order'),
           icon: Icons.local_shipping_outlined,
-          onTap: () => Navigator.of(context).pushNamed(
-            AppRoutes.orderTracking,
-            arguments: order,
-          ),
+          onTap: () => Navigator.of(
+            context,
+          ).pushNamed(AppRoutes.orderTracking, arguments: order),
         ),
       ],
-      onTrackOrder: () => Navigator.of(context).pushNamed(
-        AppRoutes.orderTracking,
-        arguments: order,
-      ),
+      onTrackOrder: () => Navigator.of(
+        context,
+      ).pushNamed(AppRoutes.orderTracking, arguments: order),
       primaryActionLabel: transition?.label,
       onPrimaryAction: transition == null
           ? null
@@ -655,302 +669,477 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   // ── Recall card ───────────────────────────────────────────────────────────────
 
   Widget _buildRecallCard(DeliveryOrder order, _RecallData data) {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color surface = DashColors.cardBg(context);
+    final Color divider = DashColors.cardBorder(context);
+
+    // 2026 palette — vivid red accent for cancellation status.
+    const Color cancelRed = Color(0xFFE8384F);
+    final Color cancelRedDark = Color(0xFFFF6370); // bright red for dark mode
+    final Color cancelRedBg = isDark
+        ? const Color(0xFF4A1A28)
+        : const Color(0xFFFEF0F0);
+    final Color cancelRedBorder = isDark
+        ? const Color(0xFF7A2E40)
+        : const Color(0xFFFCD6D6);
+    final Color cancelRedFg = isDark ? cancelRedDark : cancelRed;
+
+    final String itemLabel = data.itemCount > 0
+        ? '${data.itemCount} item${data.itemCount == 1 ? '' : 's'} to return'
+        : 'Return items to store';
+
+    // Format current time for display.
+    final now = DateTime.now();
+    final h = now.hour;
+    final period = h >= 12 ? 'PM' : 'AM';
+    final hour12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
+    final minute = now.minute.toString().padLeft(2, '0');
+    final timeStamp = '$hour12:$minute $period';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Section heading + status chip.
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 10, right: 4),
           child: Row(
             children: [
-              const Text(
+              Text(
                 'Active Order',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: _recallOrange,
+                  color: DashColors.textPrimary(context),
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(
-                  color: _recallOrange.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: _recallOrange.withValues(alpha: 0.35)),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
+              const StatusPill(
+                label: 'Recall',
+                tone: StatusPillTone.danger,
+                icon: Icons.circle,
+                dense: true,
+              ),
+            ],
+          ),
+        ),
+
+        // ── Main card ─────────────────────────────────────────────────────
+        Container(
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: divider),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.06),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.warning_amber_rounded,
-                        size: 11, color: _recallOrange),
-                    SizedBox(width: 4),
-                    Text(
-                      'RECALLED',
-                      style: TextStyle(
-                        color: _recallOrange,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
+                    // ── Status header — soft red tint ────────────────────────
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                      decoration: BoxDecoration(
+                        color: cancelRedBg,
+                        border: Border(
+                          bottom: BorderSide(
+                            color: cancelRedBorder,
+                            width: 0.5,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          // Pulsing cancel icon.
+                          Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: cancelRedFg.withValues(
+                                    alpha: isDark ? 0.28 : 0.14,
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.cancel_rounded,
+                                  color: cancelRedFg,
+                                  size: 18,
+                                ),
+                              )
+                              .animate(onPlay: (c) => c.repeat(reverse: true))
+                              .scaleXY(
+                                begin: 1,
+                                end: 1.08,
+                                duration: 1200.ms,
+                                curve: Curves.easeInOut,
+                              ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Order Cancelled',
+                              style: TextStyle(
+                                color: cancelRedFg,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                                letterSpacing: -0.1,
+                              ),
+                            ),
+                          ),
+                          // Timestamp badge.
+                          Text(
+                            timeStamp,
+                            style: TextStyle(
+                              color: DashColors.textSecondary(context),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // ── Body message ────────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            data.customerName.isNotEmpty
+                                ? 'Customer cancelled the order'
+                                : 'This order has been cancelled',
+                            style: TextStyle(
+                              color: DashColors.textPrimary(context),
+                              fontSize: 14.5,
+                              fontWeight: FontWeight.w600,
+                              height: 1.35,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'while you were out for delivery.',
+                            style: TextStyle(
+                              color: DashColors.textSecondary(context),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // ── "Order Details" section ─────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Section label with info icon.
+                          Row(
+                            children: [
+                              Text(
+                                'Order Details',
+                                style: TextStyle(
+                                  color: DashColors.textSecondary(context),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              Icon(
+                                Icons.info_outline_rounded,
+                                size: 13,
+                                color: DashColors.textSecondary(
+                                  context,
+                                ).withValues(alpha: 0.55),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Divider(height: 1, color: divider),
+                          const SizedBox(height: 14),
+
+                          // Store row — icon + name + order ID + items badge.
+                          Row(
+                            children: [
+                              // Store avatar.
+                              Container(
+                                width: 42,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  color: DashColors.subtleFill(context),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: divider,
+                                    width: 0.5,
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.store_rounded,
+                                  size: 20,
+                                  color: DashColors.textSecondary(context),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              // Store name + Order ID.
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      data.storeName.isNotEmpty
+                                          ? data.storeName
+                                          : 'Store',
+                                      style: TextStyle(
+                                        color: DashColors.textPrimary(context),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Order ID: #${order.orderId}',
+                                      style: TextStyle(
+                                        color: DashColors.textSecondary(
+                                          context,
+                                        ),
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Items badge.
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: DashColors.subtleFill(context),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  itemLabel,
+                                  style: TextStyle(
+                                    color: DashColors.textPrimary(context),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          // Address row.
+                          if (data.storeAddress.isNotEmpty) ...[
+                            const SizedBox(height: 14),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Icon(
+                                    Icons.location_on,
+                                    size: 16,
+                                    color: cancelRedFg,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        data.storeAddress,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: DashColors.textTertiary(
+                                            context,
+                                          ),
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w500,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+
+                          // Customer phone row.
+                          if (data.customerPhone.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.phone_outlined,
+                                  size: 15,
+                                  color: DashColors.textSecondary(context),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    data.customerName.isNotEmpty
+                                        ? '${data.customerName} · ${data.customerPhone}'
+                                        : data.customerPhone,
+                                    style: TextStyle(
+                                      color: DashColors.textSecondary(context),
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () => _launchCall(data.customerPhone),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFF1AB36A,
+                                      ).withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.call_rounded,
+                                          size: 12,
+                                          color: isDark
+                                              ? const Color(0xFF4ADE80)
+                                              : const Color(0xFF16A34A),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Call',
+                                          style: TextStyle(
+                                            color: isDark
+                                                ? const Color(0xFF4ADE80)
+                                                : const Color(0xFF16A34A),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // ── Action buttons ──────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                      child: Row(
+                        children: [
+                          // Navigate button.
+                          if (data.storeAddress.isNotEmpty)
+                            Expanded(
+                              child: SizedBox(
+                                height: 46,
+                                child: OutlinedButton.icon(
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: DashColors.textPrimary(
+                                      context,
+                                    ),
+                                    side: BorderSide(color: divider),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                  ),
+                                  onPressed: () =>
+                                      _navigateToStore(data.storeAddress),
+                                  icon: Icon(
+                                    Icons.navigation_rounded,
+                                    size: 16,
+                                    color: isDark
+                                        ? const Color(0xFF93C5FD)
+                                        : const Color(0xFF2563EB),
+                                  ),
+                                  label: Text(
+                                    'Navigate',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
+                                      color: DashColors.textPrimary(context),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (data.storeAddress.isNotEmpty)
+                            const SizedBox(width: 10),
+                          // Confirm Recall button.
+                          Expanded(
+                            child: SizedBox(
+                              height: 46,
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: isDark
+                                      ? const Color(0xFF2563EB)
+                                      : const Color(0xFF1C4E80),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                  ),
+                                ),
+                                onPressed: () => _handleConfirmRecall(order),
+                                icon: const Icon(
+                                  Icons.check_circle_outline_rounded,
+                                  size: 17,
+                                ),
+                                label: const Text(
+                                  'Confirm Recall',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFF8E1),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-                color: _recallOrange.withValues(alpha: 0.55), width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: _recallOrange.withValues(alpha: 0.14),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
-                  color: _recallOrange,
-                  child: Row(
-                    children: [
-                      const Icon(Icons.u_turn_left_rounded,
-                          color: Colors.white, size: 18),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'RECALL — RETURN TO STORE',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 12,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            SizedBox(height: 2),
-                            Text(
-                              'Customer cancelled. Bring the items back.',
-                              style: TextStyle(
-                                  color: Colors.white70, fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'Customer Cancelled',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .shimmer(
-                      duration: 2000.ms,
-                      color: Colors.white.withValues(alpha: 0.12),
-                    ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.receipt_long_outlined,
-                              size: 14, color: Colors.black45),
-                          const SizedBox(width: 7),
-                          Text(
-                            order.orderId,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
-                              color: Color(0xFF1B1E2A),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      if (data.customerName.isNotEmpty) ...[
-                        _infoRow(Icons.person_outline, data.customerName),
-                        const SizedBox(height: 5),
-                      ],
-                      if (data.customerPhone.isNotEmpty) ...[
-                        _callRow(data.customerPhone),
-                        const SizedBox(height: 5),
-                      ],
-                      if (data.storeName.isNotEmpty) ...[
-                        _infoRow(Icons.store_outlined, data.storeName),
-                        const SizedBox(height: 5),
-                      ],
-                      if (data.storeAddress.isNotEmpty) ...[
-                        _infoRow(
-                          Icons.location_on_outlined,
-                          data.storeAddress,
-                          label: 'Return to',
-                        ),
-                        const SizedBox(height: 10),
-                        GestureDetector(
-                          onTap: () => _navigateToStore(data.storeAddress),
-                          child: Container(
-                            width: double.infinity,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 9),
-                            decoration: BoxDecoration(
-                              color:
-                                  _recallOrange.withValues(alpha: 0.07),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: _recallOrange.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.store_rounded,
-                                    size: 15, color: _recallOrange),
-                                SizedBox(width: 6),
-                                Text(
-                                  'Navigate to Store',
-                                  style: TextStyle(
-                                    color: _recallOrange,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                      const Divider(height: 1, color: Color(0xFFFFCC80)),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _recallOrange,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14)),
-                          ),
-                          onPressed: () => _handleConfirmRecall(order),
-                          icon: const Icon(Icons.store_rounded, size: 18),
-                          label: const Text(
-                            'Confirm Recall at Store',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, fontSize: 15),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        )
+            )
             .animate()
-            .fadeIn(duration: 300.ms)
-            .slideY(begin: 0.05, end: 0, duration: 300.ms),
-      ],
-    );
-  }
-
-  Widget _infoRow(IconData icon, String text, {String? label}) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 1),
-          child: Icon(icon, size: 14, color: Colors.black38),
-        ),
-        const SizedBox(width: 7),
-        if (label != null)
-          Text(
-            '$label: ',
-            style: const TextStyle(
-              color: Colors.black38,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        Expanded(
-          child: Text(text,
-              style:
-                  const TextStyle(color: Color(0xFF1B1E2A), fontSize: 13)),
-        ),
-      ],
-    );
-  }
-
-  Widget _callRow(String phone) {
-    return Row(
-      children: [
-        const Icon(Icons.phone_outlined, size: 14, color: Colors.black38),
-        const SizedBox(width: 7),
-        Expanded(
-          child: Text(phone,
-              style:
-                  const TextStyle(color: Color(0xFF1B1E2A), fontSize: 13)),
-        ),
-        GestureDetector(
-          onTap: () => _launchCall(phone),
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                  color: const Color(0xFF2E7D32).withValues(alpha: 0.3)),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.call_rounded,
-                    size: 13, color: Color(0xFF2E7D32)),
-                SizedBox(width: 4),
-                Text(
-                  'Call',
-                  style: TextStyle(
-                    color: Color(0xFF2E7D32),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+            .fadeIn(duration: 350.ms)
+            .slideY(begin: 0.04, end: 0, duration: 350.ms),
       ],
     );
   }
@@ -969,9 +1158,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: isDark
-                  ? const Color(0xFFF2F4F7)
-                  : const Color(0xFF101828),
+              color: isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828),
             ),
           ),
         ),
@@ -1005,20 +1192,14 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
           next: OrderStatus.reachedPickup,
         );
       case OrderStatus.reachedPickup:
-        return (
-          label: app.t('mark_picked_up'),
-          next: OrderStatus.pickedUp,
-        );
+        return (label: app.t('mark_picked_up'), next: OrderStatus.pickedUp);
       case OrderStatus.pickedUp:
         return (
           label: app.t('start_delivery'),
           next: OrderStatus.outForDelivery,
         );
       case OrderStatus.outForDelivery:
-        return (
-          label: app.t('mark_delivered'),
-          next: OrderStatus.delivered,
-        );
+        return (label: app.t('mark_delivered'), next: OrderStatus.delivered);
       case OrderStatus.pending:
       case OrderStatus.rejected:
       case OrderStatus.delivered:
@@ -1055,10 +1236,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     }
     if (transition.next == OrderStatus.delivered) {
       AppToast.show(context, app.t('order_delivered'));
-      navigator.pushNamedAndRemoveUntil(
-        AppRoutes.dashboard,
-        (route) => false,
-      );
+      navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
     } else {
       navigator.pushNamed(AppRoutes.orderStatus);
     }
@@ -1073,8 +1251,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     final double lng = order.longitude;
 
     if (Platform.isAndroid) {
-      final Uri androidUri =
-          Uri.parse('google.navigation:q=$lat,$lng&mode=d');
+      final Uri androidUri = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
       if (await canLaunchUrl(androidUri)) {
         await launchUrl(androidUri, mode: LaunchMode.externalApplication);
         return;
@@ -1101,8 +1278,10 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       '&destination=$lat,$lng'
       '&travelmode=driving',
     );
-    final bool launched =
-        await launchUrl(webUri, mode: LaunchMode.externalApplication);
+    final bool launched = await launchUrl(
+      webUri,
+      mode: LaunchMode.externalApplication,
+    );
     if (!context.mounted) return;
     if (!launched) {
       showInfoSnack(context, app.t('unable_open_maps'));
@@ -1112,8 +1291,18 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   String? _formatDate(DateTime? d) {
     if (d == null) return null;
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[d.month - 1]} ${d.day}, ${d.year}';
   }
@@ -1166,8 +1355,9 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
     if (job == null) return const SizedBox.shrink();
 
     final statusNorm = job.status.trim().toLowerCase();
-    final statusColor =
-        statusNorm == 'picked up' ? const Color(0xFF35C2B5) : AppTheme.oceanBlue;
+    final statusColor = statusNorm == 'picked up'
+        ? const Color(0xFF35C2B5)
+        : AppTheme.oceanBlue;
 
     return Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -1181,7 +1371,8 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
             color: AppTheme.oceanBlue.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.20)),
+              color: AppTheme.oceanBlue.withValues(alpha: 0.20),
+            ),
           ),
           child: Row(
             children: [
@@ -1192,8 +1383,11 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
                   color: AppTheme.oceanBlue.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.inventory_2_outlined,
-                    size: 16, color: AppTheme.oceanBlue),
+                child: const Icon(
+                  Icons.inventory_2_outlined,
+                  size: 16,
+                  color: AppTheme.oceanBlue,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1212,7 +1406,9 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
                       Text(
                         job.customerName,
                         style: const TextStyle(
-                            color: Colors.black45, fontSize: 11),
+                          color: Colors.black45,
+                          fontSize: 11,
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -1221,8 +1417,7 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
@@ -1237,8 +1432,11 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
                 ),
               ),
               const SizedBox(width: 6),
-              const Icon(Icons.chevron_right_rounded,
-                  size: 18, color: Colors.black26),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: Colors.black26,
+              ),
             ],
           ),
         ),
