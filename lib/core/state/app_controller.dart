@@ -249,7 +249,10 @@ class AppController extends ChangeNotifier {
     final key = '$tripRef:$stopRef:$eventType';
     if (_recentEventKeys.contains(key)) return;
     _recentEventKeys.add(key);
-    Future.delayed(const Duration(seconds: 10), () => _recentEventKeys.remove(key));
+    Future.delayed(
+      const Duration(seconds: 10),
+      () => _recentEventKeys.remove(key),
+    );
     _writeTimingEvent(eventType: eventType, tripRef: tripRef, stopRef: stopRef);
   }
 
@@ -337,6 +340,7 @@ class AppController extends ChangeNotifier {
         ? _serverProfileImageUrl
         : '${ApiConstants.erpBaseUrl}$_serverProfileImageUrl';
   }
+
   ThemeMode get themeMode => _themeMode;
   Color get backgroundColor => Color(_backgroundColorValue);
   Color get accentColor => Color(_accentColorValue);
@@ -378,7 +382,8 @@ class AppController extends ChangeNotifier {
 
   EarningsSummary get earnings => _earnings;
 
-  bool get isOrderTimerRunning => _orderTimer != null && _orderStartTime != null;
+  bool get isOrderTimerRunning =>
+      _orderTimer != null && _orderStartTime != null;
 
   String get orderElapsedTime {
     final hours = _orderElapsedSeconds ~/ 3600;
@@ -467,7 +472,8 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'profile_photo',
         description: 'profile_photo_desc',
-        isCompleted: _profileImagePath != null || _serverProfileImageUrl != null,
+        isCompleted:
+            _profileImagePath != null || _serverProfileImageUrl != null,
         route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
@@ -630,13 +636,11 @@ class AppController extends ChangeNotifier {
         _clientId!.trim().isNotEmpty) {
       final DateTime? expiresAt = await _readAccessTokenExpiry();
       final DateTime now = DateTime.now().toUtc();
-      final bool needsRefresh = expiresAt == null ||
+      final bool needsRefresh =
+          expiresAt == null ||
           now.isAfter(expiresAt.subtract(const Duration(seconds: 30)));
       if (needsRefresh) {
-        _logApi(
-          'bootstrap',
-          'access token expired at $expiresAt — refreshing',
-        );
+        _logApi('bootstrap', 'access token expired at $expiresAt — refreshing');
         final bool refreshed = await refreshSession();
         if (!refreshed) {
           _logApi(
@@ -1021,12 +1025,12 @@ class AppController extends ChangeNotifier {
     if (sourcePath.isEmpty || !File(sourcePath).existsSync()) {
       return 'Selected image is unavailable. Pick another image.';
     }
-    final String? imageValidationError = await _validateProfileImage(
-      sourcePath,
-    );
-    if (imageValidationError != null) {
-      return imageValidationError;
-    }
+    // final String? imageValidationError = await _validateProfileImage(
+    //   sourcePath,
+    // );
+    // if (imageValidationError != null) {
+    //   return imageValidationError;
+    // }
 
     _profileImageSyncing = true;
     _profileImageSyncError = null;
@@ -1731,6 +1735,8 @@ class AppController extends ChangeNotifier {
     _incomingOrder = null;
     _activeOrder = null;
     _profile = null;
+    _profileImagePath = null;
+    _serverProfileImageUrl = null;
     _loggedProfileDetails = null;
     _profileDetailsError = null;
     _profileDetailsLoading = false;
@@ -1765,6 +1771,8 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefCurrentLocationLabel),
       prefs.remove(_prefProfileCompleted),
       prefs.remove(_prefKycCompleted),
+      prefs.remove(_prefProfileImagePath),
+      prefs.remove(_prefServerProfileImageUrl),
       prefs.remove(_prefDriverName),
       prefs.remove(_prefVehicleName),
       prefs.remove(_prefVehicleLicensePlate),
@@ -1793,7 +1801,10 @@ class AppController extends ChangeNotifier {
           tokenType: tokenTypeSnapshot,
         ),
       );
-      if (wasOnline) unawaited(FCMService().unsubscribeWithToken(bearerToken: accessToRevoke));
+      if (wasOnline)
+        unawaited(
+          FCMService().unsubscribeWithToken(bearerToken: accessToRevoke),
+        );
     }
   }
 
@@ -2822,11 +2833,17 @@ class AppController extends ChangeNotifier {
       // source of truth for bank identity after logout (SharedPreferences
       // are cleared). Uses custom_ prefix — Frappe adds it to all fields
       // created via Customize Form (unlike 'vehicle' which is a standard field).
-      _logApi('bank.submit', 'resolvedBankName=$resolvedBankName driverName=$_driverName');
+      _logApi(
+        'bank.submit',
+        'resolvedBankName=$resolvedBankName driverName=$_driverName',
+      );
       if (resolvedBankName != null) {
         try {
           await _setDriverField('custom_bank_account', resolvedBankName);
-          _logApi('bank.submit', 'driver_link set custom_bank_account=$resolvedBankName');
+          _logApi(
+            'bank.submit',
+            'driver_link set custom_bank_account=$resolvedBankName',
+          );
         } catch (e) {
           _logApi('bank.submit.driver_link_warn', 'non-fatal: $e');
         }
@@ -3689,18 +3706,25 @@ class AppController extends ChangeNotifier {
   Future<void> _tryRestoreActiveOrderByDriver() async {
     if (_driverName == null || _driverName!.isEmpty) return;
     try {
-      final trip = await _orderRepository.fetchFirstActiveTripWithOrders(_driverName!);
+      final trip = await _orderRepository.fetchFirstActiveTripWithOrders(
+        _driverName!,
+      );
       if (trip == null || trip.stops.isEmpty) return;
 
       const terminalStatuses = {
-        'delivered', 'cancelled', 'failed', 'returned', 'return initiated',
+        'delivered',
+        'cancelled',
+        'failed',
+        'returned',
+        'return initiated',
       };
 
       ExternalDeliveryDetail? detail;
       for (final stop in trip.stops) {
         final id = stop.externalDelivery.trim();
         if (id.isEmpty) continue;
-        if (terminalStatuses.contains(stop.status.trim().toLowerCase())) continue;
+        if (terminalStatuses.contains(stop.status.trim().toLowerCase()))
+          continue;
         try {
           detail = await _orderRepository.fetchDetail(id);
           break;
@@ -4020,22 +4044,24 @@ class AppController extends ChangeNotifier {
       baseUrl: ApiConstants.erpBaseUrl,
     );
     _locationPingSubscription?.cancel();
-    _locationPingSubscription = LocationPingService.locationUpdates.listen(
-      (data) {
-        if (data == null) return;
-        _currentLatitude = (data['lat'] as num?)?.toDouble();
-        _currentLongitude = (data['lng'] as num?)?.toDouble();
-        _updateLiveLocation();
-      },
-    );
+    _locationPingSubscription = LocationPingService.locationUpdates.listen((
+      data,
+    ) {
+      if (data == null) return;
+      _currentLatitude = (data['lat'] as num?)?.toDouble();
+      _currentLongitude = (data['lng'] as num?)?.toDouble();
+      _updateLiveLocation();
+    });
   }
 
   Future<String?> _buildAuthHeader() async {
     // Prefer API key:secret — doesn't expire and works reliably in background.
-    final String? apiKey =
-        await SecureTokenStorage.read(SecureTokenStorage.apiKey);
-    final String? apiSecret =
-        await SecureTokenStorage.read(SecureTokenStorage.apiSecret);
+    final String? apiKey = await SecureTokenStorage.read(
+      SecureTokenStorage.apiKey,
+    );
+    final String? apiSecret = await SecureTokenStorage.read(
+      SecureTokenStorage.apiSecret,
+    );
     if (apiKey != null &&
         apiKey.isNotEmpty &&
         apiSecret != null &&
@@ -4050,7 +4076,9 @@ class AppController extends ChangeNotifier {
     final String tokenType =
         (await SecureTokenStorage.read(SecureTokenStorage.tokenType) ?? '')
             .trim();
-    return tokenType.toLowerCase() == 'token' ? 'token $token' : 'Bearer $token';
+    return tokenType.toLowerCase() == 'token'
+        ? 'token $token'
+        : 'Bearer $token';
   }
 
   Future<void> _persistActiveTripId(String? tripId) async {
@@ -4518,8 +4546,9 @@ class AppController extends ChangeNotifier {
         // Seed vehicle lookup key from the Driver doc's link field.
         // SharedPreferences are wiped on logout so this restores the
         // primary key that hydrateVehicleFromBackend() needs after re-login.
-        final String? vehicleFromDriverDoc =
-            _nullIfBlank(driverDoc['vehicle']?.toString());
+        final String? vehicleFromDriverDoc = _nullIfBlank(
+          driverDoc['vehicle']?.toString(),
+        );
         if (vehicleFromDriverDoc != null) {
           _writePref(
             (SharedPreferences prefs) =>
@@ -4531,8 +4560,9 @@ class AppController extends ChangeNotifier {
         // Mirrors the vehicle seeding above — Driver.custom_bank_account is
         // the source of truth after logout clears SharedPreferences.
         // Uses custom_ prefix because the field was added via Customize Form.
-        final String? bankFromDriverDoc =
-            _nullIfBlank(driverDoc['custom_bank_account']?.toString());
+        final String? bankFromDriverDoc = _nullIfBlank(
+          driverDoc['custom_bank_account']?.toString(),
+        );
         if (bankFromDriverDoc != null) {
           _writePref(
             (SharedPreferences prefs) =>
@@ -4561,12 +4591,29 @@ class AppController extends ChangeNotifier {
 
   Future<void> _syncProfileImageFromUser(String userName) async {
     try {
-      final Map<String, dynamic>? userDoc = await _fetchResourceDoc('User', userName);
-      final String? userImage = _nullIfBlank(userDoc?['user_image']?.toString());
+      final Map<String, dynamic>? userDoc = await _fetchResourceDoc(
+        'User',
+        userName,
+      );
+      final String? userImage = _nullIfBlank(
+        userDoc?['user_image']?.toString(),
+      );
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      _serverProfileImageUrl = userImage;
       if (userImage != null) {
-        _serverProfileImageUrl = userImage;
-        final SharedPreferences prefs = await SharedPreferences.getInstance();
         await prefs.setString(_prefServerProfileImageUrl, userImage);
+      } else {
+        await prefs.remove(_prefServerProfileImageUrl);
+        if (_profileImagePath != null) {
+          final File localFile = File(_profileImagePath!);
+          if (localFile.existsSync()) {
+            try {
+              localFile.deleteSync();
+            } catch (_) {}
+          }
+          _profileImagePath = null;
+          await prefs.remove(_prefProfileImagePath);
+        }
       }
     } catch (_) {}
   }

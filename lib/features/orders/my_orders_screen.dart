@@ -381,6 +381,7 @@ class _MoreScreenState extends State<MoreScreen> {
           'Documents',
           AppRoutes.kycDocuments,
         ),
+        _menuItem(Icons.lock_rounded, 'Security', AppRoutes.security),
         _menuItem(Icons.help_rounded, 'Support', AppRoutes.settings),
       ],
     );
