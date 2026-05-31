@@ -10,6 +10,7 @@ import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/skeleton_loader.dart';
 import '../../kyc/widgets/kyc_form_widgets.dart';
@@ -459,10 +460,8 @@ class _OrdersByLocationScreenState
     bool loading = true;
     bool fetchStarted = false;
 
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
@@ -482,49 +481,14 @@ class _OrdersByLocationScreenState
             final currentStore =
                 ref.read(appControllerProvider).selectedStoreName;
 
-            return Container(
-              decoration: BoxDecoration(
-                color: scheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              padding: EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                MediaQuery.of(ctx).padding.bottom + 20,
-              ),
+            return AppBottomSheet(
+              title: 'Select Your Location',
+              subtitle: 'Orders will be filtered by your selected store.',
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: scheme.onSurface.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  Text(
-                    'Select Your Location',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Orders will be filtered by your selected store.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: scheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   if (loading)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 24),

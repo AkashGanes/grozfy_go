@@ -9,6 +9,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/providers.dart';
 import '../../core/utils/validators.dart';
+import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
 import 'widgets/kyc_form_widgets.dart';
 
@@ -135,41 +136,31 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
   };
 
   Future<void> _pickFile(String field) async {
-    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+    final ImageSource? source = await showAppBottomSheet<ImageSource>(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      showDragHandle: true,
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Upload ${_fieldLabel[field]}',
-                style: Theme.of(context).textTheme.titleMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ListTile(
-                leading:
-                    const CircleAvatar(child: Icon(Icons.camera_alt_rounded)),
-                title: const Text('Take Photo'),
-                subtitle: const Text('Use camera to capture document'),
-                onTap: () => Navigator.pop(context, ImageSource.camera),
-              ),
-              ListTile(
-                leading:
-                    const CircleAvatar(child: Icon(Icons.photo_library_rounded)),
-                title: const Text('Choose from Gallery'),
-                subtitle: const Text('Pick an existing image'),
-                onTap: () => Navigator.pop(context, ImageSource.gallery),
-              ),
-            ],
-          ),
+      builder: (_) => AppBottomSheet(
+        title: 'Upload ${_fieldLabel[field]}',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading:
+                  const CircleAvatar(child: Icon(Icons.camera_alt_rounded)),
+              title: const Text('Take Photo'),
+              subtitle: const Text('Use camera to capture document'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading:
+                  const CircleAvatar(child: Icon(Icons.photo_library_rounded)),
+              title: const Text('Choose from Gallery'),
+              subtitle: const Text('Pick an existing image'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
         ),
       ),
     );

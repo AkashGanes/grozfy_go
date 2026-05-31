@@ -3,6 +3,7 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/services/api_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/skeleton_loader.dart';
@@ -93,12 +94,8 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
   }
 
   void _showDeliveryDetails(ExternalDeliveryOrder delivery) {
-    showModalBottomSheet(
+    showAppBottomSheet(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.7,
         minChildSize: 0.5,
@@ -539,33 +536,13 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     final statusColor = _getStatusColor(_delivery.status);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SingleChildScrollView(
-        controller: widget.scrollController,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: scheme.onSurface.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
+    return AppBottomSheet(
+      scrollController: widget.scrollController,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
               Row(
                 children: [
                   Expanded(
@@ -711,53 +688,24 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
               const SizedBox(height: 32),
 
               if (_delivery.status.toLowerCase() == 'pending')
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _acceptDelivery(context),
-                    icon: const Icon(Icons.add_road, color: Colors.white),
-                    label: const Text(
-                      'Create Trip',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
+                AppSheetPrimaryButton(
+                  label: 'Create Trip',
+                  icon: Icons.add_road,
+                  color: Colors.green,
+                  onPressed: () => _acceptDelivery(context),
                 ),
 
               if (_delivery.hasDropLocation)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _navigateToDelivery(context),
-                      icon: const Icon(Icons.navigation),
-                      label: const Text('Navigate to Delivery'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
+                  child: AppSheetPrimaryButton(
+                    label: 'Navigate to Delivery',
+                    icon: Icons.navigation,
+                    color: Colors.blue,
+                    onPressed: () => _navigateToDelivery(context),
                   ),
                 ),
-
-              const SizedBox(height: 16),
             ],
-          ),
-        ),
       ),
     );
   }

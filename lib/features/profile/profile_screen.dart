@@ -18,6 +18,7 @@ import '../../core/constants/api_constants.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 // import '../../core/utils/profile_image_validator.dart';
+import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/authed_network_image.dart';
 
@@ -542,21 +543,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _showAttachmentActions(_DriverAttachment item) async {
-    final String? action = await showModalBottomSheet<String>(
+    final String? action = await showAppBottomSheet<String>(
       context: context,
       builder: (context) {
-        return SafeArea(
+        return AppBottomSheet(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (item.isImage)
                 ListTile(
+                  contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.visibility_outlined),
                   title: Text(t('preview')),
                   onTap: () => Navigator.of(context).pop('preview'),
                 )
               else
                 ListTile(
+                  contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.open_in_new_rounded),
                   title: Text(t('open')),
                   onTap: () => Navigator.of(context).pop('open'),

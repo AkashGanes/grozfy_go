@@ -7,16 +7,15 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_toast.dart';
 
 /// Shows the proof-of-delivery capture bottom sheet.
 /// Returns the local file path if the driver captured/selected a photo,
 /// or null if they tapped "Skip".
 Future<String?> showDeliveryProofSheet(BuildContext context) {
-  return showModalBottomSheet<String?>(
+  return showAppBottomSheet<String?>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
     builder: (_) => const _DeliveryProofSheet(),
   );
 }
@@ -184,17 +183,12 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
   }
 
   void _showPhotoSourceSheet() {
-    showModalBottomSheet<void>(
+    showAppBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (ctx) => SafeArea(
+      builder: (ctx) => AppBottomSheet(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined,
                   color: AppTheme.oceanBlue),
@@ -224,7 +218,6 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
                   setState(() => _pickedFile = null);
                 },
               ),
-            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -233,64 +226,19 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
+    return AppBottomSheet(
+      scrollable: true,
+      title: 'Proof of Delivery',
+      subtitle: 'Optionally capture a photo as proof of delivery.',
+      leadingIcon: Icons.camera_alt_rounded,
+      leadingIconColor: Colors.green,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 12),
 
-            Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.green.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.camera_alt_rounded,
-                    color: Colors.green,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                const Text(
-                  'Proof of Delivery',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.nightBlue,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Optionally capture a photo as proof of delivery.',
-              style: TextStyle(fontSize: 13, color: Colors.black54),
-            ),
-            const SizedBox(height: 20),
-
-            GestureDetector(
+          GestureDetector(
               onTap: _showPhotoSourceSheet,
               child: _pickedFile == null
                   ? Container(
@@ -364,57 +312,30 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
                     ),
             ),
 
-            const SizedBox(height: 20),
+          const SizedBox(height: 20),
 
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(null),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      side: BorderSide(
-                          color: Colors.black.withValues(alpha: 0.20)),
-                    ),
-                    child: const Text(
-                      'Skip',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ),
+          Row(
+            children: [
+              Expanded(
+                child: AppSheetSecondaryButton(
+                  label: 'Skip',
+                  onPressed: () => Navigator.of(context).pop(null),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4CAF50),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    icon: const Icon(Icons.done_all_rounded, size: 18),
-                    label: const Text(
-                      'Confirm Delivered',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 15),
-                    ),
-                    onPressed: () =>
-                        Navigator.of(context).pop(_pickedFile?.path),
-                  ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: AppSheetPrimaryButton(
+                  label: 'Confirm Delivered',
+                  icon: Icons.done_all_rounded,
+                  color: const Color(0xFF4CAF50),
+                  onPressed: () =>
+                      Navigator.of(context).pop(_pickedFile?.path),
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
