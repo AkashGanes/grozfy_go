@@ -308,6 +308,7 @@ class _DeliveryCard extends StatelessWidget {
                         Expanded(
                           child: Text(
                             delivery.storeName,
+                            maxLines: 1,
                             style: TextStyle(
                               fontSize: 12,
                               color: scheme.onSurface.withValues(alpha: 0.6),
@@ -326,11 +327,15 @@ class _DeliveryCard extends StatelessWidget {
                           color: scheme.onSurface.withValues(alpha: 0.5),
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          delivery.customerName,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: scheme.onSurface.withValues(alpha: 0.6),
+                        Flexible(
+                          child: Text(
+                            delivery.customerName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: scheme.onSurface.withValues(alpha: 0.6),
+                            ),
                           ),
                         ),
                         if (delivery.modified != null) ...[

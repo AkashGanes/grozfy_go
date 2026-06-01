@@ -1162,10 +1162,14 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                                     size: 18,
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(
-                                    _customerName.isNotEmpty
-                                        ? _customerName
-                                        : 'Customer',
+                                  Flexible(
+                                    child: Text(
+                                      _customerName.isNotEmpty
+                                          ? _customerName
+                                          : 'Customer',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                                   const Spacer(),
                                   Icon(

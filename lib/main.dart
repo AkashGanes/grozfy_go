@@ -48,6 +48,7 @@ import 'features/profile/profile_screen.dart';
 import 'features/security/security_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/splash/splash_screen.dart';
+import 'package:device_preview/device_preview.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -64,7 +65,9 @@ void main() async {
   ConnectivityService().startMonitoring();
   await SyncManager().initialize();
   await OfflineTripManager().initialize();
-  await TimingSyncEngine().initialize(container.read(partnerTimingLogDaoProvider));
+  await TimingSyncEngine().initialize(
+    container.read(partnerTimingLogDaoProvider),
+  );
 
   // Initialize Firebase
   try {
@@ -86,7 +89,13 @@ void main() async {
   await container.read(biometricOnlyProvider.notifier).initialize();
 
   runApp(
-    UncontrolledProviderScope(container: container, child: const GrozfyGoApp()),
+    DevicePreview(
+      enabled: false,
+      builder: (context) => UncontrolledProviderScope(
+        container: container,
+        child: const GrozfyGoApp(),
+      ),
+    ),
   );
 }
 
@@ -143,9 +152,7 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
           scaffoldBackgroundColor: controller.backgroundColor,
           primaryColor: controller.accentColor,
         ),
-        darkTheme: AppTheme.getDarkTheme(
-          primaryColor: controller.accentColor,
-        ),
+        darkTheme: AppTheme.getDarkTheme(primaryColor: controller.accentColor),
         themeMode: controller.themeMode,
         locale: controller.languageCode.isNotEmpty
             ? Locale(controller.languageCode)
@@ -189,9 +196,8 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
                   kycArgs is Map<String, dynamic> &&
                   kycArgs['license_reupload'] == true;
               return MaterialPageRoute<void>(
-                builder: (_) => KycDocumentsScreen(
-                  licenseReuploadMode: licenseReupload,
-                ),
+                builder: (_) =>
+                    KycDocumentsScreen(licenseReuploadMode: licenseReupload),
               );
             case AppRoutes.vehicleDetails:
               final dynamic vehicleArgs = settings.arguments;

@@ -1518,7 +1518,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          Expanded(child: Text(value)),
+          Expanded(
+            child: Text(value, overflow: TextOverflow.ellipsis, maxLines: 2),
+          ),
         ],
       ),
     );
