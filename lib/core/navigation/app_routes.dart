@@ -24,6 +24,7 @@ class AppRoutes {
   static const splash = '/';
   static const language = '/language';
   static const login = '/login';
+  static const otp = '/otp';
   static const register = '/register';
   static const kycDocuments = '/kyc-documents';
   static const vehicleDetails = '/vehicle-details';
