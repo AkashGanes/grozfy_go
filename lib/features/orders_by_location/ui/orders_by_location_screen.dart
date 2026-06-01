@@ -1052,6 +1052,8 @@ class _OrderCard extends StatelessWidget {
                     children: [
                       Text(
                         order.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
@@ -1070,6 +1072,7 @@ class _OrderCard extends StatelessWidget {
                           Expanded(
                             child: Text(
                               order.customerName,
+                              maxLines: 1,
                               style: TextStyle(
                                 fontSize: 12,
                                 color: scheme.onSurface.withValues(alpha: 0.6),

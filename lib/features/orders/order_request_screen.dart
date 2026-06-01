@@ -155,6 +155,8 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
           Expanded(
             child: Text(
               value,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w700, height: 1.35),
             ),
           ),

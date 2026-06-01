@@ -950,6 +950,8 @@ class _DetailRow extends StatelessWidget {
         Expanded(
           child: Text(
             value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 13,

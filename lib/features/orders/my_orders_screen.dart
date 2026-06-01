@@ -586,7 +586,14 @@ class _OrderCard extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: scheme.onSurface.withValues(alpha: 0.6)),
           const SizedBox(width: 6),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 13))),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
         ],
       ),
     );
