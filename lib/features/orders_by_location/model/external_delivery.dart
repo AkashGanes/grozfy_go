@@ -32,7 +32,8 @@ class ExternalDelivery {
       status: (m['status'] ?? '').toString(),
       creation: (m['creation'] ?? '').toString(),
       modified: (m['modified'] ?? '').toString(),
-      deliveryAddress: m['delivery_address']?.toString().trim().isNotEmpty == true
+      deliveryAddress:
+          m['delivery_address']?.toString().trim().isNotEmpty == true
           ? m['delivery_address'].toString().trim()
           : null,
     );
@@ -61,6 +62,7 @@ class ExternalDeliveryTrip {
     required this.completedAt,
     required this.stops,
     required this.rawFields,
+    this.pickupStops = const [],
   });
 
   final String name;
@@ -75,6 +77,7 @@ class ExternalDeliveryTrip {
   final String startedAt;
   final String completedAt;
   final List<ExternalDeliveryTripStop> stops;
+  final List<PickupTripStop> pickupStops;
   final Map<String, dynamic> rawFields;
 
   /// True when this trip was created as a return-to-store trip.
@@ -87,6 +90,7 @@ class ExternalDeliveryTrip {
 
   factory ExternalDeliveryTrip.fromJson(Map<String, dynamic> m) {
     final rawStops = m['stops'];
+    final rawPickupStops = m['pickup_stops'];
     final raw = Map<String, dynamic>.from(m);
     return ExternalDeliveryTrip(
       name: (m['name'] ?? '').toString(),
@@ -108,6 +112,12 @@ class ExternalDeliveryTrip {
                     e.cast<String, dynamic>(),
                   ),
                 )
+                .toList()
+          : const [],
+      pickupStops: rawPickupStops is List
+          ? rawPickupStops
+                .whereType<Map>()
+                .map((e) => PickupTripStop.fromJson(e.cast<String, dynamic>()))
                 .toList()
           : const [],
       rawFields: raw,
@@ -150,6 +160,41 @@ class ExternalDeliveryTripStop {
       deliveredAt: (m['delivered_at'] ?? '').toString(),
       notes: (m['notes'] ?? '').toString(),
       rawFields: raw,
+    );
+  }
+}
+
+class PickupTripStop {
+  const PickupTripStop({
+    required this.stop,
+    required this.pickupJob,
+    required this.customerName,
+    required this.customerMobile,
+    required this.pickupAddress,
+    required this.status,
+    this.failureReasonCode = '',
+    this.rawFields = const {},
+  });
+
+  final int stop;
+  final String pickupJob;
+  final String customerName;
+  final String customerMobile;
+  final String pickupAddress;
+  final String status;
+  final String failureReasonCode;
+  final Map<String, dynamic> rawFields;
+
+  factory PickupTripStop.fromJson(Map<String, dynamic> m) {
+    return PickupTripStop(
+      stop: (m['stop'] as num?)?.toInt() ?? 0,
+      pickupJob: (m['pickup_job'] ?? '').toString(),
+      customerName: (m['customer_name'] ?? m['customer'] ?? '').toString(),
+      customerMobile: (m['customer_mobile'] ?? m['mobile'] ?? '').toString(),
+      pickupAddress: (m['pickup_address'] ?? m['address'] ?? '').toString(),
+      status: (m['status'] ?? '').toString(),
+      failureReasonCode: (m['failure_reason_code'] ?? '').toString(),
+      rawFields: m,
     );
   }
 }
