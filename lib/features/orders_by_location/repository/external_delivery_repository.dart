@@ -514,6 +514,59 @@ class ExternalDeliveryRepository {
         .toList();
   }
 
+  /// Returns total delivered orders for the logged-in driver.
+  /// Sums `completes_stops` across all driver trips in a single API call.
+  /// `completes_stops` is only incremented when a stop is set to 'Delivered'.
+  /// Total delivered orders for the logged-in driver.
+  ///
+  /// Counts distinct External Delivery IDs whose trip stop is in the
+  /// `Delivered` status — the same stop-level source of truth used by
+  /// [fetchPastOrdersForDriver], so this matches what the driver sees in
+  /// their orders list. We deliberately do NOT sum the trip's
+  /// `completes_stops` rollup, since that field counts every *completed*
+  /// stop (including Failed / Returned) and would over-count real deliveries.
+  Future<int> fetchDeliveredCountForDriver() async {
+    final driver = await _getLoggedInDriver();
+
+    // 1. All trips for this driver (any status/docstatus).
+    final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+      queryParameters: {
+        'fields': jsonEncode(['name']),
+        'filters': jsonEncode([
+          ['External Delivery Trip', 'driver', '=', driver],
+        ]),
+        'limit_page_length': '0',
+        'order_by': 'modified desc',
+      },
+    );
+    final tripResp = await _get(tripUri, headers: await _authHeaders());
+    if (!_okCodes.contains(tripResp.statusCode)) {
+      throw Exception(_extractErrorMessage(tripResp));
+    }
+    final tripRows = (jsonDecode(tripResp.body)['data']) as List;
+    if (tripRows.isEmpty) return 0;
+
+    // 2. Fetch trip details in parallel.
+    final tripNames = tripRows
+        .map((r) => (r as Map<String, dynamic>)['name']?.toString() ?? '')
+        .where((n) => n.isNotEmpty)
+        .toList();
+    final tripDetails = await Future.wait(
+      tripNames.map((n) => fetchTripDetails(n).catchError((_) => null)),
+    );
+
+    // 3. Count distinct delivered orders across all trip stops.
+    final delivered = <String>{};
+    for (final trip in tripDetails.whereType<ExternalDeliveryTrip>()) {
+      for (final stop in trip.stops) {
+        if (stop.status.trim().toLowerCase() != 'delivered') continue;
+        final id = stop.externalDelivery.trim();
+        if (id.isNotEmpty) delivered.add(id);
+      }
+    }
+    return delivered.length;
+  }
+
   Future<ExternalDeliveryDetail> fetchDetail(
     String name, {
     bool resolveAddress = true,

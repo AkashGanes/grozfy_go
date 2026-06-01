@@ -10,6 +10,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/services/secure_token_storage.dart';
 import '../../orders_by_location/model/timing_event.dart';
+import '../../orders_by_location/repository/external_delivery_repository.dart';
 import '../models/driver_stats.dart';
 
 final selectedMonthProvider = StateProvider<({int month, int year})>((ref) {
@@ -275,5 +276,24 @@ final lifetimeStatsProvider =
     return _computeLifetime(merged);
   } catch (_) {
     return _computeLifetime(localEvents);
+  }
+});
+
+/// Total delivered orders for the logged-in driver.
+/// Yields the SharedPreferences cache immediately (no loading flash),
+/// then silently refreshes from ERPNext and updates the cache.
+final deliveredOrderCountProvider =
+    StreamProvider.autoDispose<int>((ref) async* {
+  final prefs = await SharedPreferences.getInstance();
+  final cached = prefs.getInt('delivered_order_count');
+  if (cached != null) yield cached;
+
+  final repo = ExternalDeliveryRepository();
+  try {
+    final count = await repo.fetchDeliveredCountForDriver();
+    await prefs.setInt('delivered_order_count', count);
+    yield count;
+  } catch (_) {
+    if (cached == null) rethrow;
   }
 });

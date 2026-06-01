@@ -17,6 +17,9 @@ class AuthedNetworkImage extends StatefulWidget {
   final double size;
   final Widget? fallback;
 
+  static final Map<String, Uint8List> _cache = {};
+  static void clearCache() => _cache.clear();
+
   @override
   State<AuthedNetworkImage> createState() => _AuthedNetworkImageState();
 }
@@ -28,16 +31,31 @@ class _AuthedNetworkImageState extends State<AuthedNetworkImage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    final cached = AuthedNetworkImage._cache[widget.url];
+    if (cached != null) {
+      _bytes = cached;
+    } else {
+      _load();
+    }
   }
 
   @override
   void didUpdateWidget(AuthedNetworkImage old) {
     super.didUpdateWidget(old);
     if (old.url != widget.url) {
-      _bytes = null;
-      _failed = false;
-      _load();
+      final cached = AuthedNetworkImage._cache[widget.url];
+      if (cached != null) {
+        setState(() {
+          _bytes = cached;
+          _failed = false;
+        });
+      } else {
+        setState(() {
+          _bytes = null;
+          _failed = false;
+        });
+        _load();
+      }
     }
   }
 
@@ -48,6 +66,7 @@ class _AuthedNetworkImageState extends State<AuthedNetworkImage> {
           .timeout(const Duration(seconds: 15));
       if (!mounted) return;
       if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+        AuthedNetworkImage._cache[widget.url] = response.bodyBytes;
         setState(() => _bytes = response.bodyBytes);
       } else {
         setState(() => _failed = true);
@@ -65,7 +84,7 @@ class _AuthedNetworkImageState extends State<AuthedNetworkImage> {
         fit: BoxFit.cover,
         width: widget.size,
         height: widget.size,
-        errorBuilder: (_, __, ___) =>
+        errorBuilder: (context, e, s) =>
             widget.fallback ?? const Icon(Icons.person_rounded, size: 42),
       );
     }
