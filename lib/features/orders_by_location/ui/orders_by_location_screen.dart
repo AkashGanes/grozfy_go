@@ -45,6 +45,71 @@ class _OrdersByLocationScreenState
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
 
+  // Active filters applied server-side (and to the offline cache). An empty
+  // status set / null date range means "no constraint".
+  final Set<String> _statusFilter = <String>{};
+  DateTimeRange? _dateRange;
+  String _customerFilter = '';
+
+  /// External Delivery statuses the driver can filter by on this screen.
+  static const List<String> _filterableStatuses = <String>[
+    'Pending',
+    'Added to Trip',
+    'Delivered',
+    'Cancelled',
+    'Failed',
+    'Returned',
+    'Return Initiated',
+  ];
+
+  bool get _hasActiveFilters =>
+      _statusFilter.isNotEmpty ||
+      _dateRange != null ||
+      _customerFilter.isNotEmpty;
+
+  static String _ymd(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  /// Builds the Frappe filter clauses for the currently selected status set
+  /// and date range. Combined with the store filter inside the repository.
+  List<List<dynamic>> _activeFilters() {
+    final filters = <List<dynamic>>[];
+    if (_statusFilter.isNotEmpty) {
+      filters.add(<dynamic>[
+        'External Delivery',
+        'status',
+        'in',
+        _statusFilter.toList(),
+      ]);
+    }
+    if (_dateRange != null) {
+      filters
+        ..add(<dynamic>[
+          'External Delivery',
+          'creation',
+          '>=',
+          '${_ymd(_dateRange!.start)} 00:00:00',
+        ])
+        ..add(<dynamic>[
+          'External Delivery',
+          'creation',
+          '<=',
+          '${_ymd(_dateRange!.end)} 23:59:59',
+        ]);
+    }
+    if (_customerFilter.isNotEmpty) {
+      filters.add(<dynamic>[
+        'External Delivery',
+        'customer_name',
+        'like',
+        '%$_customerFilter%',
+      ]);
+    }
+    return filters;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -78,6 +143,7 @@ class _OrdersByLocationScreenState
       final orders = await _repository.fetchPage(
         limitStart: pageKey,
         storeName: storeName,
+        filters: _activeFilters(),
       );
       ConnectivityService().reportNetworkSuccess();
       // Warm the cache so this list survives a future offline open.
@@ -119,9 +185,27 @@ class _OrdersByLocationScreenState
       return;
     }
     final cached = OfflineTripManager().getCachedOrderSummaries();
-    final filtered = storeName == null || storeName.isEmpty
+    var filtered = storeName == null || storeName.isEmpty
         ? cached
         : cached.where((o) => o.storeName == storeName).toList();
+    if (_statusFilter.isNotEmpty) {
+      filtered =
+          filtered.where((o) => _statusFilter.contains(o.status)).toList();
+    }
+    if (_dateRange != null) {
+      final from = _ymd(_dateRange!.start);
+      final to = _ymd(_dateRange!.end);
+      filtered = filtered.where((o) {
+        if (o.creation.length < 10) return false;
+        final day = o.creation.substring(0, 10);
+        return day.compareTo(from) >= 0 && day.compareTo(to) <= 0;
+      }).toList();
+    }
+    if (_customerFilter.isNotEmpty) {
+      final q = _customerFilter.toLowerCase();
+      filtered =
+          filtered.where((o) => o.customerName.toLowerCase().contains(q)).toList();
+    }
     final items = <LocationListItem>[];
     for (final order in filtered) {
       if (order.storeName != _lastStoreName) {
@@ -604,16 +688,306 @@ class _OrdersByLocationScreenState
     );
   }
 
+  Future<void> _showFilterSheet() async {
+    final tempStatuses = Set<String>.from(_statusFilter);
+    DateTimeRange? tempRange = _dateRange;
+    final customerCtrl = TextEditingController(text: _customerFilter);
+
+    await showAppBottomSheet<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            final ColorScheme scheme = Theme.of(ctx).colorScheme;
+
+            Future<void> pickRange() async {
+              final now = DateTime.now();
+              final picked = await showDateRangePicker(
+                context: ctx,
+                firstDate: DateTime(now.year - 2),
+                lastDate: DateTime(now.year + 1, 12, 31),
+                initialDateRange: tempRange,
+                builder: (context, child) => Theme(
+                  data: Theme.of(context).copyWith(
+                    colorScheme: Theme.of(context).colorScheme.copyWith(
+                          primary: AppTheme.oceanBlue,
+                        ),
+                  ),
+                  child: child!,
+                ),
+              );
+              if (picked != null) {
+                setModal(() => tempRange = picked);
+              }
+            }
+
+            return AppBottomSheet(
+              title: 'Filter Orders',
+              subtitle: 'Filter external deliveries by status and date.',
+              leadingIcon: Icons.filter_list_rounded,
+              leadingIconColor: AppTheme.oceanBlue,
+              scrollable: true,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 8),
+                  const SectionLabel('Status'),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _filterableStatuses.map((status) {
+                      final selected = tempStatuses.contains(status);
+                      final color = status.statusColor;
+                      return GestureDetector(
+                        onTap: () => setModal(() {
+                          if (selected) {
+                            tempStatuses.remove(status);
+                          } else {
+                            tempStatuses.add(status);
+                          }
+                        }),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? color.withValues(alpha: 0.14)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: selected
+                                  ? color
+                                  : scheme.onSurface.withValues(alpha: 0.25),
+                              width: selected ? 1.5 : 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (selected) ...[
+                                Icon(Icons.check_rounded, size: 14, color: color),
+                                const SizedBox(width: 4),
+                              ],
+                              Text(
+                                status,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: selected
+                                      ? color
+                                      : scheme.onSurface.withValues(alpha: 0.7),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 22),
+                  const SectionLabel('Customer'),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: customerCtrl,
+                    textInputAction: TextInputAction.search,
+                    textCapitalization: TextCapitalization.words,
+                    onChanged: (_) => setModal(() {}),
+                    style: TextStyle(fontSize: 14, color: scheme.onSurface),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'Filter by customer name…',
+                      hintStyle: TextStyle(
+                        fontSize: 13.5,
+                        color: scheme.onSurface.withValues(alpha: 0.5),
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.person_outline_rounded,
+                        size: 18,
+                        color: AppTheme.oceanBlue,
+                      ),
+                      suffixIcon: customerCtrl.text.isEmpty
+                          ? null
+                          : IconButton(
+                              icon: Icon(
+                                Icons.close_rounded,
+                                size: 18,
+                                color: scheme.onSurface.withValues(alpha: 0.5),
+                              ),
+                              onPressed: () =>
+                                  setModal(() => customerCtrl.clear()),
+                            ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: scheme.onSurface.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: AppTheme.oceanBlue,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  const SectionLabel('Order Date'),
+                  const SizedBox(height: 10),
+                  GestureDetector(
+                    onTap: pickRange,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: scheme.onSurface.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.calendar_today_rounded,
+                            size: 18,
+                            color: AppTheme.oceanBlue,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              tempRange == null
+                                  ? 'Any date'
+                                  : '${_ymd(tempRange!.start)}  →  ${_ymd(tempRange!.end)}',
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: tempRange == null
+                                    ? FontWeight.w500
+                                    : FontWeight.w600,
+                                color: tempRange == null
+                                    ? scheme.onSurface.withValues(alpha: 0.5)
+                                    : scheme.onSurface,
+                              ),
+                            ),
+                          ),
+                          if (tempRange != null)
+                            GestureDetector(
+                              onTap: () => setModal(() => tempRange = null),
+                              child: Icon(
+                                Icons.close_rounded,
+                                size: 18,
+                                color: scheme.onSurface.withValues(alpha: 0.5),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AppSheetSecondaryButton(
+                          label: 'Clear All',
+                          icon: Icons.refresh_rounded,
+                          onPressed: (tempStatuses.isEmpty &&
+                                  tempRange == null &&
+                                  customerCtrl.text.trim().isEmpty)
+                              ? null
+                              : () => setModal(() {
+                                  tempStatuses.clear();
+                                  tempRange = null;
+                                  customerCtrl.clear();
+                                }),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: AppSheetPrimaryButton(
+                          label: 'Apply',
+                          onPressed: () {
+                            Navigator.of(ctx).pop();
+                            setState(() {
+                              _statusFilter
+                                ..clear()
+                                ..addAll(tempStatuses);
+                              _dateRange = tempRange;
+                              _customerFilter = customerCtrl.text.trim();
+                            });
+                            _refresh();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    customerCtrl.dispose();
+  }
+
+  Widget _buildFilterAction() {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          icon: const Icon(
+            Icons.filter_list_rounded,
+            color: AppTheme.nightBlue,
+          ),
+          tooltip: 'Filter orders',
+          onPressed: _showFilterSheet,
+        ),
+        if (_hasActiveFilters)
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: AppTheme.mango,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final selectedStore = ref.watch(appControllerProvider).selectedStoreName;
+    final filterCount = _statusFilter.length +
+        (_dateRange != null ? 1 : 0) +
+        (_customerFilter.isNotEmpty ? 1 : 0);
 
     return AppShell(
       title: 'Orders by Location',
-      subtitle: selectedStore ?? 'Select a location',
+      subtitle: filterCount > 0
+          ? '${selectedStore ?? 'All stores'} · $filterCount filter'
+                '${filterCount == 1 ? '' : 's'}'
+          : (selectedStore ?? 'Select a location'),
       scrollable: false,
       padding: EdgeInsets.zero,
       actions: [
+        _buildFilterAction(),
         IconButton(
           icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
           tooltip: 'Change location',
