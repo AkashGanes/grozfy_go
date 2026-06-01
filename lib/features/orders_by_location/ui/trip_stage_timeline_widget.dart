@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/timing_event.dart';
 import '../providers/trip_timeline_provider.dart';
@@ -232,7 +233,7 @@ class _TimelineRow extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      _formatTime(event.eventTime),
+                      AppDateFormat.time(event.eventTime),
                       style: const TextStyle(
                         color: Colors.black54,
                         fontSize: 11,
@@ -243,7 +244,7 @@ class _TimelineRow extends StatelessWidget {
                 if (!isLast && duration != null) ...[
                   const SizedBox(height: 2),
                   Text(
-                    '↓  ${_formatDuration(duration!)}',
+                    '↓  ${AppDateFormat.duration(duration!)}',
                     style: const TextStyle(
                       color: Colors.black38,
                       fontSize: 11,
@@ -258,21 +259,4 @@ class _TimelineRow extends StatelessWidget {
     );
   }
 
-  static String _formatTime(DateTime dt) {
-    final h = dt.hour > 12
-        ? dt.hour - 12
-        : (dt.hour == 0 ? 12 : dt.hour);
-    final m = dt.minute.toString().padLeft(2, '0');
-    final period = dt.hour >= 12 ? 'PM' : 'AM';
-    return '$h:$m $period';
-  }
-
-  static String _formatDuration(Duration d) {
-    if (d.inHours > 0) {
-      final mins = d.inMinutes.remainder(60);
-      return '${d.inHours}h ${mins}m';
-    }
-    if (d.inMinutes > 0) return '${d.inMinutes} min';
-    return '${d.inSeconds}s';
-  }
 }

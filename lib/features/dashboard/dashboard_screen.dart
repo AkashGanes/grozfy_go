@@ -629,8 +629,8 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         preserveLineBreaks: true,
       ),
       meta: ActiveOrderMeta(
-        date: _formatDate(order.acceptedAt),
-        time: _formatTime(order.acceptedAt),
+        date: AppDateFormat.date(order.acceptedAt),
+        time: AppDateFormat.time(order.acceptedAt),
         phone: order.customerPhone.isNotEmpty
             ? order.customerPhone
             : (order.contactNumber.isNotEmpty ? order.contactNumber : null),
@@ -1332,33 +1332,6 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     }
   }
 
-  String? _formatDate(DateTime? d) {
-    if (d == null) return null;
-    const months = [
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec',
-    ];
-    return '${months[d.month - 1]} ${d.day}, ${d.year}';
-  }
-
-  String? _formatTime(DateTime? d) {
-    if (d == null) return null;
-    final h = d.hour;
-    final period = h >= 12 ? 'PM' : 'AM';
-    final hour12 = h == 0 ? 12 : (h > 12 ? h - 12 : h);
-    final minute = d.minute.toString().padLeft(2, '0');
-    return '$hour12:$minute $period';
-  }
 }
 
 // ── Active pickup job card ────────────────────────────────────────────────────

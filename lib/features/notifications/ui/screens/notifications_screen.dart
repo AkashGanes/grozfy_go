@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../../../core/navigation/app_routes.dart';
+import '../../../../core/utils/formatters.dart';
 import '../../providers/notification_providers.dart';
 import '../../../../core/models/app_models.dart';
 import '../../../../core/theme/app_theme.dart';
@@ -498,17 +499,6 @@ class _NotificationTile extends ConsumerWidget {
     return Icons.notifications_none_rounded;
   }
 
-  String _timeAgo() {
-    final date = notification.creation;
-    if (date == null) return 'Just now';
-    final now = DateTime.now();
-    final diff = now.difference(date);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -626,7 +616,7 @@ class _NotificationTile extends ConsumerWidget {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          _timeAgo(),
+                          AppDateFormat.timeAgo(notification.creation),
                           style: TextStyle(
                             fontSize: 11,
                             color: tileScheme.onSurface.withValues(alpha: 0.5),

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
@@ -145,10 +146,8 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     if (picked == null || !mounted) {
       return;
     }
-    final String month = picked.month.toString().padLeft(2, '0');
-    final String day = picked.day.toString().padLeft(2, '0');
     setState(() {
-      _lastIntegrationDateCtrl.text = '${picked.year}-$month-$day';
+      _lastIntegrationDateCtrl.text = AppDateFormat.apiDate(picked);
     });
   }
 

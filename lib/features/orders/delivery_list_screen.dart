@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/models/app_models.dart';
+import '../../core/utils/formatters.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/services/api_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -259,11 +260,6 @@ class _DeliveryCard extends StatelessWidget {
     required this.onTap,
   });
 
-  String _formatDate(DateTime? date) {
-    if (date == null) return '';
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
@@ -347,7 +343,7 @@ class _DeliveryCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            _formatDate(delivery.modified),
+                            AppDateFormat.date(delivery.modified),
                             style: TextStyle(
                               fontSize: 12,
                               color: scheme.onSurface.withValues(alpha: 0.5),

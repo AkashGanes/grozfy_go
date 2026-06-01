@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/utils/formatters.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/services/secure_token_storage.dart';
@@ -193,12 +194,7 @@ String? _bestMonth(List<TimingEvent> events) {
   final parts = best.key.split('-');
   final year = parts[0];
   final month = int.tryParse(parts[1]) ?? 1;
-  const monthNames = [
-    '',
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
-  return '${monthNames[month]} $year';
+  return AppDateFormat.monthYearFromParts(month, int.parse(year));
 }
 
 int _longestStreak(List<TimingEvent> events) {
