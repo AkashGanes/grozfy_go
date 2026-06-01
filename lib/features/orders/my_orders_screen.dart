@@ -186,8 +186,14 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
       );
       final orders = summaries.map(_summaryToOrder).toList();
       if (mounted) {
+        // De-dup against what we already have: overlapping pages from the
+        // backend would otherwise produce two rows sharing the same ValueKey,
+        // which trips a "Duplicate keys found" assertion in the ListView.
+        final existingIds = _pastOrders.map((o) => o.orderId).toSet();
+        final fresh =
+            orders.where((o) => existingIds.add(o.orderId)).toList();
         setState(() {
-          _pastOrders = [..._pastOrders, ...orders];
+          _pastOrders = [..._pastOrders, ...fresh];
           _isLoadingMorePast = false;
           _hasMorePast = summaries.length >= _pastPageSize;
           _pastLimitStart += summaries.length;
@@ -201,9 +207,7 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     final appActiveOrder = ref.watch(appControllerProvider).activeOrder;
-    final List<DeliveryOrder> activeOrders = _activeOrders.isNotEmpty
-        ? _activeOrders
-        : (appActiveOrder != null ? [appActiveOrder] : const []);
+    final List<DeliveryOrder> activeOrders = _buildActiveOrders(appActiveOrder);
     return AppShell(
       title: 'My Orders',
       subtitle: 'Track your deliveries',
@@ -214,89 +218,255 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
       onBottomNavTap: _handleTabTap,
       child: Column(
         children: [
-          _buildTabBar(activeOrders),
+          _buildTabBar(activeOrders.length),
           Expanded(
-            child: _selectedTab == 0
-                ? _buildActiveList(activeOrders)
-                : _buildPastList(),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              child: _selectedTab == 0
+                  ? KeyedSubtree(
+                      key: const ValueKey('active'),
+                      child: _buildActiveList(activeOrders),
+                    )
+                  : KeyedSubtree(
+                      key: const ValueKey('past'),
+                      child: _buildPastList(),
+                    ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTabBar(List<DeliveryOrder> activeOrders) {
+  /// Merge the in-progress order from app state with the fetched active list,
+  /// de-duplicating by order id. The previous code showed *either* the app's
+  /// active order *or* the fetched list — never both — so an in-progress order
+  /// vanished as soon as the fetch returned. Showing both without de-duping
+  /// would render (and key) the same order twice, tripping a duplicate-key
+  /// assertion; this keeps a single, ordered, unique list.
+  List<DeliveryOrder> _buildActiveOrders(DeliveryOrder? appActiveOrder) {
+    final seen = <String>{};
+    final merged = <DeliveryOrder>[];
+    void add(DeliveryOrder order) {
+      final key = order.orderId.isNotEmpty ? order.orderId : order.id;
+      if (key.isEmpty || seen.add(key)) merged.add(order);
+    }
+
+    if (appActiveOrder != null) add(appActiveOrder);
+    for (final order in _activeOrders) {
+      add(order);
+    }
+    return merged;
+  }
+
+  /// Wraps a non-list message (empty / error state) so pull-to-refresh still
+  /// works: [RefreshIndicator] requires a scrollable descendant, so the message
+  /// is placed inside an always-scrollable viewport sized to fill the area.
+  Widget _refreshable(Future<void> Function() onRefresh, Widget child) {
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: child,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 88,
+          height: 88,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: scheme.onSurface.withValues(alpha: 0.04),
+          ),
+          child: Icon(
+            icon,
+            size: 44,
+            color: scheme.onSurface.withValues(alpha: 0.3),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: scheme.onSurface.withValues(alpha: 0.7),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13,
+            color: scheme.onSurface.withValues(alpha: 0.45),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _errorState({
+    required String message,
+    String? detail,
+    required Future<void> Function() onRetry,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.error_outline_rounded, size: 48, color: Colors.red),
+        const SizedBox(height: 12),
+        Text(
+          message,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        ),
+        if (detail != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            detail,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12),
+          ),
+        ],
+        const SizedBox(height: 16),
+        ElevatedButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: const Text('Retry'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabBar(int activeCount) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
       child: Container(
-        padding: const EdgeInsets.all(3),
+        padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
           color: scheme.surface.withValues(alpha: 0.7),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: scheme.outline.withValues(alpha: 0.12),
+          ),
         ),
         child: Row(
           children: [
-            Expanded(
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedTab = 0),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _selectedTab == 0
-                        ? AppTheme.oceanBlue
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'Active (${activeOrders.length})',
-                      style: TextStyle(
-                        color: _selectedTab == 0
-                            ? Colors.white
-                            : scheme.onSurface.withValues(alpha: 0.6),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            _tabSegment(
+              index: 0,
+              label: 'Active',
+              count: activeCount,
+              onTap: () {
+                if (_selectedTab != 0) setState(() => _selectedTab = 0);
+              },
             ),
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  setState(() => _selectedTab = 1);
-                  if (!_pastLoadRequested && _pastFuture == null) {
-                    _loadPastOrders();
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: _selectedTab == 1
-                        ? AppTheme.oceanBlue
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Center(
-                    child: Text(
-                      _isPastLoading
-                          ? 'Past'
-                          : 'Past (${_pastOrders.length})',
-                      style: TextStyle(
-                        color: _selectedTab == 1
-                            ? Colors.white
-                            : scheme.onSurface.withValues(alpha: 0.6),
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+            _tabSegment(
+              index: 1,
+              label: 'Past',
+              count: _isPastLoading && _pastOrders.isEmpty
+                  ? null
+                  : _pastOrders.length,
+              onTap: () {
+                if (_selectedTab != 1) setState(() => _selectedTab = 1);
+                if (!_pastLoadRequested && _pastFuture == null) {
+                  _loadPastOrders();
+                }
+              },
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tabSegment({
+    required int index,
+    required String label,
+    required int? count,
+    required VoidCallback onTap,
+  }) {
+    final bool selected = _selectedTab == index;
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          decoration: BoxDecoration(
+            color: selected ? AppTheme.oceanBlue : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      color: AppTheme.oceanBlue.withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected
+                      ? Colors.white
+                      : scheme.onSurface.withValues(alpha: 0.6),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+              if (count != null) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? Colors.white.withValues(alpha: 0.22)
+                        : scheme.onSurface.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(
+                      color: selected
+                          ? Colors.white
+                          : scheme.onSurface.withValues(alpha: 0.6),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -304,31 +474,12 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
 
   Widget _buildActiveList(List<DeliveryOrder> activeOrders) {
     if (_activeError != null && activeOrders.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
-              const SizedBox(height: 12),
-              const Text(
-                'Failed to load active orders',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _activeError!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loadActiveOrders,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
+      return _refreshable(
+        _loadActiveOrders,
+        _errorState(
+          message: 'Failed to load active orders',
+          detail: _activeError,
+          onRetry: _loadActiveOrders,
         ),
       );
     }
@@ -336,35 +487,27 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     if (activeOrders.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.local_shipping_outlined,
-              size: 56,
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No active orders',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-              ),
-            ),
-          ],
+      return _refreshable(
+        _loadActiveOrders,
+        _emptyState(
+          icon: Icons.local_shipping_outlined,
+          title: 'No active orders',
+          subtitle: 'New deliveries assigned to you will appear here.',
         ),
       );
     }
     return RefreshIndicator(
       onRefresh: _loadActiveOrders,
       child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         itemCount: activeOrders.length,
         itemBuilder: (context, index) {
           final order = activeOrders[index];
           return _OrderCard(
+            key: order.orderId.isNotEmpty
+                ? ValueKey('active_${order.orderId}')
+                : ObjectKey(order),
             order: order,
             onTap: () => Navigator.of(context).pushNamed(
               AppRoutes.orderDetails,
@@ -382,81 +525,56 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_pastError != null && _pastOrders.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
-              const SizedBox(height: 12),
-              const Text(
-                'Failed to load orders',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _pastError!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loadPastOrders,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
+      return _refreshable(
+        _loadPastOrders,
+        _errorState(
+          message: 'Failed to load orders',
+          detail: _pastError,
+          onRetry: _loadPastOrders,
         ),
       );
     }
     if (_pastOrders.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.history_rounded,
-              size: 56,
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No past orders found',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-              ),
-            ),
-          ],
+      return _refreshable(
+        _loadPastOrders,
+        _emptyState(
+          icon: Icons.history_rounded,
+          title: 'No past orders found',
+          subtitle: 'Completed and cancelled deliveries will show up here.',
         ),
       );
     }
     return RefreshIndicator(
       onRefresh: _loadPastOrders,
       child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
         itemCount: _pastOrders.length + (_hasMorePast ? 1 : 0),
         itemBuilder: (context, index) {
           if (index == _pastOrders.length) {
             return Padding(
+              key: const ValueKey('past_load_more'),
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Center(
                 child: _isLoadingMorePast
                     ? const CircularProgressIndicator()
-                    : TextButton.icon(
+                    : OutlinedButton.icon(
                         onPressed: _loadMorePast,
-                        icon: const Icon(Icons.expand_more_rounded),
-                        label: const Text('Load More'),
+                        icon: const Icon(Icons.expand_more_rounded, size: 18),
+                        label: const Text('Load more'),
                       ),
               ),
             );
           }
+          final order = _pastOrders[index];
           return _OrderCard(
-            order: _pastOrders[index],
+            key: order.orderId.isNotEmpty
+                ? ValueKey('past_${order.orderId}')
+                : ObjectKey(order),
+            order: order,
             onTap: () => Navigator.of(context).pushNamed(
               AppRoutes.orderDetails,
-              arguments: _pastOrders[index],
+              arguments: order,
             ),
           );
         },
@@ -1134,7 +1252,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
 // ---------------------------------------------------------------------------
 
 class _OrderCard extends StatelessWidget {
-  const _OrderCard({required this.order, this.onTap});
+  const _OrderCard({super.key, required this.order, this.onTap});
   final DeliveryOrder order;
   final VoidCallback? onTap;
 
@@ -1143,133 +1261,200 @@ class _OrderCard extends StatelessWidget {
     final statusColor = _getStatusColor(order.orderStatus);
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: scheme.surface.withValues(alpha: 0.86),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isDark
-                ? scheme.outline.withValues(alpha: 0.2)
-                : Colors.white.withValues(alpha: 0.7),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
+    final String address =
+        order.drop.isNotEmpty ? order.drop : order.deliveryAddress;
+    final bool hasFooter = order.estimatedEarnings > 0 ||
+        order.createdAt != null ||
+        order.distanceKm > 0;
+    const double radius = 20;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: scheme.surface.withValues(alpha: isDark ? 0.9 : 0.92),
+        borderRadius: BorderRadius.circular(radius),
+        clipBehavior: Clip.antiAlias,
+        elevation: isDark ? 3 : 2,
+        shadowColor: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radius),
+              border: Border.all(
+                color: isDark
+                    ? scheme.outline.withValues(alpha: 0.18)
+                    : Colors.white.withValues(alpha: 0.8),
+              ),
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    order.orderStatus.label,
-                    style: TextStyle(
-                      color: statusColor,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  order.orderId,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            _buildInfo(context, Icons.store_rounded, order.storeName),
-            _buildInfo(context, Icons.person_rounded, order.customerName),
-            _buildInfo(
-              context,
-              Icons.location_on_rounded,
-              order.drop.isNotEmpty ? order.drop : order.deliveryAddress,
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                if (order.estimatedEarnings > 0)
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Status accent stripe
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.mint.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        color: AppTheme.mint,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
+                    width: 4,
+                    color: statusColor,
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  order.orderId,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14.5,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              _statusChip(statusColor),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          _infoRow(context, Icons.store_rounded, order.storeName),
+                          const SizedBox(height: 5),
+                          _infoRow(
+                              context, Icons.person_rounded, order.customerName),
+                          if (address.isNotEmpty) ...[
+                            const SizedBox(height: 5),
+                            _infoRow(
+                                context, Icons.location_on_rounded, address),
+                          ],
+                          if (hasFooter) ...[
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                if (order.estimatedEarnings > 0)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 5,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.mint.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        color: AppTheme.mint,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                const Spacer(),
+                                if (order.createdAt != null)
+                                  _footerMeta(
+                                    context,
+                                    Icons.schedule_rounded,
+                                    _formatDate(order.createdAt!),
+                                  )
+                                else if (order.distanceKm > 0)
+                                  _footerMeta(
+                                    context,
+                                    Icons.route_rounded,
+                                    '${order.distanceKm.toStringAsFixed(1)} km',
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
-                const Spacer(),
-                if (order.createdAt != null)
-                  Text(
-                    _formatDate(order.createdAt!),
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.5),
-                      fontSize: 11,
-                    ),
-                  )
-                else if (order.distanceKm > 0)
-                  Text(
-                    '${order.distanceKm.toStringAsFixed(1)} km',
-                    style: TextStyle(
-                      color: scheme.onSurface.withValues(alpha: 0.6),
-                      fontSize: 12,
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Center(
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        color: scheme.onSurface.withValues(alpha: 0.3),
+                        size: 22,
+                      ),
                     ),
                   ),
-              ],
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildInfo(BuildContext context, IconData icon, String text) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+  Widget _statusChip(Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(99),
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: scheme.onSurface.withValues(alpha: 0.6)),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13),
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            order.orderStatus.label,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontSize: 10.5,
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _infoRow(BuildContext context, IconData icon, String text) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: scheme.onSurface.withValues(alpha: 0.5)),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              color: scheme.onSurface.withValues(alpha: 0.85),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _footerMeta(BuildContext context, IconData icon, String text) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 13, color: scheme.onSurface.withValues(alpha: 0.45)),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(
+            color: scheme.onSurface.withValues(alpha: 0.5),
+            fontSize: 11.5,
+          ),
+        ),
+      ],
     );
   }
 
