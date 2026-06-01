@@ -50,6 +50,7 @@ import 'features/profile/profile_screen.dart';
 import 'features/security/security_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/splash/splash_screen.dart';
+import 'features/support/support_screen.dart';
 import 'package:device_preview/device_preview.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -387,6 +388,10 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
             case AppRoutes.earnings:
               return MaterialPageRoute<void>(
                 builder: (_) => const StatsScreen(),
+              );
+            case AppRoutes.support:
+              return MaterialPageRoute<void>(
+                builder: (_) => const SupportScreen(),
               );
             default:
               return MaterialPageRoute<void>(

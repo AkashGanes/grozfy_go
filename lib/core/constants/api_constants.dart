@@ -43,4 +43,6 @@ class ApiConstants {
   // Keep aliases so existing callers compile without change.
   static const String recordTimingEvents = partnerTimingLog;
   static const String getTimingEvents = partnerTimingLog;
+
+  static const String issueList = '$erpBaseUrl/api/resource/Issue';
 }
