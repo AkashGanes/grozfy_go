@@ -125,15 +125,18 @@ class ProfileProgressCard extends StatelessWidget {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Text(
-                          progressLabel(
-                            completeness.completedCount,
-                            completeness.totalCount,
-                          ),
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.85),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                        Flexible(
+                          child: Text(
+                            progressLabel(
+                              completeness.completedCount,
+                              completeness.totalCount,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                         const Spacer(),
@@ -406,15 +409,18 @@ class _ItemChip extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              StatusPill(
-                label: completed ? verifiedLabel : pendingLabel,
-                tone: completed
-                    ? StatusPillTone.success
-                    : StatusPillTone.warning,
-                icon: completed
-                    ? Icons.check_circle_rounded
-                    : Icons.access_time_rounded,
-                dense: true,
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: StatusPill(
+                  label: completed ? verifiedLabel : pendingLabel,
+                  tone: completed
+                      ? StatusPillTone.success
+                      : StatusPillTone.warning,
+                  icon: completed
+                      ? Icons.check_circle_rounded
+                      : Icons.access_time_rounded,
+                  dense: true,
+                ),
               ),
             ],
           ),

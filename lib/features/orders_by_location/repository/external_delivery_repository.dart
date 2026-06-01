@@ -1674,10 +1674,7 @@ class ExternalDeliveryRepository {
   }
 
   void _logApi(String tag, String value) {
-    final String line = '[API] $tag => $value';
-    debugPrint(line);
-    // ignore: avoid_print
-    print(line);
+    debugPrint('[API] $tag => $value');
   }
 
   Future<http.Response> _get(
