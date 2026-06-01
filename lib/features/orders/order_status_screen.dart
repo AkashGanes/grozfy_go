@@ -30,6 +30,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   bool _syncing = false;
 
   static const _flow = <OrderProgressStatus>[
+    OrderStatus.pending,
     OrderStatus.accepted,
     OrderStatus.reachedPickup,
     OrderStatus.pickedUp,
@@ -278,6 +279,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   ];
 
   OrderProgressStatus _nextStatus(OrderProgressStatus s) {
+    if (s == OrderStatus.pending) return OrderStatus.accepted;
     if (s == OrderStatus.accepted) return OrderStatus.reachedPickup;
     if (s == OrderStatus.reachedPickup) return OrderStatus.pickedUp;
     if (s == OrderStatus.pickedUp) return OrderStatus.outForDelivery;
@@ -286,6 +288,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   }
 
   String _actionLabel(OrderProgressStatus s) {
+    if (s == OrderStatus.pending) return 'Accept Order';
     if (s == OrderStatus.accepted) return 'Mark Reached Pickup';
     if (s == OrderStatus.reachedPickup) return 'Mark Picked Up';
     if (s == OrderStatus.pickedUp) return 'Start Out for Delivery';
@@ -464,6 +467,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ),
               ],
             ),
+          ),
+        ),
+      );
+    }
+
+    // ── Recall mode ───────────────────────────────────────────────────────────
+    if (_recallData != null) {
+      return Scaffold(
+        backgroundColor: scheme.surface,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: _buildRecallView(order, _recallData!),
           ),
         ),
       );
@@ -736,6 +752,208 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       ),
     );
   }
+
+  // ── Recall view (restored from recall/archana) ────────────────────────────────
+
+  Widget _buildRecallView(DeliveryOrder order, _RecallData data) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              decoration: BoxDecoration(
+                color: _recallOrange,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: _recallOrange.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 4)),
+                ],
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.u_turn_left_rounded, color: Colors.white, size: 20),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Order Recalled — Return to Store',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+                        SizedBox(height: 2),
+                        Text('Return items and confirm at the dock',
+                            style: TextStyle(color: Colors.white70, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )
+            .animate(onPlay: (c) => c.repeat(reverse: true))
+            .shimmer(duration: 1800.ms, color: Colors.white.withValues(alpha: 0.15)),
+        const SizedBox(height: 12),
+        Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF8E1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _recallOrange.withValues(alpha: 0.5), width: 1.5),
+                boxShadow: [
+                  BoxShadow(color: _recallOrange.withValues(alpha: 0.1), blurRadius: 16, offset: const Offset(0, 5)),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      color: _recallOrange,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.warning_amber_rounded, color: Colors.white, size: 17),
+                          const SizedBox(width: 8),
+                          const Text('RECALL — RETURN TO STORE',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.6)),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text('Customer Cancelled',
+                                style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w600)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _recallInfoRow(Icons.receipt_long_outlined, order.orderId, bold: true),
+                          const SizedBox(height: 8),
+                          if (data.customerName.isNotEmpty) ...[
+                            _recallInfoRow(Icons.person_outline, data.customerName),
+                            const SizedBox(height: 6),
+                          ],
+                          if (data.customerPhone.isNotEmpty) ...[
+                            _recallCallRow(data.customerPhone),
+                            const SizedBox(height: 6),
+                          ],
+                          if (data.storeName.isNotEmpty) ...[
+                            _recallInfoRow(Icons.store_outlined, data.storeName),
+                            const SizedBox(height: 6),
+                          ],
+                          if (data.storeAddress.isNotEmpty) ...[
+                            _recallInfoRow(Icons.location_on_outlined, data.storeAddress, label: 'Return to'),
+                            const SizedBox(height: 10),
+                          ],
+                          if (data.storeAddress.isNotEmpty) ...[
+                            GestureDetector(
+                              onTap: () => _navigateToStore(data.storeAddress),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: _recallOrange.withValues(alpha: 0.07),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: _recallOrange.withValues(alpha: 0.3)),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.store_rounded, size: 15, color: _recallOrange),
+                                    SizedBox(width: 6),
+                                    Text('Navigate to Store',
+                                        style: TextStyle(color: _recallOrange, fontSize: 13, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                          ],
+                          const Divider(height: 1, color: Color(0xFFFFCC80)),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 52,
+                            child: ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _recallOrange,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              ),
+                              onPressed: () => _handleConfirmRecall(order),
+                              icon: const Icon(Icons.store_rounded, size: 18),
+                              label: const Text('Confirm Recall at Store',
+                                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+            .animate()
+            .fadeIn(duration: 280.ms)
+            .slideY(begin: 0.05, end: 0, duration: 280.ms),
+      ],
+    );
+  }
+
+  Widget _recallInfoRow(IconData icon, String text, {String? label, bool bold = false}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 14, color: Colors.black38)),
+        const SizedBox(width: 7),
+        if (label != null)
+          Text('$label: ', style: const TextStyle(color: Colors.black38, fontSize: 12, fontWeight: FontWeight.w600)),
+        Expanded(
+          child: Text(text,
+              style: TextStyle(
+                  color: const Color(0xFF1B1E2A),
+                  fontSize: 13,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.normal)),
+        ),
+      ],
+    );
+  }
+
+  Widget _recallCallRow(String phone) {
+    return Row(
+      children: [
+        const Icon(Icons.phone_outlined, size: 14, color: Colors.black38),
+        const SizedBox(width: 7),
+        Expanded(child: Text(phone, style: const TextStyle(color: Color(0xFF1B1E2A), fontSize: 13))),
+        GestureDetector(
+          onTap: () => _launchCall(phone),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF2E7D32).withValues(alpha: 0.3)),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.call_rounded, size: 13, color: Color(0xFF2E7D32)),
+                SizedBox(width: 4),
+                Text('Call', style: TextStyle(color: Color(0xFF2E7D32), fontSize: 11, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // =============================================================================
@@ -1005,331 +1223,6 @@ class _DeliveredBadge extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  // ── Recall view ───────────────────────────────────────────────────────────────
-
-  Widget _buildRecallView(DeliveryOrder order, _RecallData data) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // ── Orange recall banner (shimmer) ────────────────────────────────────
-        Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-              decoration: BoxDecoration(
-                color: _recallOrange,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: _recallOrange.withValues(alpha: 0.35),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Row(
-                children: [
-                  Icon(
-                    Icons.u_turn_left_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Order Recalled — Return to Store',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 14,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Return items and confirm at the dock',
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            )
-            .animate(onPlay: (c) => c.repeat(reverse: true))
-            .shimmer(
-              duration: 1800.ms,
-              color: Colors.white.withValues(alpha: 0.15),
-            ),
-
-        const SizedBox(height: 12),
-
-        // ── Recall detail card ────────────────────────────────────────────────
-        Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF8E1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: _recallOrange.withValues(alpha: 0.5),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: _recallOrange.withValues(alpha: 0.1),
-                    blurRadius: 16,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      color: _recallOrange,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 11,
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.warning_amber_rounded,
-                            color: Colors.white,
-                            size: 17,
-                          ),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'RECALL — RETURN TO STORE',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 12,
-                              letterSpacing: 0.6,
-                            ),
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 7,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.2),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              'Customer Cancelled',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _infoRow(
-                            Icons.receipt_long_outlined,
-                            order.orderId,
-                            bold: true,
-                          ),
-                          const SizedBox(height: 8),
-
-                          if (data.customerName.isNotEmpty) ...[
-                            _infoRow(Icons.person_outline, data.customerName),
-                            const SizedBox(height: 6),
-                          ],
-
-                          if (data.customerPhone.isNotEmpty) ...[
-                            _callRow(data.customerPhone),
-                            const SizedBox(height: 6),
-                          ],
-
-                          if (data.storeName.isNotEmpty) ...[
-                            _infoRow(Icons.store_outlined, data.storeName),
-                            const SizedBox(height: 6),
-                          ],
-
-                          if (data.storeAddress.isNotEmpty) ...[
-                            _infoRow(
-                              Icons.location_on_outlined,
-                              data.storeAddress,
-                              label: 'Return to',
-                            ),
-                            const SizedBox(height: 10),
-                          ],
-
-                          if (data.storeAddress.isNotEmpty) ...[
-                            GestureDetector(
-                              onTap: () =>
-                                  onNavigateToStore?.call(data.storeAddress),
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _recallOrange.withValues(alpha: 0.07),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: _recallOrange.withValues(alpha: 0.3),
-                                  ),
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.store_rounded,
-                                      size: 15,
-                                      color: _recallOrange,
-                                    ),
-                                    SizedBox(width: 6),
-                                    Text(
-                                      'Navigate to Store',
-                                      style: TextStyle(
-                                        color: _recallOrange,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                          ],
-
-                          const Divider(height: 1, color: Color(0xFFFFCC80)),
-                          const SizedBox(height: 14),
-
-                          SizedBox(
-                            width: double.infinity,
-                            height: 52,
-                            child: ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _recallOrange,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                              onPressed: onConfirmRecall,
-                              icon: const Icon(Icons.store_rounded, size: 18),
-                              label: const Text(
-                                'Confirm Recall at Store',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 15,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-            .animate()
-            .fadeIn(duration: 280.ms)
-            .slideY(begin: 0.05, end: 0, duration: 280.ms),
-      ],
-    );
-  }
-
-  Widget _infoRow(
-    IconData icon,
-    String text, {
-    String? label,
-    bool bold = false,
-  }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 1),
-          child: Icon(icon, size: 14, color: Colors.black38),
-        ),
-        const SizedBox(width: 7),
-        if (label != null) ...[
-          Text(
-            '$label: ',
-            style: const TextStyle(
-              color: Colors.black38,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: const Color(0xFF1B1E2A),
-              fontSize: 13,
-              fontWeight: bold ? FontWeight.w700 : FontWeight.normal,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _callRow(String phone) {
-    return Row(
-      children: [
-        const Icon(Icons.phone_outlined, size: 14, color: Colors.black38),
-        const SizedBox(width: 7),
-        Expanded(
-          child: Text(
-            phone,
-            style: const TextStyle(color: Color(0xFF1B1E2A), fontSize: 13),
-          ),
-        ),
-        GestureDetector(
-          onTap: () => onCall?.call(phone),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: const Color(0xFF2E7D32).withValues(alpha: 0.3),
-              ),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.call_rounded, size: 13, color: Color(0xFF2E7D32)),
-                SizedBox(width: 4),
-                Text(
-                  'Call',
-                  style: TextStyle(
-                    color: Color(0xFF2E7D32),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

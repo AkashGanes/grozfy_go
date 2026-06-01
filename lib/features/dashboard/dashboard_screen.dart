@@ -343,6 +343,10 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   String? _lastPolledOrderId;
   _RecallData? _recallData;
   bool _recallCardExpanded = false;
+  // Guards against re-surfacing a recall after the driver confirms it.
+  // Server keeps the stop as "recall pending" until it processes the return,
+  // so without this set the 45s poll would re-detect and resurface repeatedly.
+  final Set<String> _confirmedRecallOrderIds = {};
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
 
@@ -389,6 +393,12 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   Future<void> _pollForRecall() async {
     final order = widget.app.activeOrder;
     if (order == null || !mounted) return;
+
+    // Already confirmed this session — never resurface it.
+    if (_confirmedRecallOrderIds.contains(order.orderId)) {
+      if (_recallData != null) setState(() => _recallData = null);
+      return;
+    }
 
     _RecallData? found;
 
@@ -551,6 +561,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     if (confirmed != true || !mounted) return;
 
     showInfoSnack(context, 'Recall confirmed — items returned to store.');
+    _confirmedRecallOrderIds.add(_recallData!.orderId);
     setState(() => _recallData = null);
     widget.app.clearActiveOrder();
   }
