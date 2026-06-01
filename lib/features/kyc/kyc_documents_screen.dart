@@ -538,7 +538,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                   title: reupload ? 'Re-upload License' : 'My Documents',
                   subtitle: reupload
                       ? 'Update your driving license details'
-                      : 'Manage your KYC identity documents',
+                      : 'Upload and manage your documents',
                   icon: Icons.folder_special_outlined,
                   onBack: () => Navigator.of(context).maybePop(),
                 ),
@@ -598,6 +598,10 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
   }
 
   Widget _buildCard(_DocEntry entry) {
+    if (entry.field == 'pan' && entry.status == _DocStatus.missing) {
+      return _PanMissingCard(onAdd: () => _pickFile('pan'));
+    }
+
     final existingUrl = switch (entry.field) {
       'license' => _existingLicenseUrl,
       'aadhar' => _existingAadharUrl,
@@ -820,6 +824,13 @@ class _KycStatusCard extends StatelessWidget {
     return const Color(0xFF2DBA9F);
   }
 
+  static String _shortDocName(String field) => switch (field) {
+    'license' => 'License',
+    'aadhar' => 'Aadhar',
+    'pan' => 'PAN',
+    _ => field,
+  };
+
   String _summaryText() {
     if (entries.any((e) => e.status == _DocStatus.reuploadRequired)) {
       return 'Action required — re-upload needed';
@@ -915,7 +926,7 @@ class _KycStatusCard extends StatelessWidget {
             children: entries.map((e) {
               return Expanded(
                 child: Text(
-                  e.status.label,
+                  _shortDocName(e.field),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 9,
@@ -971,7 +982,7 @@ class _FilterRow extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color:
                       isActive ? KycColors.accent : KycColors.cardBg(context),
@@ -988,30 +999,30 @@ class _FilterRow extends StatelessWidget {
                     Text(
                       label,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: isActive
                             ? Colors.white
                             : KycColors.textSecondary(context),
                       ),
                     ),
-                    if (count > 0) ...[
-                      const SizedBox(width: 5),
+                    if (count > 0 && !(filter == _DocFilter.expired)) ...[
+                      const SizedBox(width: 4),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 5,
-                          vertical: 1,
+                          horizontal: 4,
+                          vertical: 0,
                         ),
                         decoration: BoxDecoration(
                           color: isActive
                               ? Colors.white.withValues(alpha: 0.25)
                               : KycColors.accentSoft(context),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
                           '$count',
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             fontWeight: FontWeight.w800,
                             color:
                                 isActive ? Colors.white : KycColors.accent,
@@ -1126,28 +1137,6 @@ class _DocumentCard extends StatelessWidget {
                   ),
                 ),
                 _DocStatusBadge(status: status),
-                if (onUnlock != null) ...[
-                  const SizedBox(width: 6),
-                  Tooltip(
-                    message: 'Edit this document',
-                    child: InkWell(
-                      onTap: onUnlock,
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: KycColors.accentSoft(context),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.edit_outlined,
-                          size: 15,
-                          color: KycColors.accent,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -1220,6 +1209,30 @@ class _DocumentCard extends StatelessWidget {
                         icon:
                             const Icon(Icons.visibility_outlined, size: 15),
                         label: const Text('View'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: KycColors.accent,
+                          side: BorderSide(
+                            color: KycColors.accent.withValues(alpha: 0.5),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 9),
+                          textStyle: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (hasAnyFile && !entry.editable && onUnlock != null)
+                    const SizedBox(width: 10),
+                  if (hasAnyFile && !entry.editable && onUnlock != null)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: onUnlock,
+                        icon: const Icon(Icons.edit_outlined, size: 15),
+                        label: const Text('Edit'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: KycColors.accent,
                           side: BorderSide(
@@ -1436,49 +1449,41 @@ class _DatePickerCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final hasDate = date != null;
     final warnColor = const Color(0xFFE57700);
-    final textColor = _warn ? warnColor : KycColors.textPrimary(context);
+    final expColor = const Color(0xFFE53935);
+    final chipColor = _warn
+        ? (isExpiry && date != null && date!.isBefore(DateTime.now())
+            ? expColor
+            : warnColor)
+        : KycColors.accent;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         decoration: BoxDecoration(
-          color: KycColors.accentSoft(context),
+          color: _warn
+              ? chipColor.withValues(alpha: 0.12)
+              : KycColors.accentSoft(context),
           borderRadius: BorderRadius.circular(8),
+          border: _warn
+              ? Border.all(color: chipColor.withValues(alpha: 0.35))
+              : null,
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               Icons.calendar_today_outlined,
-              size: 12,
-              color: _warn ? warnColor : KycColors.textHint(context),
+              size: 10,
+              color: chipColor,
             ),
-            const SizedBox(width: 5),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w700,
-                      color: KycColors.textHint(context),
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                  Text(
-                    hasDate ? formatter(date!) : 'Select',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight:
-                          hasDate ? FontWeight.w700 : FontWeight.w400,
-                      color: hasDate
-                          ? textColor
-                          : KycColors.textHint(context),
-                    ),
-                  ),
-                ],
+            const SizedBox(width: 3),
+            Text(
+              hasDate ? formatter(date!) : label,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: hasDate ? chipColor : KycColors.textHint(context),
               ),
             ),
           ],
@@ -1680,7 +1685,7 @@ class _SubmitBar extends StatelessWidget {
                     ? 'Please wait...'
                     : isReupload
                         ? 'Submit License'
-                        : 'Submit KYC',
+                        : 'Submit Documents',
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: KycColors.accent,
@@ -1766,6 +1771,87 @@ class _ReuploadWarningBanner extends StatelessWidget {
                 fontSize: 13,
                 color: Color(0xFF7A4F08),
                 height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── PAN missing state card ───────────────────────────────────────────────────
+
+class _PanMissingCard extends StatelessWidget {
+  const _PanMissingCard({required this.onAdd});
+
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF6E7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF6D697)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE57700).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.account_balance_wallet_outlined,
+              size: 20,
+              color: Color(0xFFB87707),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'PAN Card (Optional)',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: KycColors.textPrimary(context),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Add your PAN card for faster verification',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: KycColors.textHint(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: onAdd,
+            icon: const Icon(Icons.add_rounded, size: 16),
+            label: const Text('Add'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE57700),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
               ),
             ),
           ),
