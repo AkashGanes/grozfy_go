@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/widgets/app_bottom_sheet.dart';
 
 bool _isDark(BuildContext c) => Theme.of(c).brightness == Brightness.dark;
-Color _sheetBg(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF12141C) : const Color(0xFFF7F8FA);
 Color _cardBg(BuildContext c) =>
     _isDark(c) ? const Color(0xFF1B1E2A) : Colors.white;
 Color _cardBorder(BuildContext c) =>
@@ -16,8 +15,6 @@ Color _textSecondary(BuildContext c) =>
     _isDark(c) ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
 Color _textTertiary(BuildContext c) =>
     _isDark(c) ? const Color(0xFF98A2B3) : const Color(0xFF475467);
-Color _grabber(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF3D4255) : const Color(0xFFD0D5DD);
 Color _progressTrack(BuildContext c) =>
     _isDark(c) ? const Color(0xFF2A2F3D) : const Color(0xFFE9EDF1);
 Color _bannerBg(BuildContext c) =>
@@ -28,10 +25,8 @@ Color _iconChipBg(BuildContext c) =>
     _isDark(c) ? const Color(0xFF252A38) : Colors.white;
 
 void showProfileCompletenessSheet(BuildContext context) {
-  showModalBottomSheet<void>(
+  showAppBottomSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
     builder: (sheetContext) => const _ProfileCompletenessSheet(),
   );
 }
@@ -52,63 +47,43 @@ class _ProfileCompletenessSheet extends StatelessWidget {
       maxChildSize: 0.95,
       expand: false,
       builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: _sheetBg(context),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
+        return AppBottomSheet(
+          scrollController: scrollController,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           child: Column(
             children: [
-              const SizedBox(height: 10),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: _grabber(context),
-                  borderRadius: BorderRadius.circular(99),
-                ),
+              _ProgressCard(
+                percent: pct,
+                completedCount: completeness.completedCount,
+                totalCount: completeness.totalCount,
+                remaining: remaining,
+                progress: completeness.percentage,
               ),
-              const SizedBox(height: 10),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  children: [
-                    _ProgressCard(
-                      percent: pct,
-                      completedCount: completeness.completedCount,
-                      totalCount: completeness.totalCount,
-                      remaining: remaining,
-                      progress: completeness.percentage,
-                    ),
-                    const SizedBox(height: 14),
-                    if (remaining > 0) const _UnlockBanner(),
-                    if (remaining > 0) const SizedBox(height: 14),
-                    ...List.generate(completeness.items.length, (i) {
-                      final item = completeness.items[i];
-                      return Padding(
-                        padding: EdgeInsets.only(
-                          bottom: i == completeness.items.length - 1 ? 0 : 10,
-                        ),
-                        child: _CompletenessItemRow(
-                          item: item,
-                          title: app.t(item.name),
-                          description: app.t(item.description),
-                          completeLabel: app.t('complete'),
-                          onTap: item.route == null
-                              ? null
-                              : () {
-                                  Navigator.of(context).pop();
-                                  Navigator.of(context).pushNamed(item.route!);
-                                },
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 14),
-                    _SupportCard(onTap: () {}),
-                  ],
-                ),
-              ),
+              const SizedBox(height: 14),
+              if (remaining > 0) const _UnlockBanner(),
+              if (remaining > 0) const SizedBox(height: 14),
+              ...List.generate(completeness.items.length, (i) {
+                final item = completeness.items[i];
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: i == completeness.items.length - 1 ? 0 : 10,
+                  ),
+                  child: _CompletenessItemRow(
+                    item: item,
+                    title: app.t(item.name),
+                    description: app.t(item.description),
+                    completeLabel: app.t('complete'),
+                    onTap: item.route == null
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            Navigator.of(context).pushNamed(item.route!);
+                          },
+                  ),
+                );
+              }),
+              const SizedBox(height: 14),
+              _SupportCard(onTap: () {}),
             ],
           ),
         );

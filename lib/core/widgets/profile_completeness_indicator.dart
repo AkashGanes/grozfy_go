@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../models/app_models.dart';
 import '../state/app_scope.dart';
 import '../theme/app_theme.dart';
+import 'app_bottom_sheet.dart';
 
 class ProfileCompletenessIndicator extends StatelessWidget {
   const ProfileCompletenessIndicator({
@@ -435,10 +436,8 @@ void showProfileCompletenessSheet(
   required ProfileCompleteness completeness,
   required void Function(ProfileCompletenessItem) onItemTap,
 }) {
-  showModalBottomSheet(
+  showAppBottomSheet<void>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
     builder: (sheetContext) => _DetailsBottomSheet(
       completeness: completeness,
       onItemTap: (item) {
@@ -465,26 +464,13 @@ class _DetailsBottomSheet extends StatelessWidget {
     final color = _getProgressColor(completeness.percentage);
     final ColorScheme scheme = Theme.of(context).colorScheme;
 
-    return Container(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.75,
-      ),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+    return AppBottomSheet(
+      maxHeightFactor: 0.75,
+      padding: EdgeInsets.zero,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.only(top: 12, bottom: 20),
-            decoration: BoxDecoration(
-              color: scheme.onSurface.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
+          const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(

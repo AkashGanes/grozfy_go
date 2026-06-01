@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/utils/validators.dart';
+import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/skeleton_loader.dart';
 import 'bank_submitted_details_screen.dart';
@@ -116,13 +117,8 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     int pageLength = 10,
   }) async {
     final app = AppScope.of(context);
-    return showModalBottomSheet<String>(
+    return showAppBottomSheet<String>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: KycColors.cardBg(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (BuildContext sheetContext) => _LinkSearchBottomSheet(
         title: title,
         initialQuery: initialQuery,
@@ -665,67 +661,35 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: AnimatedPadding(
-        duration: const Duration(milliseconds: 150),
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: FractionallySizedBox(
-          heightFactor: 0.82,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: KycColors.sheetGrabber(context),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        widget.title,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: KycColors.textPrimary(context),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                child: KycSearchInput(
-                  controller: _queryCtrl,
-                  autofocus: true,
-                  hint: 'Search '
-                      '${widget.title.replaceAll('*', '').trim().toLowerCase()}',
-                  onChanged: (String value) {
-                    _debounce?.cancel();
-                    _debounce = Timer(
-                      const Duration(milliseconds: 300),
-                      () => _load(value.trim()),
-                    );
-                  },
-                ),
-              ),
-              Expanded(
-                child: _loading
-                    ? const _BankSearchLoading()
-                    : _buildResults(context),
-              ),
-            ],
+    return AppBottomSheet(
+      heightFactor: 0.82,
+      padding: EdgeInsets.zero,
+      title: widget.title,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+            child: KycSearchInput(
+              controller: _queryCtrl,
+              autofocus: true,
+              hint: 'Search '
+                  '${widget.title.replaceAll('*', '').trim().toLowerCase()}',
+              onChanged: (String value) {
+                _debounce?.cancel();
+                _debounce = Timer(
+                  const Duration(milliseconds: 300),
+                  () => _load(value.trim()),
+                );
+              },
+            ),
           ),
-        ),
+          Expanded(
+            child: _loading
+                ? const _BankSearchLoading()
+                : _buildResults(context),
+          ),
+        ],
       ),
     );
   }

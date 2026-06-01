@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_bottom_sheet.dart';
 
 class FailedDeliveryResult {
   const FailedDeliveryResult({
@@ -21,10 +22,8 @@ class FailedDeliveryResult {
 Future<FailedDeliveryResult?> showFailedDeliverySheet(
   BuildContext context,
 ) {
-  return showModalBottomSheet<FailedDeliveryResult>(
+  return showAppBottomSheet<FailedDeliveryResult>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
     builder: (_) => const _FailedDeliverySheet(),
   );
 }
@@ -63,18 +62,12 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
   }
 
   void _showPhotoSourceSheet() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    showModalBottomSheet<void>(
+    showAppBottomSheet<void>(
       context: context,
-      backgroundColor: scheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      builder: (ctx) => SafeArea(
+      builder: (ctx) => AppBottomSheet(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.camera_alt_outlined, color: AppTheme.oceanBlue),
               title: const Text('Take Photo'),
@@ -100,7 +93,6 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                   setState(() => _pickedFile = null);
                 },
               ),
-            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -110,61 +102,18 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle bar
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: scheme.onSurface.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
+    return AppBottomSheet(
+      scrollable: true,
+      title: 'Delivery Failed',
+      leadingIcon: Icons.cancel_outlined,
+      leadingIconColor: Colors.red,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 12),
 
-            // Title
-            Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.cancel_outlined,
-                    color: Colors.red,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'Delivery Failed',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurface,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Reason label
+          // Reason label
             Text(
               'Why couldn\'t you deliver?',
               style: TextStyle(
@@ -359,39 +308,24 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                     ),
             ),
 
-            const SizedBox(height: 20),
+          const SizedBox(height: 20),
 
-            // Confirm button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
+          // Confirm button
+          AppSheetPrimaryButton(
+            label: 'Confirm Failed Delivery',
+            icon: Icons.cancel_outlined,
+            color: Colors.red,
+            onPressed: () {
+              Navigator.of(context).pop(
+                FailedDeliveryResult(
+                  reason: _selectedReason,
+                  notes: _notesController.text.trim(),
+                  photoPath: _pickedFile?.path,
                 ),
-                icon: const Icon(Icons.cancel_outlined, size: 18),
-                label: const Text(
-                  'Confirm Failed Delivery',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                ),
-                onPressed: () {
-                  Navigator.of(context).pop(
-                    FailedDeliveryResult(
-                      reason: _selectedReason,
-                      notes: _notesController.text.trim(),
-                      photoPath: _pickedFile?.path,
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

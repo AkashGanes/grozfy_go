@@ -8,6 +8,7 @@ import '../../core/models/app_models.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../kyc/widgets/kyc_form_widgets.dart';
@@ -94,10 +95,8 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     bool loading = true;
     bool fetchStarted = false;
 
-    await showModalBottomSheet<void>(
+    await showAppBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModal) {
@@ -114,50 +113,15 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
               });
             }
 
-            return Container(
-              decoration: BoxDecoration(
-                color: scheme.surface,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              padding: EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                MediaQuery.of(ctx).padding.bottom + 20,
-              ),
+            return AppBottomSheet(
+              title: 'Filter by Store',
+              subtitle:
+                  'Pending orders will be filtered by your selected store.',
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: scheme.onSurface.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  Text(
-                    'Filter by Store',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Pending orders will be filtered by your selected store.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: scheme.onSurface.withValues(alpha: 0.5),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   if (loading)
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 24),
