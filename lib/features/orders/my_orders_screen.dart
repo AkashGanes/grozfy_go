@@ -552,7 +552,6 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
               label: 'External Delivery Trips',
               route: AppRoutes.externalDeliveryTripList,
               color: const Color(0xFF7C3AED),
-              isNew: true,
             ),
             _divider(),
             _tile(
@@ -615,25 +614,26 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
             ),
           ],
         ).animate().fadeIn(duration: 280.ms, delay: 180.ms).slideY(begin: 0.04, end: 0),
-        if (_appVersion.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 16, bottom: 4),
-            child: Center(
-              child: Text(
-                'Version $_appVersion',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey.shade500,
-                  letterSpacing: 0.3,
-                ),
-              ),
-            ),
-          ).animate().fadeIn(duration: 280.ms, delay: 210.ms),
         const SizedBox(height: 12),
         _logoutItem()
             .animate()
             .fadeIn(duration: 280.ms, delay: 240.ms)
             .slideY(begin: 0.04, end: 0),
+        if (_appVersion.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 4),
+            child: Center(
+              child: Text(
+                'Version $_appVersion',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            ),
+          ).animate().fadeIn(duration: 280.ms, delay: 280.ms),
       ],
     );
   }
