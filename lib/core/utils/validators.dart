@@ -128,13 +128,13 @@ String? validateBankAccountNo(String? value) {
   return null;
 }
 
-/// Indian driving license: 2-letter state code + 2-digit RTO + 4-digit year + 7-digit unique number.
+/// Indian driving license: 2-letter state code + 2-digit RTO + optional letter + 4-digit year + 7-digit serial.
 String? validateLicenseNumber(String? value, {bool required = false}) {
   if (value == null || value.trim().isEmpty) {
     return required ? 'License number is required' : null;
   }
   final String v = value.trim().replaceAll(RegExp(r'[\s-]'), '').toUpperCase();
-  if (!RegExp(r'^[A-Z]{2}[0-9]{13}$').hasMatch(v)) {
+  if (!RegExp(r'^[A-Z]{2}[0-9]{2}[A-Z]?[0-9]{11}$').hasMatch(v)) {
     return 'Enter a valid license number (e.g. TN0120110012345)';
   }
   return null;
