@@ -607,6 +607,13 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
               route: AppRoutes.settings,
               color: const Color(0xFF6B7280),
             ),
+            _divider(),
+            _tile(
+              icon: Icons.lock_rounded,
+              label: 'Security',
+              route: AppRoutes.security,
+              color: const Color(0xFF1AB36A),
+            ),
           ],
         ).animate().fadeIn(duration: 280.ms, delay: 120.ms).slideY(begin: 0.04, end: 0),
         const SizedBox(height: 20),
