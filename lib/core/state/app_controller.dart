@@ -3967,13 +3967,6 @@ class AppController extends ChangeNotifier {
     );
   }
 
-  String externalDeliveryStatusLabel(ExternalDeliveryStatus status) {
-    return LocalizedText.externalDeliveryStatus(
-      _languageCode.isEmpty ? 'en' : _languageCode,
-      status,
-    );
-  }
-
   String aiMessage(dynamic value) {
     return LocalizedText.resolveAiMessage(
       _languageCode.isEmpty ? 'en' : _languageCode,

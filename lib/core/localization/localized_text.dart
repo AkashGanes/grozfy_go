@@ -23,13 +23,6 @@ class LocalizedText {
     return AppStrings.get(languageCode, status.localizationKey);
   }
 
-  static String externalDeliveryStatus(
-    String languageCode,
-    ExternalDeliveryStatus status,
-  ) {
-    return AppStrings.get(languageCode, status.localizationKey);
-  }
-
   static String resolveAiMessage(
     String languageCode,
     dynamic value,
