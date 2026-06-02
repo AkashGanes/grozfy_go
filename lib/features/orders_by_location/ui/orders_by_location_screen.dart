@@ -1,11 +1,8 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
-import '../../../core/navigation/app_routes.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/state/providers.dart';
@@ -13,14 +10,10 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/skeleton_loader.dart';
-import '../../kyc/widgets/kyc_form_widgets.dart';
 import '../model/external_delivery.dart';
-import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
 import '../../orders/delivery_tracking_screen.dart';
 import 'order_location_detail_screen.dart';
-
-const double _maxDistanceWarningKm = 3.0;
 
 class OrdersByLocationScreen extends ConsumerStatefulWidget {
   const OrdersByLocationScreen({super.key});
@@ -39,11 +32,7 @@ class _OrdersByLocationScreenState
 
   bool _selectionMode = false;
   final Set<String> _selectedOrderIds = <String>{};
-  bool _creatingTrip = false;
-  final List<ExternalDeliveryDetail> _orderDetailsCache = [];
 
-  String _searchQuery = '';
-  final TextEditingController _searchController = TextEditingController();
 
   // Active filters applied server-side (and to the offline cache). An empty
   // status set / null date range means "no constraint".
@@ -125,7 +114,6 @@ class _OrdersByLocationScreenState
   @override
   void dispose() {
     _pagingController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -246,19 +234,6 @@ class _OrdersByLocationScreenState
 
   bool _isEligibleForTrip(ExternalDelivery order) => order.status == 'Pending';
 
-  void _enterSelectionMode() {
-    setState(() {
-      _selectionMode = true;
-    });
-  }
-
-  void _exitSelectionMode() {
-    setState(() {
-      _selectionMode = false;
-      _selectedOrderIds.clear();
-    });
-  }
-
   void _toggleSelection(ExternalDelivery order) {
     if (!_selectionMode) return;
     setState(() {
@@ -273,199 +248,6 @@ class _OrdersByLocationScreenState
     });
   }
 
-  double _calculateDistanceKm(
-    double lat1,
-    double lon1,
-    double lat2,
-    double lon2,
-  ) {
-    const double earthRadiusKm = 6371.0;
-    final double dLat = _toRadians(lat2 - lat1);
-    final double dLon = _toRadians(lon2 - lon1);
-    final double a =
-        math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_toRadians(lat1)) *
-            math.cos(_toRadians(lat2)) *
-            math.sin(dLon / 2) *
-            math.sin(dLon / 2);
-    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    return earthRadiusKm * c;
-  }
-
-  double _toRadians(double degrees) => degrees * math.pi / 180.0;
-
-  Future<List<ExternalDeliveryDetail>> _fetchOrderDetails(
-    List<ExternalDelivery> orders,
-  ) async {
-    final details = <ExternalDeliveryDetail>[];
-    for (final order in orders) {
-      final cached = _orderDetailsCache.firstWhere(
-        (d) => d.name == order.name,
-        orElse: () => ExternalDeliveryDetail(
-          name: '',
-          storeName: '',
-          storeUrl: '',
-          customerName: '',
-          status: '',
-        ),
-      );
-      if (cached.name.isNotEmpty) {
-        details.add(cached);
-      } else {
-        try {
-          final detail = await _repository.fetchDetail(order.name);
-          details.add(detail);
-          _orderDetailsCache.add(detail);
-        } catch (_) {
-          // Skip orders we can't get details for
-        }
-      }
-    }
-    return details;
-  }
-
-  (bool hasWarning, String message) _checkDistanceWarning(
-    List<ExternalDeliveryDetail> details,
-  ) {
-    for (int i = 0; i < details.length; i++) {
-      for (int j = i + 1; j < details.length; j++) {
-        final d1 = details[i];
-        final d2 = details[j];
-        if (d1.latitude != null &&
-            d1.longitude != null &&
-            d2.latitude != null &&
-            d2.longitude != null) {
-          final distance = _calculateDistanceKm(
-            d1.latitude!,
-            d1.longitude!,
-            d2.latitude!,
-            d2.longitude!,
-          );
-          if (distance > _maxDistanceWarningKm) {
-            return (
-              true,
-              '${d1.customerName} and ${d2.customerName} are ${distance.toStringAsFixed(1)} km apart. Consider creating separate trips.',
-            );
-          }
-        }
-      }
-    }
-    return (false, '');
-  }
-
-  Future<void> _showDistanceWarningDialog(
-    List<ExternalDelivery> selectedOrders,
-  ) async {
-    final details = await _fetchOrderDetails(selectedOrders);
-    if (!mounted) return;
-
-    final (hasWarning, message) = _checkDistanceWarning(details);
-    if (!hasWarning) {
-      await _createBatchTrip(selectedOrders);
-      return;
-    }
-
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: AppTheme.mango, size: 28),
-            SizedBox(width: 10),
-            Text('Distance Warning'),
-          ],
-        ),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.oceanBlue,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Create Anyway'),
-          ),
-        ],
-      ),
-    );
-
-    if (result == true && mounted) {
-      await _createBatchTrip(selectedOrders);
-    }
-  }
-
-  Future<void> _handleCreateTrip() async {
-    if (_selectedOrderIds.isEmpty) return;
-
-    final allItems = _pagingController.itemList ?? [];
-    final selectedOrders = allItems
-        .whereType<OrderRow>()
-        .where((r) => _selectedOrderIds.contains(r.order.name))
-        .map((r) => r.order)
-        .toList();
-
-    final stale = selectedOrders
-        .where((o) => !_isEligibleForTrip(o))
-        .map((o) => o.name)
-        .toList();
-    if (stale.isNotEmpty) {
-      showInfoSnack(
-        context,
-        '${stale.length} order${stale.length == 1 ? ' is' : 's are'} no longer available. Refreshing list.',
-      );
-      _exitSelectionMode();
-      await _refresh();
-      return;
-    }
-
-    await _showDistanceWarningDialog(selectedOrders);
-  }
-
-  Future<void> _createBatchTrip(List<ExternalDelivery> orders) async {
-    if (_creatingTrip) return;
-    setState(() => _creatingTrip = true);
-
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-
-    try {
-      final tripName = await _repository.createTripForOrders(orders);
-      if (!mounted) return;
-
-      _exitSelectionMode();
-      await _refresh();
-
-      scaffoldMessenger.showSnackBar(
-        SnackBar(
-          content: Text('Trip created with ${orders.length} orders'),
-          action: SnackBarAction(
-            label: 'View Trip',
-            onPressed: () {
-              navigator.pushNamed(
-                AppRoutes.externalDeliveryTripDetails,
-                arguments: tripName,
-              );
-            },
-          ),
-          duration: const Duration(seconds: 5),
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) {
-        setState(() => _creatingTrip = false);
-      }
-    }
-  }
-
   Future<void> _handleOrderTap(ExternalDelivery order) async {
     if (_submittingOrderIds.contains(order.name)) return;
 
@@ -478,9 +260,6 @@ class _OrdersByLocationScreenState
       setState(() => _submittingOrderIds.add(order.name));
       try {
         final app = ref.read(appControllerProvider);
-        // acceptOrder: updates Frappe status → 'Added to Trip', creates the
-        // External Delivery Trip document, and sets app.activeOrder so the
-        // full tracking + cancel/confirm/earnings flow works correctly.
         final error = await app.acceptOrder(order.name);
         if (!mounted) return;
 
@@ -529,14 +308,6 @@ class _OrdersByLocationScreenState
     );
     if (!mounted) return;
     await _refresh();
-  }
-
-  void _handleOrderLongPress(ExternalDelivery order) {
-    if (!_isEligibleForTrip(order)) return;
-    if (!_selectionMode) {
-      _enterSelectionMode();
-    }
-    _toggleSelection(order);
   }
 
   Future<void> _showStorePicker() async {
@@ -1057,226 +828,6 @@ class _OrdersByLocationScreenState
       ),
     );
   }
-
-  List<LocationListItem> _filteredItems() {
-    final query = _searchQuery.toLowerCase().trim();
-    if (query.isEmpty) return _pagingController.itemList ?? [];
-    final result = <LocationListItem>[];
-    StoreHeader? pendingHeader;
-    for (final item in _pagingController.itemList ?? <LocationListItem>[]) {
-      if (item is StoreHeader) {
-        pendingHeader = item;
-      } else if (item is OrderRow) {
-        final o = item.order;
-        final matches = o.name.toLowerCase().contains(query) ||
-            o.customerName.toLowerCase().contains(query) ||
-            o.storeName.toLowerCase().contains(query);
-        if (matches) {
-          if (pendingHeader != null) {
-            result.add(pendingHeader);
-            pendingHeader = null;
-          }
-          result.add(item);
-        }
-      }
-    }
-    return result;
-  }
-
-  Widget _buildSearchResults() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    final items = _filteredItems();
-    if (items.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-        child: FrostCard(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.search_off_rounded,
-                size: 48,
-                color: AppTheme.mango.withValues(alpha: 0.7),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'No orders found',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: scheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'No results for "$_searchQuery"',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: scheme.onSurface.withValues(alpha: 0.5),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(20, 4, 20, _selectionMode ? 100 : 20),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        if (item is StoreHeader) {
-          return _StoreHeaderTile(storeName: item.storeName);
-        }
-        if (item is OrderRow) {
-          return _OrderCard(
-            order: item.order,
-            busy: _submittingOrderIds.contains(item.order.name) || _creatingTrip,
-            selected: _selectedOrderIds.contains(item.order.name),
-            selectionMode: _selectionMode,
-            onTap: () => _handleOrderTap(item.order),
-            onLongPress: () => _handleOrderLongPress(item.order),
-          );
-        }
-        return const SizedBox.shrink();
-      },
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-      child: KycSearchInput(
-        controller: _searchController,
-        hint: 'Search by order ID or customer…',
-        onChanged: (v) => setState(() => _searchQuery = v),
-      ),
-    );
-  }
-
-  Widget _buildHeader(String? selectedStore) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    if (_selectionMode) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 16, 12, 0),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.close_rounded),
-              onPressed: _exitSelectionMode,
-              tooltip: 'Cancel selection',
-            ),
-            Expanded(
-              child: Text(
-                '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onSurface,
-                ),
-              ),
-            ),
-            IconButton(
-              icon: Icon(Icons.store_rounded, color: scheme.onSurface),
-              tooltip: 'Change location',
-              onPressed: () => _showStorePicker(),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 8, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Orders by Location',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: scheme.onSurface,
-                  ),
-                ),
-                Text(
-                  selectedStore ?? 'Select a location',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: scheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: Icon(Icons.store_rounded, color: scheme.onSurface),
-            tooltip: 'Change location',
-            onPressed: () => _showStorePicker(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSelectionBottomBar() {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: Container(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          16,
-          20,
-          MediaQuery.of(context).padding.bottom + 16,
-        ),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.oceanBlue,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-            disabledBackgroundColor: AppTheme.oceanBlue.withValues(alpha: 0.5),
-          ),
-          onPressed: _creatingTrip ? null : _handleCreateTrip,
-          child: _creatingTrip
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : Text(
-                  '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected → Create Trip',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-        ),
-      ),
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1577,63 +1128,6 @@ class _ErrorState extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Backdrop shapes
-// ---------------------------------------------------------------------------
-
-class _LocationBackdropShapes extends StatelessWidget {
-  const _LocationBackdropShapes();
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Stack(
-        children: [
-          Positioned(
-            left: -60,
-            top: -70,
-            child: Container(
-              width: 180,
-              height: 180,
-              decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.16),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-          Positioned(
-            right: -35,
-            top: 110,
-            child: Transform.rotate(
-              angle: 0.8,
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: AppTheme.mango.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 40,
-            bottom: -60,
-            child: Container(
-              width: 210,
-              height: 210,
-              decoration: BoxDecoration(
-                color: AppTheme.mint.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

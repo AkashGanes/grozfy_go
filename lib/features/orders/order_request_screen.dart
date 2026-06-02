@@ -25,7 +25,11 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final app = AppScope.of(context);
-      _order = app.incomingOrder ?? app.generateIncomingOrder();
+      _order = app.incomingOrder;
+      if (_order == null) {
+        Navigator.of(context).maybePop();
+        return;
+      }
       _startCountdown();
       if (mounted) {
         setState(() {});

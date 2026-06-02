@@ -116,7 +116,7 @@ class DashboardGreetingHeader extends StatelessWidget {
         fit: BoxFit.cover,
         width: 52,
         height: 52,
-        errorBuilder: (_, __, ___) => fallback,
+        errorBuilder: (_, _, _) => fallback,
       );
     }
 
@@ -135,7 +135,7 @@ class DashboardGreetingHeader extends StatelessWidget {
         fit: BoxFit.cover,
         width: 52,
         height: 52,
-        errorBuilder: (_, __, ___) => fallback,
+        errorBuilder: (_, _, _) => fallback,
       );
     }
 

@@ -24,7 +24,6 @@ import '../services/location_ping_service.dart';
 import '../services/secure_token_storage.dart';
 import '../services/sync_manager.dart';
 import '../utils/formatters.dart';
-import '../utils/profile_image_validator.dart';
 import '../utils/validators.dart' as app_validators;
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
@@ -97,18 +96,6 @@ class AppController extends ChangeNotifier {
   static const String _prefAccentColor = 'accent_color';
   static const String _prefActiveOrderId = 'active_order_id';
   static const String _prefActiveTripId = 'active_trip_id';
-  static const int _profileImageMaxBytes = 5 * 1024 * 1024;
-  static const int _profileImageMinDimension = 300;
-  static const int _profileImageMaxDimension = 5000;
-  static const double _profileImageMinAspectRatio = 0.75;
-  static const double _profileImageMaxAspectRatio = 1.33;
-  static const Set<String> _profileImageAllowedExtensions = <String>{
-    '.jpg',
-    '.jpeg',
-    '.png',
-  };
-
-  final Random _random = Random();
   final Map<String, VerificationStatus> _kycStatus = {
     'idProof': VerificationStatus.notSubmitted,
     'drivingLicense': VerificationStatus.notSubmitted,
@@ -197,8 +184,6 @@ class AppController extends ChangeNotifier {
   bool _isConnected = true;
   bool _showRetryButton = true;
   bool _isInitialized = false;
-  bool _appIsResumed = false;
-  bool _firstFrameBuilt = false;
   StreamSubscription<bool>? _connectivitySubscription;
 
   DeliveryOrder? _incomingOrder;
@@ -215,7 +200,6 @@ class AppController extends ChangeNotifier {
   Timer? _orderTimer;
   int _orderElapsedSeconds = 0;
   DateTime? _orderStartTime;
-  DateTime? _orderEndTime;
   GeoLocation? _partnerLiveLocation;
   String? _activeTripId;
 
@@ -350,37 +334,6 @@ class AppController extends ChangeNotifier {
   DeliveryOrder? get activeOrder => _activeOrder;
   String? get activeTripId => _activeTripId;
 
-  void createMockActiveOrder() {
-    if (_activeOrder == null) {
-      _activeOrder = DeliveryOrder(
-        orderId: '#OD${3000 + _random.nextInt(999)}',
-        customerName: 'Sneha Gupta',
-        customerPhone: '9876512345',
-        deliveryAddress: 'Saket, New Delhi - 110017',
-        storeId: 'STORE200',
-        storeName: 'Pizza Palace',
-        storeContact: '9876598765',
-        storeAddress: 'Dwarka, New Delhi - 110075',
-        orderItems: <OrderItem>[
-          const OrderItem(name: 'Pepperoni Pizza', quantity: 2, price: 450),
-          const OrderItem(name: 'Garlic Bread', quantity: 1, price: 120),
-          const OrderItem(name: 'Cola', quantity: 2, price: 60),
-        ],
-        orderStatus: OrderStatus.accepted,
-        latitude: 28.5692,
-        longitude: 77.1538,
-        pickup: 'Dwarka, New Delhi',
-        drop: 'Saket, New Delhi',
-        deliveryInstructions: 'Ring bell twice',
-        paymentMode: 'Online',
-        distanceKm: 5.2,
-        estimatedEarnings: 145,
-        assignmentStatus: OrderAssignmentStatus.assigned,
-      );
-      notifyListeners();
-    }
-  }
-
   EarningsSummary get earnings => _earnings;
 
   bool get isOrderTimerRunning =>
@@ -409,7 +362,6 @@ class AppController extends ChangeNotifier {
   int stopOrderTimer() {
     _orderTimer?.cancel();
     _orderTimer = null;
-    _orderEndTime = DateTime.now();
     final finalSeconds = _orderElapsedSeconds;
     notifyListeners();
     return finalSeconds;
@@ -419,7 +371,6 @@ class AppController extends ChangeNotifier {
     _orderTimer?.cancel();
     _orderTimer = null;
     _orderStartTime = null;
-    _orderEndTime = null;
     _orderElapsedSeconds = 0;
     notifyListeners();
   }
@@ -758,12 +709,10 @@ class AppController extends ChangeNotifier {
   }
 
   void setAppResumed(bool isResumed) {
-    _appIsResumed = isResumed;
     notifyListeners();
   }
 
   void setFirstFrameBuilt(bool built) {
-    _firstFrameBuilt = built;
     notifyListeners();
   }
 
@@ -1161,47 +1110,6 @@ class AppController extends ChangeNotifier {
     }
     return path.substring(lastDot);
   }
-
-  Future<String?> _validateProfileImage(String sourcePath) async {
-    final String ext = _fileExtension(sourcePath).toLowerCase();
-    if (!_profileImageAllowedExtensions.contains(ext)) {
-      return 'Only JPG or PNG images are allowed.';
-    }
-
-    final File file = File(sourcePath);
-    final int bytes = await file.length();
-    if (bytes <= 0) {
-      return 'Selected image is empty. Pick another image.';
-    }
-    if (bytes > _profileImageMaxBytes) {
-      return 'Image size must be 5 MB or less.';
-    }
-
-    final Size? size = await _readImageSize(file);
-    if (size == null) {
-      return 'Unable to read image dimensions. Pick another image.';
-    }
-
-    if (size.width < _profileImageMinDimension ||
-        size.height < _profileImageMinDimension) {
-      return 'Image dimensions must be at least $_profileImageMinDimension x $_profileImageMinDimension px.';
-    }
-    if (size.width > _profileImageMaxDimension ||
-        size.height > _profileImageMaxDimension) {
-      return 'Image dimensions must not exceed $_profileImageMaxDimension x $_profileImageMaxDimension px.';
-    }
-
-    final double ratio = size.width / size.height;
-    if (ratio < _profileImageMinAspectRatio ||
-        ratio > _profileImageMaxAspectRatio) {
-      return 'Image aspect ratio must be between 3:4 and 4:3.';
-    }
-
-    return null;
-  }
-
-  Future<Size?> _readImageSize(File file) =>
-      ProfileImageValidator.readDimensions(file);
 
   Future<void> setSelectedLocation({
     required double latitude,
@@ -3107,37 +3015,6 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  DeliveryOrder generateIncomingOrder() {
-    final String orderId = '#OD${1000 + _random.nextInt(8999)}';
-    _incomingOrder = DeliveryOrder(
-      orderId: orderId,
-      customerName: 'Riya Sharma',
-      customerPhone: '9876501234',
-      deliveryAddress: 'Karol Bagh, New Delhi - 110005',
-      storeId: 'STORE${100 + _random.nextInt(899)}',
-      storeName: 'Fresh Bites Kitchen',
-      storeContact: '9876543210',
-      storeAddress: 'Connaught Place, New Delhi - 110001',
-      orderItems: <OrderItem>[
-        const OrderItem(name: 'Veg Biryani', quantity: 2, price: 180),
-        const OrderItem(name: 'Chicken Curry', quantity: 1, price: 250),
-        const OrderItem(name: 'Naan', quantity: 4, price: 40),
-      ],
-      orderStatus: OrderStatus.pending,
-      latitude: 28.6692 + (_random.nextDouble() - 0.5) * 0.1,
-      longitude: 77.4538 + (_random.nextDouble() - 0.5) * 0.1,
-      pickup: 'Connaught Place, New Delhi',
-      drop: 'Karol Bagh, New Delhi',
-      deliveryInstructions: 'Call before arrival, gate code 2456',
-      paymentMode: _random.nextBool() ? 'COD' : 'Online',
-      distanceKm: 6.4,
-      estimatedEarnings: 132,
-      assignmentStatus: OrderAssignmentStatus.unassigned,
-    );
-    notifyListeners();
-    return _incomingOrder!;
-  }
-
   void respondToOrderRequest({required bool accept}) {
     if (_incomingOrder == null) {
       return;
@@ -3317,68 +3194,8 @@ class AppController extends ChangeNotifier {
   List<DeliveryOrder> get availableOrders =>
       List<DeliveryOrder>.unmodifiable(_availableOrders);
 
-  List<DeliveryOrder> get acceptedOrders {
-    if (_acceptedOrders.isEmpty) {
-      _populateMockAcceptedOrders();
-    }
-    return List<DeliveryOrder>.unmodifiable(_acceptedOrders);
-  }
-
-  void _populateMockAcceptedOrders() {
-    final List<String> customerNames = <String>[
-      'Riya Sharma',
-      'Amit Kumar',
-      'Priya Singh',
-    ];
-    final List<String> storeNames = <String>[
-      'Fresh Bites Kitchen',
-      'Tasty Treats',
-      'Burger Barn',
-    ];
-    final List<String> addresses = <String>[
-      'Connaught Place, New Delhi',
-      'Karol Bagh, New Delhi',
-      'Lajpat Nagar, New Delhi',
-    ];
-    final List<OrderStatus> statuses = <OrderStatus>[
-      OrderStatus.delivered,
-      OrderStatus.delivered,
-      OrderStatus.cancelled,
-    ];
-
-    for (int i = 0; i < 3; i++) {
-      _acceptedOrders.add(
-        DeliveryOrder(
-          orderId: '#OD${2000 + i}',
-          customerName: customerNames[i],
-          customerPhone: '98765${1000 + i}',
-          deliveryAddress: '${addresses[i]} - ${110001 + i * 10}',
-          storeId: 'STORE${100 + i}',
-          storeName: storeNames[i],
-          storeContact: '98765${43210 + i}',
-          storeAddress: addresses[(i + 1) % addresses.length],
-          orderItems: <OrderItem>[
-            OrderItem(
-              name: 'Combo Meal ${i + 1}',
-              quantity: 1 + i,
-              price: (150 + i * 50).toDouble(),
-            ),
-          ],
-          orderStatus: statuses[i],
-          latitude: 28.6139 + i * 0.02,
-          longitude: 77.2090 + i * 0.02,
-          pickup: addresses[(i + 1) % addresses.length],
-          drop: addresses[i],
-          deliveryInstructions: 'Call before arrival',
-          paymentMode: 'COD',
-          distanceKm: (3 + i).toDouble(),
-          estimatedEarnings: (60 + i * 20).toDouble(),
-          assignmentStatus: OrderAssignmentStatus.assigned,
-        ),
-      );
-    }
-    notifyListeners();
-  }
+  List<DeliveryOrder> get acceptedOrders =>
+      List<DeliveryOrder>.unmodifiable(_acceptedOrders);
 
   bool get isLoadingOrders => _isLoadingOrders;
 

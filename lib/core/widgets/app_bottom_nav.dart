@@ -9,8 +9,6 @@ class AppBottomNav extends StatelessWidget {
     required this.onTap,
   });
 
-  static const double _height = 72;
-
   final int currentIndex;
   final ValueChanged<int> onTap;
 

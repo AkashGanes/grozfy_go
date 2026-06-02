@@ -8,7 +8,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
@@ -206,18 +205,6 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
     } finally {
       if (mounted) setState(() => _updating = false);
     }
-  }
-
-  Future<void> _handleDelivered() async {
-    final photoPath = await showDeliveryProofSheet(context);
-    if (!mounted) return;
-    if (photoPath != null) {
-      await widget.repository.uploadProofPhoto(
-        orderName: widget.order.name,
-        filePath: photoPath,
-      );
-    }
-    await _updateStatus('Delivered');
   }
 
   Future<void> _uploadProofPhotoLate() async {
@@ -1928,39 +1915,6 @@ class _AddressRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _CallButton extends StatelessWidget {
-  const _CallButton({required this.mobile});
-  final String mobile;
-
-  Future<void> _call() async {
-    final digits = mobile.replaceAll(RegExp(r'\s+'), '');
-    await launchUrl(Uri.parse('tel:$digits'));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _call,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE8F5E9),
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: const Color(0xFF4CAF50).withValues(alpha: 0.3),
-          ),
-        ),
-        child: const Icon(
-          Icons.phone_rounded,
-          color: Color(0xFF4CAF50),
-          size: 18,
-        ),
-      ),
     );
   }
 }
