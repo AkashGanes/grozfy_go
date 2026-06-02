@@ -660,8 +660,11 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final double resultsMaxHeight =
+        (mq.size.height - mq.viewInsets.bottom - mq.padding.top) * 0.40;
+
     return AppBottomSheet(
-      heightFactor: 0.82,
       padding: EdgeInsets.zero,
       title: widget.title,
       child: Column(
@@ -683,7 +686,8 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
               },
             ),
           ),
-          Expanded(
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: resultsMaxHeight),
             child: _loading
                 ? const _BankSearchLoading()
                 : _buildResults(context),
