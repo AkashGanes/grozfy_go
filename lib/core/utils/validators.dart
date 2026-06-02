@@ -97,6 +97,28 @@ String? validatePositiveInt(String? value) {
   return null;
 }
 
+/// Full legal name as printed on a bank passbook — letters, spaces, hyphens,
+/// periods, apostrophes; 2–100 characters.
+String? validateAccountHolderName(String? value) {
+  final String? req = requiredField(value);
+  if (req != null) return req;
+  final String v = value!.trim();
+  if (v.length < 2 || v.length > 100) {
+    return 'Name must be 2–100 characters';
+  }
+  if (!RegExp(r"^[A-Za-z\s\.\-']+$").hasMatch(v)) {
+    return 'Use only letters, spaces, hyphens, and periods';
+  }
+  return null;
+}
+
+/// Required variant of [validateBankAccountNo] — digits only, 9–18 characters.
+String? validateRequiredBankAccountNo(String? value) {
+  final String? req = requiredField(value);
+  if (req != null) return req;
+  return validateBankAccountNo(value);
+}
+
 /// IFSC code: 4 uppercase letters + '0' + 6 alphanumeric = exactly 11 characters.
 /// Example: SBIN0001234, HDFC0004321
 String? validateBranchCode(String? value) {

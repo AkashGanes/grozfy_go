@@ -2715,7 +2715,9 @@ class AppController extends ChangeNotifier {
     String? party,
     String? iban,
     String? branchCode,
+    String? branchName,
     String? bankAccountNo,
+    String? confirmAccountNo,
     String? lastIntegrationDate,
   }) async {
     final String normalizedAccountName = accountName.trim();
@@ -2736,7 +2738,9 @@ class AppController extends ChangeNotifier {
     final String? normalizedPartyType = _nullIfBlank(partyType);
     final String? normalizedParty = _nullIfBlank(party);
     final String? normalizedBranchCode = _nullIfBlank(branchCode);
+    final String? normalizedBranchName = _nullIfBlank(branchName);
     final String? normalizedBankAccountNo = _nullIfBlank(bankAccountNo);
+    final String? normalizedConfirmAccountNo = _nullIfBlank(confirmAccountNo);
     final String? normalizedLastIntegrationDate = _nullIfBlank(
       lastIntegrationDate,
     );
@@ -2795,8 +2799,14 @@ class AppController extends ChangeNotifier {
       body['iban'] = normalizedIban;
     }
     body['branch_code'] = normalizedBranchCode.toUpperCase();
+    if (normalizedBranchName != null) {
+      body['branch_name'] = normalizedBranchName;
+    }
     if (normalizedBankAccountNo != null) {
       body['bank_account_no'] = normalizedBankAccountNo.toUpperCase();
+    }
+    if (normalizedConfirmAccountNo != null) {
+      body['confirm_account_no'] = normalizedConfirmAccountNo.toUpperCase();
     }
     if (normalizedLastIntegrationDate != null) {
       body['last_integration_date'] = normalizedLastIntegrationDate;
