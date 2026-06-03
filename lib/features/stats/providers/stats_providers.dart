@@ -85,31 +85,41 @@ Future<List<TimingEvent>> _fetchFromErpNext(
     throw Exception('Missing logs array in response');
   }
 
-  final events = (logs as List)
+  return (logs as List)
       .whereType<Map<String, dynamic>>()
       .map(TimingEvent.fromJson)
       .toList()
     ..sort((a, b) => a.eventTime.compareTo(b.eventTime));
-
-  return events;
 }
 
 DailySummary _computeDaily(List<TimingEvent> events) {
-  final logins = events.where((e) => e.eventType == 'driver_login').toList();
-  final logouts = events.where((e) => e.eventType == 'driver_logout').toList();
+  final hasLogin = events.any((e) => e.eventType == 'driver_login');
 
   Duration dutyHours = Duration.zero;
-  if (logins.isNotEmpty) {
-    final loginTime = logins.first.eventTime;
-    final logoutTime =
-        logouts.isNotEmpty ? logouts.last.eventTime : DateTime.now();
-    final diff = logoutTime.difference(loginTime);
-    if (!diff.isNegative) dutyHours = diff;
+  if (hasLogin) {
+    // Walk events in chronological order as a state machine.
+    // Each login starts a duty window; the next logout closes it.
+    // Multiple sessions per day are summed, not just the first pair.
+    DateTime? activeLogin;
+    for (final e in events) {
+      if (e.eventType == 'driver_login' && activeLogin == null) {
+        activeLogin = e.eventTime;
+      } else if (e.eventType == 'driver_logout' && activeLogin != null) {
+        final diff = e.eventTime.difference(activeLogin);
+        if (!diff.isNegative) dutyHours += diff;
+        activeLogin = null;
+      }
+    }
+    // Still on duty — accumulate up to now.
+    if (activeLogin != null) {
+      final diff = DateTime.now().difference(activeLogin);
+      if (!diff.isNegative) dutyHours += diff;
+    }
   }
 
   return DailySummary(
     dutyHours: dutyHours,
-    tripsCompleted: events.where((e) => e.eventType == 'trip_completed').length,
+    tripsCompleted: _countCompletedTrips(events),
     avgTripDuration: _avgTripDuration(events),
   );
 }
@@ -128,7 +138,7 @@ MonthlySummary _computeMonthly(
   return MonthlySummary(
     month: month,
     year: year,
-    tripsCompleted: events.where((e) => e.eventType == 'trip_completed').length,
+    tripsCompleted: _countCompletedTrips(events),
     totalRoadTime: _totalTripTime(events),
     avgTripDuration: _avgTripDuration(events),
     onTimePercent: onTimePercent,
@@ -137,26 +147,66 @@ MonthlySummary _computeMonthly(
 
 LifetimeStats _computeLifetime(List<TimingEvent> events) {
   return LifetimeStats(
-    totalTrips: events.where((e) => e.eventType == 'trip_completed').length,
+    totalTrips: _countCompletedTrips(events),
     totalHours: _totalTripTime(events),
     bestMonth: _bestMonth(events),
     longestStreak: _longestStreak(events),
   );
 }
 
+/// Counts distinct trips that were worked on.
+/// A trip counts as completed when either:
+///   - a `trip_completed` event exists for it, OR
+///   - at least one `stop_delivered` or `stop_failed` event exists for it.
+/// This handles drivers who skip "Returned to Store".
+int _countCompletedTrips(List<TimingEvent> events) {
+  final completedByTripCompleted = events
+      .where((e) => e.eventType == 'trip_completed' && e.tripRef != null)
+      .map((e) => e.tripRef!)
+      .toSet();
+
+  final completedByStopEvent = events
+      .where((e) =>
+          (e.eventType == 'stop_delivered' || e.eventType == 'stop_failed') &&
+          e.tripRef != null)
+      .map((e) => e.tripRef!)
+      .toSet();
+
+  return {...completedByTripCompleted, ...completedByStopEvent}.length;
+}
+
 Duration _avgTripDuration(List<TimingEvent> events) {
   final accepted = <String, DateTime>{};
   final durations = <Duration>[];
 
+  // Collect trip_accepted timestamps keyed by tripRef.
   for (final e in events) {
     if (e.eventType == 'trip_accepted' && e.tripRef != null) {
       accepted[e.tripRef!] = e.eventTime;
-    } else if (e.eventType == 'trip_completed' && e.tripRef != null) {
-      final start = accepted[e.tripRef!];
-      if (start != null) {
-        final diff = e.eventTime.difference(start);
-        if (!diff.isNegative) durations.add(diff);
+    }
+  }
+
+  // For each trip, use trip_completed if available, else the last stop event.
+  final tripEndTimes = <String, DateTime>{};
+  for (final e in events) {
+    if (e.tripRef == null) continue;
+    if (e.eventType == 'trip_completed') {
+      tripEndTimes[e.tripRef!] = e.eventTime;
+    } else if (e.eventType == 'stop_delivered' || e.eventType == 'stop_failed') {
+      // Only use stop event as fallback if no trip_completed recorded yet.
+      final existing = tripEndTimes[e.tripRef!];
+      if (existing == null || e.eventTime.isAfter(existing)) {
+        // Will be overwritten if trip_completed comes later in the loop.
+        tripEndTimes[e.tripRef!] ??= e.eventTime;
       }
+    }
+  }
+
+  for (final entry in accepted.entries) {
+    final end = tripEndTimes[entry.key];
+    if (end != null) {
+      final diff = end.difference(entry.value);
+      if (!diff.isNegative) durations.add(diff);
     }
   }
 
@@ -166,18 +216,31 @@ Duration _avgTripDuration(List<TimingEvent> events) {
 }
 
 Duration _totalTripTime(List<TimingEvent> events) {
+  // Reuse _avgTripDuration logic: sum of all individual trip durations.
   final accepted = <String, DateTime>{};
   var total = Duration.zero;
 
   for (final e in events) {
     if (e.eventType == 'trip_accepted' && e.tripRef != null) {
       accepted[e.tripRef!] = e.eventTime;
-    } else if (e.eventType == 'trip_completed' && e.tripRef != null) {
-      final start = accepted[e.tripRef!];
-      if (start != null) {
-        final diff = e.eventTime.difference(start);
-        if (!diff.isNegative) total += diff;
-      }
+    }
+  }
+
+  final tripEndTimes = <String, DateTime>{};
+  for (final e in events) {
+    if (e.tripRef == null) continue;
+    if (e.eventType == 'trip_completed') {
+      tripEndTimes[e.tripRef!] = e.eventTime;
+    } else if (e.eventType == 'stop_delivered' || e.eventType == 'stop_failed') {
+      tripEndTimes[e.tripRef!] ??= e.eventTime;
+    }
+  }
+
+  for (final entry in accepted.entries) {
+    final end = tripEndTimes[entry.key];
+    if (end != null) {
+      final diff = end.difference(entry.value);
+      if (!diff.isNegative) total += diff;
     }
   }
   return total;
@@ -185,10 +248,18 @@ Duration _totalTripTime(List<TimingEvent> events) {
 
 String? _bestMonth(List<TimingEvent> events) {
   final counts = <String, int>{};
-  for (final e in events.where((e) => e.eventType == 'trip_completed')) {
-    final key =
-        '${e.eventTime.year}-${e.eventTime.month.toString().padLeft(2, '0')}';
-    counts[key] = (counts[key] ?? 0) + 1;
+  // Count trips per month using trip_completed or stop_delivered as completion signal.
+  final tripDays = <String, Set<String>>{};
+  for (final e in events) {
+    if ((e.eventType == 'trip_completed' || e.eventType == 'stop_delivered') &&
+        e.tripRef != null) {
+      final monthKey =
+          '${e.eventTime.year}-${e.eventTime.month.toString().padLeft(2, '0')}';
+      tripDays.putIfAbsent(monthKey, () => <String>{}).add(e.tripRef!);
+    }
+  }
+  for (final entry in tripDays.entries) {
+    counts[entry.key] = entry.value.length;
   }
   if (counts.isEmpty) return null;
   final best = counts.entries.reduce((a, b) => a.value >= b.value ? a : b);
@@ -199,8 +270,10 @@ String? _bestMonth(List<TimingEvent> events) {
 }
 
 int _longestStreak(List<TimingEvent> events) {
+  // Use either trip_completed or stop_delivered as a "worked today" signal.
   final days = events
-      .where((e) => e.eventType == 'trip_completed')
+      .where((e) =>
+          e.eventType == 'trip_completed' || e.eventType == 'stop_delivered')
       .map((e) => DateTime(e.eventTime.year, e.eventTime.month, e.eventTime.day))
       .toSet()
       .toList()
@@ -233,8 +306,7 @@ final dailySummaryProvider =
 
   try {
     final erpEvents = await _fetchFromErpNext({'type': 'daily'});
-    final merged = _merge(erpEvents, localEvents);
-    return _computeDaily(merged);
+    return _computeDaily(_merge(erpEvents, localEvents));
   } catch (_) {
     return _computeDaily(localEvents);
   }
@@ -257,8 +329,7 @@ final monthlySummaryProvider = FutureProvider.autoDispose
       'month': period.month.toString().padLeft(2, '0'),
       'year': period.year.toString(),
     });
-    final merged = _merge(erpEvents, localEvents);
-    return _computeMonthly(merged, period.month, period.year);
+    return _computeMonthly(_merge(erpEvents, localEvents), period.month, period.year);
   } catch (_) {
     return _computeMonthly(localEvents, period.month, period.year);
   }
@@ -272,8 +343,7 @@ final lifetimeStatsProvider =
 
   try {
     final erpEvents = await _fetchFromErpNext({'type': 'lifetime'});
-    final merged = _merge(erpEvents, localEvents);
-    return _computeLifetime(merged);
+    return _computeLifetime(_merge(erpEvents, localEvents));
   } catch (_) {
     return _computeLifetime(localEvents);
   }

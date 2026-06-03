@@ -41,7 +41,7 @@ final tripTimelineProvider = FutureProvider.autoDispose
       }
 
       final uri = Uri.parse(ApiConstants.getTimingEvents).replace(
-        queryParameters: {'driver': driver, 'type': 'daily'},
+        queryParameters: {'driver': driver, 'type': 'lifetime'},
       );
 
       final response = await http

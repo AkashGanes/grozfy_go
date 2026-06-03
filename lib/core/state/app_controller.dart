@@ -235,6 +235,7 @@ class AppController extends ChangeNotifier {
 
   final PartnerTimingLogDao? _timingDao;
   final Set<String> _recentEventKeys = {};
+  VoidCallback? onTimingEvent;
 
   AppController({PartnerTimingLogDao? timingDao}) : _timingDao = timingDao;
 
@@ -285,6 +286,7 @@ class AppController extends ChangeNotifier {
           )
           .then((_) {
             TimingSyncEngine().triggerFlush();
+            onTimingEvent?.call();
           })
           .catchError((Object e) {
             _logApi('timing_event_error', e.toString());
@@ -3241,6 +3243,11 @@ class AppController extends ChangeNotifier {
             message: 'Order $deliveredOrderId delivered successfully.',
             time: DateTime.now(),
           ),
+        );
+        _writeTimingEvent(
+          eventType: TimingEventType.stopDelivered,
+          tripRef: _activeTripId,
+          stopRef: null, // stop name not available in dashboard flow
         );
         _acceptedOrders.removeWhere(
           (order) => order.orderId == deliveredOrderId,

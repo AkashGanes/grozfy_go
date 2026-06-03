@@ -1495,7 +1495,7 @@ class _ExternalDeliveryTripDetailsScreenState
       );
       _writeTimingEvent(
         eventType: TimingEventType.stopDelivered,
-        tripRef: parentTripName.isEmpty ? null : parentTripName,
+        tripRef: widget.tripName.isEmpty ? null : widget.tripName,
         stopRef: stopName.isEmpty ? null : stopName,
       );
       if (!mounted) return;
@@ -1595,7 +1595,7 @@ class _ExternalDeliveryTripDetailsScreenState
         );
         _writeTimingEvent(
           eventType: TimingEventType.stopFailed,
-          tripRef: parentTripName.isEmpty ? null : parentTripName,
+          tripRef: widget.tripName.isEmpty ? null : widget.tripName,
           stopRef: stopName.isEmpty ? null : stopName,
         );
         if (!mounted) return;
@@ -1629,9 +1629,7 @@ class _ExternalDeliveryTripDetailsScreenState
       if (!mounted) return;
       _writeTimingEvent(
         eventType: TimingEventType.stopFailed,
-        tripRef: (stop.rawFields['parent'] ?? '').toString().trim().isEmpty
-            ? null
-            : (stop.rawFields['parent'] ?? '').toString().trim(),
+        tripRef: widget.tripName.isEmpty ? null : widget.tripName,
         stopRef: (stop.rawFields['name'] ?? '').toString().trim().isEmpty
             ? null
             : (stop.rawFields['name'] ?? '').toString().trim(),

@@ -22,6 +22,7 @@ import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
 import '../orders_by_location/ui/trip_stop_map_screen.dart';
 import '../orders/my_orders_screen.dart';
+import '../stats/providers/stats_providers.dart';
 import 'widgets/active_order_card.dart';
 import 'widgets/availability_card.dart';
 import 'widgets/available_deliveries_card.dart';
@@ -35,14 +36,14 @@ import '../stats/widgets/daily_summary_card.dart';
 import '../pickup_jobs/model/pickup_job.dart';
 import '../pickup_jobs/repository/pickup_job_repository.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
     with WidgetsBindingObserver {
   bool _licenseDialogShowing = false;
   bool _isNavigating = false;
@@ -58,6 +59,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _app = AppScope.of(context);
+    _app.onTimingEvent = () {
+      if (mounted) ref.invalidate(dailySummaryProvider);
+    };
     if (_app.licenseRequiresReupload && !_licenseDialogShowing) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted &&
@@ -78,6 +82,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
+    _app.onTimingEvent = null;
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -124,6 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return AppShell(
       title: '',
       onRefresh: () async {
+        ref.invalidate(dailySummaryProvider);
         await Future.wait([
           app.fetchLoggedInEmployeeDriverProfile(forceRefresh: true),
           app.hydrateVehicleFromBackend(forceRefresh: true),
