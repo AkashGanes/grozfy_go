@@ -204,17 +204,17 @@ class AppController extends ChangeNotifier {
   String? _activeTripId;
 
   EarningsSummary _earnings = const EarningsSummary(
-    today: 1250,
-    week: 7120,
-    total: 86750,
-    pendingPayout: 960,
+    today: 0.0,
+    week: 0.0,
+    total: 0.0,
+    pendingPayout: 0.0,
   );
 
   PerformanceMetrics _performance = const PerformanceMetrics(
     rating: 0.0,
-    acceptanceRate: 86,
-    completionRate: 94,
-    totalDeliveries: 412,
+    acceptanceRate: 0,
+    completionRate: 0,
+    totalDeliveries: 0,
   );
 
   final PartnerTimingLogDao? _timingDao;
@@ -1663,6 +1663,18 @@ class AppController extends ChangeNotifier {
     _vehicleFuelOptions = <String>[];
     _vehicleRequiredFields = <String>{};
     _rememberMe = false;
+    _earnings = const EarningsSummary(
+      today: 0,
+      week: 0,
+      total: 0,
+      pendingPayout: 0,
+    );
+    _performance = const PerformanceMetrics(
+      rating: 0.0,
+      acceptanceRate: 0,
+      completionRate: 0,
+      totalDeliveries: 0,
+    );
     notifyListeners();
 
     // Local persistence — Keystore and SharedPreferences writes are fast
