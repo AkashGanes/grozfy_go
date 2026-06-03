@@ -211,7 +211,7 @@ class AppController extends ChangeNotifier {
   );
 
   PerformanceMetrics _performance = const PerformanceMetrics(
-    rating: 4.8,
+    rating: 0.0,
     acceptanceRate: 86,
     completionRate: 94,
     totalDeliveries: 412,
@@ -4265,6 +4265,14 @@ class AppController extends ChangeNotifier {
     super.dispose();
   }
 
+  void _applyRatingFromDriverDoc(Map<String, dynamic>? driverDoc) {
+    if (driverDoc == null) return;
+    final dynamic ratingRaw = driverDoc['custom_avg_rating'];
+    final double parsed = double.tryParse(ratingRaw?.toString() ?? '') ?? 0.0;
+    _performance = _performance.copyWith(rating: parsed);
+    notifyListeners();
+  }
+
   Future<void> fetchLoggedInEmployeeDriverProfile({
     bool forceRefresh = false,
   }) async {
@@ -4272,6 +4280,7 @@ class AppController extends ChangeNotifier {
       return;
     }
     if (!forceRefresh && _loggedProfileDetails?.hasData == true) {
+      _applyRatingFromDriverDoc(_loggedProfileDetails?.driver);
       return;
     }
     if (_sessionToken == null || _sessionToken!.isEmpty) {
@@ -4361,6 +4370,7 @@ class AppController extends ChangeNotifier {
 
       if (driverDoc != null) {
         _checkLicenseStatus(driverDoc);
+        _applyRatingFromDriverDoc(driverDoc);
         final dynamic onlineRaw = driverDoc['custom_custom_is_online'];
         if (onlineRaw != null) {
           final bool backendOnline =

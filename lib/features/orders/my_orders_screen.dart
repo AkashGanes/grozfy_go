@@ -600,6 +600,11 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
   void initState() {
     super.initState();
     _loadAppVersion();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref
+          .read(appControllerProvider.notifier)
+          .fetchLoggedInEmployeeDriverProfile();
+    });
   }
 
   Future<void> _loadAppVersion() async {
@@ -929,8 +934,11 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                           icon: Icons.star_rounded,
                           iconBg: const Color(0xFFF6A623).withValues(alpha: 0.28),
                           iconColor: const Color(0xFFF6A623),
-                          value: rating.toStringAsFixed(1),
+                          value: (controller.profileDetailsLoading as bool)
+                              ? '…'
+                              : (rating > 0 ? rating.toStringAsFixed(1) : '—'),
                           label: 'Rating',
+                          isLoading: controller.profileDetailsLoading as bool,
                         ),
                       ],
                     ),
