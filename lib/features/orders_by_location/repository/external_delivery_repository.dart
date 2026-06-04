@@ -894,13 +894,13 @@ class ExternalDeliveryRepository {
   }
 
   /// Creates a single-stop trip using only the order name string.
-  /// Used by the order acceptance flow in [AppController]. The trip lands
-  /// in Draft state — its `status` field carries the lifecycle, since the
-  /// External Delivery Trip doctype is not configured as submittable.
+  /// Used by the order acceptance flow in [AppController]. Sends docstatus=1
+  /// and status=Scheduled in the create payload so the trip is born Submitted.
   Future<String> createTripByOrderName(String orderName) async {
     final createPayload = <String, dynamic>{
       'driver': await _getLoggedInDriver(),
-      'status': 'Draft',
+      'status': 'Scheduled',
+      'docstatus': 1,
       'trip_date': DateTime.now().toIso8601String().split('T').first,
       'stops': <Map<String, String>>[
         {'external_delivery': orderName},
