@@ -45,11 +45,18 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
 
   String _selectedReason = _reasons.first;
   final TextEditingController _notesController = TextEditingController();
+  final TextEditingController _otherReasonController = TextEditingController();
   XFile? _pickedFile;
+
+  bool get _isOther => _selectedReason == 'Other';
+
+  bool get _canConfirm =>
+      !_isOther || _otherReasonController.text.trim().isNotEmpty;
 
   @override
   void dispose() {
     _notesController.dispose();
+    _otherReasonController.dispose();
     super.dispose();
   }
 
@@ -173,6 +180,47 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
                 ),
               ),
             ),
+
+            // Custom reason field — shown only when "Other" is selected
+            if (_isOther) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: _otherReasonController,
+                autofocus: true,
+                maxLines: 2,
+                textInputAction: TextInputAction.done,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  hintText: 'Please specify the reason...',
+                  hintStyle: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.4),
+                    fontSize: 13,
+                  ),
+                  filled: true,
+                  fillColor: scheme.onSurface.withValues(alpha: 0.05),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(
+                      color: Colors.red.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(
+                      color: Colors.red.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Colors.red, width: 1.4),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                ),
+              ),
+            ],
 
             const SizedBox(height: 14),
 
@@ -314,16 +362,21 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
           AppSheetPrimaryButton(
             label: 'Confirm Failed Delivery',
             icon: Icons.cancel_outlined,
-            color: Colors.red,
-            onPressed: () {
-              Navigator.of(context).pop(
-                FailedDeliveryResult(
-                  reason: _selectedReason,
-                  notes: _notesController.text.trim(),
-                  photoPath: _pickedFile?.path,
-                ),
-              );
-            },
+            color: _canConfirm ? Colors.red : Colors.red.withValues(alpha: 0.4),
+            onPressed: _canConfirm
+                ? () {
+                    final reason = _isOther
+                        ? _otherReasonController.text.trim()
+                        : _selectedReason;
+                    Navigator.of(context).pop(
+                      FailedDeliveryResult(
+                        reason: reason,
+                        notes: _notesController.text.trim(),
+                        photoPath: _pickedFile?.path,
+                      ),
+                    );
+                  }
+                : null,
           ),
         ],
       ),

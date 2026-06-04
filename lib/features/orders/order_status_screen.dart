@@ -397,6 +397,8 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         return 'Mark Delivered';
       case OrderStatus.delivered:
         return 'Completed';
+      case OrderStatus.failed:
+        return 'Failed';
       case OrderStatus.cancelled:
         return 'Cancelled';
       case OrderStatus.returned:

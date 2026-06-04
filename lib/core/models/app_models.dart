@@ -12,6 +12,7 @@ enum OrderStatus {
   pickedUp,
   outForDelivery,
   delivered,
+  failed,
   cancelled,
   returned,
 }
@@ -586,6 +587,8 @@ extension OrderStatusLabel on OrderProgressStatus {
         return 'out_for_delivery';
       case OrderStatus.delivered:
         return 'delivered';
+      case OrderStatus.failed:
+        return 'failed';
       case OrderStatus.cancelled:
         return 'cancelled';
       case OrderStatus.returned:

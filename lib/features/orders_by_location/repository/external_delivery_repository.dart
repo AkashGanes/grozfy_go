@@ -1383,6 +1383,30 @@ class ExternalDeliveryRepository {
     }
   }
 
+  /// Convenience wrapper for [processFailedDeliveryReturn] that resolves the
+  /// trip stop by [tripId] + [deliveryId] so callers don't need the stop object.
+  Future<ReturnProcessResult> processFailedDeliveryReturnByIds({
+    required String tripId,
+    required String deliveryId,
+    required String reason,
+    String? photoPath,
+    bool shouldCreateReturnTrip = false,
+  }) async {
+    final trip = await fetchTripDetails(tripId);
+    final stop = trip.stops.firstWhere(
+      (s) => s.externalDelivery.trim() == deliveryId.trim(),
+      orElse: () =>
+          throw Exception('Stop not found for delivery $deliveryId in trip $tripId'),
+    );
+    return processFailedDeliveryReturn(
+      stop: stop,
+      orderName: deliveryId,
+      reason: reason,
+      photoPath: photoPath,
+      shouldCreateReturnTrip: shouldCreateReturnTrip,
+    );
+  }
+
   /// Marks a delivery as failed:
   /// 1. Updates the trip stop status to 'Failed' and writes the reason to notes.
   /// 2. Updates the External Delivery document: status=Failed, delivery_notes,

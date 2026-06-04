@@ -1320,6 +1320,7 @@ class _OrderCard extends StatelessWidget {
         return AppTheme.mango;
       case OrderStatus.delivered:
         return AppTheme.mint;
+      case OrderStatus.failed:
       case OrderStatus.cancelled:
         return Colors.red;
       case OrderStatus.returned:

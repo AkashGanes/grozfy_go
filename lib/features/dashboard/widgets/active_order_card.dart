@@ -49,6 +49,8 @@ class ActiveOrderCard extends StatelessWidget {
     required this.onTrackOrder,
     this.primaryActionLabel,
     this.onPrimaryAction,
+    this.secondaryActionLabel,
+    this.onSecondaryAction,
   });
 
   final String heading;
@@ -61,6 +63,8 @@ class ActiveOrderCard extends StatelessWidget {
   final VoidCallback onTrackOrder;
   final String? primaryActionLabel;
   final VoidCallback? onPrimaryAction;
+  final String? secondaryActionLabel;
+  final VoidCallback? onSecondaryAction;
 
   @override
   Widget build(BuildContext context) {
@@ -157,31 +161,67 @@ class ActiveOrderCard extends StatelessWidget {
                       if (primaryActionLabel != null &&
                           onPrimaryAction != null) ...[
                         const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          height: 50,
-                          child: ElevatedButton.icon(
-                            onPressed: onPrimaryAction,
-                            icon: const Icon(
-                              Icons.check_circle_outline_rounded,
-                              size: 20,
-                            ),
-                            label: Text(
-                              primaryActionLabel!,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
+                        Row(
+                          children: [
+                            Expanded(
+                              child: SizedBox(
+                                height: 50,
+                                child: ElevatedButton.icon(
+                                  onPressed: onPrimaryAction,
+                                  icon: const Icon(
+                                    Icons.check_circle_outline_rounded,
+                                    size: 20,
+                                  ),
+                                  label: Text(
+                                    primaryActionLabel!,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF1F4FB6),
+                                    foregroundColor: Colors.white,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1F4FB6),
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                            if (secondaryActionLabel != null &&
+                                onSecondaryAction != null) ...[
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: SizedBox(
+                                  height: 50,
+                                  child: ElevatedButton.icon(
+                                    onPressed: onSecondaryAction,
+                                    icon: const Icon(
+                                      Icons.cancel_outlined,
+                                      size: 20,
+                                    ),
+                                    label: Text(
+                                      secondaryActionLabel!,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFD32F2F),
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
+                            ],
+                          ],
                         ),
                       ],
                     ],
