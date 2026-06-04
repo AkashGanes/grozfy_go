@@ -16,12 +16,10 @@ class SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    return Container(
-      padding: padding,
+    // Outer DecoratedBox carries the shadow (shadows can't be on Material).
+    // Inner Material provides the background so ListTile ink splashes are visible.
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: isDark
-            ? theme.colorScheme.surface
-            : Colors.white,
         borderRadius: BorderRadius.circular(borderRadius),
         boxShadow: [
           BoxShadow(
@@ -33,7 +31,15 @@ class SectionCard extends StatelessWidget {
           ),
         ],
       ),
-      child: child,
+      child: Material(
+        color: isDark ? theme.colorScheme.surface : Colors.white,
+        borderRadius: BorderRadius.circular(borderRadius),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: padding,
+          child: child,
+        ),
+      ),
     );
   }
 }

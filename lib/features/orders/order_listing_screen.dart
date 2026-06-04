@@ -10,9 +10,9 @@ import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
-import '../../core/widgets/app_toast.dart';
 import '../kyc/widgets/kyc_form_widgets.dart';
 import '../orders_by_location/model/external_delivery.dart';
+import '../orders_by_location/model/external_delivery_detail.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 
 // ── Paged list item types ─────────────────────────────────────────────────────
@@ -49,7 +49,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
 
   // Search state
   String _searchQuery = '';
-  List<ExternalDelivery> _searchResults = [];
+  List<ExternalDeliveryDetail> _searchResults = [];
   bool _searchLoading = false;
   String? _searchError;
   Timer? _debounce;
@@ -59,9 +59,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
 
   // Grouping tracker — reset when a new page-0 fetch begins
   String? _lastGroupStore;
-
-  // Track which search-result card is being opened
-  String? _openingOrderId;
 
   @override
   void initState() {
@@ -300,10 +297,10 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       );
       return details.map((d) => app.buildDeliveryOrderFromDetail(d)).toList();
     } catch (e) {
-      debugPrint('[OrderListing] enriched fetch failed, using fallback: $e');
+      debugPrint('[OrderListing] reportview failed, using summary fallback: $e');
     }
 
-    // Fallback: summary list + concurrent detail fetches (no address resolve).
+    // Fallback: single fetchPage call — no per-item detail fetches.
     final summaries = await _repository.fetchPage(
       limitStart: pageKey,
       limitPageLength: _pageSize,
@@ -313,18 +310,22 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         <dynamic>['External Delivery', 'status', '=', 'Pending'],
       ],
     );
-    final results = await Future.wait(
-      summaries.map((s) async {
-        try {
-          final d = await _repository.fetchDetail(s.name, resolveAddress: false);
-          return app.buildDeliveryOrderFromDetail(d);
-        } catch (e) {
-          debugPrint('[OrderListing] detail warn: ${s.name} $e');
-          return null;
-        }
-      }),
+    return summaries
+        .map((s) => app.buildDeliveryOrderFromDetail(_summaryToDetail(s)))
+        .toList();
+  }
+
+  static ExternalDeliveryDetail _summaryToDetail(ExternalDelivery s) {
+    return ExternalDeliveryDetail(
+      name: s.name,
+      storeName: s.storeName,
+      storeUrl: s.storeUrl,
+      customerName: s.customerName,
+      status: s.status,
+      deliveryAddress: s.deliveryAddress,
+      creation: s.creation,
+      modified: s.modified,
     );
-    return results.whereType<DeliveryOrder>().toList();
   }
 
   // ── Search ─────────────────────────────────────────────────────────────────
@@ -353,21 +354,52 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       _searchError = null;
     });
     try {
-      final results = await _repository.fetchPage(
-        limitStart: 0,
-        limitPageLength: 100,
-        orderBy: 'modified desc',
-        filters: <List<dynamic>>[
-          <dynamic>['External Delivery', 'status', '=', 'Pending'],
-          if (_selectedStore != null)
-            <dynamic>['External Delivery', 'store_name', '=', _selectedStore],
-        ],
-        orFilters: <List<dynamic>>[
-          <dynamic>['External Delivery', 'name', 'like', '%$query%'],
-          <dynamic>['External Delivery', 'store_name', 'like', '%$query%'],
-          <dynamic>['External Delivery', 'customer_name', 'like', '%$query%'],
-        ],
-      );
+      List<ExternalDeliveryDetail> results;
+      try {
+        results = await _repository.fetchPageEnriched(
+          limitStart: 0,
+          limitPageLength: 100,
+          orderBy: 'modified desc',
+          filters: <List<dynamic>>[
+            <dynamic>['External Delivery', 'status', '=', 'Pending'],
+            if (_selectedStore != null)
+              <dynamic>[
+                'External Delivery',
+                'store_name',
+                '=',
+                _selectedStore,
+              ],
+          ],
+          orFilters: <List<dynamic>>[
+            <dynamic>['External Delivery', 'name', 'like', '%$query%'],
+            <dynamic>['External Delivery', 'store_name', 'like', '%$query%'],
+            <dynamic>['External Delivery', 'customer_name', 'like', '%$query%'],
+          ],
+        );
+      } catch (_) {
+        // Fallback: single fetchPage call — no per-result detail fetches.
+        final summaries = await _repository.fetchPage(
+          limitStart: 0,
+          limitPageLength: 100,
+          orderBy: 'modified desc',
+          filters: <List<dynamic>>[
+            <dynamic>['External Delivery', 'status', '=', 'Pending'],
+            if (_selectedStore != null)
+              <dynamic>[
+                'External Delivery',
+                'store_name',
+                '=',
+                _selectedStore,
+              ],
+          ],
+          orFilters: <List<dynamic>>[
+            <dynamic>['External Delivery', 'name', 'like', '%$query%'],
+            <dynamic>['External Delivery', 'store_name', 'like', '%$query%'],
+            <dynamic>['External Delivery', 'customer_name', 'like', '%$query%'],
+          ],
+        );
+        results = summaries.map(_summaryToDetail).toList();
+      }
       if (!mounted) return;
       setState(() {
         _searchResults = results;
@@ -392,21 +424,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     });
   }
 
-  Future<void> _openSearchResult(ExternalDelivery summary) async {
+  void _openSearchResult(ExternalDeliveryDetail detail) {
     final app = _app;
     if (app == null) return;
-    setState(() => _openingOrderId = summary.name);
-    try {
-      final detail = await _repository.fetchDetail(summary.name);
-      final order = app.buildDeliveryOrderFromDetail(detail);
-      if (!mounted) return;
-      Navigator.of(context).pushNamed(AppRoutes.orderDetails, arguments: order);
-    } catch (e) {
-      if (!context.mounted) return;
-      AppToast.show(context, 'Could not load order: $e');
-    } finally {
-      if (mounted) setState(() => _openingOrderId = null);
-    }
+    final order = app.buildDeliveryOrderFromDetail(detail);
+    Navigator.of(context).pushNamed(AppRoutes.orderDetails, arguments: order);
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -595,13 +617,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
       itemCount: _searchResults.length,
       itemBuilder: (context, index) {
-        final summary = _searchResults[index];
-        final isOpening = _openingOrderId == summary.name;
+        final detail = _searchResults[index];
         return _SearchResultCard(
-          summary: summary,
+          detail: detail,
           query: _searchQuery,
-          isLoading: isOpening,
-          onTap: isOpening ? null : () => _openSearchResult(summary),
+          onTap: () => _openSearchResult(detail),
         );
       },
     );
@@ -930,15 +950,13 @@ class _MetaRow extends StatelessWidget {
 
 class _SearchResultCard extends StatelessWidget {
   const _SearchResultCard({
-    required this.summary,
+    required this.detail,
     required this.query,
-    required this.isLoading,
     required this.onTap,
   });
 
-  final ExternalDelivery summary;
+  final ExternalDeliveryDetail detail;
   final String query;
-  final bool isLoading;
   final VoidCallback? onTap;
 
   @override
@@ -973,7 +991,7 @@ class _SearchResultCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _Highlight(
-                        text: summary.name,
+                        text: detail.name,
                         query: query,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
@@ -982,7 +1000,7 @@ class _SearchResultCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       _Highlight(
-                        text: summary.storeName,
+                        text: detail.storeName,
                         query: query,
                         style: TextStyle(
                           fontSize: 12,
@@ -991,7 +1009,7 @@ class _SearchResultCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       _Highlight(
-                        text: summary.customerName,
+                        text: detail.customerName,
                         query: query,
                         style: TextStyle(
                           fontSize: 12,
@@ -1002,21 +1020,11 @@ class _SearchResultCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                if (isLoading)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.oceanBlue,
-                    ),
-                  )
-                else
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 16,
-                    color: scheme.onSurface.withValues(alpha: 0.4),
-                  ),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 16,
+                  color: scheme.onSurface.withValues(alpha: 0.4),
+                ),
               ],
             ),
           ),

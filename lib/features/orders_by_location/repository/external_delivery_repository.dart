@@ -264,27 +264,32 @@ class ExternalDeliveryRepository {
     int limitPageLength = pageSize,
     String orderBy = 'modified desc',
     List<List<dynamic>> filters = const [],
+    List<List<dynamic>> orFilters = const [],
   }) async {
     final uri = Uri.parse(
       '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.reportview.get',
     );
 
     _logApi('fetch_enriched_list request', uri.toString());
+    final body = <String, String>{
+      'doctype': 'External Delivery',
+      'fields': jsonEncode(_enrichedFields),
+      'filters': jsonEncode(filters),
+      'order_by': orderBy,
+      'start': '$limitStart',
+      'page_length': '$limitPageLength',
+      'with_comment_count': '0',
+    };
+    if (orFilters.isNotEmpty) {
+      body['or_filters'] = jsonEncode(orFilters);
+    }
     final resp = await _post(
       uri,
       headers: {
         ...await _authHeaders(),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: {
-        'doctype': 'External Delivery',
-        'fields': jsonEncode(_enrichedFields),
-        'filters': jsonEncode(filters),
-        'order_by': orderBy,
-        'start': '$limitStart',
-        'page_length': '$limitPageLength',
-        'with_comment_count': '0',
-      },
+      body: body,
     );
 
     if (resp.statusCode == 401) {
@@ -527,44 +532,22 @@ class ExternalDeliveryRepository {
   /// stop (including Failed / Returned) and would over-count real deliveries.
   Future<int> fetchDeliveredCountForDriver() async {
     final driver = await _getLoggedInDriver();
-
-    // 1. All trips for this driver (any status/docstatus).
-    final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+    final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
       queryParameters: {
         'fields': jsonEncode(['name']),
         'filters': jsonEncode([
-          ['External Delivery Trip', 'driver', '=', driver],
+          ['External Delivery', 'driver', '=', driver],
+          ['External Delivery', 'status', '=', 'Delivered'],
         ]),
         'limit_page_length': '0',
-        'order_by': 'modified desc',
       },
     );
-    final tripResp = await _get(tripUri, headers: await _authHeaders());
-    if (!_okCodes.contains(tripResp.statusCode)) {
-      throw Exception(_extractErrorMessage(tripResp));
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
     }
-    final tripRows = (jsonDecode(tripResp.body)['data']) as List;
-    if (tripRows.isEmpty) return 0;
-
-    // 2. Fetch trip details in parallel.
-    final tripNames = tripRows
-        .map((r) => (r as Map<String, dynamic>)['name']?.toString() ?? '')
-        .where((n) => n.isNotEmpty)
-        .toList();
-    final tripDetails = await Future.wait(
-      tripNames.map((n) => fetchTripDetails(n).catchError((_) => null)),
-    );
-
-    // 3. Count distinct delivered orders across all trip stops.
-    final delivered = <String>{};
-    for (final trip in tripDetails.whereType<ExternalDeliveryTrip>()) {
-      for (final stop in trip.stops) {
-        if (stop.status.trim().toLowerCase() != 'delivered') continue;
-        final id = stop.externalDelivery.trim();
-        if (id.isNotEmpty) delivered.add(id);
-      }
-    }
-    return delivered.length;
+    final data = (jsonDecode(resp.body)['data']) as List;
+    return data.length;
   }
 
   Future<ExternalDeliveryDetail> fetchDetail(
