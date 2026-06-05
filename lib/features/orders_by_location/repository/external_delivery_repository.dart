@@ -1441,7 +1441,6 @@ class ExternalDeliveryRepository {
 
     await _setTripStopFailed(stop: stop, reasonCode: reasonCode);
     await _tryMarkParentTripFailed(stop);
-    await _tryWriteStopNotes(stop: stop, reason: reason);
 
     await _updateExternalDeliveryFields(orderName, {
       'status': 'Failed',
