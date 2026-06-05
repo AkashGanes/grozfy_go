@@ -1316,6 +1316,32 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         ? result.reason
         : '${result.reason} — ${result.notes}';
 
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Row(
+            children: [
+              const CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(width: 20),
+              Text(
+                'Marking delivery as failed...',
+                style: TextStyle(
+                  color: Theme.of(ctx).colorScheme.onSurface,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
     final error = await app.failDelivery(
       reason: fullReason,
       reasonCode: result.reasonCode,
@@ -1323,6 +1349,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       shouldCreateReturnTrip: false,
     );
     if (!context.mounted) return;
+    Navigator.of(context).pop(); // dismiss loading dialog
     if (error != null) {
       AppToast.show(context, error);
       return;

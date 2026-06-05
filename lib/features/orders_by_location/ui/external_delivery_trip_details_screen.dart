@@ -1573,6 +1573,31 @@ class _ExternalDeliveryTripDetailsScreenState
     }
 
     setState(() => _updatingStops.add(stopKey));
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Row(
+            children: [
+              const CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(width: 20),
+              Text(
+                'Marking delivery as failed...',
+                style: TextStyle(
+                  color: Theme.of(ctx).colorScheme.onSurface,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
     try {
       final processResult = await ExternalDeliveryRepository()
           .processFailedDeliveryReturn(
@@ -1584,6 +1609,7 @@ class _ExternalDeliveryTripDetailsScreenState
             shouldCreateReturnTrip: false,
           );
       if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss loading dialog
       _writeTimingEvent(
         eventType: TimingEventType.stopFailed,
         tripRef: (stop.rawFields['parent'] ?? '').toString().trim().isEmpty
@@ -1599,6 +1625,7 @@ class _ExternalDeliveryTripDetailsScreenState
       });
     } catch (e) {
       if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss loading dialog
       showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) {
