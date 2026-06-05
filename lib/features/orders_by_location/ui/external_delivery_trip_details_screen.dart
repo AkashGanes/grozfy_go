@@ -1623,6 +1623,7 @@ class _ExternalDeliveryTripDetailsScreenState
             stop: stop,
             orderName: orderName,
             reason: fullReason,
+            reasonCode: result.reasonCode,
             photoPath: result.photoPath,
             shouldCreateReturnTrip: createReturn == true,
           );

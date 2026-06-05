@@ -3291,6 +3291,7 @@ class AppController extends ChangeNotifier {
   /// order/trip state. Returns an error string on failure, null on success.
   Future<String?> failDelivery({
     required String reason,
+    String? reasonCode,
     String? photoPath,
     bool shouldCreateReturnTrip = false,
   }) async {
@@ -3305,6 +3306,7 @@ class AppController extends ChangeNotifier {
           tripId: tripId,
           deliveryId: orderId,
           reason: reason,
+          reasonCode: reasonCode,
           photoPath: photoPath,
           shouldCreateReturnTrip: shouldCreateReturnTrip,
         );

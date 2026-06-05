@@ -1389,6 +1389,7 @@ class ExternalDeliveryRepository {
     required String tripId,
     required String deliveryId,
     required String reason,
+    String? reasonCode,
     String? photoPath,
     bool shouldCreateReturnTrip = false,
   }) async {
@@ -1402,6 +1403,7 @@ class ExternalDeliveryRepository {
       stop: stop,
       orderName: deliveryId,
       reason: reason,
+      reasonCode: reasonCode,
       photoPath: photoPath,
       shouldCreateReturnTrip: shouldCreateReturnTrip,
     );
@@ -1431,19 +1433,22 @@ class ExternalDeliveryRepository {
     required ExternalDeliveryTripStop stop,
     required String orderName,
     required String reason,
+    String? reasonCode,
     String? photoPath,
     bool shouldCreateReturnTrip = true,
   }) async {
     final String languageCode = await _languageCode();
 
-    await updateTripStopStatus(stop: stop, newStatus: 'Failed');
+    await _setTripStopFailed(stop: stop, reasonCode: reasonCode);
     await _tryMarkParentTripFailed(stop);
     await _tryWriteStopNotes(stop: stop, reason: reason);
 
     await _updateExternalDeliveryFields(orderName, {
-      'status': shouldCreateReturnTrip ? _returnInitiatedStatus : 'Failed',
+      'status': 'Failed',
       'delivery_notes': reason,
       'store_notified': 1,
+      if (reasonCode != null && reasonCode.isNotEmpty)
+        'failure_reason_code': reasonCode,
     });
 
     if (photoPath != null && photoPath.isNotEmpty) {
@@ -1685,6 +1690,43 @@ class ExternalDeliveryRepository {
     final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
     final message = decoded['message'];
     return message is Map<String, dynamic> ? message : {};
+  }
+
+  /// Sets status=Failed and failure_reason_code in one frappe.client.set_value
+  /// call using the dict fieldname syntax so the backend's validation passes.
+  Future<void> _setTripStopFailed({
+    required ExternalDeliveryTripStop stop,
+    String? reasonCode,
+  }) async {
+    final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+    final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
+    if (stopName.isEmpty || stopDocType.isEmpty) {
+      throw Exception('Stop row metadata not found for status update.');
+    }
+
+    final setValueUrl = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    final fields = <String, dynamic>{'status': 'Failed'};
+    if (reasonCode != null && reasonCode.isNotEmpty) {
+      fields['failure_reason_code'] = reasonCode;
+    }
+    _logApi(
+      'external_delivery_trip_stop_status_update request',
+      'POST $setValueUrl doctype=$stopDocType name=$stopName fields=$fields',
+    );
+    final resp = await _post(
+      setValueUrl,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'doctype': stopDocType,
+        'name': stopName,
+        'fieldname': fields,
+      }),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
   }
 
   Future<void> _setDocValue({

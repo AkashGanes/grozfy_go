@@ -419,6 +419,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     setState(() => _syncing = true);
     final error = await app.failDelivery(
       reason: fullReason,
+      reasonCode: result.reasonCode,
       photoPath: result.photoPath,
       shouldCreateReturnTrip: shouldReturn ?? false,
     );

@@ -1339,6 +1339,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
 
     final error = await app.failDelivery(
       reason: fullReason,
+      reasonCode: result.reasonCode,
       photoPath: result.photoPath,
       shouldCreateReturnTrip: shouldReturn ?? false,
     );
