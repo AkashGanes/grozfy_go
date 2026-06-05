@@ -1437,7 +1437,7 @@ class ExternalDeliveryRepository {
     required String reason,
     String? reasonCode,
     String? photoPath,
-    bool shouldCreateReturnTrip = true,
+    bool shouldCreateReturnTrip = false,
   }) async {
     final String languageCode = await _languageCode();
 

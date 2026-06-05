@@ -1316,32 +1316,11 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         ? result.reason
         : '${result.reason} — ${result.notes}';
 
-    final shouldReturn = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Return to Store?'),
-        content: const Text(
-          'Do you need to return this order to the store?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('No'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Yes, Return'),
-          ),
-        ],
-      ),
-    );
-    if (!context.mounted) return;
-
     final error = await app.failDelivery(
       reason: fullReason,
       reasonCode: result.reasonCode,
       photoPath: result.photoPath,
-      shouldCreateReturnTrip: shouldReturn ?? false,
+      shouldCreateReturnTrip: false,
     );
     if (!context.mounted) return;
     if (error != null) {

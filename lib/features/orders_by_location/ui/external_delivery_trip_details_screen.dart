@@ -1529,50 +1529,6 @@ class _ExternalDeliveryTripDetailsScreenState
         ? result.reason
         : '${result.reason} — ${result.notes}';
 
-    final scheme = Theme.of(context).colorScheme;
-    final createReturn = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.undo_rounded, color: AppTheme.oceanBlue),
-            const SizedBox(width: 8),
-            Text(
-              'Return to Store?',
-              style: TextStyle(
-                color: scheme.onSurface,
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          'Create a return trip to bring "$orderName" back to the store?',
-          style: TextStyle(color: scheme.onSurface.withValues(alpha: 0.6)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('No'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.oceanBlue,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Yes, Return'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted) return;
-
     // The full failed-delivery flow uploads a photo, mutates the order,
     // and (optionally) creates a server-side return trip. None of that
     // can run offline. If we're offline, fall back to a queued stop
@@ -1625,7 +1581,7 @@ class _ExternalDeliveryTripDetailsScreenState
             reason: fullReason,
             reasonCode: result.reasonCode,
             photoPath: result.photoPath,
-            shouldCreateReturnTrip: createReturn == true,
+            shouldCreateReturnTrip: false,
           );
       if (!mounted) return;
       _writeTimingEvent(
@@ -1641,15 +1597,6 @@ class _ExternalDeliveryTripDetailsScreenState
       setState(() {
         _future = _loadTrip();
       });
-      if (processResult.tripName != null && createReturn == true) {
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ExternalDeliveryTripDetailsScreen(
-              tripName: processResult.tripName!,
-            ),
-          ),
-        );
-      }
     } catch (e) {
       if (!mounted) return;
       showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
