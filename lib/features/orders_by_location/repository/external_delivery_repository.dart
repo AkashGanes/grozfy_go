@@ -133,6 +133,8 @@ class ExternalDeliveryRepository {
     'customer_name',
     'status',
     'delivery_address',
+    'failure_reason_code',
+    'delivery_notes',
   ];
 
   // Fields fetched via frappe.desk.reportview.get for the listing screen.

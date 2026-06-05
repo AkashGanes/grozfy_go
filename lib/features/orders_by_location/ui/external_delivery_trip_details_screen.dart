@@ -1888,6 +1888,14 @@ class _ExternalDeliveryTripDetailsScreenState
             color: const Color(0xFF2E7D32),
           ),
         ],
+        if (statusNorm == 'failed' && stop.failureReasonCode.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          _stopInfoRow(
+            Icons.cancel_outlined,
+            stop.failureReasonLabel,
+            color: Colors.red,
+          ),
+        ],
         if (cleanNotes.isNotEmpty) ...[
           const SizedBox(height: 4),
           _stopInfoRow(Icons.notes_rounded, cleanNotes, subtle: true),

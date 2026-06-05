@@ -80,6 +80,8 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
           ? OrderAssignmentStatus.unassigned
           : OrderAssignmentStatus.assigned,
       createdAt: s.creation.isNotEmpty ? DateTime.tryParse(s.creation) : null,
+      failureReasonCode: s.failureReasonCode,
+      deliveryNotes: s.deliveryNotes,
     );
   }
 
