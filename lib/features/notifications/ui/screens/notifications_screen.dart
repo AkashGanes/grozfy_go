@@ -9,9 +9,6 @@ import '../../providers/notification_providers.dart';
 import '../../../../core/models/app_models.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_shell.dart';
-import '../../../orders_by_location/model/external_delivery.dart';
-import '../../../orders_by_location/repository/external_delivery_repository.dart';
-import '../../../orders_by_location/ui/order_location_detail_screen.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -549,22 +546,7 @@ class _NotificationTile extends ConsumerWidget {
         ).pushNamed(AppRoutes.externalDeliveryTripDetails, arguments: docname);
       } else if (doctype == 'External Delivery' && docname.isNotEmpty) {
         if (!context.mounted) return;
-        final repository = ExternalDeliveryRepository();
-        final order = ExternalDelivery(
-          name: docname,
-          storeUrl: '',
-          storeName: '',
-          customerName: '',
-          status: '',
-          creation: '',
-          modified: '',
-        );
-        await Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) =>
-                OrderLocationDetailScreen(order: order, repository: repository),
-          ),
-        );
+        Navigator.of(context).pushNamed(AppRoutes.orderListing);
       }
     }
 

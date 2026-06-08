@@ -410,6 +410,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         assignmentStatus: OrderAssignmentStatus.assigned,
       );
     });
+
+    if (!context.mounted) return;
     AppToast.show(context, 'Order accepted successfully!');
     Navigator.of(context).pushNamed(AppRoutes.navigation);
   }

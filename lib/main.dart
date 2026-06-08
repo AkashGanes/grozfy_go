@@ -40,7 +40,6 @@ import 'features/pickup_jobs/ui/pickup_pool_screen.dart';
 import 'features/pickup_jobs/ui/pickup_job_detail_screen.dart';
 import 'features/stats/stats_screen.dart';
 import 'features/orders_by_location/ui/external_delivery_trip_list_screen.dart';
-import 'features/orders_by_location/ui/orders_by_location_screen.dart';
 import 'features/orders/order_details_screen.dart';
 import 'features/orders/order_listing_screen.dart';
 import 'features/orders/order_request_screen.dart';
@@ -78,10 +77,7 @@ void main() async {
     await Firebase.initializeApp();
     // Initialize Notifications
     await FCMInitializer().init(container);
-  } catch (e) {
-    debugPrint(
-      "⚠️ Firebase initialization failed. Make sure google-services.json is added. Error: $e",
-    );
+  } catch (_) {
   }
 
   // Configure background location ping service
@@ -347,10 +343,6 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
             case AppRoutes.profile:
               return MaterialPageRoute<void>(
                 builder: (_) => const ProfileScreen(),
-              );
-            case AppRoutes.ordersByLocation:
-              return MaterialPageRoute<void>(
-                builder: (_) => const OrdersByLocationScreen(),
               );
             case AppRoutes.settings:
               return MaterialPageRoute<void>(
