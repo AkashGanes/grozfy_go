@@ -19,6 +19,7 @@ import '../profile/profile_completeness_sheet.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
+import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
 import '../orders_by_location/ui/trip_stop_map_screen.dart';
 import '../orders/my_orders_screen.dart';
@@ -680,6 +681,12 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       onPrimaryAction: transition == null
           ? null
           : () => _runTransition(context, app, order, transition),
+      secondaryActionLabel: order.orderStatus == OrderStatus.outForDelivery
+          ? app.t('mark_failed')
+          : null,
+      onSecondaryAction: order.orderStatus == OrderStatus.outForDelivery
+          ? () => _handleFailedDelivery(context, app)
+          : null,
     );
   }
 
@@ -1257,6 +1264,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       case OrderStatus.pending:
       case OrderStatus.rejected:
       case OrderStatus.delivered:
+      case OrderStatus.failed:
       case OrderStatus.cancelled:
       case OrderStatus.returned:
         return null;
@@ -1295,6 +1303,62 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     } else {
       navigator.pushNamed(AppRoutes.orderStatus);
     }
+  }
+
+  Future<void> _handleFailedDelivery(
+    BuildContext context,
+    AppController app,
+  ) async {
+    final result = await showFailedDeliverySheet(context);
+    if (result == null || !context.mounted) return;
+
+    final fullReason = result.notes.isEmpty
+        ? result.reason
+        : '${result.reason} — ${result.notes}';
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Row(
+            children: [
+              const CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(width: 20),
+              Text(
+                'Marking delivery as failed...',
+                style: TextStyle(
+                  color: Theme.of(ctx).colorScheme.onSurface,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final error = await app.failDelivery(
+      reason: fullReason,
+      reasonCode: result.reasonCode,
+      photoPath: result.photoPath,
+      shouldCreateReturnTrip: false,
+    );
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // dismiss loading dialog
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
+    AppToast.show(context, app.t('delivery_failed'));
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppRoutes.dashboard,
+      (route) => false,
+    );
   }
 
   Future<void> _openInMaps(

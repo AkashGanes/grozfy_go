@@ -47,6 +47,8 @@ class ExternalDeliveryDetail {
     this.creation,
     this.modified,
     this.proofPhoto,
+    this.failureReasonCode = '',
+    this.deliveryNotes = '',
   });
 
   final String name;
@@ -65,6 +67,21 @@ class ExternalDeliveryDetail {
   final String? creation;
   final String? modified;
   final String? proofPhoto;
+  final String failureReasonCode;
+  final String deliveryNotes;
+
+  static const Map<String, String> _reasonLabels = {
+    'customer_unavailable': 'Customer Unavailable',
+    'address_inaccessible': 'Address Inaccessible',
+    'wrong_address': 'Wrong Address',
+    'customer_refused_at_door': 'Customer Refused at Door',
+    'damaged_in_transit': 'Damaged in Transit',
+    'lost_in_transit': 'Lost in Transit',
+    'suspected_fraud': 'Suspected Fraud',
+  };
+
+  String get failureReasonLabel =>
+      _reasonLabels[failureReasonCode] ?? failureReasonCode;
 
   factory ExternalDeliveryDetail.fromJson(Map<String, dynamic> m) {
     double? toDouble(dynamic v) {
@@ -121,6 +138,8 @@ class ExternalDeliveryDetail {
       creation: _nullIfBlank(m['creation']?.toString()),
       modified: _nullIfBlank(m['modified']?.toString()),
       proofPhoto: _nullIfBlank(m['proof_photo']?.toString()),
+      failureReasonCode: (m['failure_reason_code'] ?? '').toString(),
+      deliveryNotes: (m['delivery_notes'] ?? '').toString(),
     );
   }
 

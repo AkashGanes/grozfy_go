@@ -3286,6 +3286,72 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// Marks the active order as failed, updates the trip stop and External
+  /// Delivery record, optionally uploads a proof photo, and clears the active
+  /// order/trip state. Returns an error string on failure, null on success.
+  Future<String?> failDelivery({
+    required String reason,
+    String? reasonCode,
+    String? photoPath,
+    bool shouldCreateReturnTrip = false,
+  }) async {
+    if (_activeOrder == null) return 'No active order found';
+    final String orderId = _activeOrder!.orderId;
+    final String? tripId = _activeTripId;
+
+    String? syncError;
+    try {
+      if (tripId != null) {
+        await _orderRepository.processFailedDeliveryReturnByIds(
+          tripId: tripId,
+          deliveryId: orderId,
+          reason: reason,
+          reasonCode: reasonCode,
+          photoPath: photoPath,
+          shouldCreateReturnTrip: shouldCreateReturnTrip,
+        );
+      } else {
+        // No active trip — update the order status directly.
+        await _orderRepository.updateStatusViaSetValue(orderId, 'Failed');
+        if (photoPath != null && photoPath.isNotEmpty) {
+          await _orderRepository.uploadProofPhoto(
+            orderName: orderId,
+            filePath: photoPath,
+          );
+        }
+      }
+      _logApi('fail_delivery', 'synced order=$orderId to Failed on web');
+    } catch (e) {
+      syncError = e.toString().replaceFirst('Exception: ', '');
+      _logApi('fail_delivery_warn', 'web sync failed: $syncError');
+    }
+
+    _acceptedOrders.removeWhere((o) => o.orderId == orderId);
+    _activeOrder = null;
+    _activeTripId = null;
+    _locationPingSubscription?.cancel();
+    _locationPingSubscription = null;
+    LocationPingService.stop();
+    unawaited(_persistActiveOrderId(null));
+    unawaited(_persistActiveTripId(null));
+    _writeTimingEvent(eventType: TimingEventType.stopFailed, tripRef: tripId);
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Delivery failed',
+        message: 'Order $orderId marked as failed.',
+        time: DateTime.now(),
+      ),
+    );
+    PartnerWidgetManager.updateWidget(
+      isOnline: _isOnline,
+      todayEarnings: _earnings.today,
+      activeOrder: null,
+    );
+    notifyListeners();
+    return syncError;
+  }
+
   void clearActiveOrder() {
     _activeOrder = null;
     _activeTripId = null;
@@ -3800,6 +3866,8 @@ class AppController extends ChangeNotifier {
         return 'Out for Delivery';
       case OrderStatus.delivered:
         return 'Delivered';
+      case OrderStatus.failed:
+        return 'Failed';
       default:
         return null;
     }
@@ -3809,6 +3877,7 @@ class AppController extends ChangeNotifier {
     switch (status) {
       case OrderStatus.delivered:
         return 'Delivered';
+      case OrderStatus.failed:
       case OrderStatus.cancelled:
         return 'Failed';
       default:
@@ -3834,9 +3903,10 @@ class AppController extends ChangeNotifier {
         return OrderStatus.outForDelivery;
       case 'delivered':
         return OrderStatus.delivered;
+      case 'failed':
+        return OrderStatus.failed;
       case 'cancelled':
       case 'canceled':
-      case 'failed':
         return OrderStatus.cancelled;
       case 'returned':
       case 'return initiated':

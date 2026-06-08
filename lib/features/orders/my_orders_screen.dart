@@ -80,6 +80,8 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
           ? OrderAssignmentStatus.unassigned
           : OrderAssignmentStatus.assigned,
       createdAt: s.creation.isNotEmpty ? DateTime.tryParse(s.creation) : null,
+      failureReasonCode: s.failureReasonCode,
+      deliveryNotes: s.deliveryNotes,
     );
   }
 
@@ -1320,6 +1322,7 @@ class _OrderCard extends StatelessWidget {
         return AppTheme.mango;
       case OrderStatus.delivered:
         return AppTheme.mint;
+      case OrderStatus.failed:
       case OrderStatus.cancelled:
         return Colors.red;
       case OrderStatus.returned:

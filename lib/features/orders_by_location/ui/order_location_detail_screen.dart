@@ -1544,30 +1544,64 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                       ),
                     ),
 
-                  if (s == 'failed')
+                  if (s == 'failed') ...[
                     Container(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFC62828).withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFFC62828).withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(
-                            Icons.cancel_rounded,
-                            color: Color(0xFFC62828),
-                            size: 24,
+                          const Row(
+                            children: [
+                              Icon(
+                                Icons.cancel_rounded,
+                                color: Color(0xFFC62828),
+                                size: 18,
+                              ),
+                              SizedBox(width: 6),
+                              Text(
+                                'Delivery Failed',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFC62828),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Delivery Cancelled',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.red[700],
+                          if (detail.failureReasonCode.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              detail.failureReasonLabel,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF7B1010),
+                              ),
                             ),
-                          ),
+                          ],
+                          if (detail.deliveryNotes.isNotEmpty &&
+                              detail.deliveryNotes != detail.failureReasonLabel) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              detail.deliveryNotes,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red[800]!.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
+                  ],
                 ],
               ),
             );

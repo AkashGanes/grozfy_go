@@ -12,6 +12,8 @@ class ExternalDelivery {
     required this.creation,
     required this.modified,
     this.deliveryAddress,
+    this.failureReasonCode = '',
+    this.deliveryNotes = '',
   });
 
   final String name;
@@ -22,6 +24,8 @@ class ExternalDelivery {
   final String creation;
   final String modified;
   final String? deliveryAddress;
+  final String failureReasonCode;
+  final String deliveryNotes;
 
   factory ExternalDelivery.fromJson(Map<String, dynamic> m) {
     return ExternalDelivery(
@@ -36,6 +40,8 @@ class ExternalDelivery {
           m['delivery_address']?.toString().trim().isNotEmpty == true
           ? m['delivery_address'].toString().trim()
           : null,
+      failureReasonCode: (m['failure_reason_code'] ?? '').toString(),
+      deliveryNotes: (m['delivery_notes'] ?? '').toString(),
     );
   }
 
@@ -136,6 +142,7 @@ class ExternalDeliveryTripStop {
     required this.deliveredAt,
     required this.notes,
     required this.rawFields,
+    this.failureReasonCode = '',
   });
 
   final int stop;
@@ -146,7 +153,20 @@ class ExternalDeliveryTripStop {
   final String status;
   final String deliveredAt;
   final String notes;
+  final String failureReasonCode;
   final Map<String, dynamic> rawFields;
+
+  String get failureReasonLabel => _reasonLabels[failureReasonCode] ?? failureReasonCode;
+
+  static const Map<String, String> _reasonLabels = {
+    'customer_unavailable': 'Customer Unavailable',
+    'address_inaccessible': 'Address Inaccessible',
+    'wrong_address': 'Wrong Address',
+    'customer_refused_at_door': 'Customer Refused at Door',
+    'damaged_in_transit': 'Damaged in Transit',
+    'lost_in_transit': 'Lost in Transit',
+    'suspected_fraud': 'Suspected Fraud',
+  };
 
   factory ExternalDeliveryTripStop.fromJson(Map<String, dynamic> m) {
     final raw = Map<String, dynamic>.from(m);
@@ -159,6 +179,7 @@ class ExternalDeliveryTripStop {
       status: (m['status'] ?? '').toString(),
       deliveredAt: (m['delivered_at'] ?? '').toString(),
       notes: (m['notes'] ?? '').toString(),
+      failureReasonCode: (m['failure_reason_code'] ?? '').toString(),
       rawFields: raw,
     );
   }

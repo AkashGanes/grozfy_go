@@ -133,6 +133,8 @@ class ExternalDeliveryRepository {
     'customer_name',
     'status',
     'delivery_address',
+    'failure_reason_code',
+    'delivery_notes',
   ];
 
   // Fields fetched via frappe.desk.reportview.get for the listing screen.
@@ -894,13 +896,13 @@ class ExternalDeliveryRepository {
   }
 
   /// Creates a single-stop trip using only the order name string.
-  /// Used by the order acceptance flow in [AppController]. The trip lands
-  /// in Draft state — its `status` field carries the lifecycle, since the
-  /// External Delivery Trip doctype is not configured as submittable.
+  /// Used by the order acceptance flow in [AppController]. Sends docstatus=1
+  /// and status=Scheduled in the create payload so the trip is born Submitted.
   Future<String> createTripByOrderName(String orderName) async {
     final createPayload = <String, dynamic>{
       'driver': await _getLoggedInDriver(),
-      'status': 'Draft',
+      'status': 'Scheduled',
+      'docstatus': 1,
       'trip_date': DateTime.now().toIso8601String().split('T').first,
       'stops': <Map<String, String>>[
         {'external_delivery': orderName},
@@ -1383,6 +1385,32 @@ class ExternalDeliveryRepository {
     }
   }
 
+  /// Convenience wrapper for [processFailedDeliveryReturn] that resolves the
+  /// trip stop by [tripId] + [deliveryId] so callers don't need the stop object.
+  Future<ReturnProcessResult> processFailedDeliveryReturnByIds({
+    required String tripId,
+    required String deliveryId,
+    required String reason,
+    String? reasonCode,
+    String? photoPath,
+    bool shouldCreateReturnTrip = false,
+  }) async {
+    final trip = await fetchTripDetails(tripId);
+    final stop = trip.stops.firstWhere(
+      (s) => s.externalDelivery.trim() == deliveryId.trim(),
+      orElse: () =>
+          throw Exception('Stop not found for delivery $deliveryId in trip $tripId'),
+    );
+    return processFailedDeliveryReturn(
+      stop: stop,
+      orderName: deliveryId,
+      reason: reason,
+      reasonCode: reasonCode,
+      photoPath: photoPath,
+      shouldCreateReturnTrip: shouldCreateReturnTrip,
+    );
+  }
+
   /// Marks a delivery as failed:
   /// 1. Updates the trip stop status to 'Failed' and writes the reason to notes.
   /// 2. Updates the External Delivery document: status=Failed, delivery_notes,
@@ -1407,19 +1435,21 @@ class ExternalDeliveryRepository {
     required ExternalDeliveryTripStop stop,
     required String orderName,
     required String reason,
+    String? reasonCode,
     String? photoPath,
-    bool shouldCreateReturnTrip = true,
+    bool shouldCreateReturnTrip = false,
   }) async {
     final String languageCode = await _languageCode();
 
-    await updateTripStopStatus(stop: stop, newStatus: 'Failed');
+    await _setTripStopFailed(stop: stop, reasonCode: reasonCode);
     await _tryMarkParentTripFailed(stop);
-    await _tryWriteStopNotes(stop: stop, reason: reason);
 
     await _updateExternalDeliveryFields(orderName, {
-      'status': shouldCreateReturnTrip ? _returnInitiatedStatus : 'Failed',
+      'status': 'Failed',
       'delivery_notes': reason,
       'store_notified': 1,
+      if (reasonCode != null && reasonCode.isNotEmpty)
+        'failure_reason_code': reasonCode,
     });
 
     if (photoPath != null && photoPath.isNotEmpty) {
@@ -1661,6 +1691,43 @@ class ExternalDeliveryRepository {
     final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
     final message = decoded['message'];
     return message is Map<String, dynamic> ? message : {};
+  }
+
+  /// Sets status=Failed and failure_reason_code in one frappe.client.set_value
+  /// call using the dict fieldname syntax so the backend's validation passes.
+  Future<void> _setTripStopFailed({
+    required ExternalDeliveryTripStop stop,
+    String? reasonCode,
+  }) async {
+    final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+    final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
+    if (stopName.isEmpty || stopDocType.isEmpty) {
+      throw Exception('Stop row metadata not found for status update.');
+    }
+
+    final setValueUrl = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    final fields = <String, dynamic>{'status': 'Failed'};
+    if (reasonCode != null && reasonCode.isNotEmpty) {
+      fields['failure_reason_code'] = reasonCode;
+    }
+    _logApi(
+      'external_delivery_trip_stop_status_update request',
+      'POST $setValueUrl doctype=$stopDocType name=$stopName fields=$fields',
+    );
+    final resp = await _post(
+      setValueUrl,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'doctype': stopDocType,
+        'name': stopName,
+        'fieldname': fields,
+      }),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
   }
 
   Future<void> _setDocValue({

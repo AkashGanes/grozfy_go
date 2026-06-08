@@ -15,6 +15,7 @@ import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/app_toast.dart';
 import '../model/pickup_job.dart';
 import '../repository/pickup_job_repository.dart';
+import 'failed_pickup_bottom_sheet.dart';
 
 class PickupJobDetailScreen extends ConsumerStatefulWidget {
   const PickupJobDetailScreen({super.key, required this.pickupJobName});
@@ -198,6 +199,38 @@ class _PickupJobDetailScreenState
       }
       if (!mounted) return;
       _showCompletionDialog();
+      setState(() { _future = _load(); });
+    } catch (e) {
+      if (!mounted) return;
+      showInfoSnack(
+          context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  // ── Mark as Failed ────────────────────────────────────────────────────────
+
+  Future<void> _handleMarkFailed(PickupJob job) async {
+    final result = await showFailedPickupSheet(context);
+    if (result == null || !mounted) return;
+    if (!ConnectivityService().isConnected) {
+      showInfoSnack(context, 'You are offline — connect and try again.');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      await PickupJobRepository().markPickupFailed(
+        job.name,
+        reasonCode: result.reasonCode,
+        notes: result.notes,
+        proofPhotoPath: result.photoPath,
+        tripName: job.deliveryTrip,
+      );
+      await PickupJobRepository().clearActiveJob();
+      if (!mounted) return;
+      showInfoSnack(context, 'Pickup marked as failed.');
       setState(() { _future = _load(); });
     } catch (e) {
       if (!mounted) return;
@@ -666,13 +699,17 @@ class _PickupJobDetailScreenState
 
   Widget _statusProgressBar(PickupJob job) {
     final statusNorm = job.status.trim().toLowerCase();
-    final pickedUp =
-        statusNorm == 'picked up' || statusNorm == 'received at store';
+    final failed = statusNorm == 'failed';
+    final pickedUp = !failed &&
+        (statusNorm == 'picked up' || statusNorm == 'received at store');
     final completed = statusNorm == 'received at store';
 
     Color statusColor;
     String statusLabel;
-    if (completed) {
+    if (failed) {
+      statusColor = Colors.red;
+      statusLabel = 'Failed';
+    } else if (completed) {
       statusColor = const Color(0xFF2E7D32);
       statusLabel = 'Received at Store';
     } else if (pickedUp) {
@@ -1083,21 +1120,33 @@ class _PickupJobDetailScreenState
       );
     }
 
-    // Added to Trip → Mark Picked Up
+    // Added to Trip → Mark Picked Up + Mark as Failed
     if (statusNorm == 'added to trip') {
-      return _primaryActionButton(
-        label: 'Mark Picked Up',
-        icon: Icons.inventory_2_outlined,
-        onTap: () => _handleMarkPickedUp(job),
+      return Column(
+        children: [
+          _primaryActionButton(
+            label: 'Mark Picked Up',
+            icon: Icons.inventory_2_outlined,
+            onTap: () => _handleMarkPickedUp(job),
+          ),
+          const SizedBox(height: 10),
+          _failedActionButton(onTap: () => _handleMarkFailed(job)),
+        ],
       );
     }
 
-    // Picked Up → Drop at Store
+    // Picked Up → Drop at Store + Mark as Failed
     if (statusNorm == 'picked up') {
-      return _primaryActionButton(
-        label: 'Drop at Store',
-        icon: Icons.store_rounded,
-        onTap: () => _handleDropAtStore(job),
+      return Column(
+        children: [
+          _primaryActionButton(
+            label: 'Drop at Store',
+            icon: Icons.store_rounded,
+            onTap: () => _handleDropAtStore(job),
+          ),
+          const SizedBox(height: 10),
+          _failedActionButton(onTap: () => _handleMarkFailed(job)),
+        ],
       );
     }
 
@@ -1131,7 +1180,56 @@ class _PickupJobDetailScreenState
       );
     }
 
+    // Failed — terminal failure
+    if (statusNorm == 'failed') {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.cancel_outlined, size: 18, color: Colors.red),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Pickup marked as failed.',
+                style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return const SizedBox.shrink();
+  }
+
+  Widget _failedActionButton({required VoidCallback onTap}) {
+    return SizedBox(
+      width: double.infinity,
+      height: 46,
+      child: OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.red,
+          side: BorderSide(color: Colors.red.withValues(alpha: 0.5)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14)),
+        ),
+        icon: const Icon(Icons.cancel_outlined, size: 18),
+        label: const Text(
+          'Mark as Failed',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+        onPressed: onTap,
+      ),
+    );
   }
 
   Widget _primaryActionButton({

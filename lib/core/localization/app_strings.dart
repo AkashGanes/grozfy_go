@@ -99,6 +99,7 @@ class AppStrings {
       'mark_picked_up': 'Mark Picked Up',
       'start_delivery': 'Start Delivery',
       'mark_delivered': 'Mark Delivered',
+      'mark_failed': 'Mark Failed',
       'order_delivered': 'Order delivered and earnings updated',
       'current_location': 'Current Location',
       'location_not_selected': 'Location not selected yet',
