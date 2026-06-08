@@ -158,7 +158,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             name: partnerName,
             avatarInitial: partnerName.isNotEmpty ? partnerName[0] : '?',
             avatarLocalPath: app.profileImagePath,
-            avatarUrl: app.serverProfileImageUrl,
+            avatarUrl: app.serverProfileImageFullUrl,
             avatarAuthHeaders: app.buildAuthHeaders(),
             hasUnreadNotifications: unreadCount > 0,
             onNotificationsTap: () =>
