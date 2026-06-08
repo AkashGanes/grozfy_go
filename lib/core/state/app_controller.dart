@@ -157,8 +157,6 @@ class AppController extends ChangeNotifier {
   String? _existingExpiryDate;
   bool _isRefreshing = false;
 
-  DateTime? _lastOtpRequestAt;
-
   String? _registrationToken;
   String? _pendingRegistrationMobile;
 
@@ -1263,14 +1261,6 @@ class AppController extends ChangeNotifier {
       return mobileValidation;
     }
 
-    final DateTime now = DateTime.now();
-    if (_lastOtpRequestAt != null) {
-      final int elapsed = now.difference(_lastOtpRequestAt!).inSeconds;
-      if (elapsed < 30) {
-        return 'OTP is rate-limited. Try again in ${30 - elapsed}s';
-      }
-    }
-
     try {
       _logApi(
         'send_whatsapp_otp request',
@@ -1314,7 +1304,6 @@ class AppController extends ChangeNotifier {
         return 'OTP request failed';
       }
 
-      _lastOtpRequestAt = now;
       return 'OTP sent successfully to $mobile';
     } catch (e) {
       _logApi('send_whatsapp_otp error', e.toString());

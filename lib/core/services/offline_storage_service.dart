@@ -60,6 +60,22 @@ class OfflineStorageService {
     );
   }
 
+  /// Writes many orders in a single Hive flush. Prefer this over a loop of
+  /// [cacheOrder] when caching a whole page — one disk write instead of N.
+  Future<void> cacheOrdersBatch(List<Map<String, dynamic>> orders) async {
+    final box = _ordersBox;
+    if (box == null) return;
+    final entries = <String, Map<String, dynamic>>{};
+    for (final order in orders) {
+      final name = order['name']?.toString();
+      if (name != null && name.isNotEmpty) {
+        entries[name] = order;
+      }
+    }
+    if (entries.isEmpty) return;
+    await box.putAll(entries);
+  }
+
   List<Map<String, dynamic>> getCachedOrders() {
     final box = _ordersBox;
     if (box == null) return const [];

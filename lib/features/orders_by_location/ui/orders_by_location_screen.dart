@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -146,11 +147,8 @@ class _OrdersByLocationScreenState
         filters: _activeFilters(),
       );
       ConnectivityService().reportNetworkSuccess();
-      // Warm the cache so this list survives a future offline open.
-      await OfflineTripManager()
-          .cacheOrderSummaries(orders.map(_summaryToMap).toList());
 
-      // The screen may have been popped while these awaits were in flight.
+      // The screen may have been popped while the fetch was in flight.
       // Writing to a disposed PagingController throws.
       if (!mounted) return;
 
@@ -168,6 +166,12 @@ class _OrdersByLocationScreenState
       } else {
         _pagingController.appendPage(items, pageKey + orders.length);
       }
+
+      // Warm the cache so this list survives a future offline open. Done
+      // *after* rendering and fire-and-forget — a disk write per page must
+      // never gate the list appearing on screen.
+      unawaited(OfflineTripManager()
+          .cacheOrderSummaries(orders.map(_summaryToMap).toList()));
     } catch (e) {
       if (!mounted) return;
       if (_isNetworkError(e)) {
