@@ -564,13 +564,6 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
             ),
             _divider(),
             _tile(
-              icon: Icons.location_on_rounded,
-              label: 'Orders by Location',
-              route: AppRoutes.ordersByLocation,
-              color: const Color(0xFF059669),
-            ),
-            _divider(),
-            _tile(
               icon: Icons.inventory_2_rounded,
               label: 'Return Pickups',
               route: AppRoutes.pickupPool,

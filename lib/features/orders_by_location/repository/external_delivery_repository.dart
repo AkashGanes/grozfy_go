@@ -285,27 +285,32 @@ class ExternalDeliveryRepository {
     int limitPageLength = pageSize,
     String orderBy = 'modified desc',
     List<List<dynamic>> filters = const [],
+    List<List<dynamic>> orFilters = const [],
   }) async {
     final uri = Uri.parse(
       '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.reportview.get',
     );
 
     _logApi('fetch_enriched_list request', uri.toString());
+    final body = <String, String>{
+      'doctype': 'External Delivery',
+      'fields': jsonEncode(_enrichedFields),
+      'filters': jsonEncode(filters),
+      'order_by': orderBy,
+      'start': '$limitStart',
+      'page_length': '$limitPageLength',
+      'with_comment_count': '0',
+    };
+    if (orFilters.isNotEmpty) {
+      body['or_filters'] = jsonEncode(orFilters);
+    }
     final resp = await _post(
       uri,
       headers: {
         ...await _authHeaders(),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: {
-        'doctype': 'External Delivery',
-        'fields': jsonEncode(_enrichedFields),
-        'filters': jsonEncode(filters),
-        'order_by': orderBy,
-        'start': '$limitStart',
-        'page_length': '$limitPageLength',
-        'with_comment_count': '0',
-      },
+      body: body,
     );
 
     if (resp.statusCode == 401) {
@@ -558,10 +563,8 @@ class ExternalDeliveryRepository {
           ['External Delivery', 'status', '=', 'Delivered'],
         ]),
         'limit_page_length': '0',
-        'order_by': 'modified desc',
       },
     );
-    _logApi('fetch_delivered_count request', uri.toString());
     final resp = await _get(uri, headers: await _authHeaders());
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));

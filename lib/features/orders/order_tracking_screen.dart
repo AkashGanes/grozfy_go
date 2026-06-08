@@ -19,7 +19,6 @@ import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
-import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import 'widgets/order_timer_widget.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
@@ -386,63 +385,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       AppToast.show(context, 'Order delivered and earnings updated');
       navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
     }
-  }
-
-  Future<void> _handleFailedDelivery(BuildContext context) async {
-    final app = AppScope.of(context);
-    final result = await showFailedDeliverySheet(context);
-    if (result == null || !context.mounted) return;
-
-    final fullReason = result.notes.isEmpty
-        ? result.reason
-        : '${result.reason} — ${result.notes}';
-
-    setState(() => _syncing = true);
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          content: Row(
-            children: [
-              const CircularProgressIndicator(strokeWidth: 2),
-              const SizedBox(width: 20),
-              Text(
-                'Marking delivery as failed...',
-                style: TextStyle(
-                  color: Theme.of(ctx).colorScheme.onSurface,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final error = await app.failDelivery(
-      reason: fullReason,
-      reasonCode: result.reasonCode,
-      photoPath: result.photoPath,
-      shouldCreateReturnTrip: false,
-    );
-    if (!context.mounted) return;
-    Navigator.of(context).pop(); // dismiss loading dialog
-    setState(() => _syncing = false);
-
-    if (error != null) {
-      AppToast.show(context, error);
-      return;
-    }
-    AppToast.show(context, app.t('delivery_failed'));
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.dashboard,
-      (r) => false,
-    );
   }
 
   Future<void> _showStatusConfirmSheet(
@@ -910,42 +852,15 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
 
                   // ── Inline status action button ────────────────────────
                   if (order.orderStatus != OrderStatus.delivered &&
-                      order.orderStatus != OrderStatus.failed &&
                       order.orderStatus != OrderStatus.cancelled &&
                       order.orderStatus != OrderStatus.rejected) ...[
-                    if (order.orderStatus == OrderStatus.outForDelivery)
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _TrackingActionButton(
-                              label: _actionLabel(order.orderStatus),
-                              color: _statusAccentColor(order.orderStatus),
-                              icon: _statusIcon(_nextStatus(order.orderStatus)),
-                              syncing: _syncing,
-                              onTap: () =>
-                                  _showStatusConfirmSheet(context, order),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _TrackingActionButton(
-                              label: 'Mark Failed',
-                              color: const Color(0xFFD32F2F),
-                              icon: Icons.cancel_outlined,
-                              syncing: _syncing,
-                              onTap: () => _handleFailedDelivery(context),
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      _TrackingActionButton(
-                        label: _actionLabel(order.orderStatus),
-                        color: _statusAccentColor(order.orderStatus),
-                        icon: _statusIcon(_nextStatus(order.orderStatus)),
-                        syncing: _syncing,
-                        onTap: () => _showStatusConfirmSheet(context, order),
-                      ),
+                    _TrackingActionButton(
+                      label: _actionLabel(order.orderStatus),
+                      color: _statusAccentColor(order.orderStatus),
+                      icon: _statusIcon(_nextStatus(order.orderStatus)),
+                      syncing: _syncing,
+                      onTap: () => _showStatusConfirmSheet(context, order),
+                    ),
                     const SizedBox(height: 10),
                   ],
 
@@ -1079,7 +994,6 @@ class _StatusChip extends StatelessWidget {
         return AppTheme.oceanBlue;
       case OrderStatus.delivered:
         return Colors.green;
-      case OrderStatus.failed:
       case OrderStatus.rejected:
       case OrderStatus.cancelled:
         return Colors.red;

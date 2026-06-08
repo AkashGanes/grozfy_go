@@ -19,14 +19,11 @@ import '../profile/profile_completeness_sheet.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
-import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
 import '../orders_by_location/ui/trip_stop_map_screen.dart';
 import '../orders/my_orders_screen.dart';
 import 'widgets/active_order_card.dart';
 import 'widgets/availability_card.dart';
-import 'widgets/available_deliveries_card.dart';
-import 'widgets/batch_pickup_card.dart';
 import 'widgets/current_location_card.dart';
 import 'widgets/dashboard_colors.dart';
 import 'widgets/dashboard_greeting_header.dart';
@@ -161,7 +158,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             name: partnerName,
             avatarInitial: partnerName.isNotEmpty ? partnerName[0] : '?',
             avatarLocalPath: app.profileImagePath,
-            avatarUrl: app.serverProfileImageUrl,
+            avatarUrl: app.serverProfileImageFullUrl,
             avatarAuthHeaders: app.buildAuthHeaders(),
             hasUnreadNotifications: unreadCount > 0,
             onNotificationsTap: () =>
@@ -241,31 +238,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             onChangeTap: () =>
                 Navigator.of(context).pushNamed(AppRoutes.currentLocation),
           ),
-          const SizedBox(height: 14),
-          BatchPickupCard(
-            heading: app.t('batch_pickup'),
-            title: app.t('multi_order_pickup'),
-            subtitle: app.t('pick_up_multiple'),
-            selectOrdersLabel: app.t('select_orders'),
-            viewTripsLabel: app.t('view_trips'),
-            onSelectOrders: () =>
-                Navigator.of(context).pushNamed(AppRoutes.ordersByLocation),
-            onViewTrips: () => Navigator.of(
-              context,
-            ).pushNamed(AppRoutes.externalDeliveryTripList),
-          ),
-          const SizedBox(height: 14),
-          AvailableDeliveriesCard(
-            heading: app.t('available_deliveries'),
-            viewAllLabel: app.t('view_all'),
-            title: app.t('external_deliveries'),
-            subtitle: app.t('external_deliveries_desc'),
-            actionLabel: app.t('view_deliveries'),
-            onViewAll: () =>
-                Navigator.of(context).pushNamed(AppRoutes.ordersByLocation),
-            onAction: () =>
-                Navigator.of(context).pushNamed(AppRoutes.ordersByLocation),
-          ),
           const SizedBox(height: 8),
         ],
       ),
@@ -341,74 +313,98 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   static const Color _recallAccent = Color(0xFFB26A06);
 
   Timer? _pollTimer;
-  String? _lastPolledOrderId;
-  _RecallData? _recallData;
+  // Tracks recalls per orderId.
+  final Map<String, _RecallData> _recallDataMap = {};
   bool _recallCardExpanded = false;
   // Guards against re-surfacing a recall after the driver confirms it.
-  // Server keeps the stop as "recall pending" until it processes the return,
-  // so without this set the 45s poll would re-detect and resurface repeatedly.
   final Set<String> _confirmedRecallOrderIds = {};
+
+  // Carousel state.
+  late PageController _pageController;
+  int _currentPageIndex = 0;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    _maybeStartPolling();
+    _pageController = PageController();
+    _pageController.addListener(_onPageScroll);
+    _startPolling();
   }
 
   @override
   void didUpdateWidget(_ActiveOrderSection old) {
     super.didUpdateWidget(old);
-    final newId = widget.app.activeOrder?.orderId;
-    if (newId != _lastPolledOrderId) {
-      setState(() => _recallData = null);
-      _maybeStartPolling();
+    final newIds = widget.app.activeOrders.map((o) => o.orderId).toSet();
+    final oldIds = old.app.activeOrders.map((o) => o.orderId).toSet();
+    if (!newIds.containsAll(oldIds) || !oldIds.containsAll(newIds)) {
+      // Remove stale recall data for orders that are no longer active.
+      _recallDataMap.removeWhere((id, _) => !newIds.contains(id));
+      _currentPageIndex = widget.app.currentlyViewedOrderIndex.clamp(
+        0,
+        newIds.isEmpty ? 0 : newIds.length - 1,
+      );
     }
   }
 
   @override
   void dispose() {
+    _pageController.removeListener(_onPageScroll);
+    _pageController.dispose();
     _pollTimer?.cancel();
     super.dispose();
   }
 
-  void _maybeStartPolling() {
+  void _onPageScroll() {
+    final page = _pageController.page?.round() ?? 0;
+    if (page != _currentPageIndex) {
+      setState(() => _currentPageIndex = page);
+      widget.app.setViewedOrderIndex(page);
+    }
+  }
+
+  void _startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = null;
-    final order = widget.app.activeOrder;
-    if (order == null) return;
-    _lastPolledOrderId = order.orderId;
-    _pollForRecall();
+    _pollForAllRecalls();
     _pollTimer = Timer.periodic(
       const Duration(seconds: 30),
-      (_) => _pollForRecall(),
+      (_) => _pollForAllRecalls(),
     );
   }
 
-  // ── Recall detection — checks trip stops first, then order status ─────────────
+  // ── Recall detection ─────────────────────────────────────────────────────────
 
   static bool _isRecallPending(String status) =>
       status.trim().toLowerCase().replaceAll('_', ' ') == 'recall pending';
 
-  Future<void> _pollForRecall() async {
-    final order = widget.app.activeOrder;
-    if (order == null || !mounted) return;
+  Future<void> _pollForAllRecalls() async {
+    if (!mounted) return;
+    for (final order in widget.app.activeOrders) {
+      await _pollForRecall(order);
+    }
+  }
 
-    // Already confirmed this session — never resurface it.
+  Future<void> _pollForRecall(DeliveryOrder order) async {
+    if (!mounted) return;
     if (_confirmedRecallOrderIds.contains(order.orderId)) {
-      if (_recallData != null) setState(() => _recallData = null);
+      if (_recallDataMap.containsKey(order.orderId)) {
+        setState(() => _recallDataMap.remove(order.orderId));
+      }
       return;
     }
 
     _RecallData? found;
 
-    // Primary: scan the active trip's stops for this order's recall status.
-    final tripId = widget.app.activeTripId;
-    if (tripId != null && tripId.isNotEmpty) {
+    // Get trip ID from AppController for this specific order.
+    final activeTripId = widget.app.activeOrders.isEmpty
+        ? null
+        : _getTripIdForOrder(order.orderId);
+
+    if (activeTripId != null && activeTripId.isNotEmpty) {
       try {
         final trip = await ExternalDeliveryRepository().fetchTripDetails(
-          tripId,
+          activeTripId,
         );
         if (!mounted) return;
 
@@ -433,9 +429,8 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
             storeAddress: storeAddress.isNotEmpty
                 ? storeAddress
                 : order.storeAddress,
-            itemCount: 0, // enriched below
+            itemCount: 0,
           );
-          // Enrich with item count from detail (best-effort).
           try {
             final detail = await ExternalDeliveryRepository().fetchDetail(
               order.orderId,
@@ -462,7 +457,6 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       } catch (_) {}
     }
 
-    // Fallback: check the order record's own status field.
     if (found == null) {
       try {
         final detail = await ExternalDeliveryRepository().fetchDetail(
@@ -484,12 +478,27 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     }
 
     if (!mounted) return;
-    if (found != null && _recallData == null) {
-      setState(() => _recallData = found);
+    final hadRecall = _recallDataMap.containsKey(order.orderId);
+    if (found != null && !hadRecall) {
+      setState(() => _recallDataMap[order.orderId] = found!);
       await _showRecallInterstitial(found);
-    } else if (found == null && _recallData != null) {
-      setState(() => _recallData = null);
+    } else if (found == null && hadRecall) {
+      setState(() => _recallDataMap.remove(order.orderId));
     }
+  }
+
+  String? _getTripIdForOrder(String orderId) {
+    // Access trip ID through the activeTripIds exposed by AppController.
+    // We use the activeTripId getter with a temporary index switch.
+    final orders = widget.app.activeOrders;
+    final idx = orders.indexWhere((o) => o.orderId == orderId);
+    if (idx == -1) return null;
+    // Temporarily switch viewed index to get the right tripId.
+    final savedIdx = widget.app.currentlyViewedOrderIndex;
+    widget.app.setViewedOrderIndex(idx);
+    final tripId = widget.app.activeTripId;
+    widget.app.setViewedOrderIndex(savedIdx);
+    return tripId;
   }
 
   // ── Interstitial ─────────────────────────────────────────────────────────────
@@ -514,7 +523,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   // ── Confirm recall flow ───────────────────────────────────────────────────────
 
   Future<void> _handleConfirmRecall(DeliveryOrder order) async {
-    final data = _recallData;
+    final data = _recallDataMap[order.orderId];
     if (data == null) return;
 
     final customerLabel = data.customerName.isNotEmpty
@@ -562,9 +571,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     if (confirmed != true || !mounted) return;
 
     showInfoSnack(context, 'Recall confirmed — items returned to store.');
-    _confirmedRecallOrderIds.add(_recallData!.orderId);
-    setState(() => _recallData = null);
-    widget.app.clearActiveOrder();
+    _confirmedRecallOrderIds.add(data.orderId);
+    setState(() => _recallDataMap.remove(data.orderId));
+    widget.app.clearOrder(data.orderId);
   }
 
   Future<void> _navigateToStore(String address) async {
@@ -607,8 +616,10 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       );
     }
 
-    final order = app.activeOrder;
-    if (order == null) {
+    final orders = app.activeOrders;
+
+    // ── No orders ─────────────────────────────────────────────────────────────
+    if (orders.isEmpty) {
       return _placeholder(
         context,
         Row(
@@ -624,70 +635,155 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       );
     }
 
-    // ── Recall mode ───────────────────────────────────────────────────────────
-    if (_recallData != null) {
-      return _buildRecallCard(order, _recallData!);
-    }
+    // ── Multi-order carousel ──────────────────────────────────────────────────
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Card carousel.
+        SizedBox(
+          height: _estimatedCardHeight(orders[_currentPageIndex.clamp(0, orders.length - 1)]),
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: orders.length,
+            itemBuilder: (ctx, i) {
+              final order = orders[i];
+              final recallData = _recallDataMap[order.orderId];
+              if (recallData != null) {
+                return _buildRecallCard(order, recallData);
+              }
+              final transition = _nextTransition(order.orderStatus, app);
+              return ActiveOrderCard(
+                heading: app.t('active_order'),
+                statusLabel: app.orderStatusLabel(order.orderStatus),
+                orderId: order.orderId,
+                onAddOrder: () =>
+                    Navigator.of(context).pushNamed(AppRoutes.orderListing),
+                address: Formatters.stripHtml(
+                  order.drop.isNotEmpty ? order.drop : order.deliveryAddress,
+                  preserveLineBreaks: true,
+                ),
+                meta: ActiveOrderMeta(
+                  date: AppDateFormat.date(order.acceptedAt),
+                  time: AppDateFormat.time(order.acceptedAt),
+                  phone: order.customerPhone.isNotEmpty
+                      ? order.customerPhone
+                      : (order.contactNumber.isNotEmpty
+                          ? order.contactNumber
+                          : null),
+                  email: app.profile?.email,
+                ),
+                actions: [
+                  ActiveOrderAction(
+                    label: app.t('view_order'),
+                    icon: Icons.receipt_long_outlined,
+                    onTap: () => Navigator.of(ctx)
+                        .pushNamed(AppRoutes.orderDetails, arguments: order),
+                  ),
+                  ActiveOrderAction(
+                    label: app.t('navigate'),
+                    icon: Icons.navigation_rounded,
+                    onTap: () =>
+                        Navigator.of(ctx).pushNamed(AppRoutes.navigation),
+                  ),
+                  ActiveOrderAction(
+                    label: app.t('open_maps'),
+                    icon: Icons.map_outlined,
+                    onTap: () => _openInMaps(ctx, order, app),
+                  ),
+                  ActiveOrderAction(
+                    label: app.t('track_order'),
+                    icon: Icons.local_shipping_outlined,
+                    onTap: () => Navigator.of(ctx).pushNamed(
+                      AppRoutes.orderTracking,
+                      arguments: order,
+                    ),
+                  ),
+                ],
+                primaryActionLabel: transition?.label,
+                onPrimaryAction: transition == null
+                    ? null
+                    : () => _runTransition(ctx, app, order, transition),
+              );
+            },
+          ),
+        ),
 
-    // ── Normal mode ───────────────────────────────────────────────────────────
-    final transition = _nextTransition(order.orderStatus, app);
-    return ActiveOrderCard(
-      heading: app.t('active_order'),
-      statusLabel: app.orderStatusLabel(order.orderStatus),
-      trackOrderLabel: app.t('track_order'),
-      orderId: order.orderId,
-      address: Formatters.stripHtml(
-        order.drop.isNotEmpty ? order.drop : order.deliveryAddress,
-        preserveLineBreaks: true,
-      ),
-      meta: ActiveOrderMeta(
-        date: AppDateFormat.date(order.acceptedAt),
-        time: AppDateFormat.time(order.acceptedAt),
-        phone: order.customerPhone.isNotEmpty
-            ? order.customerPhone
-            : (order.contactNumber.isNotEmpty ? order.contactNumber : null),
-        email: app.profile?.email,
-      ),
-      actions: [
-        ActiveOrderAction(
-          label: app.t('view_order'),
-          icon: Icons.receipt_long_outlined,
-          onTap: () => Navigator.of(
-            context,
-          ).pushNamed(AppRoutes.orderDetails, arguments: order),
-        ),
-        ActiveOrderAction(
-          label: app.t('navigate'),
-          icon: Icons.navigation_rounded,
-          onTap: () => Navigator.of(context).pushNamed(AppRoutes.navigation),
-        ),
-        ActiveOrderAction(
-          label: app.t('open_maps'),
-          icon: Icons.map_outlined,
-          onTap: () => _openInMaps(context, order, app),
-        ),
-        ActiveOrderAction(
-          label: app.t('track_order'),
-          icon: Icons.local_shipping_outlined,
-          onTap: () => Navigator.of(
-            context,
-          ).pushNamed(AppRoutes.orderTracking, arguments: order),
-        ),
+        // Navigation bar — arrows + dots + counter (only for multiple orders).
+        if (orders.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _carouselNavButton(
+                  icon: Icons.arrow_back_ios_rounded,
+                  enabled: _currentPageIndex > 0,
+                  onTap: () => _pageController.previousPage(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _OrderDots(
+                  count: orders.length,
+                  current: _currentPageIndex,
+                  recalledIds: Set.of(_recallDataMap.keys),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '${_currentPageIndex + 1} of ${orders.length}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF667085),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                _carouselNavButton(
+                  icon: Icons.arrow_forward_ios_rounded,
+                  enabled: _currentPageIndex < orders.length - 1,
+                  onTap: () => _pageController.nextPage(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
-      onTrackOrder: () => Navigator.of(
-        context,
-      ).pushNamed(AppRoutes.orderTracking, arguments: order),
-      primaryActionLabel: transition?.label,
-      onPrimaryAction: transition == null
-          ? null
-          : () => _runTransition(context, app, order, transition),
-      secondaryActionLabel: order.orderStatus == OrderStatus.outForDelivery
-          ? app.t('mark_failed')
-          : null,
-      onSecondaryAction: order.orderStatus == OrderStatus.outForDelivery
-          ? () => _handleFailedDelivery(context, app)
-          : null,
     );
+  }
+
+  Widget _carouselNavButton({
+    required IconData icon,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: AnimatedOpacity(
+        opacity: enabled ? 1.0 : 0.25,
+        duration: const Duration(milliseconds: 150),
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1AB36A).withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 15, color: const Color(0xFF1AB36A)),
+        ),
+      ),
+    );
+  }
+
+  double _estimatedCardHeight(DeliveryOrder order) {
+    // ActiveOrderCard grows with content; use a fixed generous height for
+    // the PageView so it doesn't clip. The card itself is internally scrollable.
+    final bool hasMeta = order.acceptedAt != null ||
+        order.customerPhone.isNotEmpty ||
+        order.contactNumber.isNotEmpty;
+    return hasMeta ? 310 : 270;
   }
 
   // ── Recall card ───────────────────────────────────────────────────────────────
@@ -1264,9 +1360,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       case OrderStatus.pending:
       case OrderStatus.rejected:
       case OrderStatus.delivered:
-      case OrderStatus.failed:
       case OrderStatus.cancelled:
       case OrderStatus.returned:
+      case OrderStatus.failed:
         return null;
     }
   }
@@ -1303,62 +1399,6 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     } else {
       navigator.pushNamed(AppRoutes.orderStatus);
     }
-  }
-
-  Future<void> _handleFailedDelivery(
-    BuildContext context,
-    AppController app,
-  ) async {
-    final result = await showFailedDeliverySheet(context);
-    if (result == null || !context.mounted) return;
-
-    final fullReason = result.notes.isEmpty
-        ? result.reason
-        : '${result.reason} — ${result.notes}';
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          content: Row(
-            children: [
-              const CircularProgressIndicator(strokeWidth: 2),
-              const SizedBox(width: 20),
-              Text(
-                'Marking delivery as failed...',
-                style: TextStyle(
-                  color: Theme.of(ctx).colorScheme.onSurface,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final error = await app.failDelivery(
-      reason: fullReason,
-      reasonCode: result.reasonCode,
-      photoPath: result.photoPath,
-      shouldCreateReturnTrip: false,
-    );
-    if (!context.mounted) return;
-    Navigator.of(context).pop(); // dismiss loading dialog
-    if (error != null) {
-      AppToast.show(context, error);
-      return;
-    }
-    AppToast.show(context, app.t('delivery_failed'));
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.dashboard,
-      (route) => false,
-    );
   }
 
   Future<void> _openInMaps(
@@ -1552,4 +1592,40 @@ class _RecallData {
   final String storeName;
   final String storeAddress;
   final int itemCount;
+}
+
+// ── Page indicator dots for multi-order carousel ──────────────────────────────
+
+class _OrderDots extends StatelessWidget {
+  const _OrderDots({
+    required this.count,
+    required this.current,
+    required this.recalledIds,
+  });
+
+  final int count;
+  final int current;
+  final Set<String> recalledIds;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(count, (i) {
+        final bool isActive = i == current;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: isActive ? 20 : 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: isActive
+                ? const Color(0xFF1AB36A)
+                : const Color(0xFF1AB36A).withOpacity(0.25),
+            borderRadius: BorderRadius.circular(4),
+          ),
+        );
+      }),
+    );
+  }
 }
