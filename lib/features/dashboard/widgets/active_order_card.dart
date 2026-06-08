@@ -41,24 +41,22 @@ class ActiveOrderCard extends StatelessWidget {
     super.key,
     required this.heading,
     required this.statusLabel,
-    required this.trackOrderLabel,
     required this.orderId,
     required this.address,
     required this.meta,
     required this.actions,
-    required this.onTrackOrder,
+    required this.onAddOrder,
     this.primaryActionLabel,
     this.onPrimaryAction,
   });
 
   final String heading;
   final String statusLabel;
-  final String trackOrderLabel;
   final String orderId;
   final String address;
   final ActiveOrderMeta meta;
   final List<ActiveOrderAction> actions;
-  final VoidCallback onTrackOrder;
+  final VoidCallback onAddOrder;
   final String? primaryActionLabel;
   final VoidCallback? onPrimaryAction;
 
@@ -87,24 +85,28 @@ class ActiveOrderCard extends StatelessWidget {
               ),
               const Spacer(),
               GestureDetector(
-                onTap: onTrackOrder,
-                child: Row(
-                  children: [
-                    Text(
-                      trackOrderLabel,
-                      style: const TextStyle(
-                        color: Color(0xFF1F4FB6),
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
+                onTap: onAddOrder,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F4FB6),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_rounded, color: Colors.white, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'Add Another Order',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 2),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: Color(0xFF1F4FB6),
-                      size: 18,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],

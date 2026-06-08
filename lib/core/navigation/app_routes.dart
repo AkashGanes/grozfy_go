@@ -44,7 +44,6 @@ class AppRoutes {
   static const orderTracking = '/order-tracking';
   static const dashboard = '/dashboard';
   static const profile = '/profile';
-  static const ordersByLocation = '/orders-by-location';
   static const externalDeliveryTripList = '/external-delivery-trip-list';
   static const externalDeliveryTripDetails = '/external-delivery-trip-details';
   static const settings = '/settings';

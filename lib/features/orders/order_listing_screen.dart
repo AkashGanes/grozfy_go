@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
@@ -62,6 +63,13 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
 
   // Track which search-result card is being opened
   String? _openingOrderId;
+
+  // Batch selection state
+  static const int _batchLimit = 3;
+  bool _selectionMode = false;
+  final Set<String> _selectedOrderIds = {};
+  final List<DeliveryOrder> _selectedOrders = [];
+  bool _creatingBatchTrip = false;
 
   @override
   void initState() {
@@ -409,6 +417,250 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     }
   }
 
+  // ── Batch selection ────────────────────────────────────────────────────────
+
+  void _enterSelectionMode(DeliveryOrder order) {
+    setState(() {
+      _selectionMode = true;
+      _selectedOrderIds.add(order.orderId);
+      _selectedOrders.add(order);
+    });
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) { if (mounted) _pagingController.notifyListeners(); },
+    );
+  }
+
+  void _toggleSelection(DeliveryOrder order) {
+    if (!_selectedOrderIds.contains(order.orderId) &&
+        _selectedOrderIds.length >= _batchLimit) {
+      AppToast.show(
+        context,
+        'Maximum $_batchLimit orders can be added to one trip',
+      );
+      return;
+    }
+    setState(() {
+      if (_selectedOrderIds.contains(order.orderId)) {
+        _selectedOrderIds.remove(order.orderId);
+        _selectedOrders.removeWhere((o) => o.orderId == order.orderId);
+        if (_selectedOrderIds.isEmpty) _selectionMode = false;
+      } else {
+        _selectedOrderIds.add(order.orderId);
+        _selectedOrders.add(order);
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) { if (mounted) _pagingController.notifyListeners(); },
+    );
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _selectionMode = false;
+      _selectedOrderIds.clear();
+      _selectedOrders.clear();
+    });
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) { if (mounted) _pagingController.notifyListeners(); },
+    );
+  }
+
+  Future<void> _createBatchTrip() async {
+    if (_selectedOrderIds.isEmpty || _creatingBatchTrip) return;
+
+    if (_checkDistanceWarning()) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Color(0xFFF38B19)),
+              SizedBox(width: 8),
+              Text(
+                'Large Distance',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Some selected orders are more than 3 km apart. Create the trip anyway?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1F5FE8),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Create Trip'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
+
+    setState(() => _creatingBatchTrip = true);
+    try {
+      final orders = _selectedOrders
+          .map(
+            (o) => ExternalDelivery(
+              name: o.orderId,
+              storeUrl: '',
+              storeName: '',
+              customerName: '',
+              status: '',
+              creation: '',
+              modified: '',
+            ),
+          )
+          .toList();
+
+      final tripName = await _repository.createTripForOrders(orders);
+      if (!mounted) return;
+
+      _exitSelectionMode();
+      _lastGroupStore = null;
+      _pagingController.refresh();
+      AppToast.show(context, 'Trip $tripName created (${orders.length} orders)');
+      Navigator.of(context).pushNamed(AppRoutes.externalDeliveryTripList);
+    } catch (e) {
+      if (mounted) AppToast.show(context, 'Failed to create trip: $e');
+    } finally {
+      if (mounted) setState(() => _creatingBatchTrip = false);
+    }
+  }
+
+  bool _checkDistanceWarning() {
+    if (_selectedOrders.length < 2) return false;
+    const double maxKm = 3.0;
+    for (int i = 0; i < _selectedOrders.length; i++) {
+      for (int j = i + 1; j < _selectedOrders.length; j++) {
+        final a = _selectedOrders[i];
+        final b = _selectedOrders[j];
+        if (a.latitude != 0 && b.latitude != 0) {
+          if (_haversineKm(
+                a.latitude,
+                a.longitude,
+                b.latitude,
+                b.longitude,
+              ) >
+              maxKm) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  double _haversineKm(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const double r = 6371.0;
+    final double dLat = (lat2 - lat1) * pi / 180;
+    final double dLon = (lon2 - lon1) * pi / 180;
+    final double a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(lat1 * pi / 180) *
+            cos(lat2 * pi / 180) *
+            sin(dLon / 2) *
+            sin(dLon / 2);
+    return r * 2 * atan2(sqrt(a), sqrt(1 - a));
+  }
+
+  Widget _buildSelectionBar() {
+    final double bottomPad = MediaQuery.of(context).padding.bottom;
+    // Positioned(left:0, right:0) above gives this tight finite width —
+    // no SizedBox wrapper needed.
+    return Container(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPad + 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 16,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.max,
+          children: [
+            TextButton.icon(
+              icon: const Icon(Icons.close_rounded, size: 18),
+              label: const Text('Cancel'),
+              onPressed: _exitSelectionMode,
+            ),
+            const Spacer(),
+            Text(
+              '${_selectedOrderIds.length} selected',
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+            const SizedBox(width: 12),
+            // Plain Material+InkWell avoids ElevatedButton's theme fixedSize
+            // (app theme sets fixedSize: Size(infinity, 52) which crashes
+            // in any unconstrained-width context including Positioned children).
+            Material(
+              color: _creatingBatchTrip
+                  ? const Color(0xFF1F5FE8).withValues(alpha: 0.6)
+                  : const Color(0xFF1F5FE8),
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                onTap: _creatingBatchTrip ? null : _createBatchTrip,
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_creatingBatchTrip)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      else
+                        const Icon(
+                          Icons.route_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      const SizedBox(width: 6),
+                      const Text(
+                        'Create Trip',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+    );
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
@@ -416,19 +668,32 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool searching = _searchQuery.length >= 2;
 
-    return AppShell(
-      title: 'Available Orders',
-      subtitle: _selectedStore ?? 'All Stores',
-      scrollable: false,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
-          tooltip: 'Filter by store',
-          onPressed: _showStorePicker,
-        ),
-      ],
-      child: Column(
+    return PopScope(
+      canPop: !_selectionMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _selectionMode) _exitSelectionMode();
+      },
+      // Outer Stack so the selection bar can be Positioned with tight
+      // horizontal constraints from the route — bypassing AppShell's
+      // internal Stack which provides unconstrained width to its children.
+      child: Stack(
         children: [
+      AppShell(
+        title: 'Available Orders',
+        subtitle: _selectionMode
+            ? '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected'
+            : (_selectedStore ?? 'All Stores'),
+        scrollable: false,
+        actions: [
+          if (!_selectionMode)
+            IconButton(
+              icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
+              tooltip: 'Filter by store',
+              onPressed: _showStorePicker,
+            ),
+        ],
+        child: Column(
+          children: [
           // Search bar
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -529,6 +794,18 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                     child: _buildPagedList(),
                   ),
           ),
+          ],
+        ),
+      ),
+      // Selection bar as Positioned — gets tight horizontal constraints
+      // from the route-level Stack, not AppShell's unconstrained Stack.
+      if (_selectionMode)
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _buildSelectionBar(),
+        ),
         ],
       ),
     );
@@ -542,7 +819,10 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
-      padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
+      padding: EdgeInsets.fromLTRB(
+        0, 4, 0,
+        _selectionMode ? MediaQuery.of(context).padding.bottom + 80 : 20,
+      ),
       builderDelegate: PagedChildBuilderDelegate<_ListItem>(
         firstPageProgressIndicatorBuilder: (_) =>
             const Center(child: CircularProgressIndicator()),
@@ -561,12 +841,18 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             return _StoreHeaderWidget(storeName: item.storeName);
           }
           final order = (item as _OrderItem).order;
+          final bool isSelected = _selectedOrderIds.contains(order.orderId);
           return _FullOrderCard(
             order: order,
-            onTap: () => Navigator.of(context).pushNamed(
-              AppRoutes.orderDetails,
-              arguments: order,
-            ),
+            isSelected: isSelected,
+            inSelectionMode: _selectionMode,
+            onLongPress: _selectionMode ? null : () => _enterSelectionMode(order),
+            onTap: _selectionMode
+                ? () => _toggleSelection(order)
+                : () => Navigator.of(context).pushNamed(
+                      AppRoutes.orderDetails,
+                      arguments: order,
+                    ),
           );
         },
       ),
@@ -592,7 +878,10 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
       ),
-      padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
+      padding: EdgeInsets.fromLTRB(
+        0, 4, 0,
+        _selectionMode ? MediaQuery.of(context).padding.bottom + 80 : 20,
+      ),
       itemCount: _searchResults.length,
       itemBuilder: (context, index) {
         final summary = _searchResults[index];
@@ -661,17 +950,27 @@ class _StoreHeaderWidget extends StatelessWidget {
 // ── Full detail card ──────────────────────────────────────────────────────────
 
 class _FullOrderCard extends StatelessWidget {
-  const _FullOrderCard({required this.order, required this.onTap});
+  const _FullOrderCard({
+    required this.order,
+    required this.onTap,
+    this.onLongPress,
+    this.isSelected = false,
+    this.inSelectionMode = false,
+  });
 
   final DeliveryOrder order;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final bool isSelected;
+  final bool inSelectionMode;
 
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color cardBg = isDark ? const Color(0xFF1B1E2A) : Colors.white;
-    final Color cardBorder =
-        isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE4E7EC);
+    final Color cardBorder = isSelected
+        ? const Color(0xFF1AB36A)
+        : (isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE4E7EC));
     final Color textPrimary =
         isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
     final Color textSecondary =
@@ -680,7 +979,11 @@ class _FullOrderCard extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
+      child: GestureDetector(
+        // Long-press lives on the outer GestureDetector so the scroll view
+        // can still win the gesture arena independently of the tap InkWell.
+        onLongPress: onLongPress,
+        child: Material(
         color: cardBg,
         borderRadius: BorderRadius.circular(16),
         clipBehavior: Clip.antiAlias,
@@ -690,8 +993,13 @@ class _FullOrderCard extends StatelessWidget {
               onTap: onTap,
               child: Container(
                 decoration: BoxDecoration(
-                  color: cardBg,
-                  border: Border.all(color: cardBorder),
+                  color: isSelected
+                      ? const Color(0xFF1AB36A).withValues(alpha: 0.06)
+                      : cardBg,
+                  border: Border.all(
+                    color: cardBorder,
+                    width: isSelected ? 2 : 1,
+                  ),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
@@ -722,7 +1030,33 @@ class _FullOrderCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                              Container(
+                              if (inSelectionMode)
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 150),
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFF1AB36A)
+                                        : Colors.transparent,
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color(0xFF1AB36A)
+                                          : const Color(0xFF9AA3AF),
+                                      width: 2,
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: isSelected
+                                      ? const Icon(
+                                          Icons.check_rounded,
+                                          size: 16,
+                                          color: Colors.white,
+                                        )
+                                      : null,
+                                )
+                              else
+                                Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
                                   vertical: 4,
@@ -805,6 +1139,7 @@ class _FullOrderCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (!inSelectionMode)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
                       child: Material(
@@ -854,6 +1189,7 @@ class _FullOrderCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
