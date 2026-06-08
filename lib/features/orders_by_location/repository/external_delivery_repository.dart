@@ -133,6 +133,8 @@ class ExternalDeliveryRepository {
     'customer_name',
     'status',
     'delivery_address',
+    'failure_reason_code',
+    'delivery_notes',
   ];
 
   // Fields fetched via frappe.desk.reportview.get for the listing screen.
@@ -208,15 +210,24 @@ class ExternalDeliveryRepository {
     int limitStart = 0,
     int limitPageLength = pageSize,
     String? storeName,
-    String orderBy = 'store_name asc, modified desc',
+    String? orderBy,
     List<List<dynamic>>? filters,
     List<List<dynamic>>? orFilters,
   }) async {
+    // When a single store is selected, store_name is constant for every row,
+    // so sorting by it is wasted server work. Order by `modified` alone — an
+    // indexed column — which the DB can satisfy from the index. The grouped
+    // sort (store_name asc) is only needed for the "All Stores" view, where the
+    // UI groups rows under per-store headers.
+    final String effectiveOrderBy = orderBy ??
+        (storeName != null && storeName.isNotEmpty
+            ? 'modified desc'
+            : 'store_name asc, modified desc');
     final params = <String, String>{
       'fields': jsonEncode(_fields),
       'limit_start': '$limitStart',
       'limit_page_length': '$limitPageLength',
-      'order_by': orderBy,
+      'order_by': effectiveOrderBy,
     };
     final List<List<dynamic>> effectiveFilters = <List<dynamic>>[
       if (filters != null) ...filters,
@@ -235,7 +246,11 @@ class ExternalDeliveryRepository {
     ).replace(queryParameters: params);
 
     _logApi('external_delivery_list request', uri.toString());
+    // Time the round-trip so slow loads can be attributed to the server vs the
+    // app. Look for "external_delivery_list timing" in the logs.
+    final Stopwatch sw = Stopwatch()..start();
     final resp = await _get(uri, headers: await _authHeaders());
+    final int networkMs = sw.elapsedMilliseconds;
 
     if (resp.statusCode == 401) {
       throw Exception('401: Invalid API credentials.');
@@ -248,9 +263,15 @@ class ExternalDeliveryRepository {
     }
 
     final data = (jsonDecode(resp.body)['data']) as List;
-    return data
+    final List<ExternalDelivery> result = data
         .map((row) => ExternalDelivery.fromJson(row as Map<String, dynamic>))
         .toList();
+    _logApi(
+      'external_delivery_list timing',
+      'network=${networkMs}ms parse+total=${sw.elapsedMilliseconds}ms '
+          'rows=${result.length} storeFilter=${storeName ?? "ALL"}',
+    );
+    return result;
   }
 
   /// Fetches a full page of order details in a single HTTP call using the
@@ -264,27 +285,32 @@ class ExternalDeliveryRepository {
     int limitPageLength = pageSize,
     String orderBy = 'modified desc',
     List<List<dynamic>> filters = const [],
+    List<List<dynamic>> orFilters = const [],
   }) async {
     final uri = Uri.parse(
       '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.reportview.get',
     );
 
     _logApi('fetch_enriched_list request', uri.toString());
+    final body = <String, String>{
+      'doctype': 'External Delivery',
+      'fields': jsonEncode(_enrichedFields),
+      'filters': jsonEncode(filters),
+      'order_by': orderBy,
+      'start': '$limitStart',
+      'page_length': '$limitPageLength',
+      'with_comment_count': '0',
+    };
+    if (orFilters.isNotEmpty) {
+      body['or_filters'] = jsonEncode(orFilters);
+    }
     final resp = await _post(
       uri,
       headers: {
         ...await _authHeaders(),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: {
-        'doctype': 'External Delivery',
-        'fields': jsonEncode(_enrichedFields),
-        'filters': jsonEncode(filters),
-        'order_by': orderBy,
-        'start': '$limitStart',
-        'page_length': '$limitPageLength',
-        'with_comment_count': '0',
-      },
+      body: body,
     );
 
     if (resp.statusCode == 401) {
@@ -515,56 +541,36 @@ class ExternalDeliveryRepository {
   }
 
   /// Returns total delivered orders for the logged-in driver.
-  /// Sums `completes_stops` across all driver trips in a single API call.
-  /// `completes_stops` is only incremented when a stop is set to 'Delivered'.
-  /// Total delivered orders for the logged-in driver.
+  /// Total delivered orders for the logged-in driver, in a single API call.
   ///
-  /// Counts distinct External Delivery IDs whose trip stop is in the
-  /// `Delivered` status — the same stop-level source of truth used by
-  /// [fetchPastOrdersForDriver], so this matches what the driver sees in
-  /// their orders list. We deliberately do NOT sum the trip's
-  /// `completes_stops` rollup, since that field counts every *completed*
-  /// stop (including Failed / Returned) and would over-count real deliveries.
+  /// Counts `External Delivery` records with `driver = <me>` and
+  /// `status = 'Delivered'` — the same order-level source of truth that
+  /// [fetchPastOrdersForDriver] filters on, so the number matches what the
+  /// driver sees in their orders list.
+  ///
+  /// NOTE: This previously fetched *every* trip and then the *full detail of
+  /// every trip* (one HTTP GET each) just to count delivered stops — an N+1
+  /// that fired 50+ serial requests and saturated the network. The order
+  /// doctype already carries `driver` + `status`, so one filtered list call
+  /// gives the same count. We request only `name` and read `data.length`.
   Future<int> fetchDeliveredCountForDriver() async {
     final driver = await _getLoggedInDriver();
-
-    // 1. All trips for this driver (any status/docstatus).
-    final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+    final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
       queryParameters: {
         'fields': jsonEncode(['name']),
         'filters': jsonEncode([
-          ['External Delivery Trip', 'driver', '=', driver],
+          ['External Delivery', 'driver', '=', driver],
+          ['External Delivery', 'status', '=', 'Delivered'],
         ]),
         'limit_page_length': '0',
-        'order_by': 'modified desc',
       },
     );
-    final tripResp = await _get(tripUri, headers: await _authHeaders());
-    if (!_okCodes.contains(tripResp.statusCode)) {
-      throw Exception(_extractErrorMessage(tripResp));
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
     }
-    final tripRows = (jsonDecode(tripResp.body)['data']) as List;
-    if (tripRows.isEmpty) return 0;
-
-    // 2. Fetch trip details in parallel.
-    final tripNames = tripRows
-        .map((r) => (r as Map<String, dynamic>)['name']?.toString() ?? '')
-        .where((n) => n.isNotEmpty)
-        .toList();
-    final tripDetails = await Future.wait(
-      tripNames.map((n) => fetchTripDetails(n).catchError((_) => null)),
-    );
-
-    // 3. Count distinct delivered orders across all trip stops.
-    final delivered = <String>{};
-    for (final trip in tripDetails.whereType<ExternalDeliveryTrip>()) {
-      for (final stop in trip.stops) {
-        if (stop.status.trim().toLowerCase() != 'delivered') continue;
-        final id = stop.externalDelivery.trim();
-        if (id.isNotEmpty) delivered.add(id);
-      }
-    }
-    return delivered.length;
+    final data = (jsonDecode(resp.body)['data']) as List;
+    return data.length;
   }
 
   Future<ExternalDeliveryDetail> fetchDetail(
@@ -894,13 +900,13 @@ class ExternalDeliveryRepository {
   }
 
   /// Creates a single-stop trip using only the order name string.
-  /// Used by the order acceptance flow in [AppController]. The trip lands
-  /// in Draft state — its `status` field carries the lifecycle, since the
-  /// External Delivery Trip doctype is not configured as submittable.
+  /// Used by the order acceptance flow in [AppController]. Sends docstatus=1
+  /// and status=Scheduled in the create payload so the trip is born Submitted.
   Future<String> createTripByOrderName(String orderName) async {
     final createPayload = <String, dynamic>{
       'driver': await _getLoggedInDriver(),
-      'status': 'Draft',
+      'status': 'Scheduled',
+      'docstatus': 1,
       'trip_date': DateTime.now().toIso8601String().split('T').first,
       'stops': <Map<String, String>>[
         {'external_delivery': orderName},
@@ -1383,6 +1389,32 @@ class ExternalDeliveryRepository {
     }
   }
 
+  /// Convenience wrapper for [processFailedDeliveryReturn] that resolves the
+  /// trip stop by [tripId] + [deliveryId] so callers don't need the stop object.
+  Future<ReturnProcessResult> processFailedDeliveryReturnByIds({
+    required String tripId,
+    required String deliveryId,
+    required String reason,
+    String? reasonCode,
+    String? photoPath,
+    bool shouldCreateReturnTrip = false,
+  }) async {
+    final trip = await fetchTripDetails(tripId);
+    final stop = trip.stops.firstWhere(
+      (s) => s.externalDelivery.trim() == deliveryId.trim(),
+      orElse: () =>
+          throw Exception('Stop not found for delivery $deliveryId in trip $tripId'),
+    );
+    return processFailedDeliveryReturn(
+      stop: stop,
+      orderName: deliveryId,
+      reason: reason,
+      reasonCode: reasonCode,
+      photoPath: photoPath,
+      shouldCreateReturnTrip: shouldCreateReturnTrip,
+    );
+  }
+
   /// Marks a delivery as failed:
   /// 1. Updates the trip stop status to 'Failed' and writes the reason to notes.
   /// 2. Updates the External Delivery document: status=Failed, delivery_notes,
@@ -1407,19 +1439,21 @@ class ExternalDeliveryRepository {
     required ExternalDeliveryTripStop stop,
     required String orderName,
     required String reason,
+    String? reasonCode,
     String? photoPath,
-    bool shouldCreateReturnTrip = true,
+    bool shouldCreateReturnTrip = false,
   }) async {
     final String languageCode = await _languageCode();
 
-    await updateTripStopStatus(stop: stop, newStatus: 'Failed');
+    await _setTripStopFailed(stop: stop, reasonCode: reasonCode);
     await _tryMarkParentTripFailed(stop);
-    await _tryWriteStopNotes(stop: stop, reason: reason);
 
     await _updateExternalDeliveryFields(orderName, {
-      'status': shouldCreateReturnTrip ? _returnInitiatedStatus : 'Failed',
+      'status': 'Failed',
       'delivery_notes': reason,
       'store_notified': 1,
+      if (reasonCode != null && reasonCode.isNotEmpty)
+        'failure_reason_code': reasonCode,
     });
 
     if (photoPath != null && photoPath.isNotEmpty) {
@@ -1661,6 +1695,43 @@ class ExternalDeliveryRepository {
     final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
     final message = decoded['message'];
     return message is Map<String, dynamic> ? message : {};
+  }
+
+  /// Sets status=Failed and failure_reason_code in one frappe.client.set_value
+  /// call using the dict fieldname syntax so the backend's validation passes.
+  Future<void> _setTripStopFailed({
+    required ExternalDeliveryTripStop stop,
+    String? reasonCode,
+  }) async {
+    final stopName = (stop.rawFields['name'] ?? '').toString().trim();
+    final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
+    if (stopName.isEmpty || stopDocType.isEmpty) {
+      throw Exception('Stop row metadata not found for status update.');
+    }
+
+    final setValueUrl = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    final fields = <String, dynamic>{'status': 'Failed'};
+    if (reasonCode != null && reasonCode.isNotEmpty) {
+      fields['failure_reason_code'] = reasonCode;
+    }
+    _logApi(
+      'external_delivery_trip_stop_status_update request',
+      'POST $setValueUrl doctype=$stopDocType name=$stopName fields=$fields',
+    );
+    final resp = await _post(
+      setValueUrl,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'doctype': stopDocType,
+        'name': stopName,
+        'fieldname': fields,
+      }),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
   }
 
   Future<void> _setDocValue({

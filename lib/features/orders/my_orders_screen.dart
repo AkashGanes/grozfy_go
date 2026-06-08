@@ -80,6 +80,8 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
           ? OrderAssignmentStatus.unassigned
           : OrderAssignmentStatus.assigned,
       createdAt: s.creation.isNotEmpty ? DateTime.tryParse(s.creation) : null,
+      failureReasonCode: s.failureReasonCode,
+      deliveryNotes: s.deliveryNotes,
     );
   }
 
@@ -685,13 +687,6 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
             ),
             _divider(),
             _tile(
-              icon: Icons.location_on_rounded,
-              label: 'Orders by Location',
-              route: AppRoutes.ordersByLocation,
-              color: const Color(0xFF059669),
-            ),
-            _divider(),
-            _tile(
               icon: Icons.inventory_2_rounded,
               label: 'Return Pickups',
               route: AppRoutes.pickupPool,
@@ -1233,11 +1228,20 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
         );
       },
     );
-    if (confirmed != true) return;
-    await ref.read(appControllerProvider).logout();
-    if (!mounted) return;
-    Navigator.of(context)
-        .pushNamedAndRemoveUntil(AppRoutes.login, (route) => false);
+    if (confirmed != true || !mounted) return;
+    // Navigate to login *before* awaiting logout(). logout() synchronously
+    // clears the in-memory session and notifies listeners — which rebuilds the
+    // dashboard/more screens in an empty "Partner / 0% profile / Offline" state
+    // — and only then awaits slow local cleanup (home-widget reset, secure
+    // storage, SharedPreferences). Awaiting that before navigating leaves the
+    // cleared screen on display until cleanup finishes. Pushing login first
+    // hides the teardown behind the login screen. Capture the controller and
+    // navigator up front because this push disposes the screen, after which
+    // `ref`/`context` are no longer usable.
+    final NavigatorState navigator = Navigator.of(context);
+    final app = ref.read(appControllerProvider);
+    navigator.pushNamedAndRemoveUntil(AppRoutes.login, (route) => false);
+    await app.logout();
   }
 
   Widget _logoutItem() {
@@ -1513,6 +1517,7 @@ class _OrderCard extends StatelessWidget {
         return AppTheme.mango;
       case OrderStatus.delivered:
         return AppTheme.mint;
+      case OrderStatus.failed:
       case OrderStatus.cancelled:
         return Colors.red;
       case OrderStatus.returned:

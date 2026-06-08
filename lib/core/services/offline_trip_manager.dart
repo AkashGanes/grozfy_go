@@ -173,11 +173,12 @@ class OfflineTripManager {
     List<Map<String, dynamic>> summaries,
   ) async {
     if (summaries.isEmpty) return;
+    final merged = <Map<String, dynamic>>[];
     for (final s in summaries) {
       final name = s['name']?.toString();
       if (name == null || name.isEmpty) continue;
       final existing = _storage.getCachedOrder(name) ?? <String, dynamic>{};
-      final merged = <String, dynamic>{
+      merged.add(<String, dynamic>{
         ...existing,
         // Summary fields — these are authoritative when freshly fetched.
         'name': name,
@@ -187,9 +188,10 @@ class OfflineTripManager {
         if (s['status'] != null) 'status': s['status'],
         if (s['creation'] != null) 'creation': s['creation'],
         if (s['modified'] != null) 'modified': s['modified'],
-      };
-      await _storage.cacheOrder(merged);
+      });
     }
+    // Single batched disk flush instead of one awaited write per row.
+    await _storage.cacheOrdersBatch(merged);
   }
 
   /// Returns all cached orders as ExternalDelivery summaries. Suitable

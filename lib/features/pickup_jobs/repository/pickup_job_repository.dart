@@ -198,6 +198,121 @@ class PickupJobRepository {
     return message is Map<String, dynamic> ? message : {};
   }
 
+  // ── Mark pickup job as failed ─────────────────────────────────────────────
+
+  Future<void> markPickupFailed(
+    String pickupJob, {
+    required String reasonCode,
+    String notes = '',
+    String? proofPhotoPath,
+    String? tripName,
+  }) async {
+    // Upload proof photo if provided (best effort)
+    String? photoUrl;
+    if (proofPhotoPath != null && proofPhotoPath.isNotEmpty) {
+      photoUrl = await _uploadPhoto(
+        pickupJob: pickupJob,
+        filePath: proofPhotoPath,
+      );
+    }
+
+    final setValueUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+
+    final fieldMap = <String, dynamic>{
+      'status': 'Failed',
+      'failure_reason_code': reasonCode,
+    };
+    if (notes.isNotEmpty) fieldMap['notes'] = notes;
+    if (photoUrl != null) fieldMap['proof_photo'] = photoUrl;
+
+    _logApi('mark_pickup_failed request',
+        'POST job=$pickupJob reasonCode=$reasonCode');
+    final jobResp = await _post(
+      setValueUri,
+      headers: {
+        ...await _authHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'doctype': 'Pickup Job',
+        'name': pickupJob,
+        'fieldname': fieldMap,
+      }),
+    );
+    _logApi('mark_pickup_failed response',
+        'code=${jobResp.statusCode} body=${jobResp.body}');
+
+    if (!_okCodes.contains(jobResp.statusCode)) {
+      throw Exception(_extractErrorMessage(jobResp));
+    }
+
+    // Update the trip stop (best effort — failure should not block the driver)
+    if (tripName != null && tripName.isNotEmpty) {
+      try {
+        await _markPickupTripStopFailed(
+          tripName: tripName,
+          pickupJobName: pickupJob,
+          reasonCode: reasonCode,
+        );
+      } catch (e) {
+        debugPrint('[PickupJob] trip stop failure update error: $e');
+      }
+    }
+  }
+
+  Future<void> _markPickupTripStopFailed({
+    required String tripName,
+    required String pickupJobName,
+    required String reasonCode,
+  }) async {
+    final tripUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/External%20Delivery%20Trip/${Uri.encodeComponent(tripName)}',
+    );
+    _logApi('pickup_stop_fail_fetch request', 'GET trip=$tripName');
+    final tripResp = await _get(tripUri, headers: await _authHeaders());
+    if (!_okCodes.contains(tripResp.statusCode)) return;
+
+    final tripData =
+        (jsonDecode(tripResp.body)['data']) as Map<String, dynamic>?;
+    final rawStops = tripData?['pickup_stops'];
+    if (rawStops is! List || rawStops.isEmpty) return;
+
+    String? stopName;
+    for (final s in rawStops) {
+      if (s is! Map<String, dynamic>) continue;
+      if ((s['pickup_job'] ?? '').toString().trim() == pickupJobName) {
+        stopName = (s['name'] ?? '').toString().trim();
+        break;
+      }
+    }
+    if (stopName == null || stopName.isEmpty) return;
+
+    final setValueUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    _logApi('pickup_stop_fail_update request',
+        'POST name=$stopName → Failed, reasonCode=$reasonCode');
+    final stopResp = await _post(
+      setValueUri,
+      headers: {
+        ...await _authHeaders(),
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'doctype': 'External Delivery Trip Pickup Stop',
+        'name': stopName,
+        'fieldname': {
+          'status': 'Failed',
+          'failure_reason_code': reasonCode,
+        },
+      }),
+    );
+    _logApi('pickup_stop_fail_update response',
+        'code=${stopResp.statusCode} body=${stopResp.body}');
+  }
+
   // ── Update trip stop status after drop-at-store ──────────────────────────
 
   Future<void> updatePickupTripStopCompleted({

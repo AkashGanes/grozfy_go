@@ -96,6 +96,21 @@ class AppController extends ChangeNotifier {
   static const String _prefAccentColor = 'accent_color';
   static const String _prefActiveOrderId = 'active_order_id';
   static const String _prefActiveTripId = 'active_trip_id';
+  static const String _prefActiveOrderIds = 'active_order_ids';
+  static const String _prefActiveTripIdsMap = 'active_trip_ids_map';
+  static const int maxConcurrentOrders = 3;
+  static const int _profileImageMaxBytes = 5 * 1024 * 1024;
+  static const int _profileImageMinDimension = 300;
+  static const int _profileImageMaxDimension = 5000;
+  static const double _profileImageMinAspectRatio = 0.75;
+  static const double _profileImageMaxAspectRatio = 1.33;
+  static const Set<String> _profileImageAllowedExtensions = <String>{
+    '.jpg',
+    '.jpeg',
+    '.png',
+  };
+
+  final Random _random = Random();
   final Map<String, VerificationStatus> _kycStatus = {
     'idProof': VerificationStatus.notSubmitted,
     'drivingLicense': VerificationStatus.notSubmitted,
@@ -144,8 +159,6 @@ class AppController extends ChangeNotifier {
   String? _existingExpiryDate;
   bool _isRefreshing = false;
 
-  DateTime? _lastOtpRequestAt;
-
   String? _registrationToken;
   String? _pendingRegistrationMobile;
 
@@ -187,7 +200,9 @@ class AppController extends ChangeNotifier {
   StreamSubscription<bool>? _connectivitySubscription;
 
   DeliveryOrder? _incomingOrder;
-  DeliveryOrder? _activeOrder;
+  final List<DeliveryOrder> _activeOrders = <DeliveryOrder>[];
+  final Map<String, String> _activeTripIds = <String, String>{};
+  int _currentlyViewedOrderIndex = 0;
   final List<DeliveryOrder> _availableOrders = <DeliveryOrder>[];
   final List<DeliveryOrder> _acceptedOrders = <DeliveryOrder>[];
   final ExternalDeliveryRepository _orderRepository =
@@ -201,7 +216,6 @@ class AppController extends ChangeNotifier {
   int _orderElapsedSeconds = 0;
   DateTime? _orderStartTime;
   GeoLocation? _partnerLiveLocation;
-  String? _activeTripId;
 
   EarningsSummary _earnings = const EarningsSummary(
     today: 0.0,
@@ -270,9 +284,7 @@ class AppController extends ChangeNotifier {
           .then((_) {
             TimingSyncEngine().triggerFlush();
           })
-          .catchError((Object e) {
-            _logApi('timing_event_error', e.toString());
-          }),
+          .catchError((Object _) {}),
     );
   }
 
@@ -331,8 +343,59 @@ class AppController extends ChangeNotifier {
   bool get hasSelectedLocation =>
       _currentLatitude != null && _currentLongitude != null;
   DeliveryOrder? get incomingOrder => _incomingOrder;
-  DeliveryOrder? get activeOrder => _activeOrder;
-  String? get activeTripId => _activeTripId;
+
+  // Multi-order getters
+  List<DeliveryOrder> get activeOrders =>
+      List<DeliveryOrder>.unmodifiable(_activeOrders);
+  int get activeOrderCount => _activeOrders.length;
+  bool get canAcceptMoreOrders => true;
+  int get currentlyViewedOrderIndex => _currentlyViewedOrderIndex;
+
+  // Backward-compatible single-order getters (returns currently viewed order)
+  DeliveryOrder? get activeOrder => _activeOrders.isEmpty
+      ? null
+      : _activeOrders[_currentlyViewedOrderIndex.clamp(
+          0,
+          _activeOrders.length - 1,
+        )];
+  String? get activeTripId {
+    final order = activeOrder;
+    if (order == null) return null;
+    return _activeTripIds[order.orderId];
+  }
+
+  void createMockActiveOrder() {
+    if (_activeOrders.isEmpty) {
+      final mockOrder = DeliveryOrder(
+        orderId: '#OD${3000 + _random.nextInt(999)}',
+        customerName: 'Sneha Gupta',
+        customerPhone: '9876512345',
+        deliveryAddress: 'Saket, New Delhi - 110017',
+        storeId: 'STORE200',
+        storeName: 'Pizza Palace',
+        storeContact: '9876598765',
+        storeAddress: 'Dwarka, New Delhi - 110075',
+        orderItems: <OrderItem>[
+          const OrderItem(name: 'Pepperoni Pizza', quantity: 2, price: 450),
+          const OrderItem(name: 'Garlic Bread', quantity: 1, price: 120),
+          const OrderItem(name: 'Cola', quantity: 2, price: 60),
+        ],
+        orderStatus: OrderStatus.accepted,
+        latitude: 28.5692,
+        longitude: 77.1538,
+        pickup: 'Dwarka, New Delhi',
+        drop: 'Saket, New Delhi',
+        deliveryInstructions: 'Ring bell twice',
+        paymentMode: 'Online',
+        distanceKm: 5.2,
+        estimatedEarnings: 145,
+        assignmentStatus: OrderAssignmentStatus.assigned,
+      );
+      _activeOrders.add(mockOrder);
+      notifyListeners();
+    }
+  }
+
 
   EarningsSummary get earnings => _earnings;
 
@@ -499,12 +562,6 @@ class AppController extends ChangeNotifier {
     _apiSecret = _nullIfBlank(
       await SecureTokenStorage.read(SecureTokenStorage.apiSecret),
     );
-    _logApi(
-      'bootstrap',
-      'secure storage hydrate: access=${_sessionToken != null}, '
-          'refresh=${_refreshToken != null}, client=${_clientId != null}, '
-          'apiKey=${_apiKey != null}, apiSecret=${_apiSecret != null}',
-    );
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
@@ -592,13 +649,8 @@ class AppController extends ChangeNotifier {
           expiresAt == null ||
           now.isAfter(expiresAt.subtract(const Duration(seconds: 30)));
       if (needsRefresh) {
-        _logApi('bootstrap', 'access token expired at $expiresAt — refreshing');
         final bool refreshed = await refreshSession();
         if (!refreshed) {
-          _logApi(
-            'bootstrap',
-            'token refresh failed at boot — clearing auth state',
-          );
           _isLoggedIn = false;
           _sessionToken = null;
           _refreshToken = null;
@@ -612,24 +664,21 @@ class AppController extends ChangeNotifier {
           await SecureTokenStorage.deleteAll();
         }
       } else {
-        _logApi(
-          'bootstrap',
-          'access token still valid until $expiresAt — skipping refresh',
-        );
       }
     }
 
     if (persistedActiveOrderId != null) {
       unawaited(_restoreActiveOrder(persistedActiveOrderId));
     } else {
-      _activeOrder = null;
+      _activeOrders.clear();
+      _activeTripIds.clear();
       _acceptedOrders.clear();
     }
 
     await PartnerWidgetManager.updateWidget(
       isOnline: _isOnline,
       todayEarnings: _earnings.today,
-      activeOrder: _activeOrder,
+      activeOrder: activeOrder,
     );
 
     await syncPermissionsFromOS();
@@ -660,7 +709,7 @@ class AppController extends ChangeNotifier {
     // Restore an in-progress order that was lost when SharedPreferences were
     // cleared (e.g. after logout/login). Only runs when there's no order in
     // local state — normal boot restores via _restoreActiveOrder instead.
-    if (_activeOrder == null &&
+    if (_activeOrders.isEmpty &&
         _driverName != null &&
         _driverName!.isNotEmpty) {
       await _tryRestoreActiveOrderByDriver();
@@ -1171,23 +1220,7 @@ class AppController extends ChangeNotifier {
       return mobileValidation;
     }
 
-    final DateTime now = DateTime.now();
-    if (_lastOtpRequestAt != null) {
-      final int elapsed = now.difference(_lastOtpRequestAt!).inSeconds;
-      if (elapsed < 30) {
-        return 'OTP is rate-limited. Try again in ${30 - elapsed}s';
-      }
-    }
-
     try {
-      _logApi(
-        'send_whatsapp_otp request',
-        <String, String>{
-          'mobile_no': mobile.trim(),
-          'store_id': _storeId,
-        }.toString(),
-      );
-      _logApi('http', 'POST $_sendOtpUri');
       final http.Response response = await http
           .post(
             _sendOtpUri,
@@ -1198,10 +1231,6 @@ class AppController extends ChangeNotifier {
             },
           )
           .timeout(_networkTimeout);
-      _logApi(
-        'send_whatsapp_otp response',
-        'status=${response.statusCode} body=${response.body}',
-      );
 
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1222,10 +1251,8 @@ class AppController extends ChangeNotifier {
         return 'OTP request failed';
       }
 
-      _lastOtpRequestAt = now;
       return 'OTP sent successfully to $mobile';
     } catch (e) {
-      _logApi('send_whatsapp_otp error', e.toString());
       if (e is TimeoutException) {
         return 'Request timed out. Please try again.';
       }
@@ -1249,15 +1276,6 @@ class AppController extends ChangeNotifier {
     }
 
     try {
-      _logApi(
-        'verify_whatsapp_otp request',
-        <String, String>{
-          'mobile_no': mobile.trim(),
-          'otp': otp.trim(),
-          'store_id': _storeId,
-        }.toString(),
-      );
-      _logApi('http', 'POST $_verifyOtpUri');
       final http.Response response = await http
           .post(
             _verifyOtpUri,
@@ -1269,10 +1287,6 @@ class AppController extends ChangeNotifier {
             },
           )
           .timeout(_networkTimeout);
-      _logApi(
-        'verify_whatsapp_otp response',
-        'status=${response.statusCode} body=${response.body}',
-      );
 
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -1344,7 +1358,6 @@ class AppController extends ChangeNotifier {
 
       return null;
     } catch (e) {
-      _logApi('verify_whatsapp_otp error', e.toString());
       if (e is TimeoutException) {
         return 'Request timed out. Please try again.';
       }
@@ -1357,21 +1370,17 @@ class AppController extends ChangeNotifier {
   /// Returns `true` if the token was refreshed successfully.
   Future<bool> refreshSession() async {
     if (_isRefreshing) {
-      _logApi('refresh_token skip', 'already in flight');
       return false;
     }
     if (_refreshToken == null || _refreshToken!.trim().isEmpty) {
-      _logApi('refresh_token skip', 'refresh_token missing');
       return false;
     }
     if (_clientId == null || _clientId!.trim().isEmpty) {
-      _logApi('refresh_token skip', 'client_id missing');
       return false;
     }
 
     _isRefreshing = true;
     try {
-      _logApi('refresh_token request', 'POST $_refreshTokenUri');
       final http.Response response = await http
           .post(
             _refreshTokenUri,
@@ -1385,11 +1394,6 @@ class AppController extends ChangeNotifier {
             },
           )
           .timeout(_networkTimeout);
-
-      _logApi(
-        'refresh_token response',
-        'status=${response.statusCode} body=${response.body}',
-      );
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return false;
@@ -1432,10 +1436,8 @@ class AppController extends ChangeNotifier {
       );
       await _persistAccessTokenExpiry(newExpiresIn);
 
-      _logApi('refresh_token', 'session refreshed successfully');
       return true;
-    } catch (e) {
-      _logApi('refresh_token error', e.toString());
+    } catch (_) {
       return false;
     } finally {
       _isRefreshing = false;
@@ -1492,15 +1494,10 @@ class AppController extends ChangeNotifier {
         body['email'] = email.trim();
       }
 
-      _logApi('register_delivery_partner request', body.toString());
       final http.Response response = await http.post(
         _registerPartnerUri,
         headers: _requestHeaders(),
         body: body,
-      );
-      _logApi(
-        'register_delivery_partner response',
-        'status=${response.statusCode} body=${response.body}',
       );
 
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
@@ -1566,15 +1563,13 @@ class AppController extends ChangeNotifier {
       notifyListeners();
 
       return null;
-    } catch (e) {
-      _logApi('register_delivery_partner error', e.toString());
+    } catch (_) {
       return 'Unable to connect. Check internet and try again.';
     }
   }
 
   Future<void> _revokeTokenOnServer(String token) async {
     try {
-      _logApi('revoke_token request', 'POST $_revokeTokenUri');
       final http.Response response = await http
           .post(
             _revokeTokenUri,
@@ -1588,9 +1583,7 @@ class AppController extends ChangeNotifier {
             },
           )
           .timeout(_networkTimeout);
-      _logApi('revoke_token response', 'status=${response.statusCode}');
-    } catch (e) {
-      _logApi('revoke_token error', e.toString());
+    } catch (_) {
     }
   }
 
@@ -1599,7 +1592,6 @@ class AppController extends ChangeNotifier {
   /// OAuth bearer token; it does not create the audit row.
   Future<void> _serverSideLogout(String bearerToken, String tokenType) async {
     try {
-      _logApi('server logout request', 'POST $_serverLogoutUri');
       final http.Response response = await http
           .post(
             _serverLogoutUri,
@@ -1609,9 +1601,7 @@ class AppController extends ChangeNotifier {
             },
           )
           .timeout(_networkTimeout);
-      _logApi('server logout response', 'status=${response.statusCode}');
-    } catch (e) {
-      _logApi('server logout error', e.toString());
+    } catch (_) {
     }
   }
 
@@ -1642,7 +1632,8 @@ class AppController extends ChangeNotifier {
     _isOnline = false;
     _isTracking = false;
     _incomingOrder = null;
-    _activeOrder = null;
+    _activeOrders.clear();
+    _activeTripIds.clear();
     _profile = null;
     _profileImagePath = null;
     _serverProfileImageUrl = null;
@@ -1783,7 +1774,7 @@ class AppController extends ChangeNotifier {
 
       final Map<String, dynamic> data = _extractMethodData(payload);
       return _nullIfBlank(data['file_url']?.toString());
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
@@ -1876,7 +1867,7 @@ class AppController extends ChangeNotifier {
       }
 
       return _extractServerError(payload) ?? 'KYC submission failed';
-    } catch (e) {
+    } catch (_) {
       return 'Unable to connect. Check internet and try again.';
     }
   }
@@ -2113,16 +2104,10 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> hydrateVehicleFromBackend({bool forceRefresh = false}) async {
-    _logApi(
-      'vehicle.hydrate',
-      'start forceRefresh=$forceRefresh hasVehicle=${_vehicle != null}',
-    );
     if (!forceRefresh && _vehicle != null) {
-      _logApi('vehicle.hydrate', 'skip: existing vehicle in memory');
       return;
     }
     if (_sessionToken == null || _sessionToken!.isEmpty) {
-      _logApi('vehicle.hydrate', 'skip: no session token');
       return;
     }
     try {
@@ -2136,11 +2121,9 @@ class AppController extends ChangeNotifier {
 
       Map<String, dynamic>? data;
       if (vehicleName != null) {
-        _logApi('vehicle.hydrate', 'fetch by vehicle_name=$vehicleName');
         data = await fetchVehicleByName(vehicleName);
       }
       if (data == null && licensePlate != null) {
-        _logApi('vehicle.hydrate', 'fetch by license_plate=$licensePlate');
         data = await fetchVehicleByLicensePlate(licensePlate);
       }
       // Fallback: vehicle linked directly in driver profile doc
@@ -2149,10 +2132,6 @@ class AppController extends ChangeNotifier {
           _loggedProfileDetails?.driver?['vehicle']?.toString(),
         );
         if (vehicleFromDriver != null) {
-          _logApi(
-            'vehicle.hydrate',
-            'fetch by driver.vehicle=$vehicleFromDriver',
-          );
           data = await fetchVehicleByName(vehicleFromDriver);
         }
       }
@@ -2164,10 +2143,6 @@ class AppController extends ChangeNotifier {
           _loggedProfileDetails?.driver?['employee']?.toString(),
         );
         if (employeeFromDriver != null) {
-          _logApi(
-            'vehicle.hydrate',
-            'fetch by employee=$employeeFromDriver',
-          );
           final String? nameByEmployee = await _findResourceName(
             doctype: 'Vehicle',
             filters: <List<String>>[
@@ -2180,16 +2155,11 @@ class AppController extends ChangeNotifier {
         }
       }
       if (data == null) {
-        _logApi('vehicle.hydrate', 'no vehicle found');
         return;
       }
 
       _submittedVehicleRaw = data;
       _vehicle = _vehicleFromApiData(data);
-      _logApi(
-        'vehicle.hydrate',
-        'loaded vehicle name=${_vehicle?.name} plate=${_vehicle?.licensePlate}',
-      );
       final SharedPreferences vehicleHydratePrefs =
           await SharedPreferences.getInstance();
       await vehicleHydratePrefs.setString(
@@ -2197,8 +2167,7 @@ class AppController extends ChangeNotifier {
         jsonEncode(data),
       );
       notifyListeners();
-    } catch (e) {
-      _logApi('vehicle.hydrate', 'error: $e');
+    } catch (_) {
       // Ignore hydration failures; screen stays editable.
     }
   }
@@ -2270,7 +2239,6 @@ class AppController extends ChangeNotifier {
         '${ApiConstants.erpBaseUrl}/api/method/frappe.client.get_list',
       ).replace(queryParameters: queryParams);
 
-      _logApi('get_list', 'doctype=$doctype query=$trimmed');
       final Map<String, dynamic> payload = await _authorizedGet(uri);
 
       final dynamic responseRows =
@@ -2297,10 +2265,8 @@ class AppController extends ChangeNotifier {
         }
       }
 
-      _logApi('get_list', 'doctype=$doctype result_count=${values.length}');
       return values;
-    } catch (e) {
-      _logApi('get_list', 'error doctype=$doctype: $e');
+    } catch (_) {
       return <String>[];
     }
   }
@@ -2342,16 +2308,10 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> hydrateBankFromBackend({bool forceRefresh = false}) async {
-    _logApi(
-      'bank.hydrate',
-      'start forceRefresh=$forceRefresh hasBank=${_bank != null}',
-    );
     if (!forceRefresh && _bank != null) {
-      _logApi('bank.hydrate', 'skip: existing bank in memory');
       return;
     }
     if (_sessionToken == null || _sessionToken!.isEmpty) {
-      _logApi('bank.hydrate', 'skip: no session token');
       return;
     }
     try {
@@ -2365,11 +2325,9 @@ class AppController extends ChangeNotifier {
 
       Map<String, dynamic>? data;
       if (bankDocName != null) {
-        _logApi('bank.hydrate', 'fetch by bank_doc_name=$bankDocName');
         data = await _fetchResourceDoc('Bank Account', bankDocName);
       }
       if (data == null && accountName != null) {
-        _logApi('bank.hydrate', 'find by account_name=$accountName');
         final String? name = await _findResourceName(
           doctype: 'Bank Account',
           filters: <List<String>>[
@@ -2383,7 +2341,6 @@ class AppController extends ChangeNotifier {
       }
       // Fallback: search by driver as party
       if (data == null && _driverName != null) {
-        _logApi('bank.hydrate', 'search by party=Driver/$_driverName');
         final String? name = await _findResourceName(
           doctype: 'Bank Account',
           filters: <List<String>>[
@@ -2397,22 +2354,16 @@ class AppController extends ChangeNotifier {
         }
       }
       if (data == null) {
-        _logApi('bank.hydrate', 'no bank account found');
         return;
       }
 
       _submittedBankRaw = data;
       _bank = _bankFromApiData(data);
-      _logApi(
-        'bank.hydrate',
-        'loaded bank account=${_submittedBankRaw?['name']} holder=${_bank?.accountHolder}',
-      );
       final SharedPreferences hydratePrefs =
           await SharedPreferences.getInstance();
       await hydratePrefs.setString(_prefBankRawJson, jsonEncode(data));
       notifyListeners();
-    } catch (e) {
-      _logApi('bank.hydrate', 'error: $e');
+    } catch (_) {
       // Ignore hydration failures; screen stays editable.
     }
   }
@@ -2551,7 +2502,6 @@ class AppController extends ChangeNotifier {
     if (doorsInt != null) {
       body['doors'] = doorsInt;
     }
-    _logApi('vehicle.submit', 'payload=$body');
 
     try {
       final Uri baseUri = Uri.parse(
@@ -2600,22 +2550,16 @@ class AppController extends ChangeNotifier {
       if (finalName != null) {
         try {
           await _setDriverField('vehicle', finalName);
-        } catch (e) {
-          _logApi('vehicle.submit.driver_link_warn', 'non-fatal: $e');
+        } catch (_) {
         }
       }
       notifyListeners();
-      _logApi(
-        'vehicle.submit',
-        'success wasUpdate=$wasUpdate vehicleName=$finalName',
-      );
       return VehicleSubmitResult(
         vehicleName: finalName,
         vehicleData: finalData,
         wasUpdate: wasUpdate,
       );
     } catch (e) {
-      _logApi('vehicle.submit', 'error: $e');
       return VehicleSubmitResult(
         error: e.toString().replaceFirst('Exception: ', ''),
       );
@@ -2731,7 +2675,6 @@ class AppController extends ChangeNotifier {
     if (normalizedLastIntegrationDate != null) {
       body['last_integration_date'] = normalizedLastIntegrationDate;
     }
-    _logApi('bank.submit', 'payload=$body');
 
     try {
       Map<String, dynamic>? responsePayload;
@@ -2787,19 +2730,10 @@ class AppController extends ChangeNotifier {
       // source of truth for bank identity after logout (SharedPreferences
       // are cleared). Uses custom_ prefix — Frappe adds it to all fields
       // created via Customize Form (unlike 'vehicle' which is a standard field).
-      _logApi(
-        'bank.submit',
-        'resolvedBankName=$resolvedBankName driverName=$_driverName',
-      );
       if (resolvedBankName != null) {
         try {
           await _setDriverField('custom_bank_account', resolvedBankName);
-          _logApi(
-            'bank.submit',
-            'driver_link set custom_bank_account=$resolvedBankName',
-          );
-        } catch (e) {
-          _logApi('bank.submit.driver_link_warn', 'non-fatal: $e');
+        } catch (_) {
         }
       }
       if (_submittedBankRaw != null) {
@@ -2811,13 +2745,8 @@ class AppController extends ChangeNotifier {
         );
       }
       notifyListeners();
-      _logApi(
-        'bank.submit',
-        'success bankName=$bankName accountName=$normalizedAccountName',
-      );
       return null;
     } catch (e) {
-      _logApi('bank.submit', 'error: $e');
       return e.toString().replaceFirst('Exception: ', '');
     }
   }
@@ -2927,7 +2856,7 @@ class AppController extends ChangeNotifier {
     PartnerWidgetManager.updateWidget(
       isOnline: _isOnline,
       todayEarnings: _earnings.today,
-      activeOrder: _activeOrder,
+      activeOrder: activeOrder,
     );
 
     _availabilitySyncing = false;
@@ -2998,8 +2927,7 @@ class AppController extends ChangeNotifier {
       _currentLongitude = position.longitude;
       _liveCoordinates =
           '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
-    } catch (e) {
-      debugPrint('Error getting current position: $e');
+    } catch (_) {
     }
 
     notifyListeners();
@@ -3033,8 +2961,14 @@ class AppController extends ChangeNotifier {
     }
 
     if (accept) {
-      _activeOrder = _incomingOrder;
-      unawaited(_persistActiveOrderId(_activeOrder?.orderId));
+      final incoming = _incomingOrder;
+      if (incoming != null &&
+          _activeOrders.length < maxConcurrentOrders &&
+          !_activeOrders.any((o) => o.orderId == incoming.orderId)) {
+        _activeOrders.add(incoming);
+        _currentlyViewedOrderIndex = _activeOrders.length - 1;
+        unawaited(_persistActiveOrders());
+      }
       _performance = _performance.copyWith(
         acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
       );
@@ -3056,73 +2990,70 @@ class AppController extends ChangeNotifier {
     PartnerWidgetManager.updateWidget(
       isOnline: _isOnline,
       todayEarnings: _earnings.today,
-      activeOrder: _activeOrder,
+      activeOrder: activeOrder,
     );
 
     notifyListeners();
   }
 
-  Future<String?> updateOrderStatus(OrderProgressStatus status) async {
-    if (_activeOrder == null) {
-      return 'No active order found';
-    }
+  Future<String?> updateOrderStatus(
+    OrderProgressStatus status, {
+    String? orderId,
+  }) async {
+    final String? targetId = orderId ?? activeOrder?.orderId;
+    if (targetId == null) return 'No active order found';
+
+    final int idx = _activeOrders.indexWhere((o) => o.orderId == targetId);
+    if (idx == -1) return 'Order not found in active orders';
+
+    final DeliveryOrder targetOrder = _activeOrders[idx];
+    final String? targetTripId = _activeTripIds[targetId];
 
     try {
       final String? frappeStatus = _toFrappeStatus(status);
       if (frappeStatus != null) {
         try {
           await _orderRepository.updateStatusViaSetValue(
-            _activeOrder!.orderId,
+            targetId,
             frappeStatus,
           );
-          _logApi(
-            'update_order_status',
-            'synced ${_activeOrder!.orderId} → $frappeStatus',
-          );
-        } catch (e) {
-          _logApi('update_order_status_warn', 'Frappe sync failed: $e');
+        } catch (_) {
         }
       }
 
-      // Sync trip stop status for terminal states.
-      if (_activeTripId != null) {
+      if (targetTripId != null) {
         final String? stopStatus = _toTripStopStatus(status);
         if (stopStatus != null) {
           try {
             await _orderRepository.updateTripStopStatusByDelivery(
-              tripId: _activeTripId!,
-              deliveryId: _activeOrder!.orderId,
+              tripId: targetTripId,
+              deliveryId: targetId,
               newStatus: stopStatus,
             );
-            _logApi(
-              'update_trip_stop_status',
-              'trip=$_activeTripId delivery=${_activeOrder!.orderId} → $stopStatus',
-            );
-          } catch (e) {
-            _logApi('update_trip_stop_status_warn', e.toString());
+          } catch (_) {
           }
         }
       }
 
-      _activeOrder = _activeOrder!.copyWith(
+      final DeliveryOrder updated = targetOrder.copyWith(
         orderStatus: status,
         assignmentStatus: OrderAssignmentStatus.assigned,
         reachedStoreAt: status == OrderStatus.reachedPickup
             ? DateTime.now()
-            : _activeOrder!.reachedStoreAt,
+            : targetOrder.reachedStoreAt,
         deliveryPartnerLocation: status == OrderStatus.reachedPickup
             ? _partnerLiveLocation ??
                   GeoLocation(
                     latitude: _currentLatitude ?? 28.6139,
                     longitude: _currentLongitude ?? 77.2090,
                   )
-            : _activeOrder!.deliveryPartnerLocation,
+            : targetOrder.deliveryPartnerLocation,
       );
-      _replaceAcceptedOrder(_activeOrder!);
+      _activeOrders[idx] = updated;
+      _replaceAcceptedOrder(updated);
 
       if (status == OrderStatus.delivered) {
-        final String deliveredOrderId = _activeOrder!.orderId;
-        final double payout = _activeOrder!.estimatedEarnings;
+        final double payout = updated.estimatedEarnings;
         _earnings = _earnings.copyWith(
           today: _earnings.today + payout,
           week: _earnings.week + payout,
@@ -3137,20 +3068,12 @@ class AppController extends ChangeNotifier {
           0,
           AppNotice(
             title: 'Delivery completed',
-            message: 'Order $deliveredOrderId delivered successfully.',
+            message: 'Order $targetId delivered successfully.',
             time: DateTime.now(),
           ),
         );
-        _acceptedOrders.removeWhere(
-          (order) => order.orderId == deliveredOrderId,
-        );
-        _activeOrder = null;
-        _activeTripId = null;
-        _locationPingSubscription?.cancel();
-        _locationPingSubscription = null;
-        LocationPingService.stop();
-        unawaited(_persistActiveOrderId(null));
-        unawaited(_persistActiveTripId(null));
+        _acceptedOrders.removeWhere((order) => order.orderId == targetId);
+        clearOrder(targetId);
       } else if (status == OrderStatus.reachedPickup) {
         _notices.insert(
           0,
@@ -3160,23 +3083,26 @@ class AppController extends ChangeNotifier {
             time: DateTime.now(),
           ),
         );
+        unawaited(_persistActiveOrders());
+      } else {
+        unawaited(_persistActiveOrders());
       }
 
       PartnerWidgetManager.updateWidget(
         isOnline: _isOnline,
         todayEarnings: _earnings.today,
-        activeOrder: _activeOrder,
+        activeOrder: activeOrder,
       );
       notifyListeners();
       if (status == OrderStatus.reachedPickup) {
         _writeTimingEvent(
           eventType: TimingEventType.pickupReached,
-          tripRef: _activeTripId,
+          tripRef: targetTripId,
         );
       } else if (status == OrderStatus.pickedUp) {
         _writeTimingEvent(
           eventType: TimingEventType.pickedUp,
-          tripRef: _activeTripId,
+          tripRef: targetTripId,
         );
       }
       return null;
@@ -3185,21 +3111,36 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  void clearActiveOrder() {
-    _activeOrder = null;
-    _activeTripId = null;
-    _locationPingSubscription?.cancel();
-    _locationPingSubscription = null;
-    LocationPingService.stop();
-    unawaited(_persistActiveOrderId(null));
-    unawaited(_persistActiveTripId(null));
+  void clearOrder(String orderId) {
+    _activeOrders.removeWhere((o) => o.orderId == orderId);
+    _activeTripIds.remove(orderId);
+    _currentlyViewedOrderIndex = _currentlyViewedOrderIndex.clamp(
+      0,
+      _activeOrders.isEmpty ? 0 : _activeOrders.length - 1,
+    );
+    if (_activeOrders.isEmpty) {
+      _locationPingSubscription?.cancel();
+      _locationPingSubscription = null;
+      LocationPingService.stop();
+    }
+    unawaited(_persistActiveOrders());
     unawaited(
       PartnerWidgetManager.updateWidget(
         isOnline: _isOnline,
         todayEarnings: _earnings.today,
-        activeOrder: _activeOrder,
+        activeOrder: activeOrder,
       ),
     );
+    notifyListeners();
+  }
+
+  void clearActiveOrder() => clearOrder(activeOrder?.orderId ?? '');
+
+  void setViewedOrderIndex(int index) {
+    if (_activeOrders.isEmpty) return;
+    final clamped = index.clamp(0, _activeOrders.length - 1);
+    if (clamped == _currentlyViewedOrderIndex) return;
+    _currentlyViewedOrderIndex = clamped;
     notifyListeners();
   }
 
@@ -3239,8 +3180,7 @@ class AppController extends ChangeNotifier {
               final ExternalDeliveryDetail detail = await _orderRepository
                   .fetchDetail(summary.name);
               return _deliveryOrderFromDetail(detail);
-            } catch (e) {
-              _logApi('fetch_available_order_detail_warn', e.toString());
+            } catch (_) {
               return null;
             }
           }),
@@ -3273,68 +3213,103 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? activeOrderId = _nullIfBlank(
-        prefs.getString(_prefActiveOrderId),
-      );
 
-      if (activeOrderId == null) {
-        _activeOrder = null;
+      // Read multi-order list; fall back to legacy single-order key for migration.
+      List<String> orderIds = [];
+      final String? idsJson = prefs.getString(_prefActiveOrderIds);
+      if (idsJson != null && idsJson.isNotEmpty) {
+        final decoded = jsonDecode(idsJson);
+        if (decoded is List) {
+          orderIds = decoded.map((e) => e.toString()).toList();
+        }
+      } else {
+        // Migration: check old single-order key.
+        final String? legacyId = _nullIfBlank(
+          prefs.getString(_prefActiveOrderId),
+        );
+        if (legacyId != null) orderIds = [legacyId];
+      }
+
+      // Restore trip IDs map.
+      final Map<String, String> restoredTripIds = {};
+      final String? tripIdsJson = prefs.getString(_prefActiveTripIdsMap);
+      if (tripIdsJson != null && tripIdsJson.isNotEmpty) {
+        final decoded = jsonDecode(tripIdsJson);
+        if (decoded is Map) {
+          decoded.forEach((k, v) {
+            restoredTripIds[k.toString()] = v.toString();
+          });
+        }
+      } else {
+        // Migration: check legacy trip ID key.
+        final String? legacyTripId = _nullIfBlank(
+          prefs.getString(_prefActiveTripId),
+        );
+        if (legacyTripId != null && orderIds.isNotEmpty) {
+          restoredTripIds[orderIds.first] = legacyTripId;
+        }
+      }
+
+      if (orderIds.isEmpty) {
+        _activeOrders.clear();
+        _activeTripIds.clear();
         _acceptedOrders.clear();
-        await _persistActiveOrderId(null);
+        await _persistActiveOrders();
         PartnerWidgetManager.updateWidget(
           isOnline: _isOnline,
           todayEarnings: _earnings.today,
-          activeOrder: _activeOrder,
+          activeOrder: null,
         );
         notifyListeners();
         return;
       }
 
-      final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
-        activeOrderId,
-      );
-      final OrderStatus status = _mapExternalStatus(detail.status);
-      if (status == OrderStatus.delivered ||
-          status == OrderStatus.cancelled ||
-          status == OrderStatus.rejected) {
-        _activeOrder = null;
-        _acceptedOrders.removeWhere((order) => order.orderId == activeOrderId);
-        await _persistActiveOrderId(null);
-        PartnerWidgetManager.updateWidget(
-          isOnline: _isOnline,
-          todayEarnings: _earnings.today,
-          activeOrder: _activeOrder,
-        );
-        notifyListeners();
-        return;
+      _activeOrders.clear();
+      _activeTripIds.clear();
+      const terminalStatuses = {
+        OrderStatus.delivered,
+        OrderStatus.cancelled,
+        OrderStatus.rejected,
+      };
+
+      for (final orderId in orderIds) {
+        try {
+          final ExternalDeliveryDetail detail = await _orderRepository
+              .fetchDetail(orderId);
+          final OrderStatus status = _mapExternalStatus(detail.status);
+          if (terminalStatuses.contains(status)) continue;
+          final DeliveryOrder order = _deliveryOrderFromDetail(detail).copyWith(
+            orderStatus: status,
+            assignmentStatus: OrderAssignmentStatus.assigned,
+            assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+            reachedStoreAt: status == OrderStatus.reachedPickup
+                ? DateTime.now()
+                : null,
+            deliveryPartnerLocation: _partnerLiveLocation,
+          );
+          _activeOrders.add(order);
+          if (restoredTripIds.containsKey(orderId)) {
+            _activeTripIds[orderId] = restoredTripIds[orderId]!;
+          }
+          _replaceAcceptedOrder(order);
+        } catch (_) {
+        }
       }
-      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
-        orderStatus: status,
-        assignmentStatus: OrderAssignmentStatus.assigned,
-        assignedDeliveryPartnerId:
-            _profile?.mobile ??
-            _activeOrder?.assignedDeliveryPartnerId ??
-            'PARTNER001',
-        reachedStoreAt: status == OrderStatus.reachedPickup
-            ? DateTime.now()
-            : null,
-        deliveryPartnerLocation: _partnerLiveLocation,
+
+      _currentlyViewedOrderIndex = _currentlyViewedOrderIndex.clamp(
+        0,
+        _activeOrders.isEmpty ? 0 : _activeOrders.length - 1,
       );
-      _replaceAcceptedOrder(_activeOrder!);
-      await _persistActiveOrderId(_activeOrder!.orderId);
-      // Restore trip ID (set during acceptOrder) and resume location pings.
-      _activeTripId ??= _nullIfBlank(prefs.getString(_prefActiveTripId));
-      if (_activeTripId != null) unawaited(_startLocationPingIfReady());
+      await _persistActiveOrders();
+
+      if (_activeOrders.isNotEmpty) unawaited(_startLocationPingIfReady());
       PartnerWidgetManager.updateWidget(
         isOnline: _isOnline,
         todayEarnings: _earnings.today,
-        activeOrder: _activeOrder,
+        activeOrder: activeOrder,
       );
       notifyListeners();
-    } catch (e) {
-      // Keep the existing active order on network/API errors —
-      // a temporary failure should not clear a driver's in-progress delivery.
-      _logApi('fetch_active_order_warn', e.toString());
+    } catch (_) {
       notifyListeners();
     } finally {
       _isFetchingActiveOrder = false;
@@ -3343,6 +3318,13 @@ class AppController extends ChangeNotifier {
   }
 
   Future<String?> acceptOrder(String orderId) async {
+    if (_activeOrders.any((o) => o.orderId == orderId)) {
+      return 'Order already accepted';
+    }
+    if (_activeOrders.length >= maxConcurrentOrders) {
+      return 'You can only have $maxConcurrentOrders active orders at a time';
+    }
+
     final int index = _availableOrders.indexWhere(
       (order) => order.orderId == orderId,
     );
@@ -3353,14 +3335,25 @@ class AppController extends ChangeNotifier {
         final ExternalDeliveryDetail detail = await _orderRepository
             .fetchDetail(orderId);
         cachedOrder = _deliveryOrderFromDetail(detail);
-      } catch (e) {
-        _logApi('accept_order_lookup_warn', e.toString());
+      } catch (_) {
         return 'Order not found';
       }
     }
 
     if (cachedOrder.assignmentStatus == OrderAssignmentStatus.assigned) {
       return 'Order already assigned to another partner';
+    }
+
+    // Fresh server check — guards against race condition where another partner
+    // accepted the same order between the list load and this tap.
+    try {
+      final ExternalDeliveryDetail freshDetail = await _orderRepository
+          .fetchDetail(orderId);
+      if (freshDetail.status.toLowerCase() != 'pending') {
+        return 'This order was just taken by another partner';
+      }
+    } catch (_) {
+      // Non-fatal — proceed with acceptance if the check itself fails.
     }
 
     try {
@@ -3372,17 +3365,8 @@ class AppController extends ChangeNotifier {
         final String tripName = await _orderRepository.createTripByOrderName(
           orderId,
         );
-        _logApi(
-          'accept_order_trip',
-          'trip $tripName created for order $orderId',
-        );
-        _activeTripId = tripName;
-        unawaited(_persistActiveTripId(tripName));
-      } catch (e) {
-        _logApi(
-          'accept_order_trip_warn',
-          'trip creation failed (non-fatal): $e',
-        );
+        _activeTripIds[orderId] = tripName;
+      } catch (_) {
       }
 
       // Stamp driver on the order record so it is queryable by driver after
@@ -3391,8 +3375,7 @@ class AppController extends ChangeNotifier {
         if (_driverName != null && _driverName!.isNotEmpty) {
           await _orderRepository.setDriverOnOrder(orderId, _driverName!);
         }
-      } catch (e) {
-        _logApi('accept_order_driver_stamp_warn', 'non-fatal: $e');
+      } catch (_) {
       }
 
       _availableOrders.removeWhere((order) => order.orderId == orderId);
@@ -3400,16 +3383,19 @@ class AppController extends ChangeNotifier {
         orderId,
       );
       final OrderStatus fetchedStatus = _mapExternalStatus(detail.status);
-      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
+      final DeliveryOrder newOrder = _deliveryOrderFromDetail(detail).copyWith(
         orderStatus: fetchedStatus == OrderStatus.pending
             ? OrderStatus.accepted
             : fetchedStatus,
         assignmentStatus: OrderAssignmentStatus.assigned,
         assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
       );
-      _replaceAcceptedOrder(_activeOrder!);
-      unawaited(_persistActiveOrderId(_activeOrder!.orderId));
-      unawaited(_startLocationPingIfReady());
+      _activeOrders.add(newOrder);
+      _currentlyViewedOrderIndex = _activeOrders.length - 1;
+      _replaceAcceptedOrder(newOrder);
+      unawaited(_persistActiveOrders());
+      // Start pinging if this is the first active order.
+      if (_activeOrders.length == 1) unawaited(_startLocationPingIfReady());
       _performance = _performance.copyWith(
         acceptanceRate: min(100, _performance.acceptanceRate + 0.8),
       );
@@ -3424,12 +3410,12 @@ class AppController extends ChangeNotifier {
       PartnerWidgetManager.updateWidget(
         isOnline: _isOnline,
         todayEarnings: _earnings.today,
-        activeOrder: _activeOrder,
+        activeOrder: activeOrder,
       );
       notifyListeners();
       _writeTimingEvent(
         eventType: TimingEventType.tripAccepted,
-        tripRef: _activeTripId,
+        tripRef: _activeTripIds[orderId],
       );
       return null;
     } catch (e) {
@@ -3442,9 +3428,8 @@ class AppController extends ChangeNotifier {
     // so another delivery partner can still pick it up.
     _availableOrders.removeWhere((order) => order.orderId == orderId);
     _acceptedOrders.removeWhere((order) => order.orderId == orderId);
-    if (_activeOrder?.orderId == orderId) {
-      _activeOrder = null;
-      unawaited(_persistActiveOrderId(null));
+    if (_activeOrders.any((o) => o.orderId == orderId)) {
+      clearOrder(orderId);
     }
 
     _performance = _performance.copyWith(
@@ -3463,22 +3448,19 @@ class AppController extends ChangeNotifier {
     PartnerWidgetManager.updateWidget(
       isOnline: _isOnline,
       todayEarnings: _earnings.today,
-      activeOrder: _activeOrder,
+      activeOrder: activeOrder,
     );
     notifyListeners();
     return null;
   }
 
   Future<String?> reachedPickup(String orderId) async {
-    if (_activeOrder == null || _activeOrder!.orderId != orderId) {
-      return 'No active order found';
-    }
-
-    if (_activeOrder!.orderStatus != OrderStatus.accepted) {
+    final order = _activeOrders.where((o) => o.orderId == orderId).firstOrNull;
+    if (order == null) return 'No active order found';
+    if (order.orderStatus != OrderStatus.accepted) {
       return 'Order must be accepted first';
     }
-
-    return updateOrderStatus(OrderStatus.reachedPickup);
+    return updateOrderStatus(OrderStatus.reachedPickup, orderId: orderId);
   }
 
   void _replaceAcceptedOrder(DeliveryOrder order) {
@@ -3503,64 +3485,8 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _restoreActiveOrder(String orderId) async {
-    try {
-      final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
-        orderId,
-      );
-      final OrderStatus status = _mapExternalStatus(detail.status);
-      if (status == OrderStatus.delivered ||
-          status == OrderStatus.cancelled ||
-          status == OrderStatus.rejected ||
-          status == OrderStatus.pending) {
-        _activeOrder = null;
-        _activeTripId = null;
-        _locationPingSubscription?.cancel();
-        _locationPingSubscription = null;
-        LocationPingService.stop();
-        _acceptedOrders.clear();
-        await _persistActiveOrderId(null);
-        await _persistActiveTripId(null);
-        notifyListeners();
-        return;
-      }
-
-      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
-        orderStatus: status,
-        assignmentStatus: OrderAssignmentStatus.assigned,
-        assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
-        reachedStoreAt: status == OrderStatus.reachedPickup
-            ? DateTime.now()
-            : null,
-        deliveryPartnerLocation: _partnerLiveLocation,
-      );
-      _replaceAcceptedOrder(_activeOrder!);
-      await _persistActiveOrderId(_activeOrder!.orderId);
-
-      // Restore trip ID from prefs so pings resume after app restart.
-      if (_activeTripId == null) {
-        final SharedPreferences prefs = await SharedPreferences.getInstance();
-        _activeTripId = _nullIfBlank(prefs.getString(_prefActiveTripId));
-      }
-      if (_activeTripId != null) unawaited(_startLocationPingIfReady());
-
-      PartnerWidgetManager.updateWidget(
-        isOnline: _isOnline,
-        todayEarnings: _earnings.today,
-        activeOrder: _activeOrder,
-      );
-      notifyListeners();
-    } catch (e) {
-      _logApi('restore_active_order_warn', e.toString());
-      _activeOrder = null;
-      _activeTripId = null;
-      _locationPingSubscription?.cancel();
-      _locationPingSubscription = null;
-      LocationPingService.stop();
-      _acceptedOrders.clear();
-      await _persistActiveOrderId(null);
-      await _persistActiveTripId(null);
-      notifyListeners();
-    }
+    // Delegate to the multi-order fetch which handles migration automatically.
+    await fetchActiveOrder();
   }
 
   /// Fallback restore used after logout/login when SharedPreferences no longer
@@ -3603,29 +3529,29 @@ class AppController extends ChangeNotifier {
         return;
       }
 
-      _activeOrder = _deliveryOrderFromDetail(detail).copyWith(
+      final DeliveryOrder restoredOrder = _deliveryOrderFromDetail(
+        detail,
+      ).copyWith(
         orderStatus: status,
         assignmentStatus: OrderAssignmentStatus.assigned,
         assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
         deliveryPartnerLocation: _partnerLiveLocation,
       );
-      _activeTripId = trip.name;
-      _replaceAcceptedOrder(_activeOrder!);
-      await _persistActiveOrderId(_activeOrder!.orderId);
-      await _persistActiveTripId(trip.name);
+      if (!_activeOrders.any((o) => o.orderId == restoredOrder.orderId)) {
+        _activeOrders.add(restoredOrder);
+        _activeTripIds[restoredOrder.orderId] = trip.name;
+        _currentlyViewedOrderIndex = _activeOrders.length - 1;
+      }
+      _replaceAcceptedOrder(restoredOrder);
+      await _persistActiveOrders();
       unawaited(_startLocationPingIfReady());
       PartnerWidgetManager.updateWidget(
         isOnline: _isOnline,
         todayEarnings: _earnings.today,
-        activeOrder: _activeOrder,
-      );
-      _logApi(
-        'restore_active_order_by_driver',
-        'order=${_activeOrder!.orderId} trip=${trip.name}',
+        activeOrder: activeOrder,
       );
       notifyListeners();
-    } catch (e) {
-      _logApi('restore_active_order_by_driver_warn', e.toString());
+    } catch (_) {
     }
   }
 
@@ -3639,6 +3565,8 @@ class AppController extends ChangeNotifier {
         return 'Out for Delivery';
       case OrderStatus.delivered:
         return 'Delivered';
+      case OrderStatus.failed:
+        return 'Failed';
       default:
         return null;
     }
@@ -3648,6 +3576,7 @@ class AppController extends ChangeNotifier {
     switch (status) {
       case OrderStatus.delivered:
         return 'Delivered';
+      case OrderStatus.failed:
       case OrderStatus.cancelled:
         return 'Failed';
       default:
@@ -3673,9 +3602,10 @@ class AppController extends ChangeNotifier {
         return OrderStatus.outForDelivery;
       case 'delivered':
         return OrderStatus.delivered;
+      case 'failed':
+        return OrderStatus.failed;
       case 'cancelled':
       case 'canceled':
-      case 'failed':
         return OrderStatus.cancelled;
       case 'returned':
       case 'return initiated':
@@ -3882,8 +3812,8 @@ class AppController extends ChangeNotifier {
       latitude: _currentLatitude!,
       longitude: _currentLongitude!,
     );
-    if (_activeOrder != null) {
-      _activeOrder = _activeOrder!.copyWith(
+    for (int i = 0; i < _activeOrders.length; i++) {
+      _activeOrders[i] = _activeOrders[i].copyWith(
         deliveryPartnerLocation: _partnerLiveLocation,
       );
     }
@@ -3891,19 +3821,18 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _startLocationPingIfReady() async {
-    if (_activeOrder == null) return;
-    if (_activeTripId == null) {
-      _logApi(
-        'location_ping_skip',
-        'missing active trip id for order=${_activeOrder!.orderId}',
-      );
+    if (_activeOrders.isEmpty) return;
+    // Use the first active order's trip for pinging (driver location tracking).
+    final DeliveryOrder firstOrder = _activeOrders.first;
+    final String? tripId = _activeTripIds[firstOrder.orderId];
+    if (tripId == null) {
       return;
     }
     final String? authHeader = await _buildAuthHeader();
     if (authHeader == null) return;
     await LocationPingService.start(
-      tripId: _activeTripId!,
-      deliveryId: _activeOrder!.orderId,
+      tripId: tripId,
+      deliveryId: firstOrder.orderId,
       authHeader: authHeader,
       baseUrl: ApiConstants.erpBaseUrl,
     );
@@ -3951,6 +3880,30 @@ class AppController extends ChangeNotifier {
       await prefs.remove(_prefActiveTripId);
     } else {
       await prefs.setString(_prefActiveTripId, tripId);
+    }
+  }
+
+  Future<void> _persistActiveOrders() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String> ids = _activeOrders.map((o) => o.orderId).toList();
+    if (ids.isEmpty) {
+      await prefs.remove(_prefActiveOrderIds);
+      await prefs.remove(_prefActiveTripIdsMap);
+      // Also clear legacy keys.
+      await prefs.remove(_prefActiveOrderId);
+      await prefs.remove(_prefActiveTripId);
+    } else {
+      await prefs.setString(_prefActiveOrderIds, jsonEncode(ids));
+      await prefs.setString(
+        _prefActiveTripIdsMap,
+        jsonEncode(_activeTripIds),
+      );
+      // Write first order to legacy key for backward compat.
+      await prefs.setString(_prefActiveOrderId, ids.first);
+      final String? firstTripId = _activeTripIds[ids.first];
+      if (firstTripId != null) {
+        await prefs.setString(_prefActiveTripId, firstTripId);
+      }
     }
   }
 
@@ -4254,21 +4207,6 @@ class AppController extends ChangeNotifier {
       'fieldname': fieldname,
       'value': value,
     });
-  }
-
-  void _logApi(String tag, String value) {
-    final String line = '[API] $tag => $value';
-    // Keep debugPrint for Flutter tooling and print for plain logcat visibility.
-    debugPrint(line);
-    // ignore: avoid_print
-    print(line);
-  }
-
-  String _truncateForLog(String raw, {int max = 1200}) {
-    if (raw.length <= max) {
-      return raw;
-    }
-    return '${raw.substring(0, max)}...<truncated>';
   }
 
   @override
@@ -4612,14 +4550,9 @@ class AppController extends ChangeNotifier {
     final List<Map<String, String>> authHeaders = _authorizationHeaders();
     String? lastError;
     for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'GET $uri');
       final http.Response response = await http
           .get(uri, headers: headers)
           .timeout(_networkTimeout);
-      _logApi(
-        'http',
-        'GET $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
-      );
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;
@@ -4662,14 +4595,9 @@ class AppController extends ChangeNotifier {
     String? lastError;
     final String encodedBody = jsonEncode(body);
     for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'PUT $uri body=${_truncateForLog(encodedBody)}');
       final http.Response response = await http
           .put(uri, headers: headers, body: encodedBody)
           .timeout(_networkTimeout);
-      _logApi(
-        'http',
-        'PUT $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
-      );
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;
@@ -4717,14 +4645,9 @@ class AppController extends ChangeNotifier {
     String? lastError;
     final String encodedBody = jsonEncode(body);
     for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'POST $uri body=${_truncateForLog(encodedBody)}');
       final http.Response response = await http
           .post(uri, headers: headers, body: encodedBody)
           .timeout(_networkTimeout);
-      _logApi(
-        'http',
-        'POST $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
-      );
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return payload;
@@ -4759,14 +4682,9 @@ class AppController extends ChangeNotifier {
     String? lastError;
 
     for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'GET $uri');
       final http.Response response = await http
           .get(uri, headers: headers)
           .timeout(_networkTimeout);
-      _logApi(
-        'http',
-        'GET $uri -> ${response.statusCode} body=${_truncateForLog(response.body)}',
-      );
 
       final Map<String, dynamic> payload = _decodeJsonMap(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -4805,7 +4723,6 @@ class AppController extends ChangeNotifier {
 
     String? lastError;
     for (final Map<String, String> headers in authHeaders) {
-      _logApi('http', 'POST $uri');
       final request = http.MultipartRequest('POST', uri)
         ..headers.addAll(headers)
         ..fields.addAll(fields)
@@ -5028,10 +4945,8 @@ class AppController extends ChangeNotifier {
         '${ApiConstants.erpBaseUrl}/api/resource/User/${Uri.encodeComponent(effectiveUser)}',
       );
       await authorizedPutJson(userUri, <String, dynamic>{'user_image': value});
-      _logApi('profile', 'user_image set via PUT for $effectiveUser');
       return null;
-    } catch (e) {
-      _logApi('profile', 'PUT user_image failed: $e');
+    } catch (_) {
     }
 
     // Approach 2: frappe.client.set_value with JSON body
@@ -5045,13 +4960,8 @@ class AppController extends ChangeNotifier {
         'fieldname': 'user_image',
         'value': value,
       });
-      _logApi(
-        'profile',
-        'user_image set via set_value (JSON) for $effectiveUser',
-      );
       return null;
-    } catch (e) {
-      _logApi('profile', 'set_value JSON failed: $e');
+    } catch (_) {
     }
 
     // Approach 3: frappe.client.set_value with form-encoded body
@@ -5077,16 +4987,11 @@ class AppController extends ChangeNotifier {
           )
           .timeout(_networkTimeout);
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        _logApi(
-          'profile',
-          'user_image set via set_value (form) for $effectiveUser',
-        );
         return null;
       }
       final String formErr =
           _extractServerError(_decodeJsonMap(response.body)) ??
           'set_value form failed (${response.statusCode})';
-      _logApi('profile', formErr);
       return 'user_image web sync failed: $formErr\n(User: $effectiveUser, URL: $value)';
     } catch (e) {
       final String msg = e.toString().replaceFirst('Exception: ', '');

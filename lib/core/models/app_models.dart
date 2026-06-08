@@ -12,6 +12,7 @@ enum OrderStatus {
   pickedUp,
   outForDelivery,
   delivered,
+  failed,
   cancelled,
   returned,
 }
@@ -284,6 +285,8 @@ class DeliveryOrder {
     this.completedAt,
     this.deliveryPartnerLocation,
     this.createdAt,
+    this.failureReasonCode = '',
+    this.deliveryNotes = '',
   });
 
   final String id;
@@ -313,6 +316,8 @@ class DeliveryOrder {
   final DateTime? completedAt;
   final GeoLocation? deliveryPartnerLocation;
   final DateTime? createdAt;
+  final String failureReasonCode;
+  final String deliveryNotes;
 
   double get totalAmount =>
       orderItems.fold(0, (sum, item) => sum + (item.price * item.quantity));
@@ -447,6 +452,8 @@ extension OrderStatusLabel on OrderProgressStatus {
         return 'out_for_delivery';
       case OrderStatus.delivered:
         return 'delivered';
+      case OrderStatus.failed:
+        return 'failed';
       case OrderStatus.cancelled:
         return 'cancelled';
       case OrderStatus.returned:

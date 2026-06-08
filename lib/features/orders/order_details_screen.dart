@@ -160,6 +160,13 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                           customValue: _StatusPill(
                               label: order.orderStatus.label),
                         ),
+                        if (order.orderStatus == OrderStatus.failed) ...[
+                          const SizedBox(height: 10),
+                          _FailureCard(
+                            reasonCode: order.failureReasonCode,
+                            notes: order.deliveryNotes,
+                          ),
+                        ],
                         if (order.deliveryInstructions.isNotEmpty)
                           _InfoRow(
                             label: 'Instructions',
@@ -410,6 +417,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         assignmentStatus: OrderAssignmentStatus.assigned,
       );
     });
+
+    if (!context.mounted) return;
     AppToast.show(context, 'Order accepted successfully!');
     Navigator.of(context).pushNamed(AppRoutes.navigation);
   }
@@ -1008,6 +1017,89 @@ class _BottomActions extends StatelessWidget {
             ],
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _FailureCard extends StatelessWidget {
+  const _FailureCard({required this.reasonCode, required this.notes});
+  final String? reasonCode;
+  final String? notes;
+
+  static const Map<String, String> _labels = {
+    'customer_unavailable': 'Customer Unavailable',
+    'address_inaccessible': 'Address Inaccessible',
+    'wrong_address': 'Wrong Address',
+    'customer_refused_at_door': 'Customer Refused at Door',
+    'damaged_in_transit': 'Damaged in Transit',
+    'lost_in_transit': 'Lost in Transit',
+    'suspected_fraud': 'Suspected Fraud',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final code = reasonCode ?? '';
+    final noteText = notes ?? '';
+    final reasonLabel = _labels[code] ?? (code.isNotEmpty ? code : '');
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFC62828).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFFC62828).withValues(alpha: 0.25),
+        ),
+      ),
+      child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.cancel_rounded, color: Color(0xFFC62828), size: 15),
+                    SizedBox(width: 5),
+                    Text(
+                      'Failure Details',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFC62828),
+                      ),
+                    ),
+                  ],
+                ),
+                if (reasonLabel.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    reasonLabel,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF7B1010),
+                    ),
+                  ),
+                ],
+                if (noteText.isNotEmpty && noteText != reasonLabel) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    noteText,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: const Color(0xFFC62828).withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+                if (reasonLabel.isEmpty && noteText.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: Text(
+                      'No failure details recorded.',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF7B1010)),
+                    ),
+                  ),
+              ],
       ),
     );
   }
