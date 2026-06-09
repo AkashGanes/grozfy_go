@@ -380,9 +380,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
 
   Future<void> _pollForAllRecalls() async {
     if (!mounted) return;
-    for (final order in widget.app.activeOrders) {
-      await _pollForRecall(order);
-    }
+    await Future.wait(
+      widget.app.activeOrders.map((order) => _pollForRecall(order)),
+    );
   }
 
   Future<void> _pollForRecall(DeliveryOrder order) async {

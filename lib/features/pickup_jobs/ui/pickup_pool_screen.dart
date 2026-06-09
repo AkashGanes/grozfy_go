@@ -27,22 +27,31 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
   final Set<String> _acceptingJobs = {};
   PickupJob? _activePickupJob;
   Timer? _pollTimer;
+  int _consecutiveFailures = 0;
 
   @override
   void initState() {
     super.initState();
     _future = _loadPool();
     _loadActiveJob();
-    _pollTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => _silentRefresh(),
-    );
+    _schedulePoll();
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
     super.dispose();
+  }
+
+  void _schedulePoll() {
+    // Doubles delay on each consecutive failure, capped at 5 minutes.
+    final seconds = _consecutiveFailures == 0
+        ? 30
+        : (30 * (1 << _consecutiveFailures)).clamp(30, 300);
+    _pollTimer = Timer(Duration(seconds: seconds), () async {
+      await _silentRefresh();
+      if (mounted) _schedulePoll();
+    });
   }
 
   Future<List<PickupJob>> _loadPool() => PickupJobRepository().fetchPool();
@@ -60,11 +69,14 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
         PickupJobRepository().loadActivePickupJob(),
       ]);
       if (!mounted) return;
+      _consecutiveFailures = 0;
       setState(() {
         _future = Future.value(results[0] as List<PickupJob>);
         _activePickupJob = results[1] as PickupJob?;
       });
-    } catch (_) {}
+    } catch (_) {
+      _consecutiveFailures++;
+    }
   }
 
   // ── Haversine distance in km ───────────────────────────────────────────────

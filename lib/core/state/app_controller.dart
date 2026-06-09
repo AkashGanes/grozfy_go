@@ -145,6 +145,12 @@ class AppController extends ChangeNotifier {
   String? _sessionToken;
   String _tokenType = 'Bearer';
   String? _refreshToken;
+  // Cached result of buildAuthHeaders() — invalidated when token changes.
+  Map<String, String>? _cachedAuthHeaders;
+  String? _cachedAuthHeadersKey;
+  // Cached profileCompleteness — invalidated by fingerprint of inputs.
+  ProfileCompleteness? _cachedProfileCompleteness;
+  String? _cachedProfileCompletenessKey;
   String? _clientId;
   String? _apiKey;
   String? _apiSecret;
@@ -482,6 +488,15 @@ class AppController extends ChangeNotifier {
       _permissionState.allGranted;
 
   ProfileCompleteness get profileCompleteness {
+    final hasPhoto = _profileImagePath != null || _serverProfileImageUrl != null;
+    final hasLocation = hasSelectedLocation;
+    final key = '${_profile?.fullName}_${hasPhoto}_${_kycCompleted}_'
+        '${_vehicle != null}_${_bank != null}_${hasLocation}_'
+        '${_permissionState.allGranted}';
+    if (_cachedProfileCompleteness != null && _cachedProfileCompletenessKey == key) {
+      return _cachedProfileCompleteness!;
+    }
+
     final List<ProfileCompletenessItem> items = <ProfileCompletenessItem>[
       ProfileCompletenessItem(
         name: 'profile_basic_profile',
@@ -492,8 +507,7 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'profile_photo',
         description: 'profile_photo_desc',
-        isCompleted:
-            _profileImagePath != null || _serverProfileImageUrl != null,
+        isCompleted: hasPhoto,
         route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
@@ -517,7 +531,7 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'delivery_zone',
         description: 'delivery_zone_desc',
-        isCompleted: hasSelectedLocation,
+        isCompleted: hasLocation,
         route: AppRoutes.currentLocation,
       ),
       ProfileCompletenessItem(
@@ -532,12 +546,14 @@ class AppController extends ChangeNotifier {
     final int totalCount = items.length;
     final double percentage = totalCount > 0 ? completedCount / totalCount : 0;
 
-    return ProfileCompleteness(
+    _cachedProfileCompleteness = ProfileCompleteness(
       percentage: percentage,
       items: items,
       completedCount: completedCount,
       totalCount: totalCount,
     );
+    _cachedProfileCompletenessKey = key;
+    return _cachedProfileCompleteness!;
   }
 
   Future<void> bootstrap() async {
@@ -5303,9 +5319,16 @@ class AppController extends ChangeNotifier {
   }
 
   /// Returns the primary auth header for use outside AppController (e.g. image loading).
+  /// Result is cached per token value — safe to call on every rebuild.
   Map<String, String> buildAuthHeaders() {
+    final key = '${_tokenType}_${_sessionToken ?? ''}';
+    if (_cachedAuthHeaders != null && _cachedAuthHeadersKey == key) {
+      return _cachedAuthHeaders!;
+    }
     final headers = _authorizationHeaders();
-    return headers.isNotEmpty ? headers.first : <String, String>{};
+    _cachedAuthHeaders = headers.isNotEmpty ? headers.first : const <String, String>{};
+    _cachedAuthHeadersKey = key;
+    return _cachedAuthHeaders!;
   }
 
   List<Map<String, String>> _authorizationHeaders({String? contentType}) {
