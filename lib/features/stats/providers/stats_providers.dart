@@ -99,11 +99,8 @@ DailySummary _computeDaily(List<TimingEvent> events) {
   final logouts = events.where((e) => e.eventType == 'driver_logout').toList();
 
   Duration dutyHours = Duration.zero;
-  if (logins.isNotEmpty) {
-    final loginTime = logins.first.eventTime;
-    final logoutTime =
-        logouts.isNotEmpty ? logouts.last.eventTime : DateTime.now();
-    final diff = logoutTime.difference(loginTime);
+  if (logins.isNotEmpty && logouts.isNotEmpty) {
+    final diff = logouts.last.eventTime.difference(logins.first.eventTime);
     if (!diff.isNegative) dutyHours = diff;
   }
 

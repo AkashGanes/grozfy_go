@@ -185,6 +185,7 @@ class AppController extends ChangeNotifier {
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
+  DateTime? _onlineSince;
   bool _availabilitySyncing = false;
   bool _isTracking = false;
   int _trackingInterval = 10;
@@ -330,6 +331,7 @@ class AppController extends ChangeNotifier {
       Set<String>.unmodifiable(_vehicleRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
+  DateTime? get onlineSince => _onlineSince;
   bool get availabilitySyncing => _availabilitySyncing;
   bool get isTracking => _isTracking;
   int get trackingInterval => _trackingInterval;
@@ -611,6 +613,16 @@ class AppController extends ChangeNotifier {
       }
     }
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
+    if (_isOnline && _timingDao != null) {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+      final rows = await _timingDao.getEventsInRange(startOfDay, endOfDay);
+      final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
+      if (logins.isNotEmpty) {
+        _onlineSince = DateTime.tryParse(logins.last.eventTime);
+      }
+    }
     final String? persistedActiveOrderId = _nullIfBlank(
       prefs.getString(_prefActiveOrderId),
     );
@@ -1694,6 +1706,7 @@ class AppController extends ChangeNotifier {
     _apiSecret = null;
     _isRefreshing = false;
     _isOnline = false;
+    _onlineSince = null;
     _isTracking = false;
     _incomingOrder = null;
     _activeOrders.clear();
@@ -2878,6 +2891,7 @@ class AppController extends ChangeNotifier {
       return prefs.setBool(_prefIsOnline, _isOnline);
     });
     if (_isOnline) {
+      _onlineSince = DateTime.now();
       startTracking();
       recordTimingEvent(eventType: TimingEventType.login);
       unawaited(FCMService().subscribe(this));
@@ -2890,6 +2904,7 @@ class AppController extends ChangeNotifier {
         ),
       );
     } else {
+      _onlineSince = null;
       stopTracking();
       recordTimingEvent(eventType: TimingEventType.logout);
       unawaited(FCMService().unsubscribe(this));
