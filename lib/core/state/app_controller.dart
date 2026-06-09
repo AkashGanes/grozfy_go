@@ -4527,6 +4527,16 @@ class AppController extends ChangeNotifier {
         }
       }
     }
+
+    // Restore online state so the duty-hours live ticker resumes automatically
+    // after a logout+login on the same day, matching cold-restart behaviour.
+    // _onlineSince is set to now (not the last DB login time) so the live
+    // portion starts fresh — _completedDutyToday already covers prior sessions.
+    final wasOnline = prefs.getBool(_prefIsOnline) ?? false;
+    if (wasOnline) {
+      _isOnline = true;
+      _onlineSince = DateTime.now();
+    }
   }
 
   void _persistTripTimeToday() {
