@@ -109,7 +109,7 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
             _statCell(
               Icons.local_shipping_outlined,
               'Trips',
-              '${summary.tripsCompleted}',
+              '${app.completedTripsToday}',
             ),
             _divider(),
             _statCell(

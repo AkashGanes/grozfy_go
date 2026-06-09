@@ -187,6 +187,7 @@ class AppController extends ChangeNotifier {
   bool _isOnline = false;
   DateTime? _onlineSince;
   Duration _completedDutyToday = Duration.zero;
+  int _completedTripsToday = 0;
   bool _availabilitySyncing = false;
   bool _isTracking = false;
   int _trackingInterval = 10;
@@ -263,6 +264,10 @@ class AppController extends ChangeNotifier {
       const Duration(seconds: 10),
       () => _recentEventKeys.remove(key),
     );
+    if (eventType == TimingEventType.tripCompleted) {
+      _completedTripsToday++;
+      notifyListeners();
+    }
     _writeTimingEvent(eventType: eventType, tripRef: tripRef, stopRef: stopRef);
   }
 
@@ -334,6 +339,7 @@ class AppController extends ChangeNotifier {
   bool get isOnline => _isOnline;
   DateTime? get onlineSince => _onlineSince;
   Duration get completedDutyToday => _completedDutyToday;
+  int get completedTripsToday => _completedTripsToday;
   bool get availabilitySyncing => _availabilitySyncing;
   bool get isTracking => _isTracking;
   int get trackingInterval => _trackingInterval;
@@ -630,6 +636,9 @@ class AppController extends ChangeNotifier {
       if (_isOnline && logins.isNotEmpty) {
         _onlineSince = DateTime.tryParse(logins.last.eventTime);
       }
+      _completedTripsToday = rows
+          .where((r) => r.eventType == TimingEventType.tripCompleted)
+          .length;
     }
     final String? persistedActiveOrderId = _nullIfBlank(
       prefs.getString(_prefActiveOrderId),
@@ -1716,6 +1725,7 @@ class AppController extends ChangeNotifier {
     _isOnline = false;
     _onlineSince = null;
     _completedDutyToday = Duration.zero;
+    _completedTripsToday = 0;
     _isTracking = false;
     _incomingOrder = null;
     _activeOrders.clear();
@@ -3172,6 +3182,10 @@ class AppController extends ChangeNotifier {
             message: 'Order $targetId delivered successfully.',
             time: DateTime.now(),
           ),
+        );
+        recordTimingEvent(
+          eventType: TimingEventType.tripCompleted,
+          tripRef: targetId,
         );
         _acceptedOrders.removeWhere((order) => order.orderId == targetId);
         clearOrder(targetId);

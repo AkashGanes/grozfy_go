@@ -45,6 +45,7 @@ class _DailySection extends ConsumerWidget {
         : Duration.zero;
     final Duration dutyHours =
         completed + (live.isNegative ? Duration.zero : live);
+    final int tripsToday = app.completedTripsToday;
 
     return FrostCard(
       child: Column(
@@ -68,7 +69,7 @@ class _DailySection extends ConsumerWidget {
           async.when(
             loading: _buildLoading,
             error: (e, _) => _buildError(e),
-            data: (s) => _buildData(s, dutyHours),
+            data: (s) => _buildData(s, dutyHours, tripsToday),
           ),
         ],
       ),
@@ -100,8 +101,8 @@ class _DailySection extends ConsumerWidget {
     );
   }
 
-  Widget _buildData(DailySummary s, Duration dutyHours) {
-    if (s.tripsCompleted == 0 && dutyHours == Duration.zero) {
+  Widget _buildData(DailySummary s, Duration dutyHours, int tripsToday) {
+    if (tripsToday == 0 && dutyHours == Duration.zero) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
         child: Text(
@@ -121,7 +122,7 @@ class _DailySection extends ConsumerWidget {
         const SizedBox(width: 10),
         _statTile(
           'Trips Today',
-          '${s.tripsCompleted}',
+          '$tripsToday',
           Icons.check_circle_outline,
           const Color(0xFF2E7D32),
         ),
