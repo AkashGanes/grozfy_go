@@ -99,6 +99,8 @@ class AppController extends ChangeNotifier {
   static const String _prefActiveTripId = 'active_trip_id';
   static const String _prefActiveOrderIds = 'active_order_ids';
   static const String _prefActiveTripIdsMap = 'active_trip_ids_map';
+  static const String _prefTotalTripTimeTodayMs = 'total_trip_time_today_ms';
+  static const String _prefTripTimeSavedDate = 'trip_time_saved_date';
   static const int maxConcurrentOrders = 3;
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 300;
@@ -188,6 +190,9 @@ class AppController extends ChangeNotifier {
   DateTime? _onlineSince;
   Duration _completedDutyToday = Duration.zero;
   int _completedTripsToday = 0;
+  Duration _totalTripTimeToday = Duration.zero;
+  final Map<String, DateTime> _tripAcceptedTimes = {};
+  final Set<String> _sessionTripAcceptances = {};
   bool _availabilitySyncing = false;
   bool _isTracking = false;
   int _trackingInterval = 10;
@@ -264,8 +269,21 @@ class AppController extends ChangeNotifier {
       const Duration(seconds: 10),
       () => _recentEventKeys.remove(key),
     );
-    if (eventType == TimingEventType.tripCompleted) {
+    if (eventType == TimingEventType.tripAccepted && tripRef != null) {
+      if (!_sessionTripAcceptances.contains(tripRef)) {
+        _sessionTripAcceptances.add(tripRef);
+        _tripAcceptedTimes[tripRef] = DateTime.now();
+      }
+    } else if (eventType == TimingEventType.tripCompleted) {
       _completedTripsToday++;
+      if (tripRef != null) {
+        final start = _tripAcceptedTimes.remove(tripRef);
+        if (start != null) {
+          final d = DateTime.now().difference(start);
+          if (!d.isNegative) _totalTripTimeToday += d;
+        }
+      }
+      _persistTripTimeToday();
       notifyListeners();
     }
     _writeTimingEvent(eventType: eventType, tripRef: tripRef, stopRef: stopRef);
@@ -340,6 +358,9 @@ class AppController extends ChangeNotifier {
   DateTime? get onlineSince => _onlineSince;
   Duration get completedDutyToday => _completedDutyToday;
   int get completedTripsToday => _completedTripsToday;
+  Duration get avgTripDurationToday => _completedTripsToday > 0
+      ? Duration(milliseconds: _totalTripTimeToday.inMilliseconds ~/ _completedTripsToday)
+      : Duration.zero;
   bool get availabilitySyncing => _availabilitySyncing;
   bool get isTracking => _isTracking;
   int get trackingInterval => _trackingInterval;
@@ -639,6 +660,40 @@ class AppController extends ChangeNotifier {
       _completedTripsToday = rows
           .where((r) => r.eventType == TimingEventType.tripCompleted)
           .length;
+
+      // Restore avg trip duration: prefs is the source of truth (saved after
+      // every trip_completed). Fall back to DB pairing if prefs has no entry
+      // for today (first run after an app update, etc.).
+      final now2 = DateTime.now();
+      final todayStr = '${now2.year}-${now2.month.toString().padLeft(2, '0')}-${now2.day.toString().padLeft(2, '0')}';
+      final savedDate = prefs.getString(_prefTripTimeSavedDate);
+      if (savedDate == todayStr) {
+        final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs) ?? 0;
+        _totalTripTimeToday = Duration(milliseconds: savedMs);
+      } else {
+        // Prefs is from a previous day — compute from DB event pairs instead.
+        final acceptedTimes = <String, DateTime>{};
+        for (final r in rows) {
+          if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+            acceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+          }
+        }
+        var restoredTripTime = Duration.zero;
+        for (final r in rows.where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)) {
+          final start = acceptedTimes[r.tripName!];
+          if (start != null) {
+            final d = DateTime.parse(r.eventTime).difference(start);
+            if (!d.isNegative) restoredTripTime += d;
+          }
+        }
+        _totalTripTimeToday = restoredTripTime;
+      }
+      // Mark already-recorded trip acceptances so the screen doesn't re-fire them.
+      for (final r in rows) {
+        if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+          _sessionTripAcceptances.add(r.tripName!);
+        }
+      }
     }
     final String? persistedActiveOrderId = _nullIfBlank(
       prefs.getString(_prefActiveOrderId),
@@ -1726,6 +1781,9 @@ class AppController extends ChangeNotifier {
     _onlineSince = null;
     _completedDutyToday = Duration.zero;
     _completedTripsToday = 0;
+    _totalTripTimeToday = Duration.zero;
+    _tripAcceptedTimes.clear();
+    _sessionTripAcceptances.clear();
     _isTracking = false;
     _incomingOrder = null;
     _activeOrders.clear();
@@ -1782,6 +1840,8 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefPermBackground),
       prefs.remove(_prefPermNotification),
       prefs.remove(_prefLicenseRequiresReupload),
+      prefs.remove(_prefTotalTripTimeTodayMs),
+      prefs.remove(_prefTripTimeSavedDate),
     ]);
 
     // Server-side cleanup — fire-and-forget so the caller's navigation
@@ -3588,6 +3648,8 @@ class AppController extends ChangeNotifier {
         activeOrder: activeOrder,
       );
       notifyListeners();
+      // Key by orderId so it matches tripCompleted's tripRef in this flow.
+      _tripAcceptedTimes[orderId] = DateTime.now();
       _writeTimingEvent(
         eventType: TimingEventType.tripAccepted,
         tripRef: _activeTripIds[orderId],
@@ -4366,6 +4428,16 @@ class AppController extends ChangeNotifier {
     }
     final String trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  void _persistTripTimeToday() {
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    _writePref((prefs) async {
+      await prefs.setInt(_prefTotalTripTimeTodayMs, _totalTripTimeToday.inMilliseconds);
+      await prefs.setString(_prefTripTimeSavedDate, dateStr);
+      return true;
+    });
   }
 
   void _writePref(Future<bool> Function(SharedPreferences prefs) writer) {

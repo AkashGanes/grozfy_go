@@ -38,6 +38,7 @@ class ExternalDeliveryTripDetailsScreen extends ConsumerStatefulWidget {
 class _ExternalDeliveryTripDetailsScreenState
     extends ConsumerState<ExternalDeliveryTripDetailsScreen> {
   late Future<ExternalDeliveryTrip> _future;
+  bool _tripAcceptedFired = false;
   static const List<String> _stopStatusOptions = <String>[
     'Pending',
     'Out for Delivery',
@@ -56,6 +57,15 @@ class _ExternalDeliveryTripDetailsScreenState
   void initState() {
     super.initState();
     _future = _loadTrip();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_tripAcceptedFired) {
+        _tripAcceptedFired = true;
+        _writeTimingEvent(
+          eventType: TimingEventType.tripAccepted,
+          tripRef: widget.tripName,
+        );
+      }
+    });
   }
 
   @override

@@ -115,9 +115,9 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
             _statCell(
               Icons.timer_outlined,
               'Avg Duration',
-              summary.avgTripDuration == Duration.zero
+              app.avgTripDurationToday == Duration.zero
                   ? '—'
-                  : _formatDuration(summary.avgTripDuration),
+                  : _formatDuration(app.avgTripDurationToday),
             ),
           ],
         ),

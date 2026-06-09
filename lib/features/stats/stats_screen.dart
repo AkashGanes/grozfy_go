@@ -46,6 +46,7 @@ class _DailySection extends ConsumerWidget {
     final Duration dutyHours =
         completed + (live.isNegative ? Duration.zero : live);
     final int tripsToday = app.completedTripsToday;
+    final Duration avgTripDuration = app.avgTripDurationToday;
 
     return FrostCard(
       child: Column(
@@ -69,7 +70,7 @@ class _DailySection extends ConsumerWidget {
           async.when(
             loading: _buildLoading,
             error: (e, _) => _buildError(e),
-            data: (s) => _buildData(s, dutyHours, tripsToday),
+            data: (s) => _buildData(s, dutyHours, tripsToday, avgTripDuration),
           ),
         ],
       ),
@@ -101,7 +102,7 @@ class _DailySection extends ConsumerWidget {
     );
   }
 
-  Widget _buildData(DailySummary s, Duration dutyHours, int tripsToday) {
+  Widget _buildData(DailySummary s, Duration dutyHours, int tripsToday, Duration avgTripDuration) {
     if (tripsToday == 0 && dutyHours == Duration.zero) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
@@ -129,7 +130,7 @@ class _DailySection extends ConsumerWidget {
         const SizedBox(width: 10),
         _statTile(
           'Avg Trip',
-          AppDateFormat.duration(s.avgTripDuration),
+          avgTripDuration == Duration.zero ? '—' : AppDateFormat.duration(avgTripDuration),
           Icons.timer_outlined,
           AppTheme.mango,
         ),
