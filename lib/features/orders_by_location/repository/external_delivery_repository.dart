@@ -899,6 +899,53 @@ class ExternalDeliveryRepository {
     return null;
   }
 
+  /// Returns a map of orderId → tripName for all active trips assigned to
+  /// [driverName]. Covers all active trips (not just the first one) so every
+  /// in-progress order can be linked to its trip after a logout/login.
+  Future<Map<String, String>> fetchActiveTripOrderMap(
+    String driverName,
+  ) async {
+    const terminalStopStatuses = {
+      'delivered', 'failed', 'returned', 'return initiated', 'cancelled',
+    };
+
+    final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+      queryParameters: {
+        'fields': jsonEncode(['name', 'status']),
+        'filters': jsonEncode([
+          ['External Delivery Trip', 'driver', '=', driverName],
+          ['External Delivery Trip', 'status', 'not in', ['Completed', 'Cancelled']],
+        ]),
+        'limit_page_length': '20',
+        'order_by': 'modified desc',
+      },
+    );
+    final tripResp = await _get(tripUri, headers: await _authHeaders());
+    if (!_okCodes.contains(tripResp.statusCode)) return {};
+
+    final tripRows = (jsonDecode(tripResp.body)['data']) as List?;
+    if (tripRows == null || tripRows.isEmpty) return {};
+
+    final Map<String, String> orderToTrip = {};
+    for (final row in tripRows) {
+      final tripName = (row as Map<String, dynamic>)['name']?.toString() ?? '';
+      if (tripName.isEmpty) continue;
+      try {
+        final trip = await fetchTripDetails(tripName);
+        for (final stop in trip.stops) {
+          final orderId = stop.externalDelivery.trim();
+          if (orderId.isNotEmpty &&
+              !terminalStopStatuses.contains(
+                stop.status.trim().toLowerCase(),
+              )) {
+            orderToTrip[orderId] = tripName;
+          }
+        }
+      } catch (_) {}
+    }
+    return orderToTrip;
+  }
+
   /// Creates a single-stop trip using only the order name string.
   /// Used by the order acceptance flow in [AppController]. Sends docstatus=1
   /// and status=Scheduled in the create payload so the trip is born Submitted.

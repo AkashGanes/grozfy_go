@@ -98,6 +98,7 @@ class AppController extends ChangeNotifier {
   static const String _prefActiveTripId = 'active_trip_id';
   static const String _prefActiveOrderIds = 'active_order_ids';
   static const String _prefActiveTripIdsMap = 'active_trip_ids_map';
+  static const String _prefActiveOrdersCache = 'active_orders_cache';
   static const int maxConcurrentOrders = 3;
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 300;
@@ -345,10 +346,13 @@ class AppController extends ChangeNotifier {
   DeliveryOrder? get incomingOrder => _incomingOrder;
 
   // Multi-order getters
-  List<DeliveryOrder> get activeOrders =>
-      List<DeliveryOrder>.unmodifiable(_activeOrders);
+  List<DeliveryOrder> get activeOrders => List<DeliveryOrder>.unmodifiable(
+    _activeOrders.length > maxConcurrentOrders
+        ? _activeOrders.sublist(0, maxConcurrentOrders)
+        : _activeOrders,
+  );
   int get activeOrderCount => _activeOrders.length;
-  bool get canAcceptMoreOrders => true;
+  bool get canAcceptMoreOrders => _activeOrders.length < maxConcurrentOrders;
   int get currentlyViewedOrderIndex => _currentlyViewedOrderIndex;
 
   // Backward-compatible single-order getters (returns currently viewed order)
@@ -593,6 +597,9 @@ class AppController extends ChangeNotifier {
     final String? persistedActiveOrderId = _nullIfBlank(
       prefs.getString(_prefActiveOrderId),
     );
+    final String? persistedActiveOrderIds = _nullIfBlank(
+      prefs.getString(_prefActiveOrderIds),
+    );
 
     await PartnerWidgetManager.initialize();
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
@@ -667,8 +674,8 @@ class AppController extends ChangeNotifier {
       }
     }
 
-    if (persistedActiveOrderId != null) {
-      unawaited(_restoreActiveOrder(persistedActiveOrderId));
+    if (persistedActiveOrderId != null || persistedActiveOrderIds != null) {
+      unawaited(_restoreActiveOrder(persistedActiveOrderId ?? ''));
     } else {
       _activeOrders.clear();
       _activeTripIds.clear();
@@ -1693,6 +1700,9 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefBankAccountName),
       prefs.remove(_prefBankRawJson),
       prefs.remove(_prefActiveOrderId),
+      prefs.remove(_prefActiveOrderIds),
+      prefs.remove(_prefActiveTripIdsMap),
+      prefs.remove(_prefActiveOrdersCache),
       prefs.setBool(_prefRememberMe, false),
       prefs.remove(_prefPermForeground),
       prefs.remove(_prefPermBackground),
@@ -3208,9 +3218,11 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> fetchActiveOrder() async {
-    _isFetchingActiveOrder = true;
-    notifyListeners();
+  Future<void> fetchActiveOrder({bool silent = false}) async {
+    if (!silent) {
+      _isFetchingActiveOrder = true;
+      notifyListeners();
+    }
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
@@ -3264,6 +3276,31 @@ class AppController extends ChangeNotifier {
         return;
       }
 
+      // For silent restores, show cached orders instantly while the network
+      // refresh runs. This makes orders appear in < 50ms instead of waiting
+      // for 1+ network round-trips.
+      if (silent && _activeOrders.isEmpty) {
+        final String? cachedJson = prefs.getString(_prefActiveOrdersCache);
+        if (cachedJson != null && cachedJson.isNotEmpty) {
+          try {
+            final dynamic decoded = jsonDecode(cachedJson);
+            if (decoded is List && decoded.isNotEmpty) {
+              final List<DeliveryOrder> cachedOrders = decoded
+                  .whereType<Map<String, dynamic>>()
+                  .map(_deliveryOrderFromCache)
+                  .toList();
+              if (cachedOrders.isNotEmpty) {
+                _activeOrders.addAll(cachedOrders);
+                for (final entry in restoredTripIds.entries) {
+                  _activeTripIds[entry.key] = entry.value;
+                }
+                notifyListeners();
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
       _activeOrders.clear();
       _activeTripIds.clear();
       const terminalStatuses = {
@@ -3272,28 +3309,38 @@ class AppController extends ChangeNotifier {
         OrderStatus.rejected,
       };
 
-      for (final orderId in orderIds) {
-        try {
-          final ExternalDeliveryDetail detail = await _orderRepository
-              .fetchDetail(orderId);
-          final OrderStatus status = _mapExternalStatus(detail.status);
-          if (terminalStatuses.contains(status)) continue;
-          final DeliveryOrder order = _deliveryOrderFromDetail(detail).copyWith(
-            orderStatus: status,
-            assignmentStatus: OrderAssignmentStatus.assigned,
-            assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
-            reachedStoreAt: status == OrderStatus.reachedPickup
-                ? DateTime.now()
-                : null,
-            deliveryPartnerLocation: _partnerLiveLocation,
-          );
-          _activeOrders.add(order);
-          if (restoredTripIds.containsKey(orderId)) {
-            _activeTripIds[orderId] = restoredTripIds[orderId]!;
+      // Fetch all order details in parallel instead of sequentially.
+      final fetchResults = await Future.wait(
+        orderIds.map((orderId) async {
+          try {
+            final detail = await _orderRepository.fetchDetail(orderId);
+            return (orderId: orderId, detail: detail);
+          } catch (_) {
+            return null;
           }
-          _replaceAcceptedOrder(order);
-        } catch (_) {
+        }),
+      );
+
+      for (final result in fetchResults) {
+        if (result == null) continue;
+        final orderId = result.orderId;
+        final detail = result.detail;
+        final OrderStatus status = _mapExternalStatus(detail.status);
+        if (terminalStatuses.contains(status)) continue;
+        final DeliveryOrder order = _deliveryOrderFromDetail(detail).copyWith(
+          orderStatus: status,
+          assignmentStatus: OrderAssignmentStatus.assigned,
+          assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+          reachedStoreAt: status == OrderStatus.reachedPickup
+              ? DateTime.now()
+              : null,
+          deliveryPartnerLocation: _partnerLiveLocation,
+        );
+        _activeOrders.add(order);
+        if (restoredTripIds.containsKey(orderId)) {
+          _activeTripIds[orderId] = restoredTripIds[orderId]!;
         }
+        _replaceAcceptedOrder(order);
       }
 
       _currentlyViewedOrderIndex = _currentlyViewedOrderIndex.clamp(
@@ -3485,64 +3532,72 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _restoreActiveOrder(String orderId) async {
-    // Delegate to the multi-order fetch which handles migration automatically.
-    await fetchActiveOrder();
+    // Silent — orders appear in background without showing a spinner on open.
+    await fetchActiveOrder(silent: true);
   }
 
   /// Fallback restore used after logout/login when SharedPreferences no longer
-  /// hold an active order ID. Queries the server for in-progress trips assigned
-  /// to the logged-in driver and restores state if one is found.
+  /// hold active order IDs. Queries the server for all in-progress orders
+  /// assigned to the logged-in driver and restores all of them.
   Future<void> _tryRestoreActiveOrderByDriver() async {
     if (_driverName == null || _driverName!.isEmpty) return;
     try {
-      final trip = await _orderRepository.fetchFirstActiveTripWithOrders(
-        _driverName!,
-      );
-      if (trip == null || trip.stops.isEmpty) return;
+      // Fetch all active orders for this driver in one shot.
+      final summaries =
+          await _orderRepository.fetchActiveOrdersForDriverDirect();
+      if (summaries.isEmpty) return;
+
+      // Build orderId → tripId map across all active trips (best-effort).
+      Map<String, String> tripIdByOrder = {};
+      try {
+        tripIdByOrder = await _orderRepository.fetchActiveTripOrderMap(
+          _driverName!,
+        );
+      } catch (_) {}
 
       const terminalStatuses = {
-        'delivered',
-        'cancelled',
-        'failed',
-        'returned',
-        'return initiated',
+        OrderStatus.delivered,
+        OrderStatus.cancelled,
+        OrderStatus.rejected,
+        OrderStatus.pending,
       };
 
-      ExternalDeliveryDetail? detail;
-      for (final stop in trip.stops) {
-        final id = stop.externalDelivery.trim();
-        if (id.isEmpty) continue;
-        if (terminalStatuses.contains(stop.status.trim().toLowerCase()))
-          continue;
-        try {
-          detail = await _orderRepository.fetchDetail(id);
-          break;
-        } catch (_) {}
-      }
-      if (detail == null) return;
+      // Fetch all order details in parallel.
+      final ids = summaries
+          .map((s) => s.name.trim())
+          .where((id) => id.isNotEmpty && !_activeOrders.any((o) => o.orderId == id))
+          .toList();
 
-      final OrderStatus status = _mapExternalStatus(detail.status);
-      if (status == OrderStatus.delivered ||
-          status == OrderStatus.cancelled ||
-          status == OrderStatus.rejected ||
-          status == OrderStatus.pending) {
-        return;
-      }
-
-      final DeliveryOrder restoredOrder = _deliveryOrderFromDetail(
-        detail,
-      ).copyWith(
-        orderStatus: status,
-        assignmentStatus: OrderAssignmentStatus.assigned,
-        assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
-        deliveryPartnerLocation: _partnerLiveLocation,
+      final fetchResults = await Future.wait(
+        ids.map((id) async {
+          try {
+            final detail = await _orderRepository.fetchDetail(id);
+            return (id: id, detail: detail);
+          } catch (_) {
+            return null;
+          }
+        }),
       );
-      if (!_activeOrders.any((o) => o.orderId == restoredOrder.orderId)) {
+
+      for (final result in fetchResults) {
+        if (result == null) continue;
+        final OrderStatus status = _mapExternalStatus(result.detail.status);
+        if (terminalStatuses.contains(status)) continue;
+
+        final restoredOrder = _deliveryOrderFromDetail(result.detail).copyWith(
+          orderStatus: status,
+          assignmentStatus: OrderAssignmentStatus.assigned,
+          assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+          deliveryPartnerLocation: _partnerLiveLocation,
+        );
         _activeOrders.add(restoredOrder);
-        _activeTripIds[restoredOrder.orderId] = trip.name;
-        _currentlyViewedOrderIndex = _activeOrders.length - 1;
+        final tripId = tripIdByOrder[result.id];
+        if (tripId != null) _activeTripIds[result.id] = tripId;
+        _replaceAcceptedOrder(restoredOrder);
       }
-      _replaceAcceptedOrder(restoredOrder);
+
+      if (_activeOrders.isEmpty) return;
+      _currentlyViewedOrderIndex = 0;
       await _persistActiveOrders();
       unawaited(_startLocationPingIfReady());
       PartnerWidgetManager.updateWidget(
@@ -3551,8 +3606,7 @@ class AppController extends ChangeNotifier {
         activeOrder: activeOrder,
       );
       notifyListeners();
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   String? _toFrappeStatus(OrderStatus status) {
@@ -3889,6 +3943,7 @@ class AppController extends ChangeNotifier {
     if (ids.isEmpty) {
       await prefs.remove(_prefActiveOrderIds);
       await prefs.remove(_prefActiveTripIdsMap);
+      await prefs.remove(_prefActiveOrdersCache);
       // Also clear legacy keys.
       await prefs.remove(_prefActiveOrderId);
       await prefs.remove(_prefActiveTripId);
@@ -3898,6 +3953,43 @@ class AppController extends ChangeNotifier {
         _prefActiveTripIdsMap,
         jsonEncode(_activeTripIds),
       );
+      // Save full order data so the next launch can show orders instantly
+      // from cache while the network refresh runs in the background.
+      final List<Map<String, dynamic>> cacheList = _activeOrders
+          .map(
+            (o) => <String, dynamic>{
+              'orderId': o.orderId,
+              'customerName': o.customerName,
+              'customerPhone': o.customerPhone,
+              'deliveryAddress': o.deliveryAddress,
+              'storeId': o.storeId,
+              'storeName': o.storeName,
+              'storeContact': o.storeContact,
+              'storeAddress': o.storeAddress,
+              'orderStatus': o.orderStatus.name,
+              'latitude': o.latitude,
+              'longitude': o.longitude,
+              'contactNumber': o.contactNumber,
+              'pickup': o.pickup,
+              'drop': o.drop,
+              'distanceKm': o.distanceKm,
+              'estimatedEarnings': o.estimatedEarnings,
+              'paymentMode': o.paymentMode,
+              'deliveryInstructions': o.deliveryInstructions,
+              'acceptedAt': o.acceptedAt?.toIso8601String(),
+              'orderItems': o.orderItems
+                  .map(
+                    (i) => <String, dynamic>{
+                      'name': i.name,
+                      'quantity': i.quantity,
+                      'price': i.price,
+                    },
+                  )
+                  .toList(),
+            },
+          )
+          .toList();
+      await prefs.setString(_prefActiveOrdersCache, jsonEncode(cacheList));
       // Write first order to legacy key for backward compat.
       await prefs.setString(_prefActiveOrderId, ids.first);
       final String? firstTripId = _activeTripIds[ids.first];
@@ -3905,6 +3997,53 @@ class AppController extends ChangeNotifier {
         await prefs.setString(_prefActiveTripId, firstTripId);
       }
     }
+  }
+
+  DeliveryOrder _deliveryOrderFromCache(Map<String, dynamic> json) {
+    final String statusName = (json['orderStatus'] as String?) ?? 'accepted';
+    final OrderStatus status = OrderStatus.values.firstWhere(
+      (s) => s.name == statusName,
+      orElse: () => OrderStatus.accepted,
+    );
+    final dynamic itemsRaw = json['orderItems'];
+    final List<OrderItem> items = itemsRaw is List
+        ? itemsRaw
+            .whereType<Map<String, dynamic>>()
+            .map(
+              (i) => OrderItem(
+                name: (i['name'] as String?) ?? '',
+                quantity: (i['quantity'] as int?) ?? 1,
+                price: (i['price'] as num?)?.toDouble() ?? 0,
+              ),
+            )
+            .toList()
+        : <OrderItem>[];
+    return DeliveryOrder(
+      orderId: (json['orderId'] as String?) ?? '',
+      customerName: (json['customerName'] as String?) ?? '',
+      customerPhone: (json['customerPhone'] as String?) ?? '',
+      deliveryAddress: (json['deliveryAddress'] as String?) ?? '',
+      storeId: (json['storeId'] as String?) ?? '',
+      storeName: (json['storeName'] as String?) ?? '',
+      storeContact: (json['storeContact'] as String?) ?? '',
+      storeAddress: (json['storeAddress'] as String?) ?? '',
+      orderItems: items,
+      orderStatus: status,
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
+      contactNumber: (json['contactNumber'] as String?) ?? '',
+      pickup: (json['pickup'] as String?) ?? '',
+      drop: (json['drop'] as String?) ?? '',
+      distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 0,
+      estimatedEarnings: (json['estimatedEarnings'] as num?)?.toDouble() ?? 0,
+      paymentMode: (json['paymentMode'] as String?) ?? '',
+      deliveryInstructions: (json['deliveryInstructions'] as String?) ?? '',
+      acceptedAt: json['acceptedAt'] != null
+          ? DateTime.tryParse(json['acceptedAt'] as String)
+          : null,
+      assignmentStatus: OrderAssignmentStatus.assigned,
+      assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+    );
   }
 
   String t(

@@ -50,6 +50,7 @@ class ActiveOrderCard extends StatelessWidget {
     this.onPrimaryAction,
     this.secondaryActionLabel,
     this.onSecondaryAction,
+    this.showHeading = true,
   });
 
   final String heading;
@@ -63,59 +64,61 @@ class ActiveOrderCard extends StatelessWidget {
   final VoidCallback? onPrimaryAction;
   final String? secondaryActionLabel;
   final VoidCallback? onSecondaryAction;
+  final bool showHeading;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 10, right: 4),
-          child: Row(
-            children: [
-              Text(
-                heading,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: DashColors.textPrimary(context),
-                ),
-              ),
-              const SizedBox(width: 8),
-              StatusPill(
-                label: statusLabel,
-                tone: StatusPillTone.success,
-                dense: true,
-              ),
-              const Spacer(),
-              GestureDetector(
-                onTap: onAddOrder,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1F4FB6),
-                    borderRadius: BorderRadius.circular(20),
+        if (showHeading)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 10, right: 4),
+            child: Row(
+              children: [
+                Text(
+                  heading,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: DashColors.textPrimary(context),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.add_rounded, color: Colors.white, size: 14),
-                      SizedBox(width: 4),
-                      Text(
-                        'Add Another Order',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
+                ),
+                const SizedBox(width: 8),
+                StatusPill(
+                  label: statusLabel,
+                  tone: StatusPillTone.success,
+                  dense: true,
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: onAddOrder,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1F4FB6),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_rounded, color: Colors.white, size: 14),
+                        SizedBox(width: 4),
+                        Text(
+                          'Add Another Order',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         SectionCard(
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
           child: IntrinsicHeight(
