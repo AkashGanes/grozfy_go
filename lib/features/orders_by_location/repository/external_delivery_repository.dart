@@ -423,6 +423,37 @@ class ExternalDeliveryRepository {
 
   /// Fetches past orders for the logged-in driver directly from
   /// `External Delivery` using the `driver` field added in the backend.
+  Future<int> fetchPastOrdersCountForDriver() async {
+    final driver = await _getLoggedInDriver();
+    final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
+      queryParameters: {
+        'fields': jsonEncode(['name']),
+        'filters': jsonEncode([
+          ['External Delivery', 'driver', '=', driver],
+          [
+            'External Delivery',
+            'status',
+            'in',
+            <String>[
+              'Delivered',
+              'Cancelled',
+              'Failed',
+              'Returned',
+              'Return Initiated',
+            ],
+          ],
+        ]),
+        'limit_page_length': '0',
+      },
+    );
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+    final data = (jsonDecode(resp.body)['data']) as List;
+    return data.length;
+  }
+
   Future<List<ExternalDelivery>> fetchPastOrdersForDriver({
     int limitStart = 0,
     int limitPageLength = 20,

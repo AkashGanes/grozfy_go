@@ -9,7 +9,6 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/authed_network_image.dart';
 import '../dashboard/widgets/dashboard_colors.dart';
@@ -31,12 +30,12 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
 
   final ExternalDeliveryRepository _repo = ExternalDeliveryRepository();
 
-  List<DeliveryOrder> _activeOrders = [];
+  List<ExternalDelivery> _activeOrders = [];
   bool _isActiveLoading = true;
   String? _activeError;
   Future<void>? _activeFuture;
 
-  List<DeliveryOrder> _pastOrders = [];
+  List<ExternalDelivery> _pastOrders = [];
   bool _isPastLoading = true;
   bool _isLoadingMorePast = false;
   bool _hasMorePast = false;
@@ -45,43 +44,74 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
   String? _pastError;
   Future<void>? _pastFuture;
   bool _pastLoadRequested = false;
+  int? _pastTotalCount;
+  final ScrollController _pastScrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _loadActiveOrders();
+    _loadPastOrders();
+    _loadPastCount();
+    _pastScrollController.addListener(_onPastScroll);
   }
 
-  DeliveryOrder _summaryToOrder(ExternalDelivery s) {
-    final status = ref.read(appControllerProvider).mapStatus(s.status);
-    final address = s.deliveryAddress != null
-        ? Formatters.stripHtml(s.deliveryAddress!, preserveLineBreaks: false)
-        : '';
-    return DeliveryOrder(
-      id: s.name,
-      orderId: s.name,
-      customerName: s.customerName,
-      customerPhone: '',
-      deliveryAddress: address,
-      storeId: s.storeUrl.isNotEmpty ? s.storeUrl : s.storeName,
-      storeName: s.storeName,
-      storeContact: '',
-      storeAddress: '',
-      orderItems: const [],
-      orderStatus: status,
-      latitude: 0,
-      longitude: 0,
-      pickup: '',
-      drop: address,
-      paymentMode: '',
-      distanceKm: 0,
-      estimatedEarnings: 0,
-      assignmentStatus: status == OrderStatus.pending
-          ? OrderAssignmentStatus.unassigned
-          : OrderAssignmentStatus.assigned,
-      createdAt: s.creation.isNotEmpty ? DateTime.tryParse(s.creation) : null,
-      failureReasonCode: s.failureReasonCode,
-      deliveryNotes: s.deliveryNotes,
+  @override
+  void dispose() {
+    _pastScrollController
+      ..removeListener(_onPastScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onPastScroll() {
+    final pos = _pastScrollController.position;
+    if (pos.extentAfter < 300 && _hasMorePast && !_isLoadingMorePast) {
+      _loadMorePast();
+    }
+  }
+
+  // Convert an app-state DeliveryOrder to ExternalDelivery for unified display.
+  ExternalDelivery _orderToSummary(DeliveryOrder o) {
+    String statusStr;
+    switch (o.orderStatus) {
+      case OrderStatus.accepted:
+        statusStr = 'Added to Trip';
+        break;
+      case OrderStatus.reachedPickup:
+        statusStr = 'Reached Pickup';
+        break;
+      case OrderStatus.pickedUp:
+        statusStr = 'Picked Up';
+        break;
+      case OrderStatus.outForDelivery:
+        statusStr = 'Out for Delivery';
+        break;
+      case OrderStatus.delivered:
+        statusStr = 'Delivered';
+        break;
+      case OrderStatus.failed:
+        statusStr = 'Failed';
+        break;
+      case OrderStatus.cancelled:
+        statusStr = 'Cancelled';
+        break;
+      case OrderStatus.returned:
+        statusStr = 'Returned';
+        break;
+      default:
+        statusStr = 'Pending';
+    }
+    final modified = o.acceptedAt?.toString() ?? o.createdAt?.toString() ?? '';
+    return ExternalDelivery(
+      name: o.orderId,
+      storeUrl: o.storeId,
+      storeName: o.storeName,
+      customerName: o.customerName,
+      status: statusStr,
+      creation: o.createdAt?.toString() ?? '',
+      modified: modified,
+      deliveryAddress: o.deliveryAddress,
     );
   }
 
@@ -91,6 +121,13 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
     _pastFuture = _doLoadPast();
     await _pastFuture;
     _pastFuture = null;
+  }
+
+  Future<void> _loadPastCount() async {
+    try {
+      final count = await _repo.fetchPastOrdersCountForDriver();
+      if (mounted) setState(() => _pastTotalCount = count);
+    } catch (_) {}
   }
 
   Future<void> _loadActiveOrders() async {
@@ -107,10 +144,9 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
     });
     try {
       final summaries = await _repo.fetchActiveOrdersForDriverDirect();
-      final orders = summaries.map(_summaryToOrder).toList();
       if (mounted) {
         setState(() {
-          _activeOrders = orders;
+          _activeOrders = summaries;
           _isActiveLoading = false;
         });
       }
@@ -135,10 +171,9 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
         limitStart: 0,
         limitPageLength: _pastPageSize,
       );
-      final orders = summaries.map(_summaryToOrder).toList();
       if (mounted) {
         setState(() {
-          _pastOrders = orders;
+          _pastOrders = summaries;
           _isPastLoading = false;
           _hasMorePast = summaries.length >= _pastPageSize;
           _pastLimitStart = summaries.length;
@@ -186,14 +221,9 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
         limitStart: _pastLimitStart,
         limitPageLength: _pastPageSize,
       );
-      final orders = summaries.map(_summaryToOrder).toList();
       if (mounted) {
-        // De-dup against what we already have: overlapping pages from the
-        // backend would otherwise produce two rows sharing the same ValueKey,
-        // which trips a "Duplicate keys found" assertion in the ListView.
-        final existingIds = _pastOrders.map((o) => o.orderId).toSet();
-        final fresh =
-            orders.where((o) => existingIds.add(o.orderId)).toList();
+        final existingNames = _pastOrders.map((o) => o.name).toSet();
+        final fresh = summaries.where((o) => existingNames.add(o.name)).toList();
         setState(() {
           _pastOrders = [..._pastOrders, ...fresh];
           _isLoadingMorePast = false;
@@ -208,8 +238,8 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appActiveOrder = ref.watch(appControllerProvider).activeOrder;
-    final List<DeliveryOrder> activeOrders = _buildActiveOrders(appActiveOrder);
+    final appActiveOrders = ref.watch(appControllerProvider).activeOrders;
+    final List<ExternalDelivery> activeOrders = _buildActiveOrders(appActiveOrders);
     return AppShell(
       title: 'My Orders',
       subtitle: 'Track your deliveries',
@@ -227,7 +257,7 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
               child: _selectedTab == 0
                   ? KeyedSubtree(
                       key: const ValueKey('active'),
-                      child: _buildActiveList(activeOrders),
+                      child: _buildActiveList(activeOrders, appActiveOrders),
                     )
                   : KeyedSubtree(
                       key: const ValueKey('past'),
@@ -246,15 +276,16 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
   /// vanished as soon as the fetch returned. Showing both without de-duping
   /// would render (and key) the same order twice, tripping a duplicate-key
   /// assertion; this keeps a single, ordered, unique list.
-  List<DeliveryOrder> _buildActiveOrders(DeliveryOrder? appActiveOrder) {
+  List<ExternalDelivery> _buildActiveOrders(List<DeliveryOrder> appActiveOrders) {
     final seen = <String>{};
-    final merged = <DeliveryOrder>[];
-    void add(DeliveryOrder order) {
-      final key = order.orderId.isNotEmpty ? order.orderId : order.id;
-      if (key.isEmpty || seen.add(key)) merged.add(order);
+    final merged = <ExternalDelivery>[];
+    void add(ExternalDelivery order) {
+      if (order.name.isNotEmpty && seen.add(order.name)) merged.add(order);
     }
-
-    if (appActiveOrder != null) add(appActiveOrder);
+    // App state orders show immediately (from cache); fetched list refreshes them.
+    for (final order in appActiveOrders) {
+      add(_orderToSummary(order));
+    }
     for (final order in _activeOrders) {
       add(order);
     }
@@ -386,14 +417,9 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
             _tabSegment(
               index: 1,
               label: 'Past',
-              count: _isPastLoading && _pastOrders.isEmpty
-                  ? null
-                  : _pastOrders.length,
+              count: _pastTotalCount ?? (_pastOrders.isNotEmpty ? _pastOrders.length : null),
               onTap: () {
                 if (_selectedTab != 1) setState(() => _selectedTab = 1);
-                if (!_pastLoadRequested && _pastFuture == null) {
-                  _loadPastOrders();
-                }
               },
             ),
           ],
@@ -474,7 +500,10 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
     );
   }
 
-  Widget _buildActiveList(List<DeliveryOrder> activeOrders) {
+  Widget _buildActiveList(
+    List<ExternalDelivery> activeOrders,
+    List<DeliveryOrder> appActiveOrders,
+  ) {
     if (_activeError != null && activeOrders.isEmpty) {
       return _refreshable(
         _loadActiveOrders,
@@ -501,20 +530,25 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
     return RefreshIndicator(
       onRefresh: _loadActiveOrders,
       child: ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
         itemCount: activeOrders.length,
         itemBuilder: (context, index) {
           final order = activeOrders[index];
           return _OrderCard(
-            key: order.orderId.isNotEmpty
-                ? ValueKey('active_${order.orderId}')
-                : ObjectKey(order),
+            key: ValueKey('active_${order.name}'),
             order: order,
-            onTap: () => Navigator.of(context).pushNamed(
-              AppRoutes.orderDetails,
-              arguments: order,
-            ),
+            showDate: false,
+            onTap: () {
+              final matches = appActiveOrders
+                  .where((o) => o.orderId == order.name);
+              if (matches.isNotEmpty) {
+                Navigator.of(context).pushNamed(
+                  AppRoutes.orderDetails,
+                  arguments: matches.first,
+                );
+              }
+            },
           );
         },
       ),
@@ -549,35 +583,50 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
     return RefreshIndicator(
       onRefresh: _loadPastOrders,
       child: ListView.builder(
+        controller: _pastScrollController,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-        itemCount: _pastOrders.length + (_hasMorePast ? 1 : 0),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+        itemCount: _pastOrders.length + (_isLoadingMorePast ? 1 : 0),
         itemBuilder: (context, index) {
           if (index == _pastOrders.length) {
-            return Padding(
-              key: const ValueKey('past_load_more'),
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Center(
-                child: _isLoadingMorePast
-                    ? const CircularProgressIndicator()
-                    : OutlinedButton.icon(
-                        onPressed: _loadMorePast,
-                        icon: const Icon(Icons.expand_more_rounded, size: 18),
-                        label: const Text('Load more'),
-                      ),
-              ),
+            return const Padding(
+              key: ValueKey('past_loading_more'),
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(child: CircularProgressIndicator()),
             );
           }
           final order = _pastOrders[index];
           return _OrderCard(
-            key: order.orderId.isNotEmpty
-                ? ValueKey('past_${order.orderId}')
-                : ObjectKey(order),
+            key: ValueKey('past_${order.name}'),
             order: order,
-            onTap: () => Navigator.of(context).pushNamed(
-              AppRoutes.orderDetails,
-              arguments: order,
-            ),
+            onTap: () {
+              final OrderStatus status = switch (order.status) {
+                'Delivered' => OrderStatus.delivered,
+                'Cancelled' => OrderStatus.cancelled,
+                'Failed' => OrderStatus.failed,
+                'Returned' => OrderStatus.returned,
+                'Return Initiated' => OrderStatus.returned,
+                _ => OrderStatus.delivered,
+              };
+              final deliveryOrder = DeliveryOrder(
+                orderId: order.name,
+                customerName: order.customerName,
+                customerPhone: '',
+                deliveryAddress: order.deliveryAddress ?? '',
+                storeId: order.storeUrl,
+                storeName: order.storeName,
+                storeContact: '',
+                storeAddress: '',
+                orderItems: const [],
+                orderStatus: status,
+                latitude: 0,
+                longitude: 0,
+              );
+              Navigator.of(context).pushNamed(
+                AppRoutes.orderDetails,
+                arguments: deliveryOrder,
+              );
+            },
           );
         },
       ),
@@ -1285,243 +1334,274 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
 // ---------------------------------------------------------------------------
 
 class _OrderCard extends StatelessWidget {
-  const _OrderCard({super.key, required this.order, this.onTap});
-  final DeliveryOrder order;
+  const _OrderCard({super.key, required this.order, this.onTap, this.showDate = true});
+  final ExternalDelivery order;
   final VoidCallback? onTap;
+  final bool showDate;
+
+  String _formatDate(String raw) {
+    if (raw.length < 10) return raw;
+    final parts = raw.substring(0, 10).split('-');
+    if (parts.length != 3) return raw.substring(0, 10);
+    return '${parts[2]}/${parts[1]}/${parts[0]}';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor(order.orderStatus);
-    final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final String address =
-        order.drop.isNotEmpty ? order.drop : order.deliveryAddress;
-    final bool hasFooter = order.estimatedEarnings > 0 ||
-        order.createdAt != null ||
-        order.distanceKm > 0;
-    const double radius = 20;
+    final Color cardBg = isDark ? const Color(0xFF1B1E2A) : Colors.white;
+    final Color cardBorder =
+        isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE4E7EC);
+    final Color textPrimary =
+        isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
+    final Color textSecondary =
+        isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
+    const Color accent = Color(0xFF1F5FE8);
+    final statusColor = order.status.statusColor;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: scheme.surface.withValues(alpha: isDark ? 0.9 : 0.92),
-        borderRadius: BorderRadius.circular(radius),
-        clipBehavior: Clip.antiAlias,
-        elevation: isDark ? 3 : 2,
-        shadowColor: Colors.black.withValues(alpha: isDark ? 0.22 : 0.08),
-        child: InkWell(
-          onTap: onTap,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(
-                color: isDark
-                    ? scheme.outline.withValues(alpha: 0.18)
-                    : Colors.white.withValues(alpha: 0.8),
-              ),
-            ),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Status accent stripe
-                  Container(
-                    width: 4,
-                    color: statusColor,
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Material(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  border: Border.all(color: cardBorder),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black
+                          .withValues(alpha: isDark ? 0.25 : 0.04),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Order ID + status badge
                           Row(
                             children: [
                               Expanded(
                                 child: Text(
-                                  order.orderId,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  order.name,
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w800,
-                                    fontSize: 14.5,
+                                    fontSize: 15,
+                                    color: textPrimary,
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              _statusChip(statusColor),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withValues(alpha: 0.10),
+                                  borderRadius: BorderRadius.circular(99),
+                                  border: Border.all(
+                                    color: statusColor.withValues(alpha: 0.35),
+                                  ),
+                                ),
+                                child: Text(
+                                  order.status,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: statusColor,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 10),
-                          _infoRow(context, Icons.store_rounded, order.storeName),
-                          const SizedBox(height: 5),
-                          _infoRow(
-                              context, Icons.person_rounded, order.customerName),
-                          if (address.isNotEmpty) ...[
-                            const SizedBox(height: 5),
-                            _infoRow(
-                                context, Icons.location_on_rounded, address),
-                          ],
-                          if (hasFooter) ...[
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                if (order.estimatedEarnings > 0)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 5,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.mint.withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
-                                      style: const TextStyle(
-                                        color: AppTheme.mint,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                const Spacer(),
-                                if (order.createdAt != null)
-                                  _footerMeta(
-                                    context,
-                                    Icons.schedule_rounded,
-                                    _formatDate(order.createdAt!),
-                                  )
-                                else if (order.distanceKm > 0)
-                                  _footerMeta(
-                                    context,
-                                    Icons.route_rounded,
-                                    '${order.distanceKm.toStringAsFixed(1)} km',
-                                  ),
-                              ],
+                          _CardMetaRow(
+                            icon: Icons.store_rounded,
+                            iconColor: const Color(0xFF2D6CDF),
+                            iconBg: isDark
+                                ? const Color(0xFF1A2C4F)
+                                : const Color(0xFFE5EEFB),
+                            label: 'Store',
+                            value: order.storeName.isNotEmpty
+                                ? order.storeName
+                                : '—',
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
+                          ),
+                          _CardMetaRow(
+                            icon: Icons.person_rounded,
+                            iconColor: const Color(0xFF1AB36A),
+                            iconBg: isDark
+                                ? const Color(0xFF14352A)
+                                : const Color(0xFFE7F7EE),
+                            label: 'Customer',
+                            value: order.customerName.isNotEmpty
+                                ? order.customerName
+                                : '—',
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
+                          ),
+                          _CardMetaRow(
+                            icon: Icons.location_on_rounded,
+                            iconColor: const Color(0xFF7C3AED),
+                            iconBg: isDark
+                                ? const Color(0xFF2D2148)
+                                : const Color(0xFFEFE9FE),
+                            label: 'Drop',
+                            value: (order.deliveryAddress?.isNotEmpty == true)
+                                ? order.deliveryAddress!
+                                : '—',
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
+                          ),
+                          if (showDate)
+                            _CardMetaRow(
+                              icon: Icons.schedule_rounded,
+                              iconColor: const Color(0xFFF38B19),
+                              iconBg: isDark
+                                  ? const Color(0xFF3A2613)
+                                  : const Color(0xFFFFEFDA),
+                              label: 'Date',
+                              value: _formatDate(order.modified),
+                              labelColor: textSecondary,
+                              valueColor: textPrimary,
                             ),
-                          ],
                         ],
                       ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: Center(
-                      child: Icon(
-                        Icons.chevron_right_rounded,
-                        color: scheme.onSurface.withValues(alpha: 0.3),
-                        size: 22,
+                    // View Details button
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                      child: Material(
+                        color: accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          onTap: onTap,
+                          borderRadius: BorderRadius.circular(12),
+                          child: SizedBox(
+                            height: 48,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Text(
+                                  'View Details',
+                                  style: TextStyle(
+                                    color: accent,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Positioned(
+                                  right: 14,
+                                  child: Icon(
+                                    Icons.chevron_right_rounded,
+                                    color: accent,
+                                    size: 22,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
+              // Left accent bar
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 4,
+                child: IgnorePointer(
+                  child: ColoredBox(color: statusColor),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _statusChip(Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.13),
-        borderRadius: BorderRadius.circular(99),
-      ),
+class _CardMetaRow extends StatelessWidget {
+  const _CardMetaRow({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+    required this.label,
+    required this.value,
+    required this.labelColor,
+    required this.valueColor,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
+  final String label;
+  final String value;
+  final Color labelColor;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 14, color: iconColor),
           ),
-          const SizedBox(width: 5),
-          Text(
-            order.orderStatus.label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w700,
-              fontSize: 10.5,
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 76,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: labelColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                color: valueColor,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
       ),
     );
-  }
-
-  Widget _infoRow(BuildContext context, IconData icon, String text) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: scheme.onSurface.withValues(alpha: 0.5)),
-        const SizedBox(width: 7),
-        Expanded(
-          child: Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 13,
-              color: scheme.onSurface.withValues(alpha: 0.85),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _footerMeta(BuildContext context, IconData icon, String text) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 13, color: scheme.onSurface.withValues(alpha: 0.45)),
-        const SizedBox(width: 4),
-        Text(
-          text,
-          style: TextStyle(
-            color: scheme.onSurface.withValues(alpha: 0.5),
-            fontSize: 11.5,
-          ),
-        ),
-      ],
-    );
-  }
-
-  static String _formatDate(DateTime dt) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    final h = dt.hour.toString().padLeft(2, '0');
-    final m = dt.minute.toString().padLeft(2, '0');
-    return '${dt.day} ${months[dt.month - 1]}, $h:$m';
-  }
-
-  Color _getStatusColor(OrderStatus status) {
-    switch (status) {
-      case OrderStatus.pending:
-        return Colors.orange;
-      case OrderStatus.accepted:
-        return AppTheme.oceanBlue;
-      case OrderStatus.rejected:
-        return Colors.red;
-      case OrderStatus.reachedPickup:
-        return Colors.purple;
-      case OrderStatus.pickedUp:
-        return Colors.blue;
-      case OrderStatus.outForDelivery:
-        return AppTheme.mango;
-      case OrderStatus.delivered:
-        return AppTheme.mint;
-      case OrderStatus.failed:
-      case OrderStatus.cancelled:
-        return Colors.red;
-      case OrderStatus.returned:
-        return Colors.brown;
-    }
   }
 }
