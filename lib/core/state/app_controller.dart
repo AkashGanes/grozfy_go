@@ -99,8 +99,11 @@ class AppController extends ChangeNotifier {
   static const String _prefActiveTripId = 'active_trip_id';
   static const String _prefActiveOrderIds = 'active_order_ids';
   static const String _prefActiveTripIdsMap = 'active_trip_ids_map';
-  static const String _prefTotalTripTimeTodayMs = 'total_trip_time_today_ms';
-  static const String _prefTripTimeSavedDate = 'trip_time_saved_date';
+  // Per-driver keys so multiple users on the same device don't share avg data.
+  static String _prefTotalTripTimeTodayMs(String driver) =>
+      'total_trip_time_today_ms_$driver';
+  static String _prefTripTimeSavedDate(String driver) =>
+      'trip_time_saved_date_$driver';
   static const int maxConcurrentOrders = 3;
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 300;
@@ -642,11 +645,17 @@ class AppController extends ChangeNotifier {
       }
     }
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
+    // Read driver name early so the DB query below filters by the correct partner.
+    final String? earlyDriverName = _nullIfBlank(prefs.getString(_prefDriverName));
     if (_timingDao != null) {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
       final endOfDay = startOfDay.add(const Duration(days: 1));
-      final rows = await _timingDao.getEventsInRange(startOfDay, endOfDay);
+      final rows = await _timingDao.getEventsInRange(
+        startOfDay,
+        endOfDay,
+        partner: earlyDriverName,
+      );
       final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
       final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
       if (logins.isNotEmpty && logouts.isNotEmpty) {
@@ -666,9 +675,10 @@ class AppController extends ChangeNotifier {
       // for today (first run after an app update, etc.).
       final now2 = DateTime.now();
       final todayStr = '${now2.year}-${now2.month.toString().padLeft(2, '0')}-${now2.day.toString().padLeft(2, '0')}';
-      final savedDate = prefs.getString(_prefTripTimeSavedDate);
+      final driverKey = earlyDriverName ?? '';
+      final savedDate = driverKey.isNotEmpty ? prefs.getString(_prefTripTimeSavedDate(driverKey)) : null;
       if (savedDate == todayStr) {
-        final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs) ?? 0;
+        final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs(driverKey)) ?? 0;
         _totalTripTimeToday = Duration(milliseconds: savedMs);
       } else {
         // Prefs is from a previous day — compute from DB event pairs instead.
@@ -689,9 +699,19 @@ class AppController extends ChangeNotifier {
         _totalTripTimeToday = restoredTripTime;
       }
       // Mark already-recorded trip acceptances so the screen doesn't re-fire them.
+      // For trips still in progress (accepted today but NOT yet completed today),
+      // also restore _tripAcceptedTimes so the duration is captured when they finish.
+      final completedTodayRefs = rows
+          .where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)
+          .map((r) => r.tripName!)
+          .toSet();
       for (final r in rows) {
         if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
           _sessionTripAcceptances.add(r.tripName!);
+          if (!completedTodayRefs.contains(r.tripName!)) {
+            // Trip still in progress — restore start time from DB.
+            _tripAcceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+          }
         }
       }
     }
@@ -1501,6 +1521,7 @@ class AppController extends ChangeNotifier {
       // dashboard renders with complete data (no race between navigation and
       // background fetch). The login screen's _busy spinner covers this wait.
       await _backgroundSync();
+      await _restoreSessionFromDb();
       notifyListeners();
       _writeTimingEvent(eventType: TimingEventType.login);
 
@@ -1708,6 +1729,7 @@ class AppController extends ChangeNotifier {
       await _persistSession(responseData);
 
       await _backgroundSync();
+      await _restoreSessionFromDb();
       notifyListeners();
 
       return null;
@@ -1840,8 +1862,9 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefPermBackground),
       prefs.remove(_prefPermNotification),
       prefs.remove(_prefLicenseRequiresReupload),
-      prefs.remove(_prefTotalTripTimeTodayMs),
-      prefs.remove(_prefTripTimeSavedDate),
+      // Per-driver avg-duration prefs are intentionally kept on logout.
+      // They are keyed by driver name so other users can't see them,
+      // and the same user logging back in the same day needs them intact.
     ]);
 
     // Server-side cleanup — fire-and-forget so the caller's navigation
@@ -4430,12 +4453,90 @@ class AppController extends ChangeNotifier {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  /// Re-reads today's timing events from the local DB and restores all
+  /// in-memory counters. Called after login so the dashboard reflects
+  /// any trips/duty that occurred earlier in the day without a restart.
+  Future<void> _restoreSessionFromDb() async {
+    final dao = _timingDao;
+    if (dao == null) return;
+    final partner = _driverName ?? _profile?.mobile;
+    if (partner == null || partner.trim().isEmpty) return;
+
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final rows = await dao.getEventsInRange(
+      startOfDay,
+      endOfDay,
+      partner: partner.trim(),
+    );
+
+    // Duty hours from login/logout pairs (previous sessions only — current
+    // session starts fresh once the driver goes online).
+    final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
+    final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
+    if (logins.isNotEmpty && logouts.isNotEmpty) {
+      final diff = DateTime.parse(logouts.last.eventTime)
+          .difference(DateTime.parse(logins.first.eventTime));
+      if (!diff.isNegative) _completedDutyToday = diff;
+    }
+
+    // Trip count.
+    _completedTripsToday = rows
+        .where((r) => r.eventType == TimingEventType.tripCompleted)
+        .length;
+
+    // Avg trip duration — prefs first (saved after every completion).
+    final prefs = await SharedPreferences.getInstance();
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final savedDate = prefs.getString(_prefTripTimeSavedDate(partner.trim()));
+    if (savedDate == todayStr) {
+      final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs(partner.trim())) ?? 0;
+      _totalTripTimeToday = Duration(milliseconds: savedMs);
+    } else {
+      final acceptedTimes = <String, DateTime>{};
+      for (final r in rows) {
+        if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+          acceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+        }
+      }
+      var total = Duration.zero;
+      for (final r in rows.where(
+        (r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null,
+      )) {
+        final start = acceptedTimes[r.tripName!];
+        if (start != null) {
+          final d = DateTime.parse(r.eventTime).difference(start);
+          if (!d.isNegative) total += d;
+        }
+      }
+      _totalTripTimeToday = total;
+    }
+
+    // Restore start times for any trips still in progress today.
+    final completedRefs = rows
+        .where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)
+        .map((r) => r.tripName!)
+        .toSet();
+    for (final r in rows) {
+      if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+        _sessionTripAcceptances.add(r.tripName!);
+        if (!completedRefs.contains(r.tripName!)) {
+          _tripAcceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+        }
+      }
+    }
+  }
+
   void _persistTripTimeToday() {
+    final driver = _driverName ?? _profile?.mobile ?? '';
+    if (driver.isEmpty) return;
     final now = DateTime.now();
     final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     _writePref((prefs) async {
-      await prefs.setInt(_prefTotalTripTimeTodayMs, _totalTripTimeToday.inMilliseconds);
-      await prefs.setString(_prefTripTimeSavedDate, dateStr);
+      await prefs.setInt(_prefTotalTripTimeTodayMs(driver), _totalTripTimeToday.inMilliseconds);
+      await prefs.setString(_prefTripTimeSavedDate(driver), dateStr);
       return true;
     });
   }

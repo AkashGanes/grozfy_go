@@ -218,14 +218,23 @@ int _longestStreak(List<TimingEvent> events) {
   return longest;
 }
 
+Future<String?> _currentPartner() async {
+  final prefs = await SharedPreferences.getInstance();
+  return _nullIfBlank(prefs.getString('driver_name'));
+}
+
+String? _nullIfBlank(String? s) =>
+    (s == null || s.trim().isEmpty) ? null : s.trim();
+
 final dailySummaryProvider =
     FutureProvider.autoDispose<DailySummary>((ref) async {
   final dao = ref.read(partnerTimingLogDaoProvider);
   final now = DateTime.now();
   final startOfDay = DateTime(now.year, now.month, now.day);
   final endOfDay = startOfDay.add(const Duration(days: 1));
+  final partner = await _currentPartner();
 
-  final allLocal = await dao.getEventsInRange(startOfDay, endOfDay);
+  final allLocal = await dao.getEventsInRange(startOfDay, endOfDay, partner: partner);
   final localEvents = _rowsToEvents(allLocal);
 
   try {
@@ -244,8 +253,9 @@ final monthlySummaryProvider = FutureProvider.autoDispose
   final end = period.month < 12
       ? DateTime(period.year, period.month + 1, 1)
       : DateTime(period.year + 1, 1, 1);
+  final partner = await _currentPartner();
 
-  final allLocal = await dao.getEventsInRange(start, end);
+  final allLocal = await dao.getEventsInRange(start, end, partner: partner);
   final localEvents = _rowsToEvents(allLocal);
 
   try {
@@ -264,7 +274,9 @@ final monthlySummaryProvider = FutureProvider.autoDispose
 final lifetimeStatsProvider =
     FutureProvider.autoDispose<LifetimeStats>((ref) async {
   final dao = ref.read(partnerTimingLogDaoProvider);
-  final allLocal = await dao.getAllEvents();
+  final partner = await _currentPartner();
+
+  final allLocal = await dao.getAllEvents(partner: partner);
   final localEvents = _rowsToEvents(allLocal);
 
   try {

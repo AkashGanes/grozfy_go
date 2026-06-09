@@ -33,11 +33,21 @@ class _PickupJobDetailScreenState
     extends ConsumerState<PickupJobDetailScreen> {
   late Future<_JobDetail> _future;
   bool _isSubmitting = false;
+  bool _tripAcceptedFired = false;
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_tripAcceptedFired) {
+        _tripAcceptedFired = true;
+        ref.read(appControllerProvider).recordTimingEvent(
+          eventType: TimingEventType.tripAccepted,
+          tripRef: widget.pickupJobName,
+        );
+      }
+    });
   }
 
   Future<_JobDetail> _load() async {
