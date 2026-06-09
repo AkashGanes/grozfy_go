@@ -8,73 +8,71 @@ class BankSubmittedDetailsScreen extends StatelessWidget {
 
   final Map<String, dynamic> bankData;
 
-  Map<String, String> _rows() {
-    final Map<String, String> rows = <String, String>{};
+  String _maskedAccountNo(String raw) {
+    final String digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.length <= 4) return digits;
+    final String visible = digits.substring(digits.length - 4);
+    return '${'●' * (digits.length - 4)} $visible';
+  }
 
-    void put(String label, String key) {
-      final String value = (bankData[key]?.toString() ?? '').trim();
-      if (value.isNotEmpty) {
-        rows[label] = value;
-      }
+  List<_DetailRow> _rows() {
+    final List<_DetailRow> rows = <_DetailRow>[];
+
+    void add(String label, String key, {bool mask = false}) {
+      final String raw = (bankData[key]?.toString() ?? '').trim();
+      if (raw.isEmpty) return;
+      rows.add(_DetailRow(label: label, value: mask ? _maskedAccountNo(raw) : raw));
     }
 
-    put('Account Name', 'account_name');
-    put('Bank', 'bank');
-    put('Company Account', 'account');
-    put('Account Type', 'account_type');
-    put('Account Subtype', 'account_subtype');
-    put('Company', 'company');
-    put('Party Type', 'party_type');
-    put('Party', 'party');
-    put('IBAN', 'iban');
-    put('Branch Code', 'branch_code');
-    put('Bank Account No', 'bank_account_no');
-    put('Last Integration Date', 'last_integration_date');
-
-    rows['Disabled'] = bankData['disabled']?.toString() == '1' ? 'Yes' : 'No';
-    rows['Is Default'] = bankData['is_default']?.toString() == '1'
-        ? 'Yes'
-        : 'No';
-    rows['Is Company Account'] = bankData['is_company_account']?.toString() == '1'
-        ? 'Yes'
-        : 'No';
+    add('Account Holder Name', 'account_name');
+    add('Bank', 'bank');
+    add('Account Type', 'account_type');
+    add('Account Number', 'bank_account_no', mask: true);
+    add('IFSC Code', 'branch_code');
+    add('Branch Name', 'branch_name');
+    add('IBAN', 'iban');
 
     return rows;
   }
 
   @override
   Widget build(BuildContext context) {
-    final String title =
-        bankData['account_name']?.toString().trim().isNotEmpty == true
-        ? bankData['account_name']!.toString().trim()
-        : 'Bank Account Details';
-    final Map<String, String> rows = _rows();
+    final String holderName =
+        (bankData['account_name']?.toString() ?? '').trim();
+    final String pageTitle =
+        holderName.isNotEmpty ? holderName : 'Bank Details';
+    final List<_DetailRow> rows = _rows();
 
     return AppShell(
-      title: title,
-      subtitle: 'Submitted bank account details',
+      title: pageTitle,
+      subtitle: 'Your saved bank details',
       child: FrostCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final entry in rows.entries) ...[
+            for (final _DetailRow row in rows) ...[
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(
                     width: 150,
                     child: Text(
-                      entry.key,
+                      row.label,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withValues(alpha: 0.6),
+                          ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      entry.value,
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      row.value,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                     ),
                   ),
                 ],
@@ -93,7 +91,7 @@ class BankSubmittedDetailsScreen extends StatelessWidget {
                       );
                     },
                     icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Edit Bank Details'),
+                    label: const Text('Edit Account'),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -102,7 +100,7 @@ class BankSubmittedDetailsScreen extends StatelessWidget {
                     onPressed: () {
                       Navigator.of(context).pushNamed(AppRoutes.permission);
                     },
-                    child: const Text('Permission Setup'),
+                    child: const Text('Continue'),
                   ),
                 ),
               ],
@@ -112,4 +110,10 @@ class BankSubmittedDetailsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DetailRow {
+  const _DetailRow({required this.label, required this.value});
+  final String label;
+  final String value;
 }

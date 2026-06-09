@@ -251,8 +251,6 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
       final fp = _licenseFilePath != null;
       return ln && fp;
     }
-    final licenseEditable = (_existingLicenseUrl ?? '').isEmpty ||
-        _editableOverrides.contains('license');
     final aadharEditable = (_existingAadharUrl ?? '').isEmpty ||
         _editableOverrides.contains('aadhar');
     final panEditable = (_existingPanUrl ?? '').isEmpty ||
@@ -260,7 +258,6 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
 
     // Only validate format if the user actually changed the value from the
     // saved backend snapshot. Pre-populated data is trusted as-is.
-    final licenseChanged = _licenseNumberCtrl.text != _savedLicenseNo;
     final panChanged = _panNoCtrl.text != _savedPanNo;
 
     bool aadharValid = true;

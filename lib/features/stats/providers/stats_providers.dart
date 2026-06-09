@@ -85,7 +85,7 @@ Future<List<TimingEvent>> _fetchFromErpNext(
     throw Exception('Missing logs array in response');
   }
 
-  final events = (logs as List)
+  final events = logs
       .whereType<Map<String, dynamic>>()
       .map(TimingEvent.fromJson)
       .toList()

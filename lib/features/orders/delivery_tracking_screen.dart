@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
 import 'package:geolocator/geolocator.dart';
@@ -12,7 +11,6 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
-import '../../core/services/api_service.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/utils/call_utils.dart';
@@ -51,7 +49,7 @@ class DeliveryTrackingScreen extends StatefulWidget {
 
 class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
     with TickerProviderStateMixin {
-  final ApiService _apiService = ApiService();
+  final ExternalDeliveryRepository _deliveryRepo = ExternalDeliveryRepository();
   late final AnimatedMapController _animatedMapController;
   MapController get _mapController => _animatedMapController.mapController;
   StreamSubscription<Position>? _positionStream;
@@ -760,10 +758,12 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
 
     AppToast.show(context, 'Cancelling delivery $deliveryName...');
 
-    final success = await _apiService.updateDeliveryStatus(
-      deliveryName,
-      'Cancelled',
-    );
+    bool success = true;
+    try {
+      await _deliveryRepo.updateStatusViaSetValue(deliveryName, 'Cancelled');
+    } catch (_) {
+      success = false;
+    }
 
     if (!mounted) return;
 
@@ -802,10 +802,12 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
 
     AppToast.show(context, 'Confirming delivery $deliveryName...');
 
-    final success = await _apiService.updateDeliveryStatus(
-      deliveryName,
-      'Delivered',
-    );
+    bool success = true;
+    try {
+      await _deliveryRepo.updateStatusViaSetValue(deliveryName, 'Delivered');
+    } catch (_) {
+      success = false;
+    }
 
     if (!mounted) return;
 
@@ -874,7 +876,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       body: Stack(
         children: [

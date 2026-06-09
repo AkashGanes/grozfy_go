@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
-import '../../core/models/app_models.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/navigation/app_routes.dart';
-import '../../core/services/api_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/skeleton_loader.dart';
+import '../orders_by_location/model/external_delivery.dart';
+import '../orders_by_location/model/external_delivery_detail.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 
@@ -19,10 +19,9 @@ class DeliveryListScreen extends StatefulWidget {
 }
 
 class _DeliveryListScreenState extends State<DeliveryListScreen> {
-  final ApiService _apiService = ApiService();
   final ExternalDeliveryRepository _repository = ExternalDeliveryRepository();
 
-  List<ExternalDeliveryOrder> _deliveries = [];
+  List<ExternalDelivery> _deliveries = [];
   bool _isLoading = true;
   String? _errorMessage;
   bool _isRefreshing = false;
@@ -40,13 +39,7 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
     });
 
     try {
-      debugPrint('[DeliveryList] Fetching deliveries...');
-      final deliveries = await _apiService.getExternalDeliveries(
-        filters: [
-          ['External Delivery', 'status', '=', 'Pending'],
-        ],
-      );
-      debugPrint('[DeliveryList] Got ${deliveries.length} deliveries');
+      final deliveries = await _repository.fetchAllByStatus('Pending');
       if (mounted) {
         setState(() {
           _deliveries = deliveries;
@@ -55,7 +48,6 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
         });
       }
     } catch (e) {
-      debugPrint('[DeliveryList] Error: $e');
       if (mounted) {
         setState(() {
           _errorMessage = 'Failed to load: $e';
@@ -67,9 +59,7 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
   }
 
   Future<void> _refreshDeliveries() async {
-    setState(() {
-      _isRefreshing = true;
-    });
+    setState(() => _isRefreshing = true);
     await _fetchDeliveries();
   }
 
@@ -94,7 +84,7 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
     }
   }
 
-  void _showDeliveryDetails(ExternalDeliveryOrder delivery) {
+  void _showDeliveryDetails(ExternalDelivery delivery) {
     showAppBottomSheet(
       context: context,
       builder: (context) => DraggableScrollableSheet(
@@ -103,34 +93,26 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
         maxChildSize: 0.95,
         expand: false,
         builder: (context, scrollController) => _DeliveryDetailsSheet(
-          delivery: delivery,
+          summary: delivery,
           scrollController: scrollController,
-          apiService: _apiService,
           onAccept: (name) => _repository.createTripForOrderName(name),
-          onNavigateToDelivery: () {
-            if (!delivery.hasDropLocation) {
-              AppToast.show(
-                context,
-                'No GPS coordinates for delivery location',
-              );
+          onNavigateToDelivery: (detail) {
+            if (detail.latitude == null || detail.longitude == null) {
+              AppToast.show(context, 'No GPS coordinates for delivery location');
               return;
             }
-
-            final dropLat = delivery.dropLat!;
-            final dropLng = delivery.dropLng!;
-
             Navigator.of(context).pushNamed(
               '/delivery-tracking',
               arguments: {
-                'name': delivery.name,
-                'customerName': delivery.customerName,
-                'storeName': delivery.storeName,
-                'contactNumber': delivery.contactNumber ?? '',
-                'dropAddress': delivery.dropAddress ?? '',
-                'pickupLat': delivery.pickupLat,
-                'pickupLng': delivery.pickupLng,
-                'dropLat': dropLat,
-                'dropLng': dropLng,
+                'name': detail.name,
+                'customerName': detail.customerName,
+                'storeName': detail.storeName,
+                'contactNumber': detail.contactMobile ?? '',
+                'dropAddress': detail.deliveryAddress ?? '',
+                'pickupLat': null,
+                'pickupLng': null,
+                'dropLat': detail.latitude,
+                'dropLng': detail.longitude,
               },
             );
           },
@@ -250,7 +232,7 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
 }
 
 class _DeliveryCard extends StatelessWidget {
-  final ExternalDeliveryOrder delivery;
+  final ExternalDelivery delivery;
   final Color statusColor;
   final VoidCallback onTap;
 
@@ -334,7 +316,7 @@ class _DeliveryCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (delivery.modified != null) ...[
+                        if (delivery.modified.isNotEmpty) ...[
                           const SizedBox(width: 10),
                           Icon(
                             Icons.schedule,
@@ -343,7 +325,7 @@ class _DeliveryCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            AppDateFormat.date(delivery.modified),
+                            AppDateFormat.dateFromString(delivery.modified),
                             style: TextStyle(
                               fontSize: 12,
                               color: scheme.onSurface.withValues(alpha: 0.5),
@@ -386,18 +368,16 @@ class _DeliveryCard extends StatelessWidget {
 }
 
 class _DeliveryDetailsSheet extends StatefulWidget {
-  final ExternalDeliveryOrder delivery;
+  final ExternalDelivery summary;
   final ScrollController scrollController;
   final Future<String> Function(String name) onAccept;
-  final VoidCallback onNavigateToDelivery;
-  final ApiService apiService;
+  final void Function(ExternalDeliveryDetail detail) onNavigateToDelivery;
 
   const _DeliveryDetailsSheet({
-    required this.delivery,
+    required this.summary,
     required this.scrollController,
     required this.onAccept,
     required this.onNavigateToDelivery,
-    required this.apiService,
   });
 
   @override
@@ -405,26 +385,29 @@ class _DeliveryDetailsSheet extends StatefulWidget {
 }
 
 class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
-  late ExternalDeliveryOrder _delivery;
+  ExternalDeliveryDetail? _detail;
   bool _loadingFull = true;
   bool _uploadingProof = false;
 
   @override
   void initState() {
     super.initState();
-    _delivery = widget.delivery;
-    _fetchFullDelivery();
+    _fetchDetail();
   }
 
-  Future<void> _fetchFullDelivery() async {
-    final full = await widget.apiService.getExternalDelivery(_delivery.name);
-    if (mounted && full != null) {
-      setState(() {
-        _delivery = full;
-        _loadingFull = false;
-      });
-    } else if (mounted) {
-      setState(() => _loadingFull = false);
+  Future<void> _fetchDetail() async {
+    try {
+      final detail = await ExternalDeliveryRepository().fetchDetail(
+        widget.summary.name,
+      );
+      if (mounted) {
+        setState(() {
+          _detail = detail;
+          _loadingFull = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingFull = false);
     }
   }
 
@@ -434,19 +417,18 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
     setState(() => _uploadingProof = true);
     try {
       await ExternalDeliveryRepository().uploadProofPhoto(
-        orderName: _delivery.name,
+        orderName: widget.summary.name,
         filePath: photoPath,
       );
-      await _fetchFullDelivery();
+      await _fetchDetail();
     } finally {
       if (mounted) setState(() => _uploadingProof = false);
     }
   }
 
   Future<void> _clearProofPhoto() async {
-    if (_delivery.proofPhoto == null || _delivery.proofPhoto!.isEmpty) {
-      return;
-    }
+    final photo = _detail?.proofPhoto;
+    if (photo == null || photo.isEmpty) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -475,16 +457,12 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
     setState(() => _uploadingProof = true);
     try {
       await ExternalDeliveryRepository().clearProofPhoto(
-        orderName: _delivery.name,
+        orderName: widget.summary.name,
       );
-      await _fetchFullDelivery();
-      if (mounted) {
-        AppToast.show(context, 'Proof photo cleared');
-      }
+      await _fetchDetail();
+      if (mounted) AppToast.show(context, 'Proof photo cleared');
     } catch (e) {
-      if (mounted) {
-        AppToast.show(context, e.toString());
-      }
+      if (mounted) AppToast.show(context, e.toString());
     } finally {
       if (mounted) setState(() => _uploadingProof = false);
     }
@@ -511,24 +489,14 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
     }
   }
 
-  void _navigateToDelivery(BuildContext context) {
-    Navigator.pop(context);
-    widget.onNavigateToDelivery();
-  }
-
   Future<void> _acceptDelivery(BuildContext context) async {
     final navigator = Navigator.of(context);
-
     AppToast.show(context, 'Creating trip...');
-
     try {
-      final tripName = await widget.onAccept(_delivery.name);
+      final tripName = await widget.onAccept(widget.summary.name);
       if (!context.mounted) return;
-      navigator.pop(); // close bottom sheet
-      navigator.pushNamed(
-        AppRoutes.externalDeliveryTripDetails,
-        arguments: tripName,
-      );
+      navigator.pop();
+      navigator.pushNamed(AppRoutes.externalDeliveryTripDetails, arguments: tripName);
     } catch (e) {
       if (!context.mounted) return;
       AppToast.show(context, e.toString().replaceFirst('Exception: ', ''));
@@ -537,176 +505,184 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor(_delivery.status);
+    final status = _detail?.status ?? widget.summary.status;
+    final statusColor = _getStatusColor(status);
+    final proofPhoto = _detail?.proofPhoto;
+    final hasDropLocation =
+        _detail?.latitude != null && _detail?.longitude != null;
 
     return AppBottomSheet(
       scrollController: widget.scrollController,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _delivery.name,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            _delivery.status,
-                            style: TextStyle(
-                              color: statusColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.summary.name,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  if (_loadingFull)
-                    const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        status,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                ],
+                  ],
+                ),
               ),
-
-              const SizedBox(height: 24),
-
-              _buildSection('Store Details', [
-                _buildInfoRow(Icons.store, 'Store Name', _delivery.storeName),
-                if (_delivery.storeUrl.isNotEmpty)
-                  _buildInfoRow(Icons.link, 'URL', _delivery.storeUrl),
-              ]),
-
-              const SizedBox(height: 16),
-
-              _buildSection('Customer Details', [
-                _buildInfoRow(Icons.person, 'Customer', _delivery.customerName),
-                if (_delivery.contactNumber != null)
-                  _buildInfoRow(Icons.phone, 'Phone', _delivery.contactNumber!),
-              ]),
-
-              const SizedBox(height: 16),
-
-              _buildSection('Pickup Location', [
-                _buildInfoRow(
-                  Icons.trip_origin,
-                  'Address',
-                  _delivery.pickupAddress ?? 'Not available',
-                ),
-                if (_delivery.hasPickupLocation)
-                  _buildInfoRow(
-                    Icons.gps_fixed,
-                    'Coordinates',
-                    '${_delivery.pickupLat!.toStringAsFixed(6)}, ${_delivery.pickupLng!.toStringAsFixed(6)}',
-                  ),
-              ]),
-
-              const SizedBox(height: 16),
-
-              _buildSection('Drop Location', [
-                _buildInfoRow(
-                  Icons.location_on,
-                  'Address',
-                  _delivery.dropAddress ?? 'Not available',
-                ),
-                if (_delivery.hasDropLocation)
-                  _buildInfoRow(
-                    Icons.gps_fixed,
-                    'Coordinates',
-                    '${_delivery.dropLat!.toStringAsFixed(6)}, ${_delivery.dropLng!.toStringAsFixed(6)}',
-                  ),
-              ]),
-
-              if (_delivery.proofPhoto != null &&
-                  _delivery.proofPhoto!.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Proof of Delivery',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                buildProofPhotoWidget(context, _delivery.proofPhoto!),
-                const SizedBox(height: 6),
-                SizedBox(
-                  width: double.infinity,
-                  child: TextButton.icon(
-                    onPressed: _clearProofPhoto,
-                    icon: const Icon(Icons.clear_rounded),
-                    label: const Text('Clear Proof Photo'),
-                  ),
-                ),
-              ] else if (_delivery.status.toLowerCase() == 'delivered') ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Proof of Delivery',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: _uploadingProof
-                      ? const Center(child: CircularProgressIndicator())
-                      : OutlinedButton.icon(
-                          onPressed: () => _uploadProofPhotoLate(context),
-                          icon: const Icon(Icons.add_a_photo_outlined),
-                          label: const Text('Add Proof Photo'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                ),
-              ],
-
-              const SizedBox(height: 32),
-
-              if (_delivery.status.toLowerCase() == 'pending')
-                AppSheetPrimaryButton(
-                  label: 'Create Trip',
-                  icon: Icons.add_road,
-                  color: Colors.green,
-                  onPressed: () => _acceptDelivery(context),
-                ),
-
-              if (_delivery.hasDropLocation)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: AppSheetPrimaryButton(
-                    label: 'Navigate to Delivery',
-                    icon: Icons.navigation,
-                    color: Colors.blue,
-                    onPressed: () => _navigateToDelivery(context),
-                  ),
+              if (_loadingFull)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
             ],
+          ),
+
+          const SizedBox(height: 24),
+
+          _buildSection('Store Details', [
+            _buildInfoRow(
+              Icons.store,
+              'Store Name',
+              _detail?.storeName ?? widget.summary.storeName,
+            ),
+            if ((_detail?.storeUrl ?? '').isNotEmpty)
+              _buildInfoRow(Icons.link, 'URL', _detail!.storeUrl),
+          ]),
+
+          const SizedBox(height: 16),
+
+          _buildSection('Customer Details', [
+            _buildInfoRow(
+              Icons.person,
+              'Customer',
+              _detail?.customerName ?? widget.summary.customerName,
+            ),
+            if (_detail?.contactMobile != null)
+              _buildInfoRow(Icons.phone, 'Phone', _detail!.contactMobile!),
+          ]),
+
+          const SizedBox(height: 16),
+
+          _buildSection('Pickup Location', [
+            _buildInfoRow(
+              Icons.trip_origin,
+              'Address',
+              _detail?.pickupAddress ?? 'Not available',
+            ),
+          ]),
+
+          const SizedBox(height: 16),
+
+          _buildSection('Drop Location', [
+            _buildInfoRow(
+              Icons.location_on,
+              'Address',
+              _detail?.deliveryAddress ?? widget.summary.deliveryAddress ?? 'Not available',
+            ),
+            if (hasDropLocation)
+              _buildInfoRow(
+                Icons.gps_fixed,
+                'Coordinates',
+                '${_detail!.latitude!.toStringAsFixed(6)}, ${_detail!.longitude!.toStringAsFixed(6)}',
+              ),
+          ]),
+
+          if (proofPhoto != null && proofPhoto.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              'Proof of Delivery',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 8),
+            buildProofPhotoWidget(context, proofPhoto),
+            const SizedBox(height: 6),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                onPressed: _clearProofPhoto,
+                icon: const Icon(Icons.clear_rounded),
+                label: const Text('Clear Proof Photo'),
+              ),
+            ),
+          ] else if (status.toLowerCase() == 'delivered') ...[
+            const SizedBox(height: 16),
+            Text(
+              'Proof of Delivery',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: _uploadingProof
+                  ? const Center(child: CircularProgressIndicator())
+                  : OutlinedButton.icon(
+                      onPressed: () => _uploadProofPhotoLate(context),
+                      icon: const Icon(Icons.add_a_photo_outlined),
+                      label: const Text('Add Proof Photo'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+
+          const SizedBox(height: 32),
+
+          if (status.toLowerCase() == 'pending')
+            AppSheetPrimaryButton(
+              label: 'Create Trip',
+              icon: Icons.add_road,
+              color: Colors.green,
+              onPressed: () => _acceptDelivery(context),
+            ),
+
+          if (hasDropLocation && _detail != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: AppSheetPrimaryButton(
+                label: 'Navigate to Delivery',
+                icon: Icons.navigation,
+                color: Colors.blue,
+                onPressed: () {
+                  Navigator.pop(context);
+                  widget.onNavigateToDelivery(_detail!);
+                },
+              ),
+            ),
+        ],
       ),
     );
   }

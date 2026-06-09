@@ -31,7 +31,6 @@ class _ExternalDeliveryTripListScreenState
   PagingController<int, TripListItem>? _pagingController;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  String? _lastDriver;
   // Run the background "warm everything" prefetch only once per app session.
   // Subsequent navigations to this screen don't re-trigger it.
   static bool _prefetchTriggered = false;
@@ -299,20 +298,6 @@ class _TripCard extends StatelessWidget {
     }
   }
 
-  Color _getStatusColor(String status) {
-    final normalized = status.trim().toLowerCase();
-    if (normalized.contains('completed')) {
-      return const Color(0xFF2E7D32);
-    } else if (normalized.contains('in transit') || normalized.contains('ongoing')) {
-      return const Color(0xFFE65100);
-    } else if (normalized.contains('draft')) {
-      return const Color(0xFF757575);
-    } else if (normalized.contains('failed')) {
-      return const Color(0xFFD32F2F);
-    }
-    return const Color(0xFF757575);
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -333,7 +318,6 @@ class _TripCard extends StatelessWidget {
         badgeColor = Colors.black45;
     }
 
-    final statusColor = _getStatusColor(trip.status);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: GestureDetector(

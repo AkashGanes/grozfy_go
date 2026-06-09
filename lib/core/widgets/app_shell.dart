@@ -45,7 +45,7 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bgColor = theme.scaffoldBackgroundColor;
-    final effectivePadding = (footer != null && noBottomPadding)
+    final effectivePadding = noBottomPadding
         ? EdgeInsets.fromLTRB(padding.left, padding.top, padding.right, 0)
         : padding;
     final Widget body = Padding(padding: effectivePadding, child: child);

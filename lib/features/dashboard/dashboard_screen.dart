@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/app_models.dart';
+import '../profile/profile_completeness_sheet.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
@@ -15,7 +16,6 @@ import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../notifications/providers/notification_providers.dart';
-import '../profile/profile_completeness_sheet.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';

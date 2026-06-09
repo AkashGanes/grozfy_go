@@ -685,85 +685,96 @@ class _ListPickerSheetState extends State<_ListPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final results = _filtered;
+    final mq = MediaQuery.of(context);
+    final double resultsMaxHeight =
+        (mq.size.height - mq.viewInsets.bottom - mq.padding.top) * 0.40;
+
     return AppBottomSheet(
-      heightFactor: 0.82,
       padding: EdgeInsets.zero,
       title: widget.title,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                child: KycSearchInput(
-                  controller: _queryCtrl,
-                  hint: 'Search '
-                      '${widget.title.replaceAll(RegExp(r'^Select\s+'), '').toLowerCase()}',
-                  onChanged: (v) => setState(() => _query = v),
-                ),
-              ),
-              if (results.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: KycColors.accentSoft(context),
-                          borderRadius: BorderRadius.circular(16),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+            child: KycSearchInput(
+              controller: _queryCtrl,
+              hint: 'Search '
+                  '${widget.title.replaceAll(RegExp(r'^Select\s+'), '').toLowerCase()}',
+              onChanged: (v) => setState(() => _query = v),
+            ),
+          ),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: resultsMaxHeight),
+            child: results.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: KycColors.accentSoft(context),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(
+                            Icons.search_off_rounded,
+                            color: kKycAccent,
+                            size: 28,
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.search_off_rounded,
-                          color: kKycAccent,
-                          size: 28,
+                        const SizedBox(height: 12),
+                        Text(
+                          'No matching options',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: KycColors.textPrimary(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '${results.length} ${results.length == 1 ? 'result' : 'results'}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: KycColors.textSecondary(context),
+                              letterSpacing: 0.4,
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'No matching options',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: KycColors.textPrimary(context),
+                      Expanded(
+                        child: ListView.separated(
+                          padding:
+                              const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                          itemCount: results.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 6),
+                          itemBuilder: (context, i) {
+                            final item = results[i];
+                            return KycResultTile(
+                              label: item,
+                              selected: item == widget.current,
+                              onTap: () =>
+                                  Navigator.of(context).pop(item),
+                            );
+                          },
                         ),
                       ),
                     ],
                   ),
-                )
-              else ...[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '${results.length} ${results.length == 1 ? 'result' : 'results'}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: KycColors.textSecondary(context),
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                    itemCount: results.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 6),
-                    itemBuilder: (context, i) {
-                      final item = results[i];
-                      return KycResultTile(
-                        label: item,
-                        selected: item == widget.current,
-                        onTap: () => Navigator.of(context).pop(item),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ],
+          ),
+        ],
       ),
     );
   }

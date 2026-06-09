@@ -1,11 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
-import '../../core/utils/formatters.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
@@ -22,159 +23,188 @@ class BankSetupScreen extends StatefulWidget {
 
 class _BankSetupScreenState extends State<BankSetupScreen> {
   final TextEditingController _accountNameCtrl = TextEditingController();
-  final TextEditingController _ibanCtrl = TextEditingController();
-  final TextEditingController _branchCodeCtrl = TextEditingController();
   final TextEditingController _bankAccountNoCtrl = TextEditingController();
-  final TextEditingController _lastIntegrationDateCtrl =
-      TextEditingController();
-  final TextEditingController _partyCtrl = TextEditingController();
-  Map<String, String> _linkDoctypeByField = <String, String>{};
+  final TextEditingController _confirmAccountNoCtrl = TextEditingController();
+  final TextEditingController _branchCodeCtrl = TextEditingController();
+  final TextEditingController _branchNameCtrl = TextEditingController();
+  final TextEditingController _ibanCtrl = TextEditingController();
 
   String? _selectedBank;
   String? _selectedAccountType;
-  String? _selectedAccountSubtype;
-  String? _selectedCompany;
-  String? _selectedPartyType;
-  String? _selectedParty;
+  String? _accountTypeDoctype;
 
   final _formKey = GlobalKey<FormState>();
 
-  bool _disabled = false;
-  bool _isDefault = false;
-  bool _isCompanyAccount = false;
+  bool _obscureAccountNo = true;
   bool _busy = false;
   bool _ready = false;
+  bool _fetchingBranch = false;
+  bool _branchAutoFilled = false;
+  String? _ifscLookupError;
 
   bool get _canSubmit =>
       _ready &&
       !_busy &&
       _accountNameCtrl.text.trim().isNotEmpty &&
-      _branchCodeCtrl.text.trim().isNotEmpty &&
-      (_selectedBank?.trim().isNotEmpty == true);
+      _selectedBank?.trim().isNotEmpty == true &&
+      _bankAccountNoCtrl.text.trim().isNotEmpty &&
+      _confirmAccountNoCtrl.text.trim() == _bankAccountNoCtrl.text.trim() &&
+      _branchCodeCtrl.text.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadOptions();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
   }
 
   @override
   void dispose() {
     _accountNameCtrl.dispose();
-    _ibanCtrl.dispose();
-    _branchCodeCtrl.dispose();
     _bankAccountNoCtrl.dispose();
-    _lastIntegrationDateCtrl.dispose();
-    _partyCtrl.dispose();
+    _confirmAccountNoCtrl.dispose();
+    _branchCodeCtrl.dispose();
+    _branchNameCtrl.dispose();
+    _ibanCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _loadOptions() async {
+  Future<void> _loadData() async {
     final app = AppScope.of(context);
-    final Map<String, String> linkDoctypeByField = await app
-        .fetchBankAccountLinkDoctypes();
-    await app.hydrateBankFromBackend();
-    if (!mounted) {
-      return;
-    }
+    final results = await Future.wait([
+      app.hydrateBankFromBackend(),
+      app.fetchBankAccountLinkDoctypes(),
+    ]);
+    if (!mounted) return;
+    final Map<String, String> linkDoctypes =
+        results[1] as Map<String, String>? ?? {};
+    _accountTypeDoctype = linkDoctypes['account_type'];
 
     final Map<String, dynamic>? bankData = app.submittedBankRaw;
     setState(() {
-      _linkDoctypeByField = linkDoctypeByField;
       if (bankData != null) {
         _accountNameCtrl.text = bankData['account_name']?.toString() ?? '';
         _selectedBank = bankData['bank']?.toString();
         _selectedAccountType = bankData['account_type']?.toString();
-        _selectedAccountSubtype = bankData['account_subtype']?.toString();
-        _selectedCompany = bankData['company']?.toString();
-        _selectedPartyType = bankData['party_type']?.toString();
-        _selectedParty = bankData['party']?.toString();
-        _partyCtrl.text = _selectedParty ?? '';
         _ibanCtrl.text = bankData['iban']?.toString() ?? '';
         _branchCodeCtrl.text = bankData['branch_code']?.toString() ?? '';
-        _bankAccountNoCtrl.text = bankData['bank_account_no']?.toString() ?? '';
-        _lastIntegrationDateCtrl.text =
-            bankData['last_integration_date']?.toString() ?? '';
+        _branchNameCtrl.text = bankData['branch_name']?.toString() ?? '';
+        final String accountNo =
+            bankData['bank_account_no']?.toString() ?? '';
+        _bankAccountNoCtrl.text = accountNo;
+        // Pre-fill confirm so the form doesn't immediately show an error.
+        _confirmAccountNoCtrl.text = accountNo;
       }
       _ready = true;
     });
   }
 
-  String? _doctypeForField(String fieldname) {
-    final String? configured = _linkDoctypeByField[fieldname];
-    if (configured == null || configured.trim().isEmpty) {
-      return null;
-    }
-    return configured.trim();
-  }
-
-  Future<String?> _openLinkPicker({
-    required String title,
-    required String doctype,
-    String? initialQuery,
-    Map<String, dynamic>? filters,
-    int pageLength = 10,
-  }) async {
+  Future<String?> _pickBank() async {
     final app = AppScope.of(context);
     return showAppBottomSheet<String>(
       context: context,
-      builder: (BuildContext sheetContext) => _LinkSearchBottomSheet(
-        title: title,
-        initialQuery: initialQuery,
-        onSearch: (String query) {
-          return app.fetchLinkOptions(
-            doctype: doctype,
-            query: query,
-            pageLength: pageLength,
-            filters: filters,
-          );
-        },
+      builder: (BuildContext sheetCtx) => _LinkSearchBottomSheet(
+        title: 'Bank',
+        initialQuery: _selectedBank,
+        onSearch: (String q) =>
+            app.fetchLinkOptions(doctype: 'Bank', query: q, pageLength: 10),
       ),
     );
   }
 
-  Future<void> _pickDate() async {
-    final DateTime now = DateTime.now();
-    final DateTime? picked = await showDatePicker(
+  Future<String?> _pickAccountType() async {
+    final String? doctype = _accountTypeDoctype;
+    if (doctype == null) return null;
+    final app = AppScope.of(context);
+    return showAppBottomSheet<String>(
       context: context,
-      initialDate: now,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
+      builder: (BuildContext sheetCtx) => _LinkSearchBottomSheet(
+        title: 'Account Type',
+        initialQuery: _selectedAccountType,
+        onSearch: (String q) =>
+            app.fetchLinkOptions(doctype: doctype, query: q, pageLength: 20),
+      ),
     );
-    if (picked == null || !mounted) {
+  }
+
+  Future<void> _lookupIfsc(String raw) async {
+    final String code = raw.trim().toUpperCase();
+
+    // Reset auto-fill when the user edits the IFSC back to an incomplete value.
+    if (code.length < 11) {
+      if (_branchAutoFilled || _ifscLookupError != null) {
+        setState(() {
+          _branchAutoFilled = false;
+          _ifscLookupError = null;
+          _branchNameCtrl.clear();
+        });
+      }
       return;
     }
+
     setState(() {
-      _lastIntegrationDateCtrl.text = AppDateFormat.apiDate(picked);
+      _fetchingBranch = true;
+      _ifscLookupError = null;
     });
+
+    try {
+      final Uri uri = Uri.parse('https://ifsc.razorpay.com/$code');
+      final http.Response response =
+          await http.get(uri).timeout(const Duration(seconds: 8));
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data =
+            jsonDecode(response.body) as Map<String, dynamic>;
+        final String branch =
+            (data['BRANCH'] as String? ?? '').trim().toLowerCase().split(' ').map(
+              (w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}',
+            ).join(' ');
+        setState(() {
+          _fetchingBranch = false;
+          _branchAutoFilled = branch.isNotEmpty;
+          _branchNameCtrl.text = branch;
+          _ifscLookupError = null;
+        });
+      } else {
+        setState(() {
+          _fetchingBranch = false;
+          _branchAutoFilled = false;
+          _branchNameCtrl.clear();
+          _ifscLookupError = 'IFSC not found — please check and try again';
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _fetchingBranch = false;
+        _ifscLookupError = 'Could not verify IFSC — check your connection';
+      });
+    }
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
     final app = AppScope.of(context);
     setState(() => _busy = true);
+
     final String? error = await app.submitBankDetails(
       accountName: _accountNameCtrl.text,
       bank: _selectedBank ?? '',
       accountType: _selectedAccountType,
-      accountSubtype: _selectedAccountSubtype,
-      disabled: false,
-      isDefault: false,
-      isCompanyAccount: false,
-      company: _selectedCompany,
-      partyType: _selectedPartyType,
-      party: _selectedParty,
       iban: _ibanCtrl.text,
       branchCode: _branchCodeCtrl.text,
+      branchName: _branchNameCtrl.text,
       bankAccountNo: _bankAccountNoCtrl.text,
-      lastIntegrationDate: _lastIntegrationDateCtrl.text,
+      confirmAccountNo: _confirmAccountNoCtrl.text,
+      // Internal fields — always auto-managed, never exposed to the UI.
+      isDefault: true,
+      isCompanyAccount: false,
+      disabled: false,
     );
 
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     setState(() => _busy = false);
 
     if (error != null) {
@@ -182,7 +212,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       return;
     }
 
-    showInfoSnack(context, 'Bank account submitted successfully');
+    showInfoSnack(context, 'Bank details saved successfully');
     Navigator.of(context).pushNamed(AppRoutes.permission);
   }
 
@@ -194,7 +224,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     final app = AppScope.of(context);
     final Map<String, dynamic>? bankData = app.submittedBankRaw;
 
-    // Bank already submitted — show read-only details screen immediately.
     if (_ready && !forceEdit && bankData != null && bankData.isNotEmpty) {
       return BankSubmittedDetailsScreen(bankData: bankData);
     }
@@ -208,8 +237,8 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 KycHeader(
-                  title: 'Bank Account Setup',
-                  subtitle: 'Bank Account DocType fields from ERP',
+                  title: 'Bank Details',
+                  subtitle: 'Enter your bank account information',
                   icon: Icons.account_balance_outlined,
                   onBack: () => Navigator.of(context).maybePop(),
                 ),
@@ -221,139 +250,139 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
                           autovalidateMode:
                               AutovalidateMode.onUserInteraction,
                           child: ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            padding:
+                                const EdgeInsets.fromLTRB(16, 8, 16, 24),
                             children: [
                               const KycSectionHeading('Account Details'),
+                              // ── Account Holder Name ─────────────────
                               KycFieldCard(
                                 icon: Icons.person_outline_rounded,
-                                label: 'Account Name *',
-                                child: _baseTextField(
+                                label: 'Account Holder Name *',
+                                child: _textField(
                                   controller: _accountNameCtrl,
-                                  hint: 'Enter account name',
+                                  hint: 'As printed on your passbook',
+                                  textCapitalization:
+                                      TextCapitalization.words,
                                   onChanged: (_) => setState(() {}),
-                                  validator: requiredField,
+                                  validator: validateAccountHolderName,
                                 ),
                               ),
-                              _linkFieldCard(
-                                label: 'Bank *',
-                                icon: Icons.account_balance_outlined,
-                                value: _selectedBank,
-                                doctype: _doctypeForField('bank'),
-                                onChanged: (v) =>
-                                    setState(() => _selectedBank = v),
-                              ),
-                              _linkFieldCard(
-                                label: 'Account Type',
-                                icon: Icons.category_outlined,
-                                value: _selectedAccountType,
-                                doctype: _doctypeForField('account_type'),
-                                onChanged: (v) =>
-                                    setState(() => _selectedAccountType = v),
-                              ),
-                              _linkFieldCard(
-                                label: 'Account Subtype',
-                                icon: Icons.tune_outlined,
-                                value: _selectedAccountSubtype,
-                                doctype: _doctypeForField('account_subtype'),
-                                onChanged: (v) => setState(
-                                    () => _selectedAccountSubtype = v),
-                              ),
-                              const SizedBox(height: 8),
-                              const KycSectionHeading('Company & Party'),
-                              _linkFieldCard(
-                                label: 'Company',
-                                icon: Icons.corporate_fare_outlined,
-                                value: _selectedCompany,
-                                doctype: _doctypeForField('company'),
-                                onChanged: (v) =>
-                                    setState(() => _selectedCompany = v),
-                              ),
-                              _linkFieldCard(
-                                label: 'Party Type',
-                                icon: Icons.apartment_outlined,
-                                value: _selectedPartyType,
-                                doctype: _doctypeForField('party_type'),
-                                onChanged: (v) {
-                                  setState(() {
-                                    _selectedPartyType = v;
-                                    _selectedParty = null;
-                                    _partyCtrl.clear();
-                                  });
-                                },
-                              ),
-                              KycFieldCard(
-                                icon: Icons.people_outline,
-                                label: 'Party',
-                                child: _baseTextField(
-                                  controller: _partyCtrl,
-                                  hint: 'Enter party',
-                                  onChanged: (value) {
-                                    setState(() => _selectedParty =
-                                        value.trim().isEmpty ? null : value);
-                                  },
-                                ),
-                              ),
+                              // ── Bank ────────────────────────────────
+                              _bankPickerCard(),
+                              // ── Account Type ────────────────────────
+                              _accountTypeCard(),
                               const SizedBox(height: 8),
                               const KycSectionHeading('Bank Details'),
+                              // ── Account Number ──────────────────────
                               KycFieldCard(
-                                icon: Icons.credit_card_outlined,
-                                label: 'IBAN',
-                                child: _baseTextField(
-                                  controller: _ibanCtrl,
-                                  hint: 'Enter IBAN',
-                                  textCapitalization:
-                                      TextCapitalization.characters,
-                                  validator: validateIBAN,
-                                  inputFormatters: <TextInputFormatter>[
-                                    FilteringTextInputFormatter.allow(
-                                        RegExp(r'[A-Za-z0-9 ]')),
-                                    LengthLimitingTextInputFormatter(34),
+                                icon: Icons.account_balance_wallet_outlined,
+                                label: 'Account Number *',
+                                trailing: _visibilityToggle(),
+                                child: _textField(
+                                  controller: _bankAccountNoCtrl,
+                                  hint: 'Enter account number',
+                                  keyboardType: TextInputType.number,
+                                  obscureText: _obscureAccountNo,
+                                  onChanged: (_) => setState(() {}),
+                                  validator: validateRequiredBankAccountNo,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(18),
                                   ],
                                 ),
                               ),
+                              // ── Confirm Account Number ───────────────
+                              KycFieldCard(
+                                icon: Icons.verified_outlined,
+                                label: 'Confirm Account Number *',
+                                trailing: _visibilityToggle(),
+                                child: _textField(
+                                  controller: _confirmAccountNoCtrl,
+                                  hint: 'Re-enter account number',
+                                  keyboardType: TextInputType.number,
+                                  obscureText: _obscureAccountNo,
+                                  onChanged: (_) => setState(() {}),
+                                  validator: _validateConfirm,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    LengthLimitingTextInputFormatter(18),
+                                  ],
+                                ),
+                              ),
+                              // ── IFSC Code ───────────────────────────
                               KycFieldCard(
                                 icon: Icons.qr_code_rounded,
-                                label: 'Branch Code (IFSC) *',
-                                child: _baseTextField(
+                                label: 'IFSC Code *',
+                                trailing: _ifscTrailing(),
+                                child: _textField(
                                   controller: _branchCodeCtrl,
-                                  hint: 'Enter IFSC code',
-                                  onChanged: (_) => setState(() {}),
+                                  hint: 'e.g. SBIN0001234',
+                                  onChanged: (v) {
+                                    setState(() {});
+                                    _lookupIfsc(v);
+                                  },
                                   textCapitalization:
                                       TextCapitalization.characters,
                                   validator: validateBranchCode,
-                                  inputFormatters: <TextInputFormatter>[
+                                  inputFormatters: [
                                     FilteringTextInputFormatter.allow(
                                         RegExp(r'[A-Za-z0-9]')),
                                     LengthLimitingTextInputFormatter(11),
                                   ],
                                 ),
                               ),
+                              if (_ifscLookupError != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                      left: 6, bottom: 6, top: 0),
+                                  child: Text(
+                                    _ifscLookupError!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.red.shade600,
+                                    ),
+                                  ),
+                                ),
+                              // ── Branch Name (auto-filled from IFSC) ─
                               KycFieldCard(
-                                icon: Icons.account_balance_wallet_outlined,
-                                label: 'Bank Account No',
-                                child: _baseTextField(
-                                  controller: _bankAccountNoCtrl,
-                                  hint: 'Enter bank account number',
-                                  keyboardType: TextInputType.number,
-                                  validator: validateBankAccountNo,
-                                  inputFormatters: <TextInputFormatter>[
-                                    FilteringTextInputFormatter.digitsOnly,
-                                    LengthLimitingTextInputFormatter(18),
-                                  ],
+                                icon: Icons.location_city_outlined,
+                                label: 'Branch Name',
+                                trailing: _branchAutoFilled
+                                    ? GestureDetector(
+                                        onTap: () => setState(() {
+                                          _branchAutoFilled = false;
+                                          _branchNameCtrl.clear();
+                                        }),
+                                        child: Icon(
+                                          Icons.close_rounded,
+                                          size: 18,
+                                          color: KycColors.textHint(context),
+                                        ),
+                                      )
+                                    : null,
+                                child: _textField(
+                                  controller: _branchNameCtrl,
+                                  hint: 'Auto-filled from IFSC code',
+                                  textCapitalization:
+                                      TextCapitalization.words,
+                                  readOnly: _branchAutoFilled,
                                 ),
                               ),
+                              // ── IBAN (optional) ─────────────────────
                               KycFieldCard(
-                                icon: Icons.calendar_month_outlined,
-                                label: 'Last Integration Date',
-                                trailing: Icon(
-                                  Icons.calendar_today_outlined,
-                                  color: KycColors.textHint(context),
-                                  size: 20,
-                                ),
-                                onTap: _pickDate,
-                                child: _readonlyText(
-                                  _lastIntegrationDateCtrl,
-                                  'Select date',
+                                icon: Icons.credit_card_outlined,
+                                label: 'IBAN',
+                                child: _textField(
+                                  controller: _ibanCtrl,
+                                  hint: 'Optional — for international transfers',
+                                  textCapitalization:
+                                      TextCapitalization.characters,
+                                  validator: validateIBAN,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                        RegExp(r'[A-Za-z0-9 ]')),
+                                    LengthLimitingTextInputFormatter(34),
+                                  ],
                                 ),
                               ),
                             ],
@@ -384,27 +413,63 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     );
   }
 
+  // ── Private helpers ──────────────────────────────────────────────────────
+
+  String? _validateConfirm(String? v) {
+    if (v == null || v.trim().isEmpty) {
+      return 'Please confirm your account number';
+    }
+    if (v.trim() != _bankAccountNoCtrl.text.trim()) {
+      return 'Account numbers do not match';
+    }
+    return null;
+  }
+
   Widget _buildSkeleton() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      children: List.generate(8, (_) => const SkeletonFormField()),
+      children: List.generate(6, (_) => const SkeletonFormField()),
     );
   }
 
-  Widget _linkFieldCard({
-    required String label,
-    required IconData icon,
-    required String? value,
-    required String? doctype,
-    required ValueChanged<String> onChanged,
-    Map<String, dynamic>? filters,
-    int pageLength = 10,
-  }) {
-    final bool canOpen = doctype != null && doctype.trim().isNotEmpty;
-    final bool hasValue = value?.trim().isNotEmpty == true;
+  Widget _bankPickerCard() {
+    final bool hasValue = _selectedBank?.trim().isNotEmpty == true;
     return KycFieldCard(
-      icon: icon,
-      label: label,
+      icon: Icons.account_balance_outlined,
+      label: 'Bank *',
+      trailing: Icon(
+        Icons.keyboard_arrow_down_rounded,
+        color: KycColors.textHint(context),
+      ),
+      onTap: () async {
+        final String? selected = await _pickBank();
+        if (selected == null || !mounted) return;
+        setState(() => _selectedBank = selected);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Text(
+          hasValue ? _selectedBank! : 'Tap to search and select your bank',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
+            color: hasValue
+                ? KycColors.textPrimary(context)
+                : KycColors.textHint(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _accountTypeCard() {
+    final bool hasValue = _selectedAccountType?.trim().isNotEmpty == true;
+    final bool canOpen = _accountTypeDoctype != null;
+    return KycFieldCard(
+      icon: Icons.account_balance_rounded,
+      label: 'Account Type',
       trailing: Icon(
         Icons.keyboard_arrow_down_rounded,
         color: KycColors.textHint(context),
@@ -412,41 +477,83 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       onTap: !canOpen
           ? null
           : () async {
-              final String? selected = await _openLinkPicker(
-                title: label,
-                doctype: doctype.trim(),
-                initialQuery: value,
-                filters: filters,
-                pageLength: pageLength,
-              );
+              final String? selected = await _pickAccountType();
               if (selected == null || !mounted) return;
-              onChanged(selected);
+              setState(() => _selectedAccountType = selected);
             },
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Text(
           hasValue
-              ? value!
+              ? _selectedAccountType!
               : canOpen
                   ? 'Tap to search and select'
-                  : 'Field unavailable',
+                  : 'Tap to select',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontSize: 14,
             fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-            color: hasValue ? KycColors.textPrimary(context) : KycColors.textHint(context),
+            color: hasValue
+                ? KycColors.textPrimary(context)
+                : KycColors.textHint(context),
           ),
         ),
       ),
     );
   }
 
-  Widget _baseTextField({
+  Widget? _ifscTrailing() {
+    if (_fetchingBranch) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: kKycAccent,
+        ),
+      );
+    }
+    if (_branchAutoFilled) {
+      return const Icon(
+        Icons.check_circle_rounded,
+        color: kKycAccent,
+        size: 20,
+      );
+    }
+    if (_ifscLookupError != null) {
+      return Icon(
+        Icons.error_outline_rounded,
+        color: Colors.red.shade400,
+        size: 20,
+      );
+    }
+    return null;
+  }
+
+  Widget _visibilityToggle() {
+    return GestureDetector(
+      onTap: () => setState(() => _obscureAccountNo = !_obscureAccountNo),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 4),
+        child: Icon(
+          _obscureAccountNo
+              ? Icons.visibility_off_outlined
+              : Icons.visibility_outlined,
+          size: 20,
+          color: KycColors.textHint(context),
+        ),
+      ),
+    );
+  }
+
+  Widget _textField({
     required TextEditingController controller,
     required String hint,
     TextInputType? keyboardType,
     TextCapitalization textCapitalization = TextCapitalization.none,
+    bool obscureText = false,
+    bool readOnly = false,
     String? Function(String?)? validator,
     ValueChanged<String>? onChanged,
     List<TextInputFormatter>? inputFormatters,
@@ -455,24 +562,22 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       controller: controller,
       keyboardType: keyboardType,
       textCapitalization: textCapitalization,
+      obscureText: obscureText,
+      readOnly: readOnly,
       validator: validator,
       onChanged: onChanged,
       inputFormatters: inputFormatters,
-      style: kycInputStyle(context),
-      decoration: kycHintDecoration(hint),
-    );
-  }
-
-  Widget _readonlyText(TextEditingController controller, String hint) {
-    return TextFormField(
-      controller: controller,
-      readOnly: true,
-      enableInteractiveSelection: false,
-      style: kycInputStyle(context),
+      style: kycInputStyle(context).copyWith(
+        color: readOnly
+            ? KycColors.textSecondary(context)
+            : KycColors.textPrimary(context),
+      ),
       decoration: kycHintDecoration(hint),
     );
   }
 }
+
+// ── Bank search bottom sheet ────────────────────────────────────────────────
 
 class _LinkSearchBottomSheet extends StatefulWidget {
   const _LinkSearchBottomSheet({
@@ -509,8 +614,19 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
     super.dispose();
   }
 
+  Future<void> _load(String query, {bool showLoading = true}) async {
+    if (showLoading) setState(() => _loading = true);
+    final List<String> values = await widget.onSearch(query);
+    if (!mounted) return;
+    setState(() {
+      _results = values;
+      _loading = false;
+    });
+  }
+
   Widget _buildResults(BuildContext context) {
     final String typed = _queryCtrl.text.trim();
+
     if (_results.isNotEmpty) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -534,10 +650,9 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
               separatorBuilder: (_, _) => const SizedBox(height: 6),
               itemBuilder: (BuildContext context, int index) {
                 final String item = _results[index];
-                final selected = item == widget.initialQuery;
                 return KycResultTile(
                   label: item,
-                  selected: selected,
+                  selected: item == widget.initialQuery,
                   onTap: () => Navigator.of(context).pop(item),
                 );
               },
@@ -546,25 +661,14 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
         ],
       );
     }
+
     if (typed.isNotEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: KycColors.accentSoft(context),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Icon(
-                Icons.search_off_rounded,
-                color: kKycAccent,
-                size: 28,
-              ),
-            ),
+            _emptyIcon(Icons.search_off_rounded),
             const SizedBox(height: 14),
             Text(
               'No matching records',
@@ -612,24 +716,13 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
         ),
       );
     }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: KycColors.accentSoft(context),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.search_rounded,
-              color: kKycAccent,
-              size: 28,
-            ),
-          ),
+          _emptyIcon(Icons.search_rounded),
           const SizedBox(height: 14),
           Text(
             'Start typing to search',
@@ -644,24 +737,25 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
     );
   }
 
-  Future<void> _load(String query, {bool showLoading = true}) async {
-    if (showLoading) {
-      setState(() => _loading = true);
-    }
-    final List<String> values = await widget.onSearch(query);
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _results = values;
-      _loading = false;
-    });
+  Widget _emptyIcon(IconData icon) {
+    return Container(
+      width: 56,
+      height: 56,
+      decoration: BoxDecoration(
+        color: KycColors.accentSoft(context),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Icon(icon, color: kKycAccent, size: 28),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final double resultsMaxHeight =
+        (mq.size.height - mq.viewInsets.bottom - mq.padding.top) * 0.40;
+
     return AppBottomSheet(
-      heightFactor: 0.82,
       padding: EdgeInsets.zero,
       title: widget.title,
       child: Column(
@@ -672,8 +766,8 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
             child: KycSearchInput(
               controller: _queryCtrl,
               autofocus: true,
-              hint: 'Search '
-                  '${widget.title.replaceAll('*', '').trim().toLowerCase()}',
+              hint:
+                  'Search ${widget.title.replaceAll('*', '').trim().toLowerCase()}',
               onChanged: (String value) {
                 _debounce?.cancel();
                 _debounce = Timer(
@@ -683,7 +777,8 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
               },
             ),
           ),
-          Expanded(
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: resultsMaxHeight),
             child: _loading
                 ? const _BankSearchLoading()
                 : _buildResults(context),
@@ -704,4 +799,3 @@ class _BankSearchLoading extends StatelessWidget {
     );
   }
 }
-
