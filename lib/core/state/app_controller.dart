@@ -186,6 +186,7 @@ class AppController extends ChangeNotifier {
 
   bool _isOnline = false;
   DateTime? _onlineSince;
+  Duration _completedDutyToday = Duration.zero;
   bool _availabilitySyncing = false;
   bool _isTracking = false;
   int _trackingInterval = 10;
@@ -332,6 +333,7 @@ class AppController extends ChangeNotifier {
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
   DateTime? get onlineSince => _onlineSince;
+  Duration get completedDutyToday => _completedDutyToday;
   bool get availabilitySyncing => _availabilitySyncing;
   bool get isTracking => _isTracking;
   int get trackingInterval => _trackingInterval;
@@ -613,13 +615,19 @@ class AppController extends ChangeNotifier {
       }
     }
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
-    if (_isOnline && _timingDao != null) {
+    if (_timingDao != null) {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
       final endOfDay = startOfDay.add(const Duration(days: 1));
       final rows = await _timingDao.getEventsInRange(startOfDay, endOfDay);
       final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
-      if (logins.isNotEmpty) {
+      final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
+      if (logins.isNotEmpty && logouts.isNotEmpty) {
+        final diff = DateTime.parse(logouts.last.eventTime)
+            .difference(DateTime.parse(logins.first.eventTime));
+        if (!diff.isNegative) _completedDutyToday = diff;
+      }
+      if (_isOnline && logins.isNotEmpty) {
         _onlineSince = DateTime.tryParse(logins.last.eventTime);
       }
     }
@@ -1707,6 +1715,7 @@ class AppController extends ChangeNotifier {
     _isRefreshing = false;
     _isOnline = false;
     _onlineSince = null;
+    _completedDutyToday = Duration.zero;
     _isTracking = false;
     _incomingOrder = null;
     _activeOrders.clear();
@@ -2904,6 +2913,10 @@ class AppController extends ChangeNotifier {
         ),
       );
     } else {
+      if (_onlineSince != null) {
+        final session = DateTime.now().difference(_onlineSince!);
+        if (!session.isNegative) _completedDutyToday += session;
+      }
       _onlineSince = null;
       stopTracking();
       recordTimingEvent(eventType: TimingEventType.logout);

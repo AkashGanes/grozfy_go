@@ -20,28 +20,19 @@ class DailySummaryCard extends ConsumerStatefulWidget {
 
 class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
   Timer? _ticker;
-  bool _wasOnline = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final app = AppScope.of(context);
-    final isOnline = app.isOnline;
-
+    final isOnline = AppScope.of(context).isOnline;
     if (isOnline && _ticker == null) {
-      _ticker = Timer.periodic(const Duration(minutes: 1), (_) {
+      _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted) setState(() {});
       });
     } else if (!isOnline && _ticker != null) {
       _ticker!.cancel();
       _ticker = null;
     }
-
-    // Re-fetch completed sessions when driver just went offline.
-    if (_wasOnline && !isOnline) {
-      ref.invalidate(dailySummaryProvider);
-    }
-    _wasOnline = isOnline;
   }
 
   @override
@@ -93,14 +84,13 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
   Widget _buildEmpty(dynamic app) => _buildData(DailySummary.empty, app);
 
   Widget _buildData(DailySummary summary, dynamic app) {
-    final onlineSince = app.onlineSince as DateTime?;
-    final Duration dutyHours;
-    if (onlineSince != null) {
-      final live = DateTime.now().difference(onlineSince);
-      dutyHours = summary.dutyHours + (live.isNegative ? Duration.zero : live);
-    } else {
-      dutyHours = summary.dutyHours;
-    }
+    final DateTime? onlineSince = app.onlineSince as DateTime?;
+    final Duration completed = app.completedDutyToday as Duration;
+    final Duration live = onlineSince != null
+        ? DateTime.now().difference(onlineSince)
+        : Duration.zero;
+    final Duration dutyHours =
+        completed + (live.isNegative ? Duration.zero : live);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -211,11 +201,11 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
   }
 
   static String _formatDuration(Duration d) {
-    if (d.inHours > 0) {
-      final mins = d.inMinutes.remainder(60);
-      return '${d.inHours}h ${mins}m';
-    }
-    if (d.inMinutes > 0) return '${d.inMinutes} min';
-    return '< 1 min';
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    if (h > 0) return '${h}h ${m}m ${s}s';
+    if (m > 0) return '${m}m ${s}s';
+    return '${s}s';
   }
 }
