@@ -9,6 +9,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/services/secure_token_storage.dart';
+import '../../../core/state/providers.dart';
 import '../../orders_by_location/model/timing_event.dart';
 import '../../orders_by_location/repository/external_delivery_repository.dart';
 import '../models/driver_stats.dart';
@@ -293,16 +294,23 @@ final lifetimeStatsProvider =
 /// then silently refreshes from ERPNext and updates the cache.
 final deliveredOrderCountProvider =
     StreamProvider.autoDispose<int>((ref) async* {
+  // Read driver name from in-memory AppController — already populated by
+  // _backgroundSync() before notifyListeners() fires, so no prefs race.
+  final driver = ref.read(appControllerProvider).driverName?.trim() ?? '';
+  final cacheKey = driver.isNotEmpty
+      ? 'delivered_order_count_$driver'
+      : 'delivered_order_count';
+
   final prefs = await SharedPreferences.getInstance();
-  final cached = prefs.getInt('delivered_order_count');
-  if (cached != null) yield cached;
+  final cached = prefs.getInt(cacheKey);
+  yield cached ?? 0;
 
   final repo = ExternalDeliveryRepository();
   try {
     final count = await repo.fetchDeliveredCountForDriver();
-    await prefs.setInt('delivered_order_count', count);
+    await prefs.setInt(cacheKey, count);
     yield count;
   } catch (_) {
-    if (cached == null) rethrow;
+    // cached ?? 0 already yielded; silently keep it on network error
   }
 });

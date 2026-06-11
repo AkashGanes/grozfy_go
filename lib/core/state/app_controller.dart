@@ -1862,7 +1862,7 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefPermBackground),
       prefs.remove(_prefPermNotification),
       prefs.remove(_prefLicenseRequiresReupload),
-      // Per-driver avg-duration prefs are intentionally kept on logout.
+      // Per-driver prefs (avg duration, delivered count) are intentionally kept on logout.
       // They are keyed by driver name so other users can't see them,
       // and the same user logging back in the same day needs them intact.
     ]);
