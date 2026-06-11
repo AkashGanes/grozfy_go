@@ -3309,6 +3309,50 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<String?> failDelivery({
+    required String orderId,
+    required String reason,
+    String? reasonCode,
+    String? photoPath,
+    bool shouldCreateReturnTrip = false,
+  }) async {
+    final String? tripId = _activeTripIds[orderId];
+    String? syncError;
+    try {
+      if (tripId != null) {
+        await _orderRepository.processFailedDeliveryReturnByIds(
+          tripId: tripId,
+          deliveryId: orderId,
+          reason: reason,
+          reasonCode: reasonCode,
+          photoPath: photoPath,
+          shouldCreateReturnTrip: shouldCreateReturnTrip,
+        );
+      } else {
+        await _orderRepository.updateStatusViaSetValue(orderId, 'Failed');
+        if (photoPath != null && photoPath.isNotEmpty) {
+          await _orderRepository.uploadProofPhoto(
+            orderName: orderId,
+            filePath: photoPath,
+          );
+        }
+      }
+    } catch (e) {
+      syncError = e.toString().replaceFirst('Exception: ', '');
+    }
+    _writeTimingEvent(eventType: TimingEventType.stopFailed, tripRef: tripId);
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Delivery failed',
+        message: 'Order $orderId marked as failed.',
+        time: DateTime.now(),
+      ),
+    );
+    clearOrder(orderId);
+    return syncError;
+  }
+
   void clearOrder(String orderId) {
     _activeOrders.removeWhere((o) => o.orderId == orderId);
     _activeTripIds.remove(orderId);
