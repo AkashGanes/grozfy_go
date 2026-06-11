@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_routes.dart';
@@ -156,6 +155,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
       title: 'Pickup Pool',
       subtitle: 'Available return pickups',
       scrollable: false,
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
           if (isBlocked)
@@ -217,12 +217,9 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
                   child: ListView.builder(
                     physics: const BouncingScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics()),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
                     itemCount: sorted.length,
-                    itemBuilder: (context, index) => Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: _JobCard(
+                    itemBuilder: (context, index) => _JobCard(
                         job: sorted[index],
                         distanceLabel: _distanceLabel(_distanceKm(
                           sorted[index].pickupLatitude,
@@ -239,11 +236,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
                                 pickupJobName: sorted[index].name),
                           ),
                         ),
-                      ).animate().fadeIn(
-                        delay: Duration(milliseconds: index * 40),
-                        duration: 200.ms,
                       ),
-                    ),
                   ),
                 );
               },
@@ -333,7 +326,7 @@ class _PoolBlockBanner extends StatelessWidget {
         ? 'Active delivery order in progress — finish it before claiming a pickup.'
         : 'Pickup job in progress — complete it before claiming another.';
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      margin: const EdgeInsets.fromLTRB(20, 8, 20, 4),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: AppTheme.mango.withValues(alpha: 0.10),
@@ -394,204 +387,425 @@ class _JobCard extends StatelessWidget {
   final VoidCallback onAccept;
   final VoidCallback onDetail;
 
+  static const Color _accent = Color(0xFFF38B19);
+
   @override
   Widget build(BuildContext context) {
-    return FrostCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header row
-          Row(
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  job.name,
-                  style: const TextStyle(
-                    color: AppTheme.oceanBlue,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color cardBg = isDark ? const Color(0xFF1B1E2A) : Colors.white;
+    final Color cardBorder =
+        isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE4E7EC);
+    final Color textPrimary =
+        isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
+    final Color textSecondary =
+        isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: cardBg,
+                border: Border.all(color: cardBorder),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
                   ),
-                ),
+                ],
               ),
-              const Spacer(),
-              if (distanceLabel.isNotEmpty)
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.near_me_outlined,
-                        size: 13, color: Colors.black38),
-                    const SizedBox(width: 3),
-                    Text(
-                      distanceLabel,
-                      style: const TextStyle(
-                          color: Colors.black45, fontSize: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Job name + distance chip
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                job.name,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15,
+                                  color: textPrimary,
+                                ),
+                              ),
+                            ),
+                            if (distanceLabel.isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _accent.withValues(alpha: 0.10),
+                                  borderRadius: BorderRadius.circular(99),
+                                  border: Border.all(
+                                      color: _accent.withValues(alpha: 0.35)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.near_me_rounded,
+                                        size: 11,
+                                        color: _accent),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      distanceLabel,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: _accent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        // Customer
+                        _MetaRow(
+                          icon: Icons.person_rounded,
+                          iconColor: const Color(0xFF1AB36A),
+                          iconBg: isDark
+                              ? const Color(0xFF14352A)
+                              : const Color(0xFFE7F7EE),
+                          label: 'Customer',
+                          value: job.customerName,
+                          labelColor: textSecondary,
+                          valueColor: textPrimary,
+                        ),
+                        // Phone
+                        if (job.customerMobile.isNotEmpty)
+                          _PhoneRow(
+                            phone: job.customerMobile,
+                            iconBg: isDark
+                                ? const Color(0xFF1A2C4F)
+                                : const Color(0xFFE5EEFB),
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
+                          ),
+                        // Pickup address
+                        _MetaRow(
+                          icon: Icons.my_location_rounded,
+                          iconColor: const Color(0xFFF38B19),
+                          iconBg: isDark
+                              ? const Color(0xFF3A2613)
+                              : const Color(0xFFFFEFDA),
+                          label: 'Pickup',
+                          value: job.pickupAddress,
+                          labelColor: textSecondary,
+                          valueColor: textPrimary,
+                        ),
+                        // Store / drop
+                        _MetaRow(
+                          icon: Icons.store_rounded,
+                          iconColor: const Color(0xFF2D6CDF),
+                          iconBg: isDark
+                              ? const Color(0xFF1A2C4F)
+                              : const Color(0xFFE5EEFB),
+                          label: 'Store',
+                          value: job.dropAddress,
+                          labelColor: textSecondary,
+                          valueColor: textPrimary,
+                        ),
+                        // Scheduled window
+                        if (job.scheduledWindow != null &&
+                            job.scheduledWindow!.isNotEmpty)
+                          _MetaRow(
+                            icon: Icons.schedule_rounded,
+                            iconColor: const Color(0xFF7C3AED),
+                            iconBg: isDark
+                                ? const Color(0xFF2D2148)
+                                : const Color(0xFFEFE9FE),
+                            label: 'Window',
+                            value: job.scheduledWindow!,
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
+                          ),
+                        // Amount
+                        if (job.amount != null && job.amount! > 0)
+                          _MetaRow(
+                            icon: Icons.currency_rupee_rounded,
+                            iconColor: const Color(0xFF1AB36A),
+                            iconBg: isDark
+                                ? const Color(0xFF14352A)
+                                : const Color(0xFFE7F7EE),
+                            label: 'Amount',
+                            value: 'Rs. ${job.amount!.toStringAsFixed(0)}',
+                            labelColor: textSecondary,
+                            valueColor: textPrimary,
+                          ),
+                      ],
                     ),
-                  ],
-                ),
-            ],
+                  ),
+                  // Action buttons
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Material(
+                            color: isDark
+                                ? const Color(0xFF2A2F3D)
+                                : const Color(0xFFF2F4F7),
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              onTap: onDetail,
+                              borderRadius: BorderRadius.circular(12),
+                              child: SizedBox(
+                                height: 48,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.info_outline_rounded,
+                                        size: 16, color: textSecondary),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Details',
+                                      style: TextStyle(
+                                        color: textSecondary,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 2,
+                          child: Material(
+                            color: isAccepting
+                                ? const Color(0xFF1F5FE8).withValues(alpha: 0.6)
+                                : const Color(0xFF1F5FE8),
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              onTap: isAccepting ? null : onAccept,
+                              borderRadius: BorderRadius.circular(12),
+                              child: SizedBox(
+                                height: 48,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (isAccepting)
+                                      const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white),
+                                      )
+                                    else
+                                      const Icon(
+                                          Icons.check_circle_outline_rounded,
+                                          size: 16,
+                                          color: Colors.white),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      isAccepting ? 'Claiming…' : 'Accept Job',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Left accent bar
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 4,
+              child: IgnorePointer(
+                child: ColoredBox(color: _accent),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetaRow extends StatelessWidget {
+  const _MetaRow({
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+    required this.label,
+    required this.value,
+    required this.labelColor,
+    required this.valueColor,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
+  final String label;
+  final String value;
+  final Color labelColor;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 14, color: iconColor),
           ),
-          const SizedBox(height: 10),
-
-          // Customer
-          _infoRow(Icons.person_outline, job.customerName),
-          const SizedBox(height: 5),
-
-          // Phone (tap-to-call)
-          if (job.customerMobile.isNotEmpty) ...[
-            _callRow(context, job.customerMobile),
-            const SizedBox(height: 5),
-          ],
-
-          // Pickup address
-          _infoRow(Icons.my_location_outlined, job.pickupAddress,
-              label: 'Pickup'),
-          const SizedBox(height: 5),
-
-          // Store / drop address
-          _infoRow(Icons.store_outlined, job.dropAddress, label: 'Store'),
-
-          // Scheduled window
-          if (job.scheduledWindow != null &&
-              job.scheduledWindow!.isNotEmpty) ...[
-            const SizedBox(height: 5),
-            _infoRow(Icons.schedule_outlined, job.scheduledWindow!),
-          ],
-
-          const SizedBox(height: 12),
-          const Divider(height: 1, color: Colors.black12),
-          const SizedBox(height: 10),
-
-          // Actions
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: onDetail,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                    side:
-                        BorderSide(color: Colors.black.withValues(alpha: 0.15)),
-                  ),
-                  child: const Text(
-                    'Details',
-                    style: TextStyle(
-                        color: Colors.black54,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600),
-                  ),
-                ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 72,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: labelColor,
+                fontWeight: FontWeight.w500,
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                flex: 2,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.oceanBlue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: isAccepting ? null : onAccept,
-                  icon: isAccepting
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.check_circle_outline, size: 16),
-                  label: Text(
-                    isAccepting ? 'Claiming…' : 'Accept',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 14),
-                  ),
-                ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                color: valueColor,
+                fontWeight: FontWeight.w700,
               ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _infoRow(IconData icon, String text, {String? label}) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 1),
-          child: Icon(icon, size: 14, color: Colors.black38),
-        ),
-        const SizedBox(width: 7),
-        if (label != null) ...[
-          Text(
-            '$label: ',
-            style: const TextStyle(
-                color: Colors.black38, fontSize: 12, fontWeight: FontWeight.w600),
+class _PhoneRow extends StatelessWidget {
+  const _PhoneRow({
+    required this.phone,
+    required this.iconBg,
+    required this.labelColor,
+    required this.valueColor,
+  });
+
+  final String phone;
+  final Color iconBg;
+  final Color labelColor;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: iconBg,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(Icons.phone_rounded, size: 14,
+                color: Color(0xFF2D6CDF)),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 72,
+            child: Text(
+              'Phone',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: labelColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              phone,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                color: valueColor,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: () async {
+              final uri = Uri(scheme: 'tel', path: phone);
+              // ignore: deprecated_member_use
+              if (await canLaunchUrl(uri)) await launchUrl(uri);
+            },
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2E7D32).withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                    color: const Color(0xFF2E7D32).withValues(alpha: 0.35)),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.call_rounded, size: 12, color: Color(0xFF2E7D32)),
+                  SizedBox(width: 4),
+                  Text(
+                    'Call',
+                    style: TextStyle(
+                      color: Color(0xFF2E7D32),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
-        Expanded(
-          child: Text(
-            text,
-            style:
-                const TextStyle(color: AppTheme.nightBlue, fontSize: 13),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _callRow(BuildContext context, String phone) {
-    return Row(
-      children: [
-        const Icon(Icons.phone_outlined, size: 14, color: Colors.black38),
-        const SizedBox(width: 7),
-        Expanded(
-          child: Text(phone,
-              style: const TextStyle(
-                  color: AppTheme.nightBlue, fontSize: 13)),
-        ),
-        GestureDetector(
-          onTap: () async {
-            final uri = Uri(scheme: 'tel', path: phone);
-            // ignore: deprecated_member_use
-            if (await canLaunchUrl(uri)) await launchUrl(uri);
-          },
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: const Color(0xFF2E7D32).withValues(alpha: 0.3)),
-            ),
-            child: const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.call_rounded,
-                    size: 12, color: Color(0xFF2E7D32)),
-                SizedBox(width: 3),
-                Text('Call',
-                    style: TextStyle(
-                        color: Color(0xFF2E7D32),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
