@@ -241,6 +241,78 @@ class _PickupJobDetailScreenState
     }
   }
 
+  // ── Mark En Route ─────────────────────────────────────────────────────────
+
+  Future<void> _handleMarkEnRoute(PickupJob job) async {
+    if (job.deliveryTrip == null || job.deliveryTrip!.isEmpty) {
+      showInfoSnack(context, 'No delivery trip assigned to this job.');
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.directions_car_rounded, color: AppTheme.oceanBlue),
+            SizedBox(width: 8),
+            Text(
+              'Mark En Route',
+              style: TextStyle(
+                  color: AppTheme.nightBlue,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16),
+            ),
+          ],
+        ),
+        content: Text(
+          'Confirm you are heading to pick up from ${job.customerName.isNotEmpty ? job.customerName : "the customer"}?',
+          style: const TextStyle(color: Colors.black54),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.oceanBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Confirm En Route'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    if (!ConnectivityService().isConnected) {
+      showInfoSnack(context, 'You are offline — connect and try again.');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      await PickupJobRepository().markPickupEnRoute(
+        pickupJobName: job.name,
+        tripName: job.deliveryTrip!,
+      );
+      if (!mounted) return;
+      showInfoSnack(context, 'En route — job status updated to Scheduled.');
+      setState(() { _future = _load(); });
+    } catch (e) {
+      if (!mounted) return;
+      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
   void _showCompletionDialog() {
     showDialog<void>(
       context: context,
@@ -576,11 +648,8 @@ class _PickupJobDetailScreenState
     final failureReason = (stop['failure_reason_code'] ?? '').toString().trim();
 
     final tripName = (stop['_trip_name'] ?? '').toString();
-    final tripStatus = (stop['_trip_status'] ?? '').toString();
     final tripDate = (stop['_trip_date'] ?? '').toString();
     final tripDriver = (stop['_trip_driver'] ?? '').toString();
-    final totalStops = stop['_trip_total_stops'];
-    final completedStops = stop['_trip_completed_stops'];
 
     Color stopColor;
     switch (stopStatus.trim().toLowerCase()) {
@@ -766,6 +835,12 @@ class _PickupJobDetailScreenState
   Widget _statusProgressBar(PickupJob job) {
     final statusNorm = job.status.trim().toLowerCase();
     final failed = statusNorm == 'failed';
+
+    // Lifecycle: Added to Trip → Scheduled (En Route on stop) → Picked Up → Received at Store
+    final enRoute = !failed &&
+        (statusNorm == 'scheduled' ||
+            statusNorm == 'picked up' ||
+            statusNorm == 'received at store');
     final pickedUp = !failed &&
         (statusNorm == 'picked up' || statusNorm == 'received at store');
     final completed = statusNorm == 'received at store';
@@ -781,9 +856,12 @@ class _PickupJobDetailScreenState
     } else if (pickedUp) {
       statusColor = AppTheme.oceanBlue;
       statusLabel = 'Picked Up';
+    } else if (enRoute) {
+      statusColor = AppTheme.oceanBlue;
+      statusLabel = 'Scheduled';
     } else {
       statusColor = AppTheme.mango;
-      statusLabel = job.status.isEmpty ? 'Added to Trip' : job.status;
+      statusLabel = 'Added to Trip';
     }
 
     return FrostCard(
@@ -825,7 +903,9 @@ class _PickupJobDetailScreenState
           const SizedBox(height: 14),
           Row(
             children: [
-              _stepDot(done: true, label: 'Claimed'),
+              _stepDot(done: true, label: 'Accepted'),
+              _stepLine(done: enRoute),
+              _stepDot(done: enRoute, label: 'En Route'),
               _stepLine(done: pickedUp),
               _stepDot(done: pickedUp, label: 'Picked Up'),
               _stepLine(done: completed),
@@ -1188,8 +1268,23 @@ class _PickupJobDetailScreenState
       );
     }
 
-    // Added to Trip → Mark Picked Up + Mark as Failed
+    // Added to Trip → Mark En Route (propagates to Scheduled on server)
     if (statusNorm == 'added to trip') {
+      return Column(
+        children: [
+          _primaryActionButton(
+            label: 'Mark En Route',
+            icon: Icons.directions_car_rounded,
+            onTap: () => _handleMarkEnRoute(job),
+          ),
+          const SizedBox(height: 10),
+          _failedActionButton(onTap: () => _handleMarkFailed(job)),
+        ],
+      );
+    }
+
+    // Scheduled (En Route marked on stop) → Mark Picked Up + Mark as Failed  (Story B.3)
+    if (statusNorm == 'scheduled') {
       return Column(
         children: [
           _primaryActionButton(
@@ -1203,7 +1298,7 @@ class _PickupJobDetailScreenState
       );
     }
 
-    // Picked Up → Drop at Store + Mark as Failed
+    // Picked Up → Drop at Store + Mark as Failed  (Story B.4)
     if (statusNorm == 'picked up') {
       return Column(
         children: [
