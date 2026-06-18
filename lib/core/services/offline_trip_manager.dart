@@ -1,8 +1,7 @@
-import 'package:flutter/foundation.dart';
-
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
 import '../../features/orders_by_location/repository/external_delivery_repository.dart';
+import '../logging/app_logger.dart';
 import 'connectivity_service.dart';
 import 'offline_storage_service.dart';
 import 'sync_manager.dart';
@@ -35,7 +34,7 @@ class OfflineTripManager {
   Future<int> downloadAllTripsAtTripStart() async {
     final connectivity = ConnectivityService();
     if (!await connectivity.checkConnectivity()) {
-      debugPrint('[OfflineTripManager] No connectivity, skipping prefetch');
+      AppLogger.offlineTrip.debug('No connectivity, skipping prefetch');
       return 0;
     }
 
@@ -62,21 +61,17 @@ class OfflineTripManager {
               final detail = await _repository.fetchDetail(orderName);
               await _storage.cacheOrder(_detailToJson(detail));
             } catch (e) {
-              debugPrint(
-                '[OfflineTripManager] Failed to cache order $orderName: $e',
-              );
+              AppLogger.offlineTrip.error('Failed to cache order $orderName', error: e);
             }
           }
           tripsCached++;
         } catch (e) {
-          debugPrint(
-            '[OfflineTripManager] Failed to cache trip ${s.name}: $e',
-          );
+          AppLogger.offlineTrip.error('Failed to cache trip ${s.name}', error: e);
         }
       }
-      debugPrint('[OfflineTripManager] Cached $tripsCached trips');
+      AppLogger.offlineTrip.info('Cached $tripsCached trips');
     } catch (e) {
-      debugPrint('[OfflineTripManager] Prefetch error: $e');
+      AppLogger.offlineTrip.error('Prefetch error', error: e);
     }
     return tripsCached;
   }
@@ -111,10 +106,7 @@ class OfflineTripManager {
         await _storage.cacheTrips(summaries.map(_summaryToJson).toList());
         return summaries;
       } catch (e) {
-        debugPrint(
-          '[OfflineTripManager] fetchTripSummaries network failed, '
-          'falling back to cache: $e',
-        );
+        AppLogger.offlineTrip.warning('fetchTripSummaries network failed, falling back to cache', data: {'error': e.toString()});
       }
     }
     return getCachedTripSummaries();
@@ -128,9 +120,7 @@ class OfflineTripManager {
         await _storage.cacheTripWithDetails(_tripToJson(trip));
         return trip;
       } catch (e) {
-        debugPrint(
-          '[OfflineTripManager] fetchTrip network failed for $tripName: $e',
-        );
+        AppLogger.offlineTrip.warning('fetchTrip network failed for $tripName, falling back to cache', data: {'error': e.toString()});
       }
     }
     return getCachedTrip(tripName);
@@ -144,9 +134,7 @@ class OfflineTripManager {
         await _storage.cacheOrder(_detailToJson(detail));
         return detail;
       } catch (e) {
-        debugPrint(
-          '[OfflineTripManager] fetchOrder network failed for $orderName: $e',
-        );
+        AppLogger.offlineTrip.warning('fetchOrder network failed for $orderName, falling back to cache', data: {'error': e.toString()});
       }
     }
     return getCachedOrder(orderName);

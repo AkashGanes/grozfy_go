@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../logging/app_logger.dart';
 import '../models/app_models.dart';
 import 'secure_token_storage.dart';
 
@@ -58,14 +58,14 @@ class ApiService {
         queryParams: queryParams,
       );
 
-      debugPrint('[ApiService] Request URL: $uri');
+      AppLogger.api.debug('Request URL: $uri');
 
       final response = await _sendWithAuthRetry(
         (headers) => http.get(uri, headers: headers),
       );
 
-      debugPrint('[ApiService] Response Status: ${response.statusCode}');
-      debugPrint('[ApiService] Response Body: ${response.body}');
+      AppLogger.api.debug('Response Status: ${response.statusCode}');
+      AppLogger.api.debug('Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = _decodeJsonMap(response.body);
@@ -95,7 +95,7 @@ class ApiService {
         );
       }
     } catch (e) {
-      debugPrint('[ApiService] Error fetching deliveries: $e');
+      AppLogger.api.error('Error fetching deliveries', error: e);
       rethrow;
     }
   }
@@ -115,7 +115,7 @@ class ApiService {
       }
       return null;
     } catch (e) {
-      debugPrint('[ApiService] Error fetching delivery $name: $e');
+      AppLogger.api.error('Error fetching delivery $name', error: e);
       return null;
     }
   }
@@ -139,7 +139,7 @@ class ApiService {
 
       return response.statusCode == 200;
     } catch (e) {
-      debugPrint('[ApiService] Error updating delivery status: $e');
+      AppLogger.api.error('Error updating delivery status', error: e);
       return false;
     }
   }
@@ -158,7 +158,7 @@ class ApiService {
           headerCandidates[i],
         ).timeout(const Duration(seconds: 30));
       } on TimeoutException {
-        debugPrint('[ApiService] Request timed out (attempt ${i + 1})');
+        AppLogger.api.warning('Request timed out (attempt ${i + 1})');
         if (i == headerCandidates.length - 1) {
           throw Exception('Request timed out. Check your internet connection.');
         }
@@ -201,7 +201,7 @@ class ApiService {
       if (refreshToken == null || refreshToken.trim().isEmpty) return false;
       if (clientId == null || clientId.trim().isEmpty) return false;
 
-      debugPrint('[ApiService] Attempting token refresh');
+      AppLogger.api.debug('Attempting token refresh');
       final http.Response response = await http
           .post(
             _refreshTokenUri,
@@ -217,7 +217,7 @@ class ApiService {
           .timeout(const Duration(seconds: 15));
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        debugPrint('[ApiService] Token refresh failed: ${response.statusCode}');
+        AppLogger.api.warning('Token refresh failed: ${response.statusCode}');
         return false;
       }
 
@@ -247,10 +247,10 @@ class ApiService {
         );
       }
 
-      debugPrint('[ApiService] Token refreshed successfully');
+      AppLogger.api.info('Token refreshed successfully');
       return true;
     } catch (e) {
-      debugPrint('[ApiService] Token refresh error: $e');
+      AppLogger.api.error('Token refresh error', error: e);
       return false;
     }
   }

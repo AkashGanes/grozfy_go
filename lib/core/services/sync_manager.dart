@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 
 import '../../features/orders_by_location/repository/external_delivery_repository.dart';
+import '../logging/app_logger.dart';
 import 'connectivity_service.dart';
 import 'offline_storage_service.dart';
 
@@ -70,7 +70,7 @@ class SyncManager {
   }
 
   void _onConnectivityRestored() {
-    debugPrint('[SyncManager] Connectivity restored, draining queues');
+    AppLogger.sync.info('Connectivity restored, draining queues');
     _syncStatusController.add(SyncStatus.syncing);
     syncAllPendingData();
   }
@@ -97,7 +97,7 @@ class SyncManager {
       await _processStopStatusQueue();
       _syncStatusController.add(SyncStatus.idle);
     } catch (e) {
-      debugPrint('[SyncManager] Sync error: $e');
+      AppLogger.sync.error('Sync error', error: e);
       _syncStatusController.add(SyncStatus.error);
     } finally {
       _isSyncing = false;
@@ -121,7 +121,7 @@ class SyncManager {
       }
     }
     if (reset > 0) {
-      debugPrint('[SyncManager] Reset $reset stuck syncing updates to pending');
+      AppLogger.sync.warning('Reset $reset stuck syncing updates to pending');
     }
   }
 
@@ -146,7 +146,7 @@ class SyncManager {
   Future<void> _processLocationPingQueue() async {
     final pending = _storage.getPendingLocationPings();
     if (pending.isEmpty) return;
-    debugPrint('[SyncManager] Flushing ${pending.length} pings');
+    AppLogger.sync.debug('Flushing ${pending.length} pings');
 
     for (final ping in pending) {
       if (ping.retryCount >= _maxRetries) {
@@ -206,7 +206,7 @@ class SyncManager {
   Future<void> _processStatusUpdateQueue() async {
     final pending = _storage.getPendingStatusUpdates();
     if (pending.isEmpty) return;
-    debugPrint('[SyncManager] Flushing ${pending.length} status updates');
+    AppLogger.sync.debug('Flushing ${pending.length} status updates');
 
     for (final update in pending) {
       if (update.status == SyncStatus.syncing) continue;
@@ -242,9 +242,10 @@ class SyncManager {
         );
         await _storage.removeStatusUpdate(update.id);
       } catch (e) {
-        debugPrint(
-          '[SyncManager] Status update flush failed for ${update.orderName} '
-          '(retry ${update.retryCount + 1}/$_maxRetries): $e',
+        AppLogger.sync.error(
+          'Status update flush failed for ${update.orderName} '
+          '(retry ${update.retryCount + 1}/$_maxRetries)',
+          error: e,
         );
         await _storage.updateStatusUpdate(
           update.copyWith(
@@ -276,10 +277,13 @@ class SyncManager {
       localStatus: update.newStatus,
       serverData: serverDoc,
     );
-    debugPrint(
-      '[SyncManager] Conflict on ${update.orderName}: '
-      'local=${update.newStatus} server=${serverDoc['status']} '
-      'serverWon=${result.serverWon}',
+    AppLogger.sync.warning(
+      'Conflict on ${update.orderName}',
+      data: {
+        'local': update.newStatus,
+        'server': serverDoc['status'],
+        'serverWon': result.serverWon,
+      },
     );
     // Refresh cached order with the resolved doc so the UI matches what we
     // just decided.
@@ -358,7 +362,7 @@ class SyncManager {
   Future<void> _processStopStatusQueue() async {
     final pending = _storage.getPendingStopStatusUpdates();
     if (pending.isEmpty) return;
-    debugPrint('[SyncManager] Flushing ${pending.length} stop updates');
+    AppLogger.sync.debug('Flushing ${pending.length} stop updates');
 
     for (final update in pending) {
       if (update.status == SyncStatus.syncing) continue;
@@ -391,9 +395,10 @@ class SyncManager {
         );
         await _storage.removeStopStatusUpdate(update.id);
       } catch (e) {
-        debugPrint(
-          '[SyncManager] Stop status flush failed for ${update.stopName} '
-          '(retry ${update.retryCount + 1}/$_maxRetries): $e',
+        AppLogger.sync.error(
+          'Stop status flush failed for ${update.stopName} '
+          '(retry ${update.retryCount + 1}/$_maxRetries)',
+          error: e,
         );
         await _storage.updateStopStatusUpdate(
           update.copyWith(
@@ -434,9 +439,13 @@ class SyncManager {
 
     if (_serverAuthoritativeStatuses.contains(serverStatus) &&
         serverStatus != update.newStatus) {
-      debugPrint(
-        '[SyncManager] Stop conflict on ${update.stopName}: '
-        'local=${update.newStatus} server=$serverStatus serverWon=true',
+      AppLogger.sync.warning(
+        'Stop conflict on ${update.stopName}',
+        data: {
+          'local': update.newStatus,
+          'server': serverStatus,
+          'serverWon': true,
+        },
       );
       // Refresh cached trip so the UI reflects the resolved server state.
       await _storage.cacheTripWithDetails(trip);

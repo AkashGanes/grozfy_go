@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'core/logging/app_logger.dart';
 import 'core/models/app_models.dart';
 import 'core/localization/app_localizations.dart';
 import 'core/services/connectivity_service.dart';
@@ -54,6 +55,7 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AppLogger.init();
   final container = ProviderContainer();
 
   // Offline stack: storage first (opens Hive boxes), then connectivity
@@ -75,8 +77,9 @@ void main() async {
     // Initialize Notifications
     await FCMInitializer().init(container);
   } catch (e) {
-    debugPrint(
-      "⚠️ Firebase initialization failed. Make sure google-services.json is added. Error: $e",
+    AppLogger.app.critical(
+      'Firebase initialization failed. Make sure google-services.json is added.',
+      error: e,
     );
   }
 

@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../constants/api_constants.dart';
+import '../logging/app_logger.dart';
 import '../localization/app_strings.dart';
 import '../localization/localized_text.dart';
 import '../models/app_models.dart';
@@ -3068,7 +3069,7 @@ class AppController extends ChangeNotifier {
       _liveCoordinates =
           '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
     } catch (e) {
-      debugPrint('Error getting current position: $e');
+      AppLogger.app.error('Error getting current position', error: e);
     }
 
     notifyListeners();
@@ -4424,11 +4425,7 @@ class AppController extends ChangeNotifier {
   }
 
   void _logApi(String tag, String value) {
-    final String line = '[API] $tag => $value';
-    // Keep debugPrint for Flutter tooling and print for plain logcat visibility.
-    debugPrint(line);
-    // ignore: avoid_print
-    print(line);
+    AppLogger.api.debug(tag, data: {'value': value});
   }
 
   String _truncateForLog(String raw, {int max = 1200}) {

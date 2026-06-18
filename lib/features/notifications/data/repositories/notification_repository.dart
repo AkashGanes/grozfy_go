@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import '../../../../core/constants/api_constants.dart';
+import '../../../../core/logging/app_logger.dart';
 import '../../../../core/models/app_models.dart';
 import '../../../../core/state/app_controller.dart';
 
@@ -50,7 +50,7 @@ class NotificationRepository {
         ['read', '=', 0],
       ]);
     } catch (e) {
-      debugPrint("Error fetching unread notification count: $e");
+      AppLogger.notification.error('Error fetching unread notification count', error: e);
       return 0;
     }
   }
@@ -80,7 +80,7 @@ class NotificationRepository {
 
       return (all: results[0], unread: results[1], read: results[2]);
     } catch (e) {
-      debugPrint("Error fetching notification counts: $e");
+      AppLogger.notification.error('Error fetching notification counts', error: e);
       return (all: 0, unread: 0, read: 0);
     }
   }
@@ -126,11 +126,11 @@ class NotificationRepository {
       final response = await _app.authorizedGet(uri);
       final List<dynamic> data = (response['message'] as List<dynamic>?) ?? [];
 
-      debugPrint("Fetched ${data.length} notifications from Notification Log");
+      AppLogger.notification.debug('Fetched ${data.length} notifications from Notification Log');
 
       return data.map((json) => NotificationLog.fromJson(json)).toList();
     } catch (e) {
-      debugPrint("Error fetching notifications: $e");
+      AppLogger.notification.error('Error fetching notifications', error: e);
       return [];
     }
   }
@@ -145,7 +145,7 @@ class NotificationRepository {
       await _app.authorizedPostJson(uri, <String, dynamic>{'docname': name});
       return true;
     } catch (e) {
-      debugPrint("Error marking notification as read: $e");
+      AppLogger.notification.error('Error marking notification as read', error: e);
       return false;
     }
   }
@@ -160,7 +160,7 @@ class NotificationRepository {
       await _app.authorizedPostJson(uri, const <String, dynamic>{});
       return true;
     } catch (e) {
-      debugPrint("Error marking all notifications as read: $e");
+      AppLogger.notification.error('Error marking all notifications as read', error: e);
       return false;
     }
   }

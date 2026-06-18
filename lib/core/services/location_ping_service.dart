@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import '../logging/app_logger.dart';
 
 // Limits that mirror the backend contract
 const int _kAccuracyLimitM = 80; // server rejects pings with accuracy > 80 m
@@ -56,7 +56,7 @@ class LocationPingService {
       StreamController<Map<String, dynamic>?>.broadcast();
 
   static void _log(String message) {
-    if (kDebugMode) debugPrint('[LocationPing] $message');
+    AppLogger.location.debug(message);
   }
 
   /// Kept for API compatibility with callers; nothing to set up upfront now

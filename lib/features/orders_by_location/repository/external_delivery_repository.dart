@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/localization/localized_text.dart';
+import '../../../core/logging/app_logger.dart';
 import '../../../core/services/secure_token_storage.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
@@ -1674,7 +1674,7 @@ class ExternalDeliveryRepository {
   }
 
   void _logApi(String tag, String value) {
-    debugPrint('[API] $tag => $value');
+    AppLogger.api.debug(tag, data: {'value': value});
   }
 
   Future<http.Response> _get(

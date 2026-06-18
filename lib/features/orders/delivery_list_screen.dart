@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/logging/app_logger.dart';
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/services/api_service.dart';
@@ -38,13 +39,13 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
     });
 
     try {
-      debugPrint('[DeliveryList] Fetching deliveries...');
+      AppLogger.app.debug('DeliveryList: fetching deliveries');
       final deliveries = await _apiService.getExternalDeliveries(
         filters: [
           ['External Delivery', 'status', '=', 'Pending'],
         ],
       );
-      debugPrint('[DeliveryList] Got ${deliveries.length} deliveries');
+      AppLogger.app.debug('DeliveryList: got ${deliveries.length} deliveries');
       if (mounted) {
         setState(() {
           _deliveries = deliveries;
@@ -53,7 +54,7 @@ class _DeliveryListScreenState extends State<DeliveryListScreen> {
         });
       }
     } catch (e) {
-      debugPrint('[DeliveryList] Error: $e');
+      AppLogger.app.error('DeliveryList: fetch error', error: e);
       if (mounted) {
         setState(() {
           _errorMessage = 'Failed to load: $e';

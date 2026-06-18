@@ -1,9 +1,9 @@
 import 'dart:convert';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
 
 import '../../main.dart';
+import '../logging/app_logger.dart';
 import '../navigation/app_routes.dart';
 
 class NotificationNavigationHandler {
@@ -18,12 +18,12 @@ class NotificationNavigationHandler {
     final String docname =
         (message.data['docname'] ?? message.data['doc_name'] ?? '').toString();
 
-    debugPrint("Navigating from FCM Message - Type: $doctype, Name: $docname");
+    AppLogger.notification.debug('Navigating from FCM message', data: {'type': doctype, 'name': docname});
     _navigateToTarget(doctype, docname);
   }
 
   void handlePayload(String payload) {
-    debugPrint("Navigating from Local Payload: $payload");
+    AppLogger.notification.debug('Navigating from local payload', data: {'payload': payload});
     try {
       final decoded = jsonDecode(payload);
       if (decoded is Map<String, dynamic>) {

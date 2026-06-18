@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map_animations/flutter_map_animations.dart';
 import 'package:geolocator/geolocator.dart';
@@ -11,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../../core/models/app_models.dart';
+import '../../core/logging/app_logger.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/services/api_service.dart';
 import '../../core/state/app_controller.dart';
@@ -306,7 +306,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
         _setFallbackRoute(destination);
       }
     } catch (e) {
-      debugPrint('Route fetch failed: $e');
+      AppLogger.location.error('Route fetch failed', error: e);
       if (!mounted) return;
       _setFallbackRoute(destination);
     } finally {
@@ -337,8 +337,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
         .timeout(const Duration(seconds: 12));
 
     if (response.statusCode != 200) {
-      debugPrint(
-        'OSRM route request failed (${response.statusCode}): ${response.body}',
+      AppLogger.location.warning(
+        'OSRM route request failed',
+        data: {'status': response.statusCode, 'body': response.body},
       );
       return null;
     }
@@ -569,7 +570,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
             }
           },
           onError: (e) {
-            debugPrint('Location stream error: $e');
+            AppLogger.location.error('Location stream error', error: e);
           },
         );
   }

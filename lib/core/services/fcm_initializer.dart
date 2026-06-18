@@ -2,10 +2,10 @@ import 'dart:convert';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'fcm_background_handler.dart';
 import 'notification_navigation_handler.dart';
+import '../logging/app_logger.dart';
 import '../utils/html_utils.dart';
 
 import '../../features/notifications/providers/notification_providers.dart';
@@ -32,7 +32,7 @@ class FCMInitializer {
     );
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      debugPrint('FCM Initializer: Permission granted');
+      AppLogger.fcm.info('Permission granted');
     }
 
     // 2. Set Background Handler
@@ -76,16 +76,18 @@ class FCMInitializer {
 
     // 4. Foreground Message Handler
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      debugPrint(
-        'FCM received foreground notification: '
-        'id=${message.messageId}, title=${message.notification?.title}, '
-        'data=${message.data}',
+      AppLogger.fcm.debug(
+        'Received foreground notification',
+        data: {
+          'id': message.messageId,
+          'title': message.notification?.title,
+          'data': message.data,
+        },
       );
-      debugPrint("FCM Foreground: ${message.notification?.title}");
 
       final isOnline = _container?.read(appControllerProvider).isOnline ?? false;
       if (!isOnline) {
-        debugPrint('FCM Foreground: driver is offline, dropping notification');
+        AppLogger.fcm.debug('Foreground: driver is offline, dropping notification');
         return;
       }
 
@@ -100,33 +102,40 @@ class FCMInitializer {
 
     // 5. Opened from Background
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      debugPrint(
-        'FCM opened from background notification: '
-        'id=${message.messageId}, title=${message.notification?.title}, '
-        'data=${message.data}',
+      AppLogger.fcm.debug(
+        'Opened from background notification',
+        data: {
+          'id': message.messageId,
+          'title': message.notification?.title,
+          'data': message.data,
+        },
       );
-      debugPrint("FCM Background Open: ${message.notification?.title}");
       NotificationNavigationHandler().handleMessage(message);
     });
 
     // 6. Opened from Terminated
     RemoteMessage? initialMessage = await _fcm.getInitialMessage();
     if (initialMessage != null) {
-      debugPrint(
-        'FCM opened from terminated notification: '
-        'id=${initialMessage.messageId}, title=${initialMessage.notification?.title}, '
-        'data=${initialMessage.data}',
+      AppLogger.fcm.debug(
+        'Opened from terminated notification',
+        data: {
+          'id': initialMessage.messageId,
+          'title': initialMessage.notification?.title,
+          'data': initialMessage.data,
+        },
       );
-      debugPrint("FCM Terminated Open: ${initialMessage.notification?.title}");
       NotificationNavigationHandler().handleMessage(initialMessage);
     }
   }
 
   void _showForegroundNotify(RemoteMessage message) {
-    debugPrint(
-      'FCM showing local notification: '
-      'id=${message.messageId}, notification=${message.notification}, '
-      'data=${message.data}',
+    AppLogger.fcm.debug(
+      'Showing local notification',
+      data: {
+        'id': message.messageId,
+        'notification': message.notification?.title,
+        'data': message.data,
+      },
     );
     final String rawTitle =
         (message.notification?.title ??

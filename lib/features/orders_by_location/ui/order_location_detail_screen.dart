@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/logging/app_logger.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
@@ -311,7 +312,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
         } catch (_) {}
       }
     } catch (e) {
-      debugPrint('Could not get GPS: $e');
+      AppLogger.location.error('Could not get GPS', error: e);
     }
   }
 
@@ -370,7 +371,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
           _currentLocation = LatLng(position.latitude, position.longitude);
         });
       } catch (e) {
-        debugPrint('Could not get initial GPS for tracking: $e');
+        AppLogger.location.error('Could not get initial GPS for tracking', error: e);
         if (!mounted) return;
       }
     }
@@ -424,7 +425,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
           if (_shouldRefreshRoute()) {
             _getRoutePoints();
           }
-        }, onError: (e) => debugPrint('Location stream error: $e'));
+        }, onError: (e) => AppLogger.location.error('Location stream error', error: e));
 
     _fitMapToPoints();
   }
@@ -464,7 +465,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
         _setFallbackRoute();
       }
     } catch (e) {
-      debugPrint('Route fetch failed: $e');
+      AppLogger.location.error('Route fetch failed', error: e);
       if (mounted) _setFallbackRoute();
     } finally {
       _isFetchingRoute = false;

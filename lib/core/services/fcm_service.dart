@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../constants/api_constants.dart';
+import '../logging/app_logger.dart';
 import '../state/app_controller.dart';
 
 class FCMService {
@@ -24,7 +24,7 @@ class FCMService {
     try {
       final String? token = await getToken();
       if (token == null) {
-        debugPrint('FCM subscribe skipped: token is null');
+        AppLogger.fcm.warning('Subscribe skipped: token is null');
         return;
       }
 
@@ -32,14 +32,18 @@ class FCMService {
           ? Firebase.app().options.projectId
           : '';
       if (projectId.isEmpty) {
-        debugPrint('FCM Subscription error: Firebase project id missing');
+        AppLogger.fcm.error('Subscription error: Firebase project id missing');
         return;
       }
 
-      debugPrint(
-        'FCM subscribe attempt: '
-        'endpoint=${ApiConstants.erpBaseUrl}/api/method/frappe.push_notification.subscribe, '
-        'projectId=$projectId, tokenPrefix=${_maskToken(token)}',
+      AppLogger.fcm.debug(
+        'Subscribe attempt',
+        data: {
+          'endpoint':
+              '${ApiConstants.erpBaseUrl}/api/method/frappe.push_notification.subscribe',
+          'projectId': projectId,
+          'tokenPrefix': _maskToken(token),
+        },
       );
 
       final bool registered = await _registerDeviceWithErpNext(
@@ -49,14 +53,14 @@ class FCMService {
         bearerToken: appController.sessionToken,
       );
       if (!registered) {
-        debugPrint('FCM subscribe failed');
+        AppLogger.fcm.warning('Subscribe failed');
         return;
       }
 
       _bindTokenRefresh(appController);
-      debugPrint("FCM token sync successful");
+      AppLogger.fcm.info('Token sync successful');
     } catch (e) {
-      debugPrint("FCM Subscription error: $e");
+      AppLogger.fcm.error('Subscription error', error: e);
     }
   }
 
@@ -66,7 +70,7 @@ class FCMService {
     try {
       final String? token = await getToken();
       if (token == null) {
-        debugPrint('FCM unsubscribe skipped: token is null');
+        AppLogger.fcm.warning('Unsubscribe skipped: token is null');
         return;
       }
 
@@ -74,14 +78,18 @@ class FCMService {
           ? Firebase.app().options.projectId
           : '';
       if (projectId.isEmpty) {
-        debugPrint('FCM Unsubscription error: Firebase project id missing');
+        AppLogger.fcm.error('Unsubscription error: Firebase project id missing');
         return;
       }
 
-      debugPrint(
-        'FCM unsubscribe attempt: '
-        'endpoint=${ApiConstants.erpBaseUrl}/api/method/frappe.push_notification.unsubscribe, '
-        'projectId=$projectId, tokenPrefix=${_maskToken(token)}',
+      AppLogger.fcm.debug(
+        'Unsubscribe attempt',
+        data: {
+          'endpoint':
+              '${ApiConstants.erpBaseUrl}/api/method/frappe.push_notification.unsubscribe',
+          'projectId': projectId,
+          'tokenPrefix': _maskToken(token),
+        },
       );
 
       final bool unsubscribed = await _unsubscribeDeviceFromErpNext(
@@ -94,12 +102,12 @@ class FCMService {
       await _tokenRefreshSub?.cancel();
       _tokenRefreshSub = null;
       if (unsubscribed) {
-        debugPrint("FCM Unsubscription successful");
+        AppLogger.fcm.info('Unsubscription successful');
       } else {
-        debugPrint("FCM unsubscribe failed");
+        AppLogger.fcm.warning('Unsubscribe failed');
       }
     } catch (e) {
-      debugPrint("FCM Unsubscription error: $e");
+      AppLogger.fcm.error('Unsubscription error', error: e);
     }
   }
 
@@ -125,11 +133,11 @@ class FCMService {
 
       await _tokenRefreshSub?.cancel();
       _tokenRefreshSub = null;
-      debugPrint(
-        "FCM unsubscribe (explicit token): ${unsubscribed ? 'success' : 'failed'}",
+      AppLogger.fcm.info(
+        'Unsubscribe (explicit token): ${unsubscribed ? 'success' : 'failed'}',
       );
     } catch (e) {
-      debugPrint("FCM unsubscribe (explicit token) error: $e");
+      AppLogger.fcm.error('Unsubscribe (explicit token) error', error: e);
     }
   }
 
@@ -141,13 +149,13 @@ class FCMService {
             ? Firebase.app().options.projectId
             : '';
         if (projectId.isEmpty) {
-          debugPrint('FCM token refresh sync error: Firebase project id missing');
+          AppLogger.fcm.error('Token refresh sync error: Firebase project id missing');
           return;
         }
 
-        debugPrint(
-          'FCM token refresh attempt: '
-          'projectId=$projectId, tokenPrefix=${_maskToken(token)}',
+        AppLogger.fcm.debug(
+          'Token refresh attempt',
+          data: {'projectId': projectId, 'tokenPrefix': _maskToken(token)},
         );
 
         await _registerDeviceWithErpNext(
@@ -156,9 +164,9 @@ class FCMService {
           projectName: projectId,
           bearerToken: appController.sessionToken,
         );
-        debugPrint("FCM token refresh synced");
+        AppLogger.fcm.info('Token refresh synced');
       } catch (e) {
-        debugPrint("FCM token refresh sync error: $e");
+        AppLogger.fcm.error('Token refresh sync error', error: e);
       }
     });
   }
@@ -187,16 +195,17 @@ class FCMService {
       );
 
       if (response.statusCode == 200) {
-        debugPrint('FCM device registered with ERPNext: ${response.body}');
+        AppLogger.fcm.info('Device registered with ERPNext');
         return true;
       }
 
-      debugPrint(
-        'FCM registration failed: status=${response.statusCode}, body=${response.body}',
+      AppLogger.fcm.warning(
+        'Registration failed',
+        data: {'status': response.statusCode, 'body': response.body},
       );
       return false;
     } catch (e) {
-      debugPrint('FCM registration error: $e');
+      AppLogger.fcm.error('Registration error', error: e);
       return false;
     }
   }
@@ -225,16 +234,17 @@ class FCMService {
       );
 
       if (response.statusCode == 200) {
-        debugPrint('FCM device unsubscribed from ERPNext: ${response.body}');
+        AppLogger.fcm.info('Device unsubscribed from ERPNext');
         return true;
       }
 
-      debugPrint(
-        'FCM unsubscription failed: status=${response.statusCode}, body=${response.body}',
+      AppLogger.fcm.warning(
+        'Unsubscription failed',
+        data: {'status': response.statusCode, 'body': response.body},
       );
       return false;
     } catch (e) {
-      debugPrint('FCM unsubscription error: $e');
+      AppLogger.fcm.error('Unsubscription error', error: e);
       return false;
     } finally {
       await _fcm.deleteToken();

@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:home_widget/home_widget.dart';
 
+import '../logging/app_logger.dart';
 import '../models/app_models.dart';
 import 'widget_data.dart';
 
@@ -11,7 +11,7 @@ class PartnerWidgetManager {
   static const String _widgetDataKey = 'partner_widget_data';
 
   static void _log(String message) {
-    debugPrint('[PartnerWidgetManager] $message');
+    AppLogger.widget.debug(message);
   }
 
   static Future<void> initialize() async {

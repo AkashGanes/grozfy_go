@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
+import '../../core/logging/app_logger.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/models/app_models.dart';
 import '../../core/state/app_controller.dart';
@@ -309,8 +310,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         _pagingController.appendPage(items, pageKey + orders.length);
       }
     } catch (e, st) {
-      debugPrint('[OrderListing] _fetchPage error: $e');
-      debugPrint('[OrderListing] stacktrace: $st');
+      AppLogger.app.error('OrderListing: _fetchPage error', error: e, stackTrace: st);
       if (!mounted) return;
       _pagingController.error = e;
     }
@@ -336,7 +336,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       );
       return details.map((d) => app.buildDeliveryOrderFromDetail(d)).toList();
     } catch (e) {
-      debugPrint('[OrderListing] enriched fetch failed, using fallback: $e');
+      AppLogger.app.warning('OrderListing: enriched fetch failed, using fallback', data: {'error': e.toString()});
     }
 
     // Fallback: summary list + concurrent detail fetches (no address resolve).
@@ -355,7 +355,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
           final d = await _repository.fetchDetail(s.name, resolveAddress: false);
           return app.buildDeliveryOrderFromDetail(d);
         } catch (e) {
-          debugPrint('[OrderListing] detail warn: ${s.name} $e');
+          AppLogger.app.warning('OrderListing: detail warn for ${s.name}', data: {'error': e.toString()});
           return null;
         }
       }),

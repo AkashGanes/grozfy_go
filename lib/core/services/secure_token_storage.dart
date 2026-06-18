@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../logging/app_logger.dart';
 
 /// Secure storage for auth credentials. All seven keys here hold sensitive
 /// material and must never live in plain SharedPreferences.
@@ -55,7 +55,7 @@ class SecureTokenStorage {
     try {
       return await _storage.read(key: key);
     } catch (e, st) {
-      debugPrint('[SecureTokenStorage] read("$key") failed: $e\n$st');
+      AppLogger.auth.error('read("$key") failed', error: e, stackTrace: st);
       return null;
     }
   }
@@ -65,7 +65,7 @@ class SecureTokenStorage {
       await _storage.write(key: key, value: value);
       return true;
     } catch (e, st) {
-      debugPrint('[SecureTokenStorage] write("$key") failed: $e\n$st');
+      AppLogger.auth.error('write("$key") failed', error: e, stackTrace: st);
       return false;
     }
   }
@@ -74,7 +74,7 @@ class SecureTokenStorage {
     try {
       await _storage.delete(key: key);
     } catch (e, st) {
-      debugPrint('[SecureTokenStorage] delete("$key") failed: $e\n$st');
+      AppLogger.auth.error('delete("$key") failed', error: e, stackTrace: st);
     }
   }
 
@@ -113,9 +113,8 @@ class SecureTokenStorage {
       if (wrote) {
         await prefs.remove(key);
       } else {
-        debugPrint(
-          '[SecureTokenStorage] migration kept "$key" in prefs '
-          '(secure write failed; will retry on next boot)',
+        AppLogger.auth.warning(
+          'Migration kept "$key" in prefs (secure write failed; will retry on next boot)',
         );
       }
     }
