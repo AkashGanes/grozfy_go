@@ -710,7 +710,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                       : (order.contactNumber.isNotEmpty
                           ? order.contactNumber
                           : null),
-                  email: app.profile?.email,
+                  email: null,
                 ),
                 actions: [
                   ActiveOrderAction(

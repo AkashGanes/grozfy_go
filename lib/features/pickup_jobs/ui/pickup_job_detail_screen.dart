@@ -920,6 +920,7 @@ class _PickupJobDetailScreenState
   Widget _stepDot({required bool done, required String label}) {
     final color = done ? AppTheme.oceanBlue : Colors.black26;
     return Expanded(
+      flex: 2,
       child: Column(
         children: [
           Container(
@@ -940,6 +941,8 @@ class _PickupJobDetailScreenState
           Text(
             label,
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: color,
               fontSize: 10,
@@ -953,7 +956,6 @@ class _PickupJobDetailScreenState
 
   Widget _stepLine({required bool done}) {
     return Expanded(
-      flex: 2,
       child: Container(
         height: 2,
         margin: const EdgeInsets.only(bottom: 18),

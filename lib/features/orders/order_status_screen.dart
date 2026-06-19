@@ -431,30 +431,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
-  String _nextButtonLabel(OrderProgressStatus current) {
-    switch (current) {
-      case OrderStatus.pending:
-        return 'Accept Order';
-      case OrderStatus.accepted:
-        return 'Mark Reached Pickup';
-      case OrderStatus.rejected:
-        return 'Rejected';
-      case OrderStatus.reachedPickup:
-        return 'Mark Picked Up';
-      case OrderStatus.pickedUp:
-        return 'Start Out for Delivery';
-      case OrderStatus.outForDelivery:
-        return 'Mark Delivered';
-      case OrderStatus.delivered:
-        return 'Completed';
-      case OrderStatus.failed:
-        return 'Failed';
-      case OrderStatus.cancelled:
-        return 'Cancelled';
-      case OrderStatus.returned:
-        return 'Returned';
-    }
-  }
 
 
   Future<void> _onActionTap(BuildContext context, DeliveryOrder order) async {
