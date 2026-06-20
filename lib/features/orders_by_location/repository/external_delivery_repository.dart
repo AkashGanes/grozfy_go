@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/localization/localized_text.dart';
 import '../../../core/services/secure_token_storage.dart';
+import '../model/cod_handover.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 
@@ -155,6 +156,10 @@ class ExternalDeliveryRepository {
     'latitude',
     'longitude',
     'delivery_address',
+    'payment_method',
+    'payment_mode',
+    'grand_total',
+    'cod_amount_to_collect',
   ];
   static const List<String> _tripFields = [
     'name',
@@ -595,6 +600,18 @@ class ExternalDeliveryRepository {
     }
 
     final data = (jsonDecode(resp.body)['data']) as Map<String, dynamic>;
+    _logApi(
+      'fetchDetail_cod_fields',
+      'payment_method=${data['payment_method']} '
+      'payment_mode=${data['payment_mode']} '
+      'mode_of_payment=${data['mode_of_payment']} '
+      'cod_amount_to_collect=${data['cod_amount_to_collect']} '
+      'grand_total=${data['grand_total']} '
+      'amount=${data['amount']} '
+      'total=${data['total']} '
+      'total_amount=${data['total_amount']}',
+    );
+    _logApi('fetchDetail_all_keys', data.keys.join(', '));
     if (resolveAddress) {
       final addressName = data['delivery_address']?.toString();
       if (addressName != null && addressName.isNotEmpty) {
@@ -1877,6 +1894,91 @@ class ExternalDeliveryRepository {
           .timeout(_networkTimeout);
     }
     return resp;
+  }
+
+  /// Marks an External Delivery as Delivered and records how the COD was paid.
+  /// Sends [codCollectionMode] ('Cash' or 'UPI') and optionally
+  /// [codUpiReference] alongside status=Delivered in a single PUT.
+  Future<void> markDeliveredWithCod(
+    String orderName, {
+    required String codCollectionMode,
+    String? codUpiReference,
+  }) async {
+    final uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(orderName)}',
+    );
+    final payload = <String, dynamic>{
+      'status': 'Delivered',
+      'cod_collection_mode': codCollectionMode,
+    };
+    if (codUpiReference != null && codUpiReference.trim().isNotEmpty) {
+      payload['cod_upi_reference'] = codUpiReference.trim();
+    }
+    _logApi('mark_delivered_with_cod', 'PUT $uri mode=$codCollectionMode');
+    final resp = await _put(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
+  /// Fetches the [CodHandover] doc for [tripName].
+  /// Returns null if no COD handover exists for this trip.
+  Future<CodHandover?> fetchCodHandover(String tripName) async {
+    final driver = await _getLoggedInDriver();
+    final codHandoverList = '${ApiConstants.erpBaseUrl}/api/resource/COD%20Handover';
+    final uri = Uri.parse(codHandoverList).replace(
+      queryParameters: {
+        'fields': jsonEncode([
+          'name',
+          'delivery_trip',
+          'cod_cash_expected',
+          'cod_cash_actual',
+          'status',
+          'notes',
+        ]),
+        'filters': jsonEncode([
+          ['COD Handover', 'delivery_trip', '=', tripName],
+          ['COD Handover', 'driver', '=', driver],
+        ]),
+        'limit_page_length': '1',
+      },
+    );
+    _logApi('fetch_cod_handover', 'GET $uri trip=$tripName driver=$driver');
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) return null;
+    final rows = (jsonDecode(resp.body)['data']) as List?;
+    if (rows == null || rows.isEmpty) return null;
+    return CodHandover.fromJson(rows.first as Map<String, dynamic>);
+  }
+
+  /// Saves the driver's actual cash-in-hand to the [CodHandover] doc.
+  Future<void> submitCodHandover({
+    required String name,
+    required double actualAmount,
+    String? notes,
+  }) async {
+    final codHandoverList = '${ApiConstants.erpBaseUrl}/api/resource/COD%20Handover';
+    final uri = Uri.parse(
+      '$codHandoverList/${Uri.encodeComponent(name)}',
+    );
+    final payload = <String, dynamic>{
+      'cod_cash_actual': actualAmount,
+      'status': 'Submitted',
+      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+    };
+    _logApi('submit_cod_handover', 'PUT $uri name=$name amount=$actualAmount');
+    final resp = await _put(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
   }
 
   Future<http.Response> _put(

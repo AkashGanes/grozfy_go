@@ -11,6 +11,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../orders_by_location/ui/cod_collection_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
 import '../orders_by_location/ui/trip_stop_map_screen.dart';
@@ -357,6 +358,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         );
         if (!mounted) return;
       }
+
+      // COD: ask how customer paid before marking delivered
+      try {
+        final detail = await ExternalDeliveryRepository().fetchDetail(
+          order.orderId,
+          resolveAddress: false,
+        );
+        if (!mounted) { setState(() => _syncing = false); return; }
+        if (detail.isCod) {
+          final codResult = await showCodCollectionSheet(
+            context,
+            amountToCollect: detail.codAmountToCollect ?? 0,
+          );
+          if (!mounted) { setState(() => _syncing = false); return; }
+          if (codResult == null) { setState(() => _syncing = false); return; }
+          try {
+            await ExternalDeliveryRepository().markDeliveredWithCod(
+              order.orderId,
+              codCollectionMode: codResult.mode,
+              codUpiReference: codResult.upiRef,
+            );
+          } catch (_) {}
+          if (!mounted) return;
+        }
+      } catch (_) {}
     }
 
     final error = await app.updateOrderStatus(next);
