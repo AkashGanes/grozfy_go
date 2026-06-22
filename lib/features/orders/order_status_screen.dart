@@ -11,8 +11,9 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
-import '../orders_by_location/ui/cod_collection_sheet.dart';
+import '../orders_by_location/ui/delivery_outcome_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
+import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
 import '../orders_by_location/ui/trip_stop_map_screen.dart';
 import 'widgets/order_timer_widget.dart';
@@ -349,40 +350,57 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     setState(() => _syncing = true);
 
     if (next == OrderStatus.delivered) {
+      // Optional proof photo
       final photoPath = await showDeliveryProofSheet(context);
-      if (!mounted) return;
+      if (!mounted) { setState(() => _syncing = false); return; }
       if (photoPath != null) {
         await ExternalDeliveryRepository().uploadProofPhoto(
           orderName: order.orderId,
           filePath: photoPath,
         );
-        if (!mounted) return;
+        if (!mounted) { setState(() => _syncing = false); return; }
       }
 
-      // COD: ask how customer paid before marking delivered
+      // Fetch COD info, then show unified delivery outcome sheet
+      bool isCod = order.paymentMode.toUpperCase() == 'COD';
+      double codAmount = 0;
       try {
         final detail = await ExternalDeliveryRepository().fetchDetail(
           order.orderId,
           resolveAddress: false,
         );
-        if (!mounted) { setState(() => _syncing = false); return; }
-        if (detail.isCod) {
-          final codResult = await showCodCollectionSheet(
-            context,
-            amountToCollect: detail.codAmountToCollect ?? 0,
-          );
-          if (!mounted) { setState(() => _syncing = false); return; }
-          if (codResult == null) { setState(() => _syncing = false); return; }
-          try {
-            await ExternalDeliveryRepository().markDeliveredWithCod(
-              order.orderId,
-              codCollectionMode: codResult.mode,
-              codUpiReference: codResult.upiRef,
-            );
-          } catch (_) {}
-          if (!mounted) return;
-        }
+        isCod = detail.isCod;
+        codAmount = detail.codAmountToCollect ?? 0;
       } catch (_) {}
+      if (!mounted) { setState(() => _syncing = false); return; }
+
+      // Show unified sheet: COD form + Confirm Delivery + Mark as Failed
+      final outcome = await showDeliveryOutcomeSheet(
+        context,
+        isCod: isCod,
+        codAmount: codAmount,
+      );
+      if (!mounted) { setState(() => _syncing = false); return; }
+      if (outcome == null) { setState(() => _syncing = false); return; }
+
+      if (outcome.outcome == 'failed') {
+        // Driver chose to mark as failed from within the delivery sheet
+        setState(() => _syncing = false);
+        await _onMarkFailed(context, order);
+        return;
+      }
+
+      // Outcome is 'delivered' — save COD data if applicable
+      if (isCod && outcome.codMode != null) {
+        try {
+          await ExternalDeliveryRepository().markDeliveredWithCod(
+            order.orderId,
+            codCollectionMode: outcome.codMode!,
+            codUpiReference: outcome.codRef,
+          );
+        } catch (_) {}
+        if (!mounted) return;
+      }
     }
 
     final error = await app.updateOrderStatus(next);
@@ -405,6 +423,32 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
       AppToast.show(context, 'Order delivered and earnings updated');
       navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
     }
+  }
+
+  Future<void> _onMarkFailed(BuildContext context, DeliveryOrder order) async {
+    final isCod = order.paymentMode.toUpperCase() == 'COD';
+    final result = await showFailedDeliverySheet(context, isCod: isCod);
+    if (result == null || !mounted) return;
+    setState(() => _syncing = true);
+    try {
+      await ExternalDeliveryRepository().markOrderFailed(
+        orderName: order.orderId,
+        reason: result.notes.isNotEmpty ? result.notes : result.reason,
+        reasonCode: result.reasonCode,
+        photoPath: result.photoPath,
+      );
+    } catch (_) {}
+    if (!mounted) { setState(() => _syncing = false); return; }
+    final app = AppScope.of(context);
+    final error = await app.updateOrderStatus(OrderStatus.failed);
+    app.stopOrderTimer();
+    if (!context.mounted) return;
+    setState(() => _syncing = false);
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
+    Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
   }
 
   String _nextButtonLabel(OrderProgressStatus current) {
@@ -738,7 +782,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       child: ElevatedButton(
                         onPressed: _syncing
                             ? null
-                            : () => _onActionTap(context, order),
+                            : order.orderStatus == OrderStatus.outForDelivery
+                                ? () => _advanceStatus(context)
+                                : () => _onActionTap(context, order),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: color,
                           foregroundColor: Colors.white,
@@ -1272,3 +1318,4 @@ class _RecallData {
   final String storeAddress;
   final int itemCount;
 }
+

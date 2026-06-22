@@ -1925,6 +1925,23 @@ class ExternalDeliveryRepository {
     }
   }
 
+  Future<void> markOrderFailed({
+    required String orderName,
+    required String reason,
+    String reasonCode = '',
+    String? photoPath,
+  }) async {
+    await _updateExternalDeliveryFields(orderName, {
+      'status': 'Failed',
+      'delivery_notes': reason,
+      'store_notified': 1,
+      if (reasonCode.isNotEmpty) 'failure_reason_code': reasonCode,
+    });
+    if (photoPath != null && photoPath.isNotEmpty) {
+      await uploadProofPhoto(orderName: orderName, filePath: photoPath);
+    }
+  }
+
   /// Fetches the [CodHandover] doc for [tripName].
   /// Returns null if no COD handover exists for this trip.
   Future<CodHandover?> fetchCodHandover(String tripName) async {
