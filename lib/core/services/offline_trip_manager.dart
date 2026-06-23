@@ -188,6 +188,9 @@ class OfflineTripManager {
         if (s['status'] != null) 'status': s['status'],
         if (s['creation'] != null) 'creation': s['creation'],
         if (s['modified'] != null) 'modified': s['modified'],
+        // Delivery coordinates power the offline delivery-radius filter.
+        if (s['latitude'] != null) 'latitude': s['latitude'],
+        if (s['longitude'] != null) 'longitude': s['longitude'],
       });
     }
     // Single batched disk flush instead of one awaited write per row.

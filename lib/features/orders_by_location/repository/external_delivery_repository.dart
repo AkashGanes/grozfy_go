@@ -223,33 +223,58 @@ class ExternalDeliveryRepository {
         (storeName != null && storeName.isNotEmpty
             ? 'modified desc'
             : 'store_name asc, modified desc');
-    final params = <String, String>{
-      'fields': jsonEncode(_fields),
-      'limit_start': '$limitStart',
-      'limit_page_length': '$limitPageLength',
-      'order_by': effectiveOrderBy,
-    };
     final List<List<dynamic>> effectiveFilters = <List<dynamic>>[
       if (filters != null) ...filters,
       if (storeName != null && storeName.isNotEmpty)
         <dynamic>['External Delivery', 'store_name', '=', storeName],
     ];
-    if (effectiveFilters.isNotEmpty) {
-      params['filters'] = jsonEncode(effectiveFilters);
-    }
-    if (orFilters != null && orFilters.isNotEmpty) {
-      params['or_filters'] = jsonEncode(orFilters);
+
+    // Request the delivery coordinates so the screen can apply the
+    // delivery-radius filter. These fields may be rejected by the server's
+    // in_list_view restriction (it rejects the whole request on the first bad
+    // field), so fall back to the base fields once — the radius filter then
+    // simply no-ops for this page rather than the list failing to load.
+    final List<String> geoFields = <String>[
+      ..._fields,
+      'latitude',
+      'longitude',
+    ];
+
+    Future<http.Response> requestWith(List<String> fields) async {
+      final params = <String, String>{
+        'fields': jsonEncode(fields),
+        'limit_start': '$limitStart',
+        'limit_page_length': '$limitPageLength',
+        'order_by': effectiveOrderBy,
+      };
+      if (effectiveFilters.isNotEmpty) {
+        params['filters'] = jsonEncode(effectiveFilters);
+      }
+      if (orFilters != null && orFilters.isNotEmpty) {
+        params['or_filters'] = jsonEncode(orFilters);
+      }
+      final uri = Uri.parse(
+        ApiConstants.externalDeliveryList,
+      ).replace(queryParameters: params);
+      _logApi('external_delivery_list request', uri.toString());
+      return _get(uri, headers: await _authHeaders());
     }
 
-    final uri = Uri.parse(
-      ApiConstants.externalDeliveryList,
-    ).replace(queryParameters: params);
-
-    _logApi('external_delivery_list request', uri.toString());
     // Time the round-trip so slow loads can be attributed to the server vs the
     // app. Look for "external_delivery_list timing" in the logs.
     final Stopwatch sw = Stopwatch()..start();
-    final resp = await _get(uri, headers: await _authHeaders());
+    http.Response resp = await requestWith(geoFields);
+    // 417 is Frappe's typical "invalid field" response; retry without geo on any
+    // 4xx that isn't an auth failure, so a missing column never breaks the list.
+    if (resp.statusCode != 200 &&
+        resp.statusCode != 401 &&
+        resp.statusCode != 403) {
+      _logApi(
+        'external_delivery_list geo fallback',
+        'status=${resp.statusCode}; retrying without latitude/longitude',
+      );
+      resp = await requestWith(_fields);
+    }
     final int networkMs = sw.elapsedMilliseconds;
 
     if (resp.statusCode == 401) {
