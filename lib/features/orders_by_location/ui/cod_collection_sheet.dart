@@ -51,6 +51,16 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
     }
   }
 
+  Color get _confirmColor => _mode == 'Not Collected'
+      ? const Color(0xFFE65100)
+      : const Color(0xFF2E7D32);
+
+  String get _confirmLabel {
+    if (_mode == 'UPI') return 'Confirm — UPI Paid';
+    if (_mode == 'Not Collected') return 'Confirm — Not Collected';
+    return 'Confirm — Cash Collected';
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -240,13 +250,94 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
                 : const SizedBox.shrink(),
           ),
 
+          // ── Not Collected option ──────────────────────────────────────────
+          const SizedBox(height: 14),
+          GestureDetector(
+            onTap: () => setState(() {
+              _mode = _mode == 'Not Collected' ? 'Cash' : 'Not Collected';
+              _upiRefError = false;
+            }),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+              decoration: BoxDecoration(
+                color: _mode == 'Not Collected'
+                    ? const Color(0xFFE65100).withValues(alpha: 0.08)
+                    : scheme.onSurface.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: _mode == 'Not Collected'
+                      ? const Color(0xFFE65100).withValues(alpha: 0.5)
+                      : scheme.onSurface.withValues(alpha: 0.1),
+                  width: _mode == 'Not Collected' ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.money_off_rounded,
+                    size: 22,
+                    color: _mode == 'Not Collected'
+                        ? const Color(0xFFE65100)
+                        : scheme.onSurface.withValues(alpha: 0.4),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Cash not collected',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _mode == 'Not Collected'
+                                ? const Color(0xFFE65100)
+                                : scheme.onSurface.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        Text(
+                          'Customer did not pay — flag for follow-up',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: scheme.onSurface.withValues(alpha: 0.45),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _mode == 'Not Collected'
+                          ? const Color(0xFFE65100)
+                          : Colors.transparent,
+                      border: Border.all(
+                        color: _mode == 'Not Collected'
+                            ? const Color(0xFFE65100)
+                            : scheme.onSurface.withValues(alpha: 0.3),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: _mode == 'Not Collected'
+                        ? const Icon(Icons.check, size: 13, color: Colors.white)
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
           const SizedBox(height: 24),
 
           // ── Confirm button ────────────────────────────────────────────────
           AppSheetPrimaryButton(
-            label: _mode == 'Cash' ? 'Confirm — Cash Collected' : 'Confirm — UPI Paid',
+            label: _confirmLabel,
             icon: Icons.check_circle_rounded,
-            color: const Color(0xFF2E7D32),
+            color: _confirmColor,
             onPressed: _confirm,
           ),
           const SizedBox(height: 8),

@@ -19,6 +19,7 @@ import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
+import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import 'widgets/order_timer_widget.dart';
 
 class OrderTrackingScreen extends StatefulWidget {
@@ -385,6 +386,32 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       AppToast.show(context, 'Order delivered and earnings updated');
       navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
     }
+  }
+
+  Future<void> _onMarkFailed(BuildContext context, DeliveryOrder order) async {
+    final isCod = order.paymentMode.toUpperCase() == 'COD';
+    final result = await showFailedDeliverySheet(context, isCod: isCod);
+    if (result == null || !mounted) return;
+    setState(() => _syncing = true);
+    try {
+      await ExternalDeliveryRepository().markOrderFailed(
+        orderName: order.orderId,
+        reason: result.notes.isNotEmpty ? result.notes : result.reason,
+        reasonCode: result.reasonCode,
+        photoPath: result.photoPath,
+      );
+    } catch (_) {}
+    if (!mounted) { setState(() => _syncing = false); return; }
+    final app = AppScope.of(context);
+    final error = await app.updateOrderStatus(OrderStatus.failed);
+    app.stopOrderTimer();
+    if (!context.mounted) return;
+    setState(() => _syncing = false);
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
+    Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
   }
 
   Future<void> _showStatusConfirmSheet(
@@ -851,7 +878,49 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                   const SizedBox(height: 20),
 
                   // ── Inline status action button ────────────────────────
-                  if (order.orderStatus != OrderStatus.delivered &&
+                  if (order.orderStatus == OrderStatus.outForDelivery) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _TrackingActionButton(
+                            label: 'Mark Delivered',
+                            color: Colors.green,
+                            icon: Icons.check_circle_outline_rounded,
+                            syncing: _syncing,
+                            onTap: () => _showStatusConfirmSheet(context, order),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: SizedBox(
+                            height: 52,
+                            child: OutlinedButton(
+                              onPressed: _syncing ? null : () => _onMarkFailed(context, order),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.cancel_outlined, size: 18),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Mark Failed',
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                  ] else if (order.orderStatus != OrderStatus.delivered &&
                       order.orderStatus != OrderStatus.cancelled &&
                       order.orderStatus != OrderStatus.rejected) ...[
                     _TrackingActionButton(

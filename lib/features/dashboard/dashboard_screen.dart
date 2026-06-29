@@ -20,6 +20,7 @@ import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/cod_collection_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
+import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
 import '../orders_by_location/ui/trip_stop_map_screen.dart';
 import '../orders/my_orders_screen.dart';
@@ -320,6 +321,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   // Guards against re-surfacing a recall after the driver confirms it.
   final Set<String> _confirmedRecallOrderIds = {};
 
+  // COD cash pre-confirmation per order (orderId → payment result).
+  final Map<String, ({String mode, String? upiRef})> _codResultsMap = {};
+
   // Carousel state.
   late PageController _pageController;
   int _currentPageIndex = 0;
@@ -331,7 +335,11 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     super.initState();
     _pageController = PageController();
     _pageController.addListener(_onPageScroll);
-    _startPolling();
+    // Defer polling to avoid _getTripIdForOrder → setViewedOrderIndex →
+    // notifyListeners() firing while the widget tree is still mounting.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _startPolling();
+    });
   }
 
   @override
@@ -700,10 +708,28 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                     ),
                   ),
                 ],
-                primaryActionLabel: transition?.label,
-                onPrimaryAction: transition == null
-                    ? null
-                    : () => _runTransition(ctx, app, order, transition),
+                primaryActionLabel: order.orderStatus == OrderStatus.outForDelivery &&
+                        order.paymentMode.toUpperCase() == 'COD' &&
+                        !_codResultsMap.containsKey(order.orderId)
+                    ? 'Confirm COD Cash'
+                    : transition?.label,
+                onPrimaryAction: order.orderStatus == OrderStatus.outForDelivery &&
+                        order.paymentMode.toUpperCase() == 'COD' &&
+                        !_codResultsMap.containsKey(order.orderId)
+                    ? () => _handleCodCashCollection(ctx, order)
+                    : transition == null
+                        ? null
+                        : () => _runTransition(ctx, app, order, transition),
+                secondaryActionLabel: order.orderStatus == OrderStatus.outForDelivery &&
+                        (order.paymentMode.toUpperCase() != 'COD' ||
+                            _codResultsMap.containsKey(order.orderId))
+                    ? 'Mark Failed'
+                    : null,
+                onSecondaryAction: order.orderStatus == OrderStatus.outForDelivery &&
+                        (order.paymentMode.toUpperCase() != 'COD' ||
+                            _codResultsMap.containsKey(order.orderId))
+                    ? () => _runFailedTransition(ctx, app, order)
+                    : null,
               );
             },
           ),
@@ -1368,6 +1394,24 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     }
   }
 
+  Future<void> _handleCodCashCollection(
+    BuildContext context,
+    DeliveryOrder order,
+  ) async {
+    double codAmount = 0;
+    try {
+      final detail = await ExternalDeliveryRepository().fetchDetail(
+        order.orderId, resolveAddress: false,
+      );
+      codAmount = detail.codAmountToCollect ?? 0;
+    } catch (_) {}
+    if (!context.mounted) return;
+    final result = await showCodCollectionSheet(context, amountToCollect: codAmount);
+    if (!context.mounted) return;
+    if (result == null) return;
+    setState(() => _codResultsMap[order.orderId] = result);
+  }
+
   Future<void> _runTransition(
     BuildContext context,
     AppController app,
@@ -1377,6 +1421,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     final navigator = Navigator.of(context);
 
     if (transition.next == OrderStatus.delivered) {
+      // Optional proof photo
       final photoPath = await showDeliveryProofSheet(context);
       if (!context.mounted) return;
       if (photoPath != null) {
@@ -1387,17 +1432,34 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         if (!context.mounted) return;
       }
 
-      // COD: ask how customer paid before marking delivered
-      try {
-        final detail = await ExternalDeliveryRepository().fetchDetail(
-          order.orderId,
-          resolveAddress: false,
-        );
+      final preConfirmed = _codResultsMap[order.orderId];
+      if (preConfirmed != null) {
+        if (preConfirmed.mode != 'Not Collected') {
+          try {
+            await ExternalDeliveryRepository().markDeliveredWithCod(
+              order.orderId,
+              codCollectionMode: preConfirmed.mode,
+              codUpiReference: preConfirmed.upiRef,
+            );
+          } catch (_) {}
+          if (!context.mounted) return;
+        }
+      } else {
+        bool isCod = false;
+        double codAmount = 0;
+        try {
+          final detail = await ExternalDeliveryRepository().fetchDetail(
+            order.orderId,
+            resolveAddress: false,
+          );
+          isCod = detail.isCod;
+          codAmount = detail.codAmountToCollect ?? 0;
+        } catch (_) {}
         if (!context.mounted) return;
-        if (detail.isCod) {
+        if (isCod) {
           final codResult = await showCodCollectionSheet(
             context,
-            amountToCollect: detail.codAmountToCollect ?? 0,
+            amountToCollect: codAmount,
           );
           if (!context.mounted) return;
           if (codResult == null) return;
@@ -1410,7 +1472,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
           } catch (_) {}
           if (!context.mounted) return;
         }
-      } catch (_) {}
+      }
     }
 
     final error = await app.updateOrderStatus(transition.next);
@@ -1425,6 +1487,46 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     } else {
       navigator.pushNamed(AppRoutes.orderStatus);
     }
+  }
+
+  Future<void> _runFailedTransition(
+    BuildContext context,
+    AppController app,
+    DeliveryOrder order,
+  ) async {
+    final isCod = order.paymentMode.toUpperCase() == 'COD';
+    final result = await showFailedDeliverySheet(context, isCod: isCod);
+    if (result == null || !context.mounted) return;
+    final reason = result.notes.isNotEmpty ? result.notes : result.reason;
+    final tripId = app.tripIdForOrder(order.orderId);
+    try {
+      if (tripId != null && tripId.isNotEmpty) {
+        // Order is part of a trip — update the trip stop status too.
+        await ExternalDeliveryRepository().processFailedDeliveryReturnByIds(
+          tripId: tripId,
+          deliveryId: order.orderId,
+          reason: reason,
+          reasonCode: result.reasonCode,
+          photoPath: result.photoPath,
+        );
+      } else {
+        await ExternalDeliveryRepository().markOrderFailed(
+          orderName: order.orderId,
+          reason: reason,
+          reasonCode: result.reasonCode,
+          photoPath: result.photoPath,
+        );
+      }
+    } catch (_) {}
+    if (!context.mounted) return;
+    final error = await app.updateOrderStatus(OrderStatus.failed);
+    app.stopOrderTimer();
+    if (!context.mounted) return;
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
+    Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
   }
 
   Future<void> _openInMaps(
