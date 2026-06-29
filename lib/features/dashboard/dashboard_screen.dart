@@ -18,6 +18,7 @@ import '../../core/widgets/app_toast.dart';
 import '../notifications/providers/notification_providers.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../orders_by_location/ui/cod_collection_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
@@ -1432,6 +1433,31 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         );
         if (!context.mounted) return;
       }
+
+      // COD: ask how customer paid before marking delivered
+      try {
+        final detail = await ExternalDeliveryRepository().fetchDetail(
+          order.orderId,
+          resolveAddress: false,
+        );
+        if (!context.mounted) return;
+        if (detail.isCod) {
+          final codResult = await showCodCollectionSheet(
+            context,
+            amountToCollect: detail.codAmountToCollect ?? 0,
+          );
+          if (!context.mounted) return;
+          if (codResult == null) return;
+          try {
+            await ExternalDeliveryRepository().markDeliveredWithCod(
+              order.orderId,
+              codCollectionMode: codResult.mode,
+              codUpiReference: codResult.upiRef,
+            );
+          } catch (_) {}
+          if (!context.mounted) return;
+        }
+      } catch (_) {}
     }
 
     final error = await app.updateOrderStatus(transition.next);

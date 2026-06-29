@@ -19,6 +19,7 @@ import '../../../core/widgets/app_toast.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
+import 'cod_collection_sheet.dart';
 import 'delivery_proof_sheet.dart';
 
 class OrderLocationDetailScreen extends StatefulWidget {
@@ -773,6 +774,74 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   }
 
   Future<void> _onSlideDelivered() async {
+    // COD: ask how customer paid before proceeding
+    final detail = _detail;
+    if (detail != null && detail.isCod) {
+      final codResult = await showCodCollectionSheet(
+        context,
+        amountToCollect: detail.codAmountToCollect ?? 0,
+      );
+      if (!mounted) return;
+      if (codResult == null) return;
+
+      _stopTracking();
+      setState(() => _updating = true);
+      try {
+        await widget.repository.markDeliveredWithCod(
+          widget.order.name,
+          codCollectionMode: codResult.mode,
+          codUpiReference: codResult.upiRef,
+        );
+        await _refreshDetail();
+      } catch (e) {
+        if (mounted) {
+          setState(() => _updating = false);
+          AppToast.show(context, 'Failed to mark delivered: $e');
+        }
+        return;
+      }
+
+      if (!mounted) return;
+      setState(() => _updating = false);
+
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          icon: const Icon(
+            Icons.check_circle_rounded,
+            color: Color(0xFF2E7D32),
+            size: 52,
+          ),
+          title: const Text('Delivered!'),
+          content: const Text(
+            'Order has been delivered successfully.',
+            textAlign: TextAlign.center,
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     _stopTracking();
     setState(() => _updating = true);
 
@@ -1325,6 +1394,142 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
                     ),
                   ],
                   const SizedBox(height: 14),
+                  const Divider(height: 1),
+                  const SizedBox(height: 14),
+
+                  // ── Payment ────────────────────────────────────────────
+                  if (detail.isCod) ...[
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF2E7D32).withValues(alpha: 0.07),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: const Color(0xFF2E7D32).withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.payments_rounded,
+                              color: Color(0xFF2E7D32),
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Cash on Delivery',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF2E7D32),
+                                  ),
+                                ),
+                                if ((detail.codAmountToCollect ?? 0) > 0) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Collect ₹${detail.codAmountToCollect!.toStringAsFixed(detail.codAmountToCollect!.truncateToDouble() == detail.codAmountToCollect ? 0 : 2)} from customer',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: scheme.onSurface.withValues(alpha: 0.6),
+                                    ),
+                                  ),
+                                ] else ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Collect cash from customer',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: scheme.onSurface.withValues(alpha: 0.6),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if ((detail.codAmountToCollect ?? 0) > 0)
+                            Text(
+                              '₹${detail.codAmountToCollect!.toStringAsFixed(detail.codAmountToCollect!.truncateToDouble() == detail.codAmountToCollect ? 0 : 2)}',
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF2E7D32),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ] else if (detail.paymentMode != null) ...[
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.credit_card_rounded,
+                          size: 16,
+                          color: scheme.onSurface.withValues(alpha: 0.45),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Payment: ${detail.paymentMode}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: scheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                        if (detail.grandTotal != null) ...[
+                          const Spacer(),
+                          Text(
+                            '₹${detail.grandTotal!.toStringAsFixed(detail.grandTotal!.truncateToDouble() == detail.grandTotal ? 0 : 2)}',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurface,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                  ] else if (detail.grandTotal != null) ...[
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.receipt_rounded,
+                          size: 16,
+                          color: scheme.onSurface.withValues(alpha: 0.45),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Order Total',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: scheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '₹${detail.grandTotal!.toStringAsFixed(detail.grandTotal!.truncateToDouble() == detail.grandTotal ? 0 : 2)}',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   const Divider(height: 1),
                   const SizedBox(height: 14),
 

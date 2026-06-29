@@ -20,25 +20,29 @@ class FailedDeliveryResult {
 }
 
 /// Shows a bottom sheet asking the delivery partner why the delivery failed.
+/// Pass [isCod] = true to include the "Customer refused to pay (COD)" reason.
 /// Returns [FailedDeliveryResult] on confirm, or null if dismissed.
 Future<FailedDeliveryResult?> showFailedDeliverySheet(
-  BuildContext context,
-) {
+  BuildContext context, {
+  bool isCod = false,
+}) {
   return showAppBottomSheet<FailedDeliveryResult>(
     context: context,
-    builder: (_) => const _FailedDeliverySheet(),
+    builder: (_) => _FailedDeliverySheet(isCod: isCod),
   );
 }
 
 class _FailedDeliverySheet extends StatefulWidget {
-  const _FailedDeliverySheet();
+  const _FailedDeliverySheet({this.isCod = false});
+
+  final bool isCod;
 
   @override
   State<_FailedDeliverySheet> createState() => _FailedDeliverySheetState();
 }
 
 class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
-  static const Map<String, String> _reasonOptions = {
+  static const Map<String, String> _baseReasonOptions = {
     'customer_unavailable': 'Customer Unavailable',
     'address_inaccessible': 'Address Inaccessible',
     'wrong_address': 'Wrong Address',
@@ -48,7 +52,13 @@ class _FailedDeliverySheetState extends State<_FailedDeliverySheet> {
     'suspected_fraud': 'Suspected Fraud',
   };
 
-  String _selectedCode = _reasonOptions.keys.first;
+  Map<String, String> get _reasonOptions => {
+    ..._baseReasonOptions,
+    if (widget.isCod)
+      'customer_refused_cod': 'Customer Refused to Pay (COD)',
+  };
+
+  String _selectedCode = _baseReasonOptions.keys.first;
   final TextEditingController _notesController = TextEditingController();
   XFile? _pickedFile;
 
