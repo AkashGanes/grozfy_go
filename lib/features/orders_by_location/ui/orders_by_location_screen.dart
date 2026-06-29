@@ -33,6 +33,10 @@ class _OrdersByLocationScreenState
   bool _selectionMode = false;
   final Set<String> _selectedOrderIds = <String>{};
 
+  // Orders hidden by the partner's delivery-radius filter, accumulated across
+  // loaded pages. Reset on refresh / first page. Drives the "N hidden" hint.
+  int _hiddenByRadiusCount = 0;
+
 
   // Active filters applied server-side (and to the offline cache). An empty
   // status set / null date range means "no constraint".
@@ -108,7 +112,27 @@ class _OrdersByLocationScreenState
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // No forced picker — null selectedStoreName means "All Stores".
+      _ensureLocationForRadius();
     });
+  }
+
+  /// When the delivery-radius filter is active but the partner's location isn't
+  /// known yet, fetch a one-shot GPS fix and refresh so the already-loaded page
+  /// re-filters against a real origin. Fails open (leaves the list unfiltered)
+  /// when location can't be obtained — e.g. permission denied.
+  Future<void> _ensureLocationForRadius() async {
+    final controller = ref.read(appControllerProvider);
+    if (controller.deliveryRadiusKm == null) return;
+    if (controller.currentLatitude != null &&
+        controller.currentLongitude != null) {
+      return;
+    }
+    final bool gotLocation = await controller.ensureCurrentLocation();
+    if (!mounted || !gotLocation) return;
+    // Re-run the filter from the first page now that we have an origin.
+    _lastStoreName = null;
+    _hiddenByRadiusCount = 0;
+    _pagingController.refresh();
   }
 
   @override
@@ -119,6 +143,13 @@ class _OrdersByLocationScreenState
 
   Future<void> _fetchPage(int pageKey) async {
     final storeName = ref.read(appControllerProvider).selectedStoreName;
+
+    // TEMP DIAGNOSTIC — confirms the page path runs and which branch.
+    debugPrint(
+      '[RadiusFilter] _fetchPage pageKey=$pageKey '
+      'connected=${ConnectivityService().isConnected} '
+      'radius=${ref.read(appControllerProvider).deliveryRadiusKm}',
+    );
 
     // Offline: serve all cached orders for the selected store as a single
     // page. Cache isn't paginated; the dataset is small enough not to be.
@@ -134,7 +165,8 @@ class _OrdersByLocationScreenState
         filters: _activeFilters(),
       );
       ConnectivityService().reportNetworkSuccess();
-      // Warm the cache so this list survives a future offline open.
+      // Warm the cache (with the full, unfiltered batch) so the list survives a
+      // future offline open and still has every order if the radius changes.
       await OfflineTripManager()
           .cacheOrderSummaries(orders.map(_summaryToMap).toList());
 
@@ -142,20 +174,28 @@ class _OrdersByLocationScreenState
       // Writing to a disposed PagingController throws.
       if (!mounted) return;
 
+      if (pageKey == 0) _hiddenByRadiusCount = 0;
+      final visibleOrders = _applyRadiusFilter(orders);
+
       final items = <LocationListItem>[];
-      for (final order in orders) {
+      for (final order in visibleOrders) {
         if (order.storeName != _lastStoreName) {
           items.add(StoreHeader(order.storeName));
           _lastStoreName = order.storeName;
         }
         items.add(OrderRow(order));
       }
+      // Paging advances on the raw batch size (not the filtered count) so the
+      // radius filter never short-circuits pagination.
       final isLast = orders.length < ExternalDeliveryRepository.pageSize;
       if (isLast) {
         _pagingController.appendLastPage(items);
       } else {
         _pagingController.appendPage(items, pageKey + orders.length);
       }
+      // Refresh the parent so the "N hidden by radius" banner reflects the
+      // running tally (appending to the paging controller alone won't).
+      if (mounted) setState(() {});
     } catch (e) {
       if (!mounted) return;
       if (_isNetworkError(e)) {
@@ -168,6 +208,8 @@ class _OrdersByLocationScreenState
   }
 
   void _serveFromCache(int pageKey, String? storeName) {
+    // TEMP DIAGNOSTIC — confirms the cache path runs.
+    debugPrint('[RadiusFilter] _serveFromCache pageKey=$pageKey');
     if (pageKey != 0) {
       _pagingController.appendLastPage(const []);
       return;
@@ -194,6 +236,8 @@ class _OrdersByLocationScreenState
       filtered =
           filtered.where((o) => o.customerName.toLowerCase().contains(q)).toList();
     }
+    _hiddenByRadiusCount = 0;
+    filtered = _applyRadiusFilter(filtered);
     final items = <LocationListItem>[];
     for (final order in filtered) {
       if (order.storeName != _lastStoreName) {
@@ -203,6 +247,7 @@ class _OrdersByLocationScreenState
       items.add(OrderRow(order));
     }
     _pagingController.appendLastPage(items);
+    if (mounted) setState(() {});
   }
 
   Map<String, dynamic> _summaryToMap(ExternalDelivery o) => {
@@ -213,6 +258,8 @@ class _OrdersByLocationScreenState
         'status': o.status,
         'creation': o.creation,
         'modified': o.modified,
+        if (o.latitude != null) 'latitude': o.latitude,
+        if (o.longitude != null) 'longitude': o.longitude,
       };
 
   bool _isNetworkError(Object e) {
@@ -229,7 +276,44 @@ class _OrdersByLocationScreenState
 
   Future<void> _refresh() async {
     _lastStoreName = null;
+    _hiddenByRadiusCount = 0;
     _pagingController.refresh();
+  }
+
+  /// Splits a freshly loaded batch into the rows within the partner's delivery
+  /// radius and the count hidden, updating the running hidden tally. Fails open
+  /// (keeps the order) when the order has no coordinates or location is unknown.
+  List<ExternalDelivery> _applyRadiusFilter(List<ExternalDelivery> orders) {
+    final controller = ref.read(appControllerProvider);
+    // TEMP DIAGNOSTIC — logged BEFORE the null-check so we can distinguish
+    // "filter not called" from "called but radius is null".
+    debugPrint(
+      '[RadiusFilter] _applyRadiusFilter CALLED '
+      'radius=${controller.deliveryRadiusKm} batchSize=${orders.length} '
+      'hiddenCount=$_hiddenByRadiusCount '
+      'partnerLat=${controller.currentLatitude} '
+      'partnerLng=${controller.currentLongitude}',
+    );
+    if (controller.deliveryRadiusKm == null) return orders;
+    final visible = <ExternalDelivery>[];
+    for (final order in orders) {
+      final bool keep =
+          controller.isWithinDeliveryRadiusAt(order.latitude, order.longitude);
+      final double? distance = (order.latitude != null && order.longitude != null)
+          ? controller.distanceFromPartnerKm(order.latitude!, order.longitude!)
+          : null;
+      debugPrint(
+        '[RadiusFilter] name=${order.name} lat=${order.latitude} '
+        'lng=${order.longitude} distanceKm=$distance '
+        'radius=${controller.deliveryRadiusKm} result=${keep ? 'KEEP' : 'HIDE'}',
+      );
+      if (keep) {
+        visible.add(order);
+      } else {
+        _hiddenByRadiusCount++;
+      }
+    }
+    return visible;
   }
 
   bool _isEligibleForTrip(ExternalDelivery order) => order.status == 'Pending';
@@ -765,10 +849,14 @@ class _OrdersByLocationScreenState
           onPressed: () => _showStorePicker(),
         ),
       ],
-      child: RefreshIndicator(
-        color: AppTheme.oceanBlue,
-        onRefresh: _refresh,
-        child: PagedListView<int, LocationListItem>(
+      child: Column(
+        children: [
+          _buildRadiusHint(),
+          Expanded(
+            child: RefreshIndicator(
+              color: AppTheme.oceanBlue,
+              onRefresh: _refresh,
+              child: PagedListView<int, LocationListItem>(
           physics: const BouncingScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
           pagingController: _pagingController,
@@ -824,7 +912,48 @@ class _OrdersByLocationScreenState
               onRetry: _pagingController.retryLastFailedRequest,
             ),
           ),
-        ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Small banner shown when the partner's delivery-radius filter is hiding
+  /// orders, so the list never looks silently truncated. Tapping it opens
+  /// Settings to adjust the radius.
+  Widget _buildRadiusHint() {
+    final radiusKm = ref.watch(appControllerProvider).deliveryRadiusKm;
+    if (radiusKm == null || _hiddenByRadiusCount <= 0) {
+      return const SizedBox.shrink();
+    }
+    final String radiusLabel = radiusKm == radiusKm.roundToDouble()
+        ? radiusKm.toStringAsFixed(0)
+        : radiusKm.toStringAsFixed(1);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.oceanBlue.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.my_location_rounded,
+              size: 18, color: AppTheme.oceanBlue),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$_hiddenByRadiusCount order'
+              '${_hiddenByRadiusCount == 1 ? '' : 's'} hidden by your '
+              '$radiusLabel km radius',
+              style: const TextStyle(fontSize: 13, color: AppTheme.nightBlue),
+            ),
+          ),
+        ],
       ),
     );
   }
