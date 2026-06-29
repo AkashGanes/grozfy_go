@@ -322,14 +322,16 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   final Set<String> _confirmedRecallOrderIds = {};
 
   // Carousel state.
+  late PageController _pageController;
   int _currentPageIndex = 0;
-  bool _swipingForward = true;
 
   // ── Lifecycle ────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
+    _pageController.addListener(_onPageScroll);
     _startPolling();
   }
 
@@ -339,31 +341,29 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     final newIds = widget.app.activeOrders.map((o) => o.orderId).toSet();
     final oldIds = old.app.activeOrders.map((o) => o.orderId).toSet();
     if (!newIds.containsAll(oldIds) || !oldIds.containsAll(newIds)) {
+      // Remove stale recall data for orders that are no longer active.
       _recallDataMap.removeWhere((id, _) => !newIds.contains(id));
-      final clamped = widget.app.currentlyViewedOrderIndex.clamp(
+      _currentPageIndex = widget.app.currentlyViewedOrderIndex.clamp(
         0,
         newIds.isEmpty ? 0 : newIds.length - 1,
       );
-      if (clamped != _currentPageIndex) {
-        setState(() => _currentPageIndex = clamped);
-      }
     }
   }
 
   @override
   void dispose() {
+    _pageController.removeListener(_onPageScroll);
+    _pageController.dispose();
     _pollTimer?.cancel();
     super.dispose();
   }
 
-  void _goToPage(int index) {
-    final clamped = index.clamp(0, widget.app.activeOrders.length - 1);
-    if (clamped == _currentPageIndex) return;
-    setState(() {
-      _swipingForward = clamped > _currentPageIndex;
-      _currentPageIndex = clamped;
-    });
-    widget.app.setViewedOrderIndex(clamped);
+  void _onPageScroll() {
+    final page = _pageController.page?.round() ?? 0;
+    if (page != _currentPageIndex) {
+      setState(() => _currentPageIndex = page);
+      widget.app.setViewedOrderIndex(page);
+    }
   }
 
   void _startPolling() {
@@ -678,24 +678,31 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     }
 
     // ── Multi-order carousel ──────────────────────────────────────────────────
-    final currentIndex = _currentPageIndex.clamp(0, orders.length - 1);
-    final currentOrder = orders[currentIndex];
-    final currentRecall = _recallDataMap[currentOrder.orderId];
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Fixed heading — stays put while cards swipe underneath.
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 10, right: 4),
-          child: Row(
-            children: [
-              Text(
-                app.t('active_order'),
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: DashColors.textPrimary(context),
+        // Card carousel.
+        SizedBox(
+          height: _estimatedCardHeight(orders[_currentPageIndex.clamp(0, orders.length - 1)]),
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: orders.length,
+            itemBuilder: (ctx, i) {
+              final order = orders[i];
+              final recallData = _recallDataMap[order.orderId];
+              if (recallData != null) {
+                return _buildRecallCard(order, recallData);
+              }
+              final transition = _nextTransition(order.orderStatus, app);
+              return ActiveOrderCard(
+                heading: app.t('active_order'),
+                statusLabel: app.orderStatusLabel(order.orderStatus),
+                orderId: order.orderId,
+                onAddOrder: () =>
+                    Navigator.of(context).pushNamed(AppRoutes.orderListing),
+                address: Formatters.stripHtml(
+                  order.drop.isNotEmpty ? order.drop : order.deliveryAddress,
+                  preserveLineBreaks: true,
                 ),
                 meta: ActiveOrderMeta(
                   date: AppDateFormat.date(order.acceptedAt),
@@ -707,34 +714,30 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                           : null),
                   email: null,
                 ),
-              const Spacer(),
-              if (currentRecall == null && app.canAcceptMoreOrders)
-                GestureDetector(
-                  onTap: () =>
-                      Navigator.of(context).pushNamed(AppRoutes.orderListing),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1F4FB6),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add_rounded, color: Colors.white, size: 14),
-                        SizedBox(width: 4),
-                        Text(
-                          'Add Another Order',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                actions: [
+                  ActiveOrderAction(
+                    label: app.t('view_order'),
+                    icon: Icons.receipt_long_outlined,
+                    onTap: () => Navigator.of(ctx)
+                        .pushNamed(AppRoutes.orderDetails, arguments: order),
+                  ),
+                  ActiveOrderAction(
+                    label: app.t('navigate'),
+                    icon: Icons.navigation_rounded,
+                    onTap: () =>
+                        Navigator.of(ctx).pushNamed(AppRoutes.navigation),
+                  ),
+                  ActiveOrderAction(
+                    label: app.t('open_maps'),
+                    icon: Icons.map_outlined,
+                    onTap: () => _openInMaps(ctx, order, app),
+                  ),
+                  ActiveOrderAction(
+                    label: app.t('track_order'),
+                    icon: Icons.local_shipping_outlined,
+                    onTap: () => Navigator.of(ctx).pushNamed(
+                      AppRoutes.orderTracking,
+                      arguments: order,
                     ),
                   ),
                 ],
@@ -750,73 +753,6 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                     : null,
               );
             },
-            child: KeyedSubtree(
-              key: ValueKey(_currentPageIndex),
-              child: () {
-                final recallData = _recallDataMap[currentOrder.orderId];
-                if (recallData != null) {
-                  return _buildRecallCard(currentOrder, recallData);
-                }
-                final transition = _nextTransition(currentOrder.orderStatus, app);
-                return ActiveOrderCard(
-                  heading: app.t('active_order'),
-                  statusLabel: app.orderStatusLabel(currentOrder.orderStatus),
-                  orderId: currentOrder.orderId,
-                  showHeading: false,
-                  onAddOrder: () =>
-                      Navigator.of(context).pushNamed(AppRoutes.orderListing),
-                  address: Formatters.stripHtml(
-                    currentOrder.drop.isNotEmpty
-                        ? currentOrder.drop
-                        : currentOrder.deliveryAddress,
-                    preserveLineBreaks: true,
-                  ),
-                  meta: ActiveOrderMeta(
-                    date: AppDateFormat.date(currentOrder.acceptedAt),
-                    time: AppDateFormat.time(currentOrder.acceptedAt),
-                    phone: currentOrder.customerPhone.isNotEmpty
-                        ? currentOrder.customerPhone
-                        : (currentOrder.contactNumber.isNotEmpty
-                            ? currentOrder.contactNumber
-                            : null),
-                    email: app.profile?.email,
-                  ),
-                  actions: [
-                    ActiveOrderAction(
-                      label: app.t('view_order'),
-                      icon: Icons.receipt_long_outlined,
-                      onTap: () => Navigator.of(context).pushNamed(
-                        AppRoutes.orderDetails,
-                        arguments: currentOrder,
-                      ),
-                    ),
-                    ActiveOrderAction(
-                      label: app.t('navigate'),
-                      icon: Icons.navigation_rounded,
-                      onTap: () =>
-                          Navigator.of(context).pushNamed(AppRoutes.navigation),
-                    ),
-                    ActiveOrderAction(
-                      label: app.t('open_maps'),
-                      icon: Icons.map_outlined,
-                      onTap: () => _openInMaps(context, currentOrder, app),
-                    ),
-                    ActiveOrderAction(
-                      label: app.t('track_order'),
-                      icon: Icons.local_shipping_outlined,
-                      onTap: () => Navigator.of(context).pushNamed(
-                        AppRoutes.orderTracking,
-                        arguments: currentOrder,
-                      ),
-                    ),
-                  ],
-                  primaryActionLabel: transition?.label,
-                  onPrimaryAction: transition == null
-                      ? null
-                      : () => _runTransition(context, app, currentOrder, transition),
-                );
-              }(),
-            ),
           ),
         ),
 
@@ -830,7 +766,10 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                 _carouselNavButton(
                   icon: Icons.arrow_back_ios_rounded,
                   enabled: _currentPageIndex > 0,
-                  onTap: () => _goToPage(_currentPageIndex - 1),
+                  onTap: () => _pageController.previousPage(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 _OrderDots(
@@ -851,7 +790,10 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                 _carouselNavButton(
                   icon: Icons.arrow_forward_ios_rounded,
                   enabled: _currentPageIndex < orders.length - 1,
-                  onTap: () => _goToPage(_currentPageIndex + 1),
+                  onTap: () => _pageController.nextPage(
+                    duration: const Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                  ),
                 ),
               ],
             ),
@@ -881,6 +823,15 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         ),
       ),
     );
+  }
+
+  double _estimatedCardHeight(DeliveryOrder order) {
+    // ActiveOrderCard grows with content; use a fixed generous height for
+    // the PageView so it doesn't clip. The card itself is internally scrollable.
+    final bool hasMeta = order.acceptedAt != null ||
+        order.customerPhone.isNotEmpty ||
+        order.contactNumber.isNotEmpty;
+    return hasMeta ? 310 : 270;
   }
 
   // ── Recall card ───────────────────────────────────────────────────────────────
@@ -913,8 +864,35 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     final minute = now.minute.toString().padLeft(2, '0');
     final timeStamp = '$hour12:$minute $period';
 
-    // Heading is rendered above the PageView — return only the card body.
-    return Container(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section heading + status chip.
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 10, right: 4),
+          child: Row(
+            children: [
+              Text(
+                'Active Order',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: DashColors.textPrimary(context),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const StatusPill(
+                label: 'Recall',
+                tone: StatusPillTone.danger,
+                icon: Icons.circle,
+                dense: true,
+              ),
+            ],
+          ),
+        ),
+
+        // ── Main card ─────────────────────────────────────────────────────
+        Container(
               decoration: BoxDecoration(
                 color: surface,
                 borderRadius: BorderRadius.circular(20),
@@ -1330,7 +1308,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                               height: 46,
                               child: ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1F4FB6),
+                                  backgroundColor: isDark
+                                      ? const Color(0xFF2563EB)
+                                      : const Color(0xFF1C4E80),
                                   foregroundColor: Colors.white,
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
@@ -1364,7 +1344,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
             )
             .animate()
             .fadeIn(duration: 350.ms)
-            .slideY(begin: 0.04, end: 0, duration: 350.ms);
+            .slideY(begin: 0.04, end: 0, duration: 350.ms),
+      ],
+    );
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────────

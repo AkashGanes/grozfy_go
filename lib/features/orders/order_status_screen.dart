@@ -198,6 +198,67 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
+  // ── Mark failed ──────────────────────────────────────────────────────────────
+
+  /// Driver chose "Mark as Failed" from the delivery outcome sheet. Collects a
+  /// reason (+ optional photo) and submits it via [AppController.failDelivery].
+  /// Mirrors the dashboard's _handleFailedDelivery flow.
+  Future<void> _onMarkFailed(BuildContext context, DeliveryOrder order) async {
+    final app = AppScope.of(context);
+    final result = await showFailedDeliverySheet(context);
+    if (result == null || !context.mounted) return;
+
+    final fullReason = result.notes.isEmpty
+        ? result.reason
+        : '${result.reason} — ${result.notes}';
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Row(
+            children: [
+              const CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(width: 20),
+              Text(
+                'Marking delivery as failed...',
+                style: TextStyle(
+                  color: Theme.of(ctx).colorScheme.onSurface,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final error = await app.failDelivery(
+      orderId: order.orderId,
+      reason: fullReason,
+      reasonCode: result.reasonCode,
+      photoPath: result.photoPath,
+      shouldCreateReturnTrip: false,
+    );
+
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // dismiss loading dialog
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
+    AppToast.show(context, app.t('delivery_failed'));
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppRoutes.dashboard,
+      (route) => false,
+    );
+  }
+
   // ── Confirm recall ────────────────────────────────────────────────────────────
 
   Future<void> _handleConfirmRecall(DeliveryOrder order) async {

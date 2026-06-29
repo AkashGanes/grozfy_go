@@ -70,6 +70,7 @@ class AppController extends ChangeNotifier {
   static const String _prefCurrentLng = 'current_lng';
   static const String _prefCurrentLocationLabel = 'current_location_label';
   static const String _prefSelectedStore = 'selected_store_name';
+  static const String _prefActiveOrdersCache = 'active_orders_cache';
   static const String _prefProfileCompleted = 'profile_completed';
   static const String _prefDriverName = 'driver_name';
   static const String _prefKycCompleted = 'kyc_completed';
