@@ -478,6 +478,37 @@ class ExternalDeliveryRepository {
 
   /// Fetches past orders for the logged-in driver directly from
   /// `External Delivery` using the `driver` field added in the backend.
+  Future<int> fetchPastOrdersCountForDriver() async {
+    final driver = await _getLoggedInDriver();
+    final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
+      queryParameters: {
+        'fields': jsonEncode(['name']),
+        'filters': jsonEncode([
+          ['External Delivery', 'driver', '=', driver],
+          [
+            'External Delivery',
+            'status',
+            'in',
+            <String>[
+              'Delivered',
+              'Cancelled',
+              'Failed',
+              'Returned',
+              'Return Initiated',
+            ],
+          ],
+        ]),
+        'limit_page_length': '0',
+      },
+    );
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+    final data = (jsonDecode(resp.body)['data']) as List;
+    return data.length;
+  }
+
   Future<List<ExternalDelivery>> fetchPastOrdersForDriver({
     int limitStart = 0,
     int limitPageLength = 20,
@@ -1004,6 +1035,53 @@ class ExternalDeliveryRepository {
       } catch (_) {}
     }
     return null;
+  }
+
+  /// Returns a map of orderId → tripName for all active trips assigned to
+  /// [driverName]. Covers all active trips (not just the first one) so every
+  /// in-progress order can be linked to its trip after a logout/login.
+  Future<Map<String, String>> fetchActiveTripOrderMap(
+    String driverName,
+  ) async {
+    const terminalStopStatuses = {
+      'delivered', 'failed', 'returned', 'return initiated', 'cancelled',
+    };
+
+    final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
+      queryParameters: {
+        'fields': jsonEncode(['name', 'status']),
+        'filters': jsonEncode([
+          ['External Delivery Trip', 'driver', '=', driverName],
+          ['External Delivery Trip', 'status', 'not in', ['Completed', 'Cancelled']],
+        ]),
+        'limit_page_length': '20',
+        'order_by': 'modified desc',
+      },
+    );
+    final tripResp = await _get(tripUri, headers: await _authHeaders());
+    if (!_okCodes.contains(tripResp.statusCode)) return {};
+
+    final tripRows = (jsonDecode(tripResp.body)['data']) as List?;
+    if (tripRows == null || tripRows.isEmpty) return {};
+
+    final Map<String, String> orderToTrip = {};
+    for (final row in tripRows) {
+      final tripName = (row as Map<String, dynamic>)['name']?.toString() ?? '';
+      if (tripName.isEmpty) continue;
+      try {
+        final trip = await fetchTripDetails(tripName);
+        for (final stop in trip.stops) {
+          final orderId = stop.externalDelivery.trim();
+          if (orderId.isNotEmpty &&
+              !terminalStopStatuses.contains(
+                stop.status.trim().toLowerCase(),
+              )) {
+            orderToTrip[orderId] = tripName;
+          }
+        }
+      } catch (_) {}
+    }
+    return orderToTrip;
   }
 
   /// Creates a single-stop trip using only the order name string.
