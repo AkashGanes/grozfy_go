@@ -431,6 +431,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                 ? storeAddress
                 : order.storeAddress,
             itemCount: 0,
+            recallStop: recallStop,
           );
           try {
             final detail = await ExternalDeliveryRepository().fetchDetail(
@@ -452,6 +453,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                   ? storeAddress
                   : (detail.pickupAddress ?? order.storeAddress),
               itemCount: detail.items.length,
+              recallStop: recallStop,
             );
           } catch (_) {}
         }
@@ -571,6 +573,44 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
 
     if (confirmed != true || !mounted) return;
 
+    // Step 1: Call dedicated backend API — updates the linked Recall doc and
+    // sets status=Returned, store_notified=1 via server-side logic.
+    // ignore: avoid_print
+    print('[Recall] Step1 → confirm_recall_received_at_store order=${data.orderId}');
+    try {
+      await ExternalDeliveryRepository().confirmRecallReceivedAtStore(
+        externalDelivery: data.orderId,
+      );
+      // ignore: avoid_print
+      print('[Recall] Step1 ✓ API succeeded');
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Recall] Step1 ✗ API failed: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+
+    // Step 2: Always do direct field update via frappe.client.set_value —
+    // sets trip stop → Returned and order → Returned + store_notified=1
+    // so it always reflects in ERPNext web regardless of Step 1 outcome.
+    if (data.recallStop != null) {
+      // ignore: avoid_print
+      print('[Recall] Step2 → confirmRecallReturn stop=${data.recallStop!.rawFields['name']} order=${data.orderId}');
+      try {
+        await ExternalDeliveryRepository().confirmRecallReturn(
+          stop: data.recallStop!,
+          orderName: data.orderId,
+        );
+        // ignore: avoid_print
+        print('[Recall] Step2 ✓ status=Returned store_notified=1 updated in ERPNext');
+      } catch (e) {
+        // ignore: avoid_print
+        print('[Recall] Step2 ✗ Direct update failed: $e');
+      }
+    } else {
+      // ignore: avoid_print
+      print('[Recall] Step2 skipped — no trip stop found for this recall');
+    }
+
+    if (!mounted) return;
     showInfoSnack(context, 'Recall confirmed — items returned to store.');
     _confirmedRecallOrderIds.add(data.orderId);
     setState(() => _recallDataMap.remove(data.orderId));
@@ -671,7 +711,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                       : (order.contactNumber.isNotEmpty
                           ? order.contactNumber
                           : null),
-                  email: app.profile?.email,
+                  email: null,
                 ),
                 actions: [
                   ActiveOrderAction(
@@ -1651,6 +1691,7 @@ class _RecallData {
     required this.storeName,
     required this.storeAddress,
     required this.itemCount,
+    this.recallStop,
   });
   final String orderId;
   final String customerName;
@@ -1658,6 +1699,7 @@ class _RecallData {
   final String storeName;
   final String storeAddress;
   final int itemCount;
+  final ExternalDeliveryTripStop? recallStop;
 }
 
 // ── Page indicator dots for multi-order carousel ──────────────────────────────

@@ -257,6 +257,78 @@ class _PickupJobDetailScreenState
     }
   }
 
+  // ── Mark En Route ─────────────────────────────────────────────────────────
+
+  Future<void> _handleMarkEnRoute(PickupJob job) async {
+    if (job.deliveryTrip == null || job.deliveryTrip!.isEmpty) {
+      showInfoSnack(context, 'No delivery trip assigned to this job.');
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.directions_car_rounded, color: AppTheme.oceanBlue),
+            SizedBox(width: 8),
+            Text(
+              'Mark En Route',
+              style: TextStyle(
+                  color: AppTheme.nightBlue,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16),
+            ),
+          ],
+        ),
+        content: Text(
+          'Confirm you are heading to pick up from ${job.customerName.isNotEmpty ? job.customerName : "the customer"}?',
+          style: const TextStyle(color: Colors.black54),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.oceanBlue,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Confirm En Route'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    if (!ConnectivityService().isConnected) {
+      showInfoSnack(context, 'You are offline — connect and try again.');
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      await PickupJobRepository().markPickupEnRoute(
+        pickupJobName: job.name,
+        tripName: job.deliveryTrip!,
+      );
+      if (!mounted) return;
+      showInfoSnack(context, 'En route — job status updated to Scheduled.');
+      setState(() { _future = _load(); });
+    } catch (e) {
+      if (!mounted) return;
+      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
   void _showCompletionDialog() {
     showDialog<void>(
       context: context,
@@ -356,27 +428,53 @@ class _PickupJobDetailScreenState
 
           final detail = snapshot.data!;
           final job = detail.job;
-          final cards = _buildDetailCards(job, detail.tripStop, detail.tripStopError);
-          return SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.all(16),
+          final extraFields = _computeExtraFields(job);
+          final tabCount = 3 + (extraFields.isNotEmpty ? 1 : 0);
+
+          return DefaultTabController(
+            length: tabCount,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _statusProgressBar(job).animate().fadeIn(duration: 220.ms),
-                for (int i = 0; i < cards.length; i++) ...[
-                  const SizedBox(height: 12),
-                  cards[i]
+                Padding(
+                  padding: const EdgeInsets.only(top: 16, bottom: 8),
+                  child: _statusProgressBar(job)
                       .animate()
-                      .fadeIn(
-                          delay: Duration(milliseconds: 40 + i * 30),
-                          duration: 220.ms),
-                ],
-                const SizedBox(height: 16),
-                _actionArea(job)
-                    .animate()
-                    .fadeIn(delay: 200.ms, duration: 220.ms),
-                const SizedBox(height: 8),
+                      .fadeIn(duration: 220.ms),
+                ),
+                TabBar(
+                  indicatorColor: AppTheme.oceanBlue,
+                  indicatorWeight: 2,
+                  labelColor: AppTheme.oceanBlue,
+                  unselectedLabelColor: Colors.black45,
+                  labelStyle: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 13),
+                  unselectedLabelStyle: const TextStyle(
+                      fontWeight: FontWeight.w500, fontSize: 13),
+                  dividerColor: Colors.transparent,
+                  tabs: [
+                    const Tab(text: 'Details'),
+                    const Tab(text: 'Trip'),
+                    const Tab(text: 'Items'),
+                    if (extraFields.isNotEmpty) const Tab(text: 'Info'),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      _detailsTab(job),
+                      _tripTab(detail.tripStop, detail.tripStopError),
+                      _itemsTab(job),
+                      if (extraFields.isNotEmpty) _infoTab(extraFields),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: _actionArea(job)
+                      .animate()
+                      .fadeIn(delay: 200.ms, duration: 220.ms),
+                ),
               ],
             ),
           );
@@ -394,6 +492,7 @@ class _PickupJobDetailScreenState
     'pickup_address', 'pickup_latitude', 'pickup_longitude',
     'drop_address', 'drop_latitude', 'drop_longitude',
     'items',
+    'owner', 'creation', 'modified', 'modified_by',
     '__islocal', '__unsaved', '_liked_by', '__run_link_triggers',
     '__last_sync_on', '__onload',
   };
@@ -410,33 +509,8 @@ class _PickupJobDetailScreenState
     '_trip_driver', '_trip_total_stops', '_trip_completed_stops',
   };
 
-  List<Widget> _buildDetailCards(
-      PickupJob job, Map<String, dynamic>? tripStop, String? tripStopError) {
-    final cards = <Widget>[];
-
-    // 1 – Customer
-    if (job.customerName.isNotEmpty || job.customerMobile.isNotEmpty) {
-      cards.add(_customerCard(job));
-    }
-
-    // 2 – Pickup address
-    cards.add(_addressCard(job));
-
-    // 3 – Trip stop (from External Delivery Trip pickup_stops)
-    if (tripStop != null) {
-      cards.add(_tripStopCard(tripStop));
-    } else if (tripStopError != null) {
-      cards.add(_tripStopErrorCard(tripStopError));
-    }
-
-    // 4 – Items child table
-    if (job.items.isNotEmpty) cards.add(_itemsCard(job));
-
-    // 5 – Proof photo
-    if (job.proofPhoto != null) cards.add(_proofPhotoCard(job.proofPhoto!));
-
-    // 6 – All remaining job fields from raw API response, dynamically
-    final extraFields = <String, dynamic>{};
+  Map<String, dynamic> _computeExtraFields(PickupJob job) {
+    final extra = <String, dynamic>{};
     for (final entry in job.rawData.entries) {
       final k = entry.key;
       final v = entry.value;
@@ -444,13 +518,110 @@ class _PickupJobDetailScreenState
       if (v == null) continue;
       if (v is String && v.trim().isEmpty) continue;
       if (v is List || v is Map) continue;
-      extraFields[k] = v;
+      extra[k] = v;
     }
-    if (extraFields.isNotEmpty) {
-      cards.add(_rawFieldsCard('Job Info', extraFields));
-    }
+    return extra;
+  }
 
-    return cards;
+  // ── Tab content ───────────────────────────────────────────────────────────
+
+  Widget _detailsTab(PickupJob job) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Column(
+        children: [
+          if (job.customerName.isNotEmpty || job.customerMobile.isNotEmpty) ...[
+            _customerCard(job).animate().fadeIn(duration: 220.ms),
+            const SizedBox(height: 12),
+          ],
+          _addressCard(job)
+              .animate()
+              .fadeIn(delay: 40.ms, duration: 220.ms),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _tripTab(Map<String, dynamic>? tripStop, String? tripStopError) {
+    if (tripStop != null) {
+      return SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Column(children: [
+          _tripStopCard(tripStop).animate().fadeIn(duration: 220.ms),
+          const SizedBox(height: 8),
+        ]),
+      );
+    }
+    if (tripStopError != null) {
+      return SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: _tripStopErrorCard(tripStopError)
+            .animate()
+            .fadeIn(duration: 220.ms),
+      );
+    }
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.local_shipping_outlined,
+              size: 44, color: Colors.black26),
+          const SizedBox(height: 10),
+          const Text('No delivery trip assigned',
+              style: TextStyle(color: Colors.black38, fontSize: 13)),
+        ],
+      ).animate().fadeIn(duration: 220.ms),
+    );
+  }
+
+  Widget _itemsTab(PickupJob job) {
+    if (job.items.isEmpty && job.proofPhoto == null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.inventory_2_outlined, size: 44, color: Colors.black26),
+            SizedBox(height: 10),
+            Text('No items',
+                style: TextStyle(color: Colors.black38, fontSize: 13)),
+          ],
+        ).animate().fadeIn(duration: 220.ms),
+      );
+    }
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Column(
+        children: [
+          if (job.items.isNotEmpty)
+            _itemsCard(job).animate().fadeIn(duration: 220.ms),
+          if (job.proofPhoto != null) ...[
+            if (job.items.isNotEmpty) const SizedBox(height: 12),
+            _proofPhotoCard(job.proofPhoto!)
+                .animate()
+                .fadeIn(delay: 40.ms, duration: 220.ms),
+          ],
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoTab(Map<String, dynamic> extraFields) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Column(children: [
+        _rawFieldsCard('Job Info', extraFields)
+            .animate()
+            .fadeIn(duration: 220.ms),
+        const SizedBox(height: 8),
+      ]),
+    );
   }
 
   // ── Trip Stop cards ───────────────────────────────────────────────────────
@@ -493,11 +664,8 @@ class _PickupJobDetailScreenState
     final failureReason = (stop['failure_reason_code'] ?? '').toString().trim();
 
     final tripName = (stop['_trip_name'] ?? '').toString();
-    final tripStatus = (stop['_trip_status'] ?? '').toString();
     final tripDate = (stop['_trip_date'] ?? '').toString();
     final tripDriver = (stop['_trip_driver'] ?? '').toString();
-    final totalStops = stop['_trip_total_stops'];
-    final completedStops = stop['_trip_completed_stops'];
 
     Color stopColor;
     switch (stopStatus.trim().toLowerCase()) {
@@ -597,39 +765,6 @@ class _PickupJobDetailScreenState
             const SizedBox(height: 8),
             _infoRow(Icons.badge_outlined, tripDriver, label: 'Driver'),
           ],
-          if (tripStatus.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _infoRow(Icons.info_outline_rounded, tripStatus,
-                label: 'Trip Status'),
-          ],
-          if (totalStops != null) ...[
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.stop_circle_outlined,
-                    size: 15, color: Colors.black38),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Stops',
-                          style: TextStyle(
-                              color: Colors.black45,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 1),
-                      Text(
-                        '${completedStops ?? 0} / $totalStops completed',
-                        style: const TextStyle(
-                            color: AppTheme.nightBlue, fontSize: 13),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );
@@ -716,6 +851,12 @@ class _PickupJobDetailScreenState
   Widget _statusProgressBar(PickupJob job) {
     final statusNorm = job.status.trim().toLowerCase();
     final failed = statusNorm == 'failed';
+
+    // Lifecycle: Added to Trip → Scheduled (En Route on stop) → Picked Up → Received at Store
+    final enRoute = !failed &&
+        (statusNorm == 'scheduled' ||
+            statusNorm == 'picked up' ||
+            statusNorm == 'received at store');
     final pickedUp = !failed &&
         (statusNorm == 'picked up' || statusNorm == 'received at store');
     final completed = statusNorm == 'received at store';
@@ -731,9 +872,12 @@ class _PickupJobDetailScreenState
     } else if (pickedUp) {
       statusColor = AppTheme.oceanBlue;
       statusLabel = 'Picked Up';
+    } else if (enRoute) {
+      statusColor = AppTheme.oceanBlue;
+      statusLabel = 'Scheduled';
     } else {
       statusColor = AppTheme.mango;
-      statusLabel = job.status.isEmpty ? 'Added to Trip' : job.status;
+      statusLabel = 'Added to Trip';
     }
 
     return FrostCard(
@@ -775,7 +919,9 @@ class _PickupJobDetailScreenState
           const SizedBox(height: 14),
           Row(
             children: [
-              _stepDot(done: true, label: 'Claimed'),
+              _stepDot(done: true, label: 'Accepted'),
+              _stepLine(done: enRoute),
+              _stepDot(done: enRoute, label: 'En Route'),
               _stepLine(done: pickedUp),
               _stepDot(done: pickedUp, label: 'Picked Up'),
               _stepLine(done: completed),
@@ -790,6 +936,7 @@ class _PickupJobDetailScreenState
   Widget _stepDot({required bool done, required String label}) {
     final color = done ? AppTheme.oceanBlue : Colors.black26;
     return Expanded(
+      flex: 2,
       child: Column(
         children: [
           Container(
@@ -798,7 +945,9 @@ class _PickupJobDetailScreenState
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: done ? AppTheme.oceanBlue : Colors.transparent,
-              border: done ? null : Border.all(color: Colors.black26, width: 1.5),
+              border: done
+                  ? null
+                  : Border.all(color: Colors.black26, width: 1.5),
             ),
             child: done
                 ? const Icon(Icons.check, size: 14, color: Colors.white)
@@ -808,6 +957,8 @@ class _PickupJobDetailScreenState
           Text(
             label,
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: color,
               fontSize: 10,
@@ -821,7 +972,6 @@ class _PickupJobDetailScreenState
 
   Widget _stepLine({required bool done}) {
     return Expanded(
-      flex: 2,
       child: Container(
         height: 2,
         margin: const EdgeInsets.only(bottom: 18),
@@ -1136,8 +1286,23 @@ class _PickupJobDetailScreenState
       );
     }
 
-    // Added to Trip → Mark Picked Up + Mark as Failed
+    // Added to Trip → Mark En Route (propagates to Scheduled on server)
     if (statusNorm == 'added to trip') {
+      return Column(
+        children: [
+          _primaryActionButton(
+            label: 'Mark En Route',
+            icon: Icons.directions_car_rounded,
+            onTap: () => _handleMarkEnRoute(job),
+          ),
+          const SizedBox(height: 10),
+          _failedActionButton(onTap: () => _handleMarkFailed(job)),
+        ],
+      );
+    }
+
+    // Scheduled (En Route marked on stop) → Mark Picked Up + Mark as Failed  (Story B.3)
+    if (statusNorm == 'scheduled') {
       return Column(
         children: [
           _primaryActionButton(
@@ -1151,7 +1316,7 @@ class _PickupJobDetailScreenState
       );
     }
 
-    // Picked Up → Drop at Store + Mark as Failed
+    // Picked Up → Drop at Store + Mark as Failed  (Story B.4)
     if (statusNorm == 'picked up') {
       return Column(
         children: [
