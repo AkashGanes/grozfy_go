@@ -119,6 +119,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ? storeAddress
                 : order.storeAddress,
             itemCount: 0,
+            recallStop: recallStop,
           );
           // Enrich with item count from detail (best-effort).
           try {
@@ -141,6 +142,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   ? storeAddress
                   : (detail.pickupAddress ?? order.storeAddress),
               itemCount: detail.items.length,
+              recallStop: recallStop,
             );
           } catch (_) {}
         }
@@ -197,8 +199,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   // ── Confirm recall ────────────────────────────────────────────────────────────
 
   Future<void> _handleConfirmRecall(DeliveryOrder order) async {
+    // ignore: avoid_print
+    print('[Recall] _handleConfirmRecall called — orderId=${order.orderId} recallData=${_recallData?.orderId} syncing=$_syncing');
+
     final data = _recallData;
-    if (data == null) return;
+    if (data == null || _syncing) {
+      // ignore: avoid_print
+      print('[Recall] early return — data=${data == null ? 'null' : 'ok'} syncing=$_syncing');
+      return;
+    }
 
     final customerLabel = data.customerName.isNotEmpty
         ? data.customerName
@@ -244,13 +253,54 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     if (confirmed != true || !mounted) return;
 
+    setState(() => _syncing = true);
+
+    // Step 1: Call dedicated backend API — this updates the linked Recall doc
+    // and sets status → Returned, store_notified=1 via server logic.
+    // ignore: avoid_print
+    print('[Recall] Step1 → confirm_recall_received_at_store order=${data.orderId}');
+    try {
+      await ExternalDeliveryRepository().confirmRecallReceivedAtStore(
+        externalDelivery: data.orderId,
+      );
+      // ignore: avoid_print
+      print('[Recall] Step1 ✓ API succeeded');
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Recall] Step1 ✗ API failed: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+
+    // Step 2: Always do direct field updates regardless of Step 1 outcome —
+    // sets trip stop → Returned and order → Returned + store_notified=1
+    // via frappe.client.set_value so it always reflects in ERPNext web.
+    if (data.recallStop != null) {
+      // ignore: avoid_print
+      print('[Recall] Step2 → confirmRecallReturn stop=${data.recallStop!.rawFields['name']} order=${data.orderId}');
+      try {
+        await ExternalDeliveryRepository().confirmRecallReturn(
+          stop: data.recallStop!,
+          orderName: data.orderId,
+        );
+        // ignore: avoid_print
+        print('[Recall] Step2 ✓ Direct update succeeded — status=Returned store_notified=1');
+      } catch (e) {
+        // ignore: avoid_print
+        print('[Recall] Step2 ✗ Direct update failed: $e');
+      }
+    } else {
+      // ignore: avoid_print
+      print('[Recall] Step2 skipped — recallStop is null (no trip stop available)');
+    }
+
+    if (!mounted) return;
     AppToast.show(context, 'Recall confirmed — items returned to store.');
     final app = AppScope.of(context);
     app.clearActiveOrder();
     if (mounted) {
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.dashboard,
+        (r) => false,
+      );
     }
   }
 
@@ -381,30 +431,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
-  String _nextButtonLabel(OrderProgressStatus current) {
-    switch (current) {
-      case OrderStatus.pending:
-        return 'Accept Order';
-      case OrderStatus.accepted:
-        return 'Mark Reached Pickup';
-      case OrderStatus.rejected:
-        return 'Rejected';
-      case OrderStatus.reachedPickup:
-        return 'Mark Picked Up';
-      case OrderStatus.pickedUp:
-        return 'Start Out for Delivery';
-      case OrderStatus.outForDelivery:
-        return 'Mark Delivered';
-      case OrderStatus.delivered:
-        return 'Completed';
-      case OrderStatus.failed:
-        return 'Failed';
-      case OrderStatus.cancelled:
-        return 'Cancelled';
-      case OrderStatus.returned:
-        return 'Returned';
-    }
-  }
 
 
   Future<void> _onActionTap(BuildContext context, DeliveryOrder order) async {
@@ -1238,6 +1264,7 @@ class _RecallData {
     required this.storeName,
     required this.storeAddress,
     required this.itemCount,
+    this.recallStop,
   });
   final String orderId;
   final String customerName;
@@ -1245,4 +1272,5 @@ class _RecallData {
   final String storeName;
   final String storeAddress;
   final int itemCount;
+  final ExternalDeliveryTripStop? recallStop;
 }

@@ -39,6 +39,10 @@ class ExternalDeliveryRepository {
 
   static const String _prefDriverName = 'driver_name';
 
+  // Cached per-instance so the 100+ calls in downloadAllTripsAtTripStart
+  // don't each re-read SharedPreferences + keychain. Invalidated on token refresh.
+  Map<String, String>? _cachedHeaders;
+
   Future<String> _getLoggedInDriver() async {
     final prefs = await SharedPreferences.getInstance();
     final name = prefs.getString(_prefDriverName)?.trim() ?? '';
@@ -46,6 +50,10 @@ class ExternalDeliveryRepository {
   }
 
   Future<Map<String, String>> _authHeaders() async {
+    return _cachedHeaders ??= await _buildAuthHeaders();
+  }
+
+  Future<Map<String, String>> _buildAuthHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final String? token = await SecureTokenStorage.read(
       SecureTokenStorage.accessToken,
@@ -114,6 +122,7 @@ class ExternalDeliveryRepository {
           newRefresh,
         );
       }
+      _cachedHeaders = null;
       _logApi('refresh_token', 'session refreshed successfully');
       return true;
     } catch (e) {
@@ -414,25 +423,41 @@ class ExternalDeliveryRepository {
     final tripRows = (jsonDecode(tripResp.body)['data']) as List;
     if (tripRows.isEmpty) return [];
 
-    // 2. Fetch trip details for each active trip (usually just 1)
-    final allStopNames = <String>[];
-    for (final row in tripRows) {
-      final tripName = (row as Map<String, dynamic>)['name']?.toString() ?? '';
-      if (tripName.isEmpty) continue;
-      try {
-        final trip = await fetchTripDetails(tripName);
-        for (final stop in trip.stops) {
-          if (stop.externalDelivery.isNotEmpty) {
-            allStopNames.add(stop.externalDelivery);
-          }
+    // 2. Fetch trip details for each active trip in parallel (usually just 1)
+    final tripNames = tripRows
+        .map((row) => (row as Map<String, dynamic>)['name']?.toString() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
+
+    final tripResults = await Future.wait(
+      tripNames.map((name) async {
+        try {
+          return await fetchTripDetails(name);
+        } catch (_) {
+          return null;
         }
-      } catch (_) {}
+      }),
+    );
+
+    final allStopNames = <String>[];
+    for (final trip in tripResults.whereType<ExternalDeliveryTrip>()) {
+      for (final stop in trip.stops) {
+        if (stop.externalDelivery.isNotEmpty) {
+          allStopNames.add(stop.externalDelivery);
+        }
+      }
     }
     if (allStopNames.isEmpty) return [];
 
     // 3. Fetch delivery details in parallel
     final results = await Future.wait(
-      allStopNames.map((name) => fetchDetail(name).catchError((_) => null)),
+      allStopNames.map((name) async {
+        try {
+          return await fetchDetail(name);
+        } catch (_) {
+          return null;
+        }
+      }),
     );
 
     const _inactiveStatuses = {
@@ -596,6 +621,46 @@ class ExternalDeliveryRepository {
     }
     final data = (jsonDecode(resp.body)['data']) as List;
     return data.length;
+  }
+
+  /// Fetches multiple External Delivery records in ONE API call using Frappe's
+  /// `"name","in",[...]` filter, instead of one HTTP request per order.
+  /// Processes up to 500 names per page to stay within URL-length limits.
+  /// Does NOT resolve delivery addresses — use for bulk prefetch/caching only.
+  Future<List<ExternalDeliveryDetail>> fetchOrdersBatch(
+    List<String> names,
+  ) async {
+    if (names.isEmpty) return [];
+    const maxPerPage = 500;
+    final all = <ExternalDeliveryDetail>[];
+    final headers = await _authHeaders();
+    for (int i = 0; i < names.length; i += maxPerPage) {
+      final end = (i + maxPerPage).clamp(0, names.length);
+      final chunk = names.sublist(i, end);
+      final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
+        queryParameters: {
+          'fields': jsonEncode([
+            'name', 'store_name', 'store_url', 'customer_name', 'status',
+            'contact_mobile', 'delivery_address', 'pickup_address',
+            'latitude', 'longitude', 'geolocation', 'payment_mode',
+            'grand_total', 'creation', 'modified', 'proof_photo',
+            'failure_reason_code', 'delivery_notes',
+          ]),
+          'filters': jsonEncode([['name', 'in', chunk]]),
+          'limit_page_length': '${chunk.length}',
+        },
+      );
+      _logApi('fetch_orders_batch request (${chunk.length})', uri.toString());
+      final resp = await _get(uri, headers: headers);
+      if (!_okCodes.contains(resp.statusCode)) {
+        throw Exception(_extractErrorMessage(resp));
+      }
+      final data = (jsonDecode(resp.body)['data']) as List;
+      all.addAll(
+        data.map((row) => ExternalDeliveryDetail.fromJson(row as Map<String, dynamic>)),
+      );
+    }
+    return all;
   }
 
   Future<ExternalDeliveryDetail> fetchDetail(
@@ -1004,22 +1069,26 @@ class ExternalDeliveryRepository {
   }
 
   Future<ExternalDeliveryTrip> fetchTripDetails(String tripName) async {
-    final url =
-        '${ApiConstants.externalDeliveryTripList}/${Uri.encodeComponent(tripName)}';
-    _logApi('external_delivery_trip_details request', 'GET $url');
+    final uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.form.load.getdoc',
+    ).replace(queryParameters: {
+      'doctype': 'External Delivery Trip',
+      'name': tripName,
+    });
+    _logApi('external_delivery_trip_details request', 'GET $uri');
 
-    final resp = await _get(Uri.parse(url), headers: await _authHeaders());
+    final resp = await _get(uri, headers: await _authHeaders());
 
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));
     }
 
-    final payload = jsonDecode(resp.body) as Map<String, dynamic>;
-    final data = payload['data'];
-    if (data is! Map<String, dynamic>) {
-      throw Exception('Trip details API returned unexpected response');
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final docs = decoded['docs'];
+    if (docs is! List || docs.isEmpty) {
+      throw Exception('Trip details not found: $tripName');
     }
-    return ExternalDeliveryTrip.fromJson(data);
+    return ExternalDeliveryTrip.fromJson(docs[0] as Map<String, dynamic>);
   }
 
   Future<String?> _fetchAddressText(String addressName) async {

@@ -39,41 +39,73 @@ class OfflineTripManager {
       return 0;
     }
 
+    // Cap at 50 trips to prevent unbounded fetching for drivers with large history.
+    const int maxTripsToPrefetch = 50;
+
     int tripsCached = 0;
     try {
+      // Phase 1 — trip summary pages (1–2 list calls).
       final summaries = <ExternalDeliveryTripSummary>[];
       var page = await _repository.fetchTripPage(limitStart: 0);
       summaries.addAll(page);
-      while (page.length >= ExternalDeliveryRepository.pageSize) {
+      while (page.length >= ExternalDeliveryRepository.pageSize &&
+          summaries.length < maxTripsToPrefetch) {
         page = await _repository.fetchTripPage(limitStart: summaries.length);
         if (page.isEmpty) break;
         summaries.addAll(page);
       }
-      await _storage.cacheTrips(summaries.map(_summaryToJson).toList());
+      final cappedSummaries = summaries.take(maxTripsToPrefetch).toList();
+      await _storage.cacheTrips(cappedSummaries.map(_summaryToJson).toList());
 
-      for (final s in summaries) {
-        try {
-          final trip = await _repository.fetchTripDetails(s.name);
-          await _storage.cacheTripWithDetails(_tripToJson(trip));
-          for (final stop in trip.stops) {
-            final orderName = stop.externalDelivery.trim();
-            if (orderName.isEmpty) continue;
+      // Phase 2 — trip detail fetches in batches of 3 (needed for the stops
+      // child table, which the list API does not return).
+      const batchSize = 3;
+      final fetchedTrips = <ExternalDeliveryTrip>[];
+      for (int i = 0; i < cappedSummaries.length; i += batchSize) {
+        final end = (i + batchSize).clamp(0, cappedSummaries.length);
+        final batch = cappedSummaries.sublist(i, end);
+        final results = await Future.wait(
+          batch.map((s) async {
             try {
-              final detail = await _repository.fetchDetail(orderName);
-              await _storage.cacheOrder(_detailToJson(detail));
+              final trip = await _repository.fetchTripDetails(s.name);
+              await _storage.cacheTripWithDetails(_tripToJson(trip));
+              tripsCached++;
+              return trip;
             } catch (e) {
               debugPrint(
-                '[OfflineTripManager] Failed to cache order $orderName: $e',
+                '[OfflineTripManager] Failed to cache trip ${s.name}: $e',
               );
+              return null;
             }
+          }),
+        );
+        fetchedTrips.addAll(results.whereType<ExternalDeliveryTrip>());
+      }
+
+      // Phase 3 — collect every order name from every trip stop, then fetch
+      // ALL orders in a single Frappe list call (filters=[["name","in",[...]]]).
+      // This replaces the previous pattern of one HTTP call per stop order.
+      final allOrderNames = fetchedTrips
+          .expand((t) => t.stops.map((s) => s.externalDelivery.trim()))
+          .where((n) => n.isNotEmpty)
+          .toSet()
+          .toList();
+
+      if (allOrderNames.isNotEmpty) {
+        try {
+          final orders = await _repository.fetchOrdersBatch(allOrderNames);
+          for (final order in orders) {
+            await _storage.cacheOrder(_detailToJson(order));
           }
-          tripsCached++;
-        } catch (e) {
           debugPrint(
-            '[OfflineTripManager] Failed to cache trip ${s.name}: $e',
+            '[OfflineTripManager] Batch-cached ${orders.length} orders '
+            '(${allOrderNames.length} requested)',
           );
+        } catch (e) {
+          debugPrint('[OfflineTripManager] Order batch fetch failed: $e');
         }
       }
+
       debugPrint('[OfflineTripManager] Cached $tripsCached trips');
     } catch (e) {
       debugPrint('[OfflineTripManager] Prefetch error: $e');

@@ -19,6 +19,7 @@ import '../notifications/providers/notification_providers.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
+import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
 import '../orders_by_location/ui/trip_stop_map_screen.dart';
 import '../orders/my_orders_screen.dart';
@@ -380,9 +381,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
 
   Future<void> _pollForAllRecalls() async {
     if (!mounted) return;
-    for (final order in widget.app.activeOrders) {
-      await _pollForRecall(order);
-    }
+    await Future.wait(
+      widget.app.activeOrders.map((order) => _pollForRecall(order)),
+    );
   }
 
   Future<void> _pollForRecall(DeliveryOrder order) async {
@@ -430,6 +431,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                 ? storeAddress
                 : order.storeAddress,
             itemCount: 0,
+            recallStop: recallStop,
           );
           try {
             final detail = await ExternalDeliveryRepository().fetchDetail(
@@ -451,6 +453,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                   ? storeAddress
                   : (detail.pickupAddress ?? order.storeAddress),
               itemCount: detail.items.length,
+              recallStop: recallStop,
             );
           } catch (_) {}
         }
@@ -570,6 +573,44 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
 
     if (confirmed != true || !mounted) return;
 
+    // Step 1: Call dedicated backend API — updates the linked Recall doc and
+    // sets status=Returned, store_notified=1 via server-side logic.
+    // ignore: avoid_print
+    print('[Recall] Step1 → confirm_recall_received_at_store order=${data.orderId}');
+    try {
+      await ExternalDeliveryRepository().confirmRecallReceivedAtStore(
+        externalDelivery: data.orderId,
+      );
+      // ignore: avoid_print
+      print('[Recall] Step1 ✓ API succeeded');
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Recall] Step1 ✗ API failed: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+
+    // Step 2: Always do direct field update via frappe.client.set_value —
+    // sets trip stop → Returned and order → Returned + store_notified=1
+    // so it always reflects in ERPNext web regardless of Step 1 outcome.
+    if (data.recallStop != null) {
+      // ignore: avoid_print
+      print('[Recall] Step2 → confirmRecallReturn stop=${data.recallStop!.rawFields['name']} order=${data.orderId}');
+      try {
+        await ExternalDeliveryRepository().confirmRecallReturn(
+          stop: data.recallStop!,
+          orderName: data.orderId,
+        );
+        // ignore: avoid_print
+        print('[Recall] Step2 ✓ status=Returned store_notified=1 updated in ERPNext');
+      } catch (e) {
+        // ignore: avoid_print
+        print('[Recall] Step2 ✗ Direct update failed: $e');
+      }
+    } else {
+      // ignore: avoid_print
+      print('[Recall] Step2 skipped — no trip stop found for this recall');
+    }
+
+    if (!mounted) return;
     showInfoSnack(context, 'Recall confirmed — items returned to store.');
     _confirmedRecallOrderIds.add(data.orderId);
     setState(() => _recallDataMap.remove(data.orderId));
@@ -670,7 +711,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                       : (order.contactNumber.isNotEmpty
                           ? order.contactNumber
                           : null),
-                  email: app.profile?.email,
+                  email: null,
                 ),
                 actions: [
                   ActiveOrderAction(
@@ -703,6 +744,12 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                 onPrimaryAction: transition == null
                     ? null
                     : () => _runTransition(ctx, app, order, transition),
+                secondaryActionLabel: order.orderStatus == OrderStatus.outForDelivery
+                    ? app.t('mark_failed')
+                    : null,
+                onSecondaryAction: order.orderStatus == OrderStatus.outForDelivery
+                    ? () => _handleFailedDelivery(ctx, app, order)
+                    : null,
               );
             },
           ),
@@ -1401,6 +1448,65 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     }
   }
 
+  Future<void> _handleFailedDelivery(
+    BuildContext context,
+    AppController app,
+    DeliveryOrder order,
+  ) async {
+    final result = await showFailedDeliverySheet(context);
+    if (result == null || !context.mounted) return;
+
+    final fullReason = result.notes.isEmpty
+        ? result.reason
+        : '${result.reason} — ${result.notes}';
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Row(
+            children: [
+              const CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(width: 20),
+              Text(
+                'Marking delivery as failed...',
+                style: TextStyle(
+                  color: Theme.of(ctx).colorScheme.onSurface,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final error = await app.failDelivery(
+      orderId: order.orderId,
+      reason: fullReason,
+      reasonCode: result.reasonCode,
+      photoPath: result.photoPath,
+      shouldCreateReturnTrip: false,
+    );
+
+    if (!context.mounted) return;
+    Navigator.of(context).pop();
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
+    AppToast.show(context, app.t('delivery_failed'));
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppRoutes.dashboard,
+      (route) => false,
+    );
+  }
+
   Future<void> _openInMaps(
     BuildContext context,
     DeliveryOrder order,
@@ -1585,6 +1691,7 @@ class _RecallData {
     required this.storeName,
     required this.storeAddress,
     required this.itemCount,
+    this.recallStop,
   });
   final String orderId;
   final String customerName;
@@ -1592,6 +1699,7 @@ class _RecallData {
   final String storeName;
   final String storeAddress;
   final int itemCount;
+  final ExternalDeliveryTripStop? recallStop;
 }
 
 // ── Page indicator dots for multi-order carousel ──────────────────────────────
