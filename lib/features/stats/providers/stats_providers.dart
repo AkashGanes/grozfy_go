@@ -9,6 +9,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/database_providers.dart';
 import '../../../core/services/secure_token_storage.dart';
+import '../../../core/state/providers.dart';
 import '../../orders_by_location/model/timing_event.dart';
 import '../../orders_by_location/repository/external_delivery_repository.dart';
 import '../models/driver_stats.dart';
@@ -99,11 +100,8 @@ DailySummary _computeDaily(List<TimingEvent> events) {
   final logouts = events.where((e) => e.eventType == 'driver_logout').toList();
 
   Duration dutyHours = Duration.zero;
-  if (logins.isNotEmpty) {
-    final loginTime = logins.first.eventTime;
-    final logoutTime =
-        logouts.isNotEmpty ? logouts.last.eventTime : DateTime.now();
-    final diff = logoutTime.difference(loginTime);
+  if (logins.isNotEmpty && logouts.isNotEmpty) {
+    final diff = logouts.last.eventTime.difference(logins.first.eventTime);
     if (!diff.isNegative) dutyHours = diff;
   }
 
@@ -221,14 +219,23 @@ int _longestStreak(List<TimingEvent> events) {
   return longest;
 }
 
+Future<String?> _currentPartner() async {
+  final prefs = await SharedPreferences.getInstance();
+  return _nullIfBlank(prefs.getString('driver_name'));
+}
+
+String? _nullIfBlank(String? s) =>
+    (s == null || s.trim().isEmpty) ? null : s.trim();
+
 final dailySummaryProvider =
     FutureProvider.autoDispose<DailySummary>((ref) async {
   final dao = ref.read(partnerTimingLogDaoProvider);
   final now = DateTime.now();
   final startOfDay = DateTime(now.year, now.month, now.day);
   final endOfDay = startOfDay.add(const Duration(days: 1));
+  final partner = await _currentPartner();
 
-  final allLocal = await dao.getEventsInRange(startOfDay, endOfDay);
+  final allLocal = await dao.getEventsInRange(startOfDay, endOfDay, partner: partner);
   final localEvents = _rowsToEvents(allLocal);
 
   try {
@@ -247,8 +254,9 @@ final monthlySummaryProvider = FutureProvider.autoDispose
   final end = period.month < 12
       ? DateTime(period.year, period.month + 1, 1)
       : DateTime(period.year + 1, 1, 1);
+  final partner = await _currentPartner();
 
-  final allLocal = await dao.getEventsInRange(start, end);
+  final allLocal = await dao.getEventsInRange(start, end, partner: partner);
   final localEvents = _rowsToEvents(allLocal);
 
   try {
@@ -267,7 +275,9 @@ final monthlySummaryProvider = FutureProvider.autoDispose
 final lifetimeStatsProvider =
     FutureProvider.autoDispose<LifetimeStats>((ref) async {
   final dao = ref.read(partnerTimingLogDaoProvider);
-  final allLocal = await dao.getAllEvents();
+  final partner = await _currentPartner();
+
+  final allLocal = await dao.getAllEvents(partner: partner);
   final localEvents = _rowsToEvents(allLocal);
 
   try {
@@ -284,16 +294,23 @@ final lifetimeStatsProvider =
 /// then silently refreshes from ERPNext and updates the cache.
 final deliveredOrderCountProvider =
     StreamProvider.autoDispose<int>((ref) async* {
+  // Read driver name from in-memory AppController — already populated by
+  // _backgroundSync() before notifyListeners() fires, so no prefs race.
+  final driver = ref.read(appControllerProvider).driverName?.trim() ?? '';
+  final cacheKey = driver.isNotEmpty
+      ? 'delivered_order_count_$driver'
+      : 'delivered_order_count';
+
   final prefs = await SharedPreferences.getInstance();
-  final cached = prefs.getInt('delivered_order_count');
-  if (cached != null) yield cached;
+  final cached = prefs.getInt(cacheKey);
+  yield cached ?? 0;
 
   final repo = ExternalDeliveryRepository();
   try {
     final count = await repo.fetchDeliveredCountForDriver();
-    await prefs.setInt('delivered_order_count', count);
+    await prefs.setInt(cacheKey, count);
     yield count;
   } catch (_) {
-    if (cached == null) rethrow;
+    // cached ?? 0 already yielded; silently keep it on network error
   }
 });

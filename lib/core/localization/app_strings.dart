@@ -158,6 +158,13 @@ class AppStrings {
           'Are you sure you want to reset all theme settings to their defaults?',
       'reset': 'Reset',
       'reset_success': 'Theme reset to defaults',
+      // delivery radius
+      'delivery_radius': 'Delivery Radius',
+      'delivery_radius_subtitle':
+          'Only show orders within this distance of you',
+      'limit_delivery_radius': 'Limit delivery radius',
+      'delivery_radius_no_limit': 'No limit — showing all orders',
+      'delivery_radius_updated': 'Delivery radius updated',
       // navigation screen
       'navigation': 'Navigation',
       'route_summary': 'Route summary',

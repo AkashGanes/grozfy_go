@@ -35,22 +35,31 @@ class PartnerTimingLogDao extends DatabaseAccessor<FlowFleetDatabase>
 
   Future<List<PartnerTimingLog>> getEventsInRange(
     DateTime start,
-    DateTime end,
-  ) {
+    DateTime end, {
+    String? partner,
+  }) {
     final startStr = start.toIso8601String();
     final endStr = end.toIso8601String();
     return (select(partnerTimingLogs)
           ..where(
             (t) =>
                 t.eventTime.isBiggerOrEqualValue(startStr) &
-                t.eventTime.isSmallerThanValue(endStr),
+                t.eventTime.isSmallerThanValue(endStr) &
+                (partner != null && partner.isNotEmpty
+                    ? t.partner.equals(partner)
+                    : const Constant(true)),
           )
           ..orderBy([(t) => OrderingTerm.asc(t.eventTime)]))
         .get();
   }
 
-  Future<List<PartnerTimingLog>> getAllEvents() {
+  Future<List<PartnerTimingLog>> getAllEvents({String? partner}) {
     return (select(partnerTimingLogs)
+          ..where(
+            (t) => partner != null && partner.isNotEmpty
+                ? t.partner.equals(partner)
+                : const Constant(true),
+          )
           ..orderBy([(t) => OrderingTerm.asc(t.eventTime)]))
         .get();
   }

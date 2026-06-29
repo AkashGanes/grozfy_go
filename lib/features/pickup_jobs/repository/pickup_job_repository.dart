@@ -142,6 +142,63 @@ class PickupJobRepository {
     );
   }
 
+  // ── Mark en route (sets pickup stop → En Route; server flips job → Scheduled)
+
+  Future<void> markPickupEnRoute({
+    required String pickupJobName,
+    required String tripName,
+  }) async {
+    // Fetch the parent trip to locate the stop row name.
+    final tripUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/resource/External%20Delivery%20Trip/${Uri.encodeComponent(tripName)}',
+    );
+    _logApi('mark_enroute_fetch request', 'GET trip=$tripName');
+    final tripResp = await _get(tripUri, headers: await _authHeaders());
+    if (!_okCodes.contains(tripResp.statusCode)) {
+      throw Exception(_extractErrorMessage(tripResp));
+    }
+
+    final tripData =
+        (jsonDecode(tripResp.body)['data']) as Map<String, dynamic>;
+    final rawStops = tripData['pickup_stops'];
+    if (rawStops is! List || rawStops.isEmpty) {
+      throw Exception('No pickup_stops found in trip $tripName');
+    }
+
+    String? stopName;
+    for (final s in rawStops) {
+      if (s is! Map<String, dynamic>) continue;
+      if ((s['pickup_job'] ?? '').toString().trim() == pickupJobName) {
+        stopName = (s['name'] ?? '').toString().trim();
+        break;
+      }
+    }
+    if (stopName == null || stopName.isEmpty) {
+      throw Exception('Stop for $pickupJobName not found in trip $tripName');
+    }
+
+    final setValueUri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.client.set_value',
+    );
+    _logApi('mark_enroute_update request',
+        'POST stop=$stopName → En Route');
+    final resp = await _post(
+      setValueUri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'doctype': 'External Delivery Trip Pickup Stop',
+        'name': stopName,
+        'fieldname': 'status',
+        'value': 'En Route',
+      }),
+    );
+    _logApi('mark_enroute_update response',
+        'code=${resp.statusCode} body=${resp.body}');
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
   // ── Mark picked up ────────────────────────────────────────────────────────
 
   Future<void> markPickedUp(String pickupJob, {String? proofPhotoPath}) async {
