@@ -5,6 +5,8 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_toast.dart';
+import '../orders_by_location/model/external_delivery_detail.dart';
+import '../orders_by_location/repository/external_delivery_repository.dart';
 import 'widgets/order_timer_widget.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
@@ -18,7 +20,9 @@ class OrderDetailsScreen extends StatefulWidget {
 
 class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   DeliveryOrder? _currentOrder;
+  ExternalDeliveryDetail? _detail;
   bool _busy = false;
+  bool _loadingDetail = false;
   bool _customerExpanded = true;
   bool _storeExpanded = true;
   bool _itemsExpanded = true;
@@ -27,12 +31,29 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   void initState() {
     super.initState();
     _currentOrder = widget.order;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchDetail());
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _currentOrder ??= AppScope.of(context).activeOrder;
+  }
+
+  Future<void> _fetchDetail() async {
+    final orderId = _currentOrder?.orderId ??
+        (mounted ? AppScope.of(context).activeOrder?.orderId : null);
+    if (orderId == null || orderId.isEmpty) return;
+    setState(() => _loadingDetail = true);
+    try {
+      final detail = await ExternalDeliveryRepository().fetchDetail(
+        orderId,
+        resolveAddress: false,
+      );
+      if (mounted) setState(() { _detail = detail; _loadingDetail = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loadingDetail = false);
+    }
   }
 
   bool _isDark(BuildContext c) => Theme.of(c).brightness == Brightness.dark;
@@ -276,87 +297,18 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     cardBg: _cardBg(context),
                     cardBorder: _cardBorder(context),
                     textPrimary: _textPrimary(context),
-                    body: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (order.orderItems.isNotEmpty) ...[
-                          ...order.orderItems.map(
-                            (item) => Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      '${item.name} x${item.quantity}',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: _textPrimary(context),
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    'Rs. ${(item.price * item.quantity).toStringAsFixed(0)}',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: _textPrimary(context),
-                                    ),
-                                  ),
-                                ],
+                    body: _loadingDetail && _detail == null
+                        ? const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: Center(
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
                               ),
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          Divider(height: 1, color: _cardBorder(context)),
-                          const SizedBox(height: 10),
-                        ],
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Total Amount',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: _textSecondary(context),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              'Rs. ${order.totalAmount.toStringAsFixed(0)}',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: _textPrimary(context),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Payment Mode',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: _textSecondary(context),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              order.paymentMode.isEmpty
-                                  ? '—'
-                                  : order.paymentMode,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: _textPrimary(context),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          )
+                        : _buildItemsBody(context, order),
                   ),
                   if (app.isOrderTimerRunning) ...[
                     const SizedBox(height: 12),
@@ -386,6 +338,137 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildItemsBody(BuildContext context, DeliveryOrder order) {
+    final detail = _detail;
+    final paymentMethod = detail?.paymentMethod ?? detail?.paymentMode ?? order.paymentMode;
+    final isCod = paymentMethod.toUpperCase() == 'COD';
+    final codAmount = detail?.codAmountToCollect;
+    final items = detail?.items ?? [];
+    final hasItems = items.isNotEmpty;
+    // Compute total from items if available; fall back to codAmountToCollect
+    final double itemsTotal = items.fold(
+      0,
+      (sum, i) => sum + ((i.amount ?? (i.rate != null ? i.rate! * i.qty : 0))),
+    );
+    final double displayTotal = itemsTotal > 0
+        ? itemsTotal
+        : (codAmount != null && codAmount > 0 ? codAmount : order.totalAmount);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (hasItems) ...[
+          ...items.map(
+            (item) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${item.itemName} x${item.qty.toStringAsFixed(0)}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: _textPrimary(context),
+                      ),
+                    ),
+                  ),
+                  if ((item.amount ?? item.rate) != null)
+                    Text(
+                      'Rs. ${(item.amount ?? (item.rate! * item.qty)).toStringAsFixed(0)}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: _textPrimary(context),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Divider(height: 1, color: _cardBorder(context)),
+          const SizedBox(height: 10),
+        ] else if (!_loadingDetail) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              'No items found',
+              style: TextStyle(fontSize: 13, color: _textSecondary(context)),
+            ),
+          ),
+        ],
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              isCod && codAmount != null && codAmount > 0
+                  ? 'COD Amount'
+                  : 'Total Amount',
+              style: TextStyle(
+                fontSize: 14,
+                color: _textSecondary(context),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              displayTotal > 0
+                  ? 'Rs. ${displayTotal.toStringAsFixed(0)}'
+                  : '—',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: isCod && displayTotal > 0
+                    ? const Color(0xFF8A5700)
+                    : _textPrimary(context),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Payment Mode',
+              style: TextStyle(
+                fontSize: 14,
+                color: _textSecondary(context),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (isCod)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3CD),
+                  borderRadius: BorderRadius.circular(99),
+                  border: Border.all(color: const Color(0xFFE6A817)),
+                ),
+                child: const Text(
+                  'COD',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF8A5700),
+                  ),
+                ),
+              )
+            else
+              Text(
+                paymentMethod.isEmpty ? '—' : paymentMethod,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: _textPrimary(context),
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 

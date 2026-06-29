@@ -17,6 +17,7 @@ import '../../core/utils/call_utils.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../orders_by_location/ui/cod_collection_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 
 class DeliveryTrackingScreen extends StatefulWidget {
@@ -799,6 +800,31 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
         filePath: photoPath,
       );
     }
+
+    // COD: ask how customer paid before marking delivered
+    try {
+      final detail = await ExternalDeliveryRepository().fetchDetail(
+        deliveryName,
+        resolveAddress: false,
+      );
+      if (!mounted) return;
+      if (detail.isCod && detail.codAmountToCollect != null) {
+        final codResult = await showCodCollectionSheet(
+          context,
+          amountToCollect: detail.codAmountToCollect!,
+        );
+        if (!mounted) return;
+        if (codResult == null) return;
+        try {
+          await ExternalDeliveryRepository().markDeliveredWithCod(
+            deliveryName,
+            codCollectionMode: codResult.mode,
+            codUpiReference: codResult.upiRef,
+          );
+        } catch (_) {}
+        if (!mounted) return;
+      }
+    } catch (_) {}
 
     AppToast.show(context, 'Confirming delivery $deliveryName...');
 

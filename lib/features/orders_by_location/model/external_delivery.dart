@@ -14,6 +14,8 @@ class ExternalDelivery {
     this.deliveryAddress,
     this.failureReasonCode = '',
     this.deliveryNotes = '',
+    this.latitude,
+    this.longitude,
   });
 
   final String name;
@@ -26,6 +28,10 @@ class ExternalDelivery {
   final String? deliveryAddress;
   final String failureReasonCode;
   final String deliveryNotes;
+  // Delivery location. Only populated when the listing request includes the geo
+  // fields (used for the delivery-radius filter); otherwise null.
+  final double? latitude;
+  final double? longitude;
 
   factory ExternalDelivery.fromJson(Map<String, dynamic> m) {
     return ExternalDelivery(
@@ -42,6 +48,8 @@ class ExternalDelivery {
           : null,
       failureReasonCode: (m['failure_reason_code'] ?? '').toString(),
       deliveryNotes: (m['delivery_notes'] ?? '').toString(),
+      latitude: (m['latitude'] as num?)?.toDouble(),
+      longitude: (m['longitude'] as num?)?.toDouble(),
     );
   }
 

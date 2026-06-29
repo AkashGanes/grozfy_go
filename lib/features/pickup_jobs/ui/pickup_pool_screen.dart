@@ -3,13 +3,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/navigation/app_routes.dart';
 import '../../../core/services/connectivity_service.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../../kyc/widgets/kyc_form_widgets.dart';
 import '../model/pickup_job.dart';
 import '../repository/pickup_job_repository.dart';
 import 'pickup_job_detail_screen.dart';
@@ -24,64 +25,91 @@ class PickupPoolScreen extends ConsumerStatefulWidget {
 class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
   late Future<List<PickupJob>> _future;
   final Set<String> _acceptingJobs = {};
-  PickupJob? _activePickupJob;
   Timer? _pollTimer;
+  int _consecutiveFailures = 0;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _future = _loadPool();
-    _loadActiveJob();
-    _pollTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => _silentRefresh(),
-    );
+    _schedulePoll();
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  void _schedulePoll() {
+    final seconds = _consecutiveFailures == 0
+        ? 30
+        : (30 * (1 << _consecutiveFailures)).clamp(30, 300);
+    _pollTimer = Timer(Duration(seconds: seconds), () async {
+      await _silentRefresh();
+      if (mounted) _schedulePoll();
+    });
   }
 
   Future<List<PickupJob>> _loadPool() => PickupJobRepository().fetchPool();
 
-  Future<void> _loadActiveJob() async {
-    final job = await PickupJobRepository().loadActivePickupJob();
-    if (mounted) setState(() => _activePickupJob = job);
-  }
-
   Future<void> _silentRefresh() async {
     if (!ConnectivityService().isConnected || !mounted) return;
     try {
-      final results = await Future.wait([
-        PickupJobRepository().fetchPool(),
-        PickupJobRepository().loadActivePickupJob(),
-      ]);
+      final pool = await PickupJobRepository().fetchPool();
       if (!mounted) return;
+      _consecutiveFailures = 0;
       setState(() {
-        _future = Future.value(results[0] as List<PickupJob>);
-        _activePickupJob = results[1] as PickupJob?;
+        _future = Future.value(pool);
       });
-    } catch (_) {}
+    } catch (_) {
+      _consecutiveFailures++;
+    }
   }
 
-  // ── Haversine distance in km ───────────────────────────────────────────────
+  // ── Search ─────────────────────────────────────────────────────────────────
+
+  List<PickupJob> _filteredJobs(List<PickupJob> jobs) {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return jobs;
+    return jobs.where((job) {
+      return job.name.toLowerCase().contains(q) ||
+          job.customerName.toLowerCase().contains(q) ||
+          job.customerMobile.toLowerCase().contains(q) ||
+          job.pickupAddress.toLowerCase().contains(q) ||
+          job.dropAddress.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: KycSearchInput(
+        controller: _searchController,
+        hint: 'Search by name, customer, address…',
+        onChanged: (value) => setState(() => _searchQuery = value),
+      ),
+    ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.04, end: 0);
+  }
+
+  // ── Haversine distance ─────────────────────────────────────────────────────
 
   double? _distanceKm(
-      double? jobLat, double? jobLng, double? driverLat, double? driverLng) {
-    if (jobLat == null ||
-        jobLng == null ||
-        driverLat == null ||
-        driverLng == null) { return null; }
+      double? jobLat, double? jobLng, double? dLat, double? dLng) {
+    if (jobLat == null || jobLng == null || dLat == null || dLng == null) {
+      return null;
+    }
     const r = 6371.0;
-    final dLat = _deg2rad(jobLat - driverLat);
-    final dLon = _deg2rad(jobLng - driverLng);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_deg2rad(driverLat)) *
+    final dlat = _deg2rad(jobLat - dLat);
+    final dlon = _deg2rad(jobLng - dLng);
+    final a = math.sin(dlat / 2) * math.sin(dlat / 2) +
+        math.cos(_deg2rad(dLat)) *
             math.cos(_deg2rad(jobLat)) *
-            math.sin(dLon / 2) *
-            math.sin(dLon / 2);
+            math.sin(dlon / 2) *
+            math.sin(dlon / 2);
     return r * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
   }
 
@@ -93,7 +121,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
     return '${km.toStringAsFixed(1)} km';
   }
 
-  // ── Accept flow (B.2) ─────────────────────────────────────────────────────
+  // ── Accept ─────────────────────────────────────────────────────────────────
 
   Future<void> _acceptJob(PickupJob job) async {
     if (_acceptingJobs.contains(job.name)) return;
@@ -113,7 +141,6 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
         return;
       }
 
-      // Save job + trip name so the detail screen can load the trip stop.
       await PickupJobRepository().saveActiveJob(job.name);
       if (result.deliveryTrip.isNotEmpty) {
         await PickupJobRepository().saveActiveTrip(result.deliveryTrip);
@@ -121,8 +148,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
       setState(() { _future = _loadPool(); });
       if (mounted) {
         Navigator.of(context)
-            .pushNamed(AppRoutes.pickupJobDetail, arguments: job.name)
-            .then((_) => _loadActiveJob());
+            .pushNamed(AppRoutes.pickupJobDetail, arguments: job.name);
       }
     } catch (e) {
       if (!mounted) return;
@@ -139,17 +165,13 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
     }
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(appControllerProvider);
     final driverLat = controller.currentLatitude;
     final driverLng = controller.currentLongitude;
-
-    final hasActiveDelivery = controller.activeOrder != null;
-    final hasActivePickup = _activePickupJob != null;
-    final isBlocked = hasActiveDelivery || hasActivePickup;
 
     return AppShell(
       title: 'Pickup Pool',
@@ -158,24 +180,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
       padding: EdgeInsets.zero,
       child: Column(
         children: [
-          if (isBlocked)
-            _PoolBlockBanner(
-              isDeliveryOrder: hasActiveDelivery,
-              activePickupJobName:
-                  hasActivePickup ? _activePickupJob!.name : null,
-              onViewTap: () {
-                if (hasActiveDelivery) {
-                  Navigator.of(context).pushNamed(AppRoutes.orderStatus);
-                } else {
-                  Navigator.of(context)
-                      .pushNamed(
-                        AppRoutes.pickupJobDetail,
-                        arguments: _activePickupJob!.name,
-                      )
-                      .then((_) => _loadActiveJob());
-                }
-              },
-            ),
+          _buildSearchBar(),
           Expanded(
             child: FutureBuilder<List<PickupJob>>(
               future: _future,
@@ -207,36 +212,45 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
                   sorted.sort((a, b) => b.creation.compareTo(a.creation));
                 }
 
+                final displayed = _filteredJobs(sorted);
+
+                if (_searchQuery.trim().isNotEmpty && displayed.isEmpty) {
+                  return _searchEmptyView();
+                }
+
                 return RefreshIndicator(
                   color: AppTheme.oceanBlue,
                   onRefresh: () async {
                     final next = _loadPool();
                     setState(() { _future = next; });
-                    await Future.wait([next, _loadActiveJob()]);
+                    await next;
                   },
                   child: ListView.builder(
                     physics: const BouncingScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics()),
-                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-                    itemCount: sorted.length,
+                    padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
+                    itemCount: displayed.length,
                     itemBuilder: (context, index) => _JobCard(
-                        job: sorted[index],
-                        distanceLabel: _distanceLabel(_distanceKm(
-                          sorted[index].pickupLatitude,
-                          sorted[index].pickupLongitude,
-                          driverLat,
-                          driverLng,
-                        )),
-                        isAccepting:
-                            _acceptingJobs.contains(sorted[index].name),
-                        onAccept: () => _acceptJob(sorted[index]),
-                        onDetail: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => PickupJobDetailScreen(
-                                pickupJobName: sorted[index].name),
-                          ),
+                      job: displayed[index],
+                      distanceLabel: _distanceLabel(_distanceKm(
+                        displayed[index].pickupLatitude,
+                        displayed[index].pickupLongitude,
+                        driverLat,
+                        driverLng,
+                      )),
+                      isAccepting:
+                          _acceptingJobs.contains(displayed[index].name),
+                      onAccept: () => _acceptJob(displayed[index]),
+                      onDetail: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => PickupJobDetailScreen(
+                              pickupJobName: displayed[index].name),
                         ),
                       ),
+                    ).animate().fadeIn(
+                      delay: Duration(milliseconds: index * 40),
+                      duration: 200.ms,
+                    ),
                   ),
                 );
               },
@@ -277,6 +291,34 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
     );
   }
 
+  Widget _searchEmptyView() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.search_off_rounded,
+                  size: 48, color: Colors.black.withValues(alpha: 0.15)),
+              const SizedBox(height: 16),
+              const Text(
+                'No pickups match your search',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: Colors.black45,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Try a different name, phone, or address',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.black26, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      );
+
   Widget _emptyView() => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -290,10 +332,9 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
                 'No pickups available right now',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.black45,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                ),
+                    color: Colors.black45,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 6),
               const Text(
@@ -307,70 +348,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
       );
 }
 
-// ── Blocking banner ───────────────────────────────────────────────────────────
-
-class _PoolBlockBanner extends StatelessWidget {
-  const _PoolBlockBanner({
-    required this.isDeliveryOrder,
-    required this.activePickupJobName,
-    required this.onViewTap,
-  });
-
-  final bool isDeliveryOrder;
-  final String? activePickupJobName;
-  final VoidCallback onViewTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final message = isDeliveryOrder
-        ? 'Active delivery order in progress — finish it before claiming a pickup.'
-        : 'Pickup job in progress — complete it before claiming another.';
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppTheme.mango.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.mango.withValues(alpha: 0.40)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.warning_amber_rounded,
-              color: AppTheme.mango, size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                color: AppTheme.mango,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          TextButton(
-            onPressed: onViewTap,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: const Text(
-              'View →',
-              style: TextStyle(
-                color: AppTheme.mango,
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Pool card ─────────────────────────────────────────────────────────────────
+// ── Job card ──────────────────────────────────────────────────────────────────
 
 class _JobCard extends StatelessWidget {
   const _JobCard({
@@ -399,6 +377,7 @@ class _JobCard extends StatelessWidget {
         isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
     final Color textSecondary =
         isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
+    const Color accent = AppTheme.oceanBlue;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -411,11 +390,12 @@ class _JobCard extends StatelessWidget {
             Container(
               decoration: BoxDecoration(
                 color: cardBg,
-                border: Border.all(color: cardBorder),
+                border: Border.all(color: cardBorder, width: 1),
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+                    color:
+                        Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -425,11 +405,11 @@ class _JobCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                    padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Job name + distance chip
+                        // Header row
                         Row(
                           children: [
                             Expanded(
@@ -447,24 +427,23 @@ class _JobCard extends StatelessWidget {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: _accent.withValues(alpha: 0.10),
-                                  borderRadius: BorderRadius.circular(99),
+                                  color: accent.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                      color: _accent.withValues(alpha: 0.35)),
+                                      color: accent.withValues(alpha: 0.2)),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.near_me_rounded,
-                                        size: 11,
-                                        color: _accent),
-                                    const SizedBox(width: 4),
+                                    Icon(Icons.near_me_outlined,
+                                        size: 11, color: accent),
+                                    const SizedBox(width: 3),
                                     Text(
                                       distanceLabel,
                                       style: TextStyle(
                                         fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: _accent,
+                                        color: accent,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ],
@@ -473,7 +452,6 @@ class _JobCard extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        // Customer
                         _MetaRow(
                           icon: Icons.person_rounded,
                           iconColor: const Color(0xFF1AB36A),
@@ -485,64 +463,45 @@ class _JobCard extends StatelessWidget {
                           labelColor: textSecondary,
                           valueColor: textPrimary,
                         ),
-                        // Phone
                         if (job.customerMobile.isNotEmpty)
                           _PhoneRow(
                             phone: job.customerMobile,
-                            iconBg: isDark
-                                ? const Color(0xFF1A2C4F)
-                                : const Color(0xFFE5EEFB),
+                            isDark: isDark,
                             labelColor: textSecondary,
                             valueColor: textPrimary,
                           ),
-                        // Pickup address
                         _MetaRow(
-                          icon: Icons.my_location_rounded,
-                          iconColor: const Color(0xFFF38B19),
+                          icon: Icons.my_location_outlined,
+                          iconColor: const Color(0xFF7C3AED),
                           iconBg: isDark
-                              ? const Color(0xFF3A2613)
-                              : const Color(0xFFFFEFDA),
+                              ? const Color(0xFF2D2148)
+                              : const Color(0xFFEFE9FE),
                           label: 'Pickup',
                           value: job.pickupAddress,
                           labelColor: textSecondary,
                           valueColor: textPrimary,
                         ),
-                        // Store / drop
                         _MetaRow(
                           icon: Icons.store_rounded,
-                          iconColor: const Color(0xFF2D6CDF),
+                          iconColor: const Color(0xFFF38B19),
                           iconBg: isDark
-                              ? const Color(0xFF1A2C4F)
-                              : const Color(0xFFE5EEFB),
+                              ? const Color(0xFF3A2613)
+                              : const Color(0xFFFFEFDA),
                           label: 'Store',
                           value: job.dropAddress,
                           labelColor: textSecondary,
                           valueColor: textPrimary,
                         ),
-                        // Scheduled window
                         if (job.scheduledWindow != null &&
                             job.scheduledWindow!.isNotEmpty)
                           _MetaRow(
-                            icon: Icons.schedule_rounded,
-                            iconColor: const Color(0xFF7C3AED),
+                            icon: Icons.schedule_outlined,
+                            iconColor: const Color(0xFF0891B2),
                             iconBg: isDark
-                                ? const Color(0xFF2D2148)
-                                : const Color(0xFFEFE9FE),
-                            label: 'Window',
+                                ? const Color(0xFF0C2A30)
+                                : const Color(0xFFE0F2F7),
+                            label: 'Schedule',
                             value: job.scheduledWindow!,
-                            labelColor: textSecondary,
-                            valueColor: textPrimary,
-                          ),
-                        // Amount
-                        if (job.amount != null && job.amount! > 0)
-                          _MetaRow(
-                            icon: Icons.currency_rupee_rounded,
-                            iconColor: const Color(0xFF1AB36A),
-                            iconBg: isDark
-                                ? const Color(0xFF14352A)
-                                : const Color(0xFFE7F7EE),
-                            label: 'Amount',
-                            value: 'Rs. ${job.amount!.toStringAsFixed(0)}',
                             labelColor: textSecondary,
                             valueColor: textPrimary,
                           ),
@@ -551,36 +510,25 @@ class _JobCard extends StatelessWidget {
                   ),
                   // Action buttons
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                    padding: const EdgeInsets.fromLTRB(14, 2, 14, 14),
                     child: Row(
                       children: [
                         Expanded(
-                          child: Material(
-                            color: isDark
-                                ? const Color(0xFF2A2F3D)
-                                : const Color(0xFFF2F4F7),
-                            borderRadius: BorderRadius.circular(12),
-                            child: InkWell(
-                              onTap: onDetail,
-                              borderRadius: BorderRadius.circular(12),
-                              child: SizedBox(
-                                height: 48,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.info_outline_rounded,
-                                        size: 16, color: textSecondary),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'Details',
-                                      style: TextStyle(
-                                        color: textSecondary,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                          child: OutlinedButton(
+                            onPressed: onDetail,
+                            style: OutlinedButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 11),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              side: BorderSide(color: cardBorder),
+                            ),
+                            child: Text(
+                              'Details',
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -588,44 +536,34 @@ class _JobCard extends StatelessWidget {
                         const SizedBox(width: 10),
                         Expanded(
                           flex: 2,
-                          child: Material(
-                            color: isAccepting
-                                ? const Color(0xFF1F5FE8).withValues(alpha: 0.6)
-                                : const Color(0xFF1F5FE8),
-                            borderRadius: BorderRadius.circular(12),
-                            child: InkWell(
-                              onTap: isAccepting ? null : onAccept,
-                              borderRadius: BorderRadius.circular(12),
-                              child: SizedBox(
-                                height: 48,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    if (isAccepting)
-                                      const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white),
-                                      )
-                                    else
-                                      const Icon(
-                                          Icons.check_circle_outline_rounded,
-                                          size: 16,
-                                          color: Colors.white),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      isAccepting ? 'Claiming…' : 'Accept Job',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                          child: ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.oceanBlue,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor:
+                                  AppTheme.oceanBlue.withValues(alpha: 0.5),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 11),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
                               ),
+                            ),
+                            onPressed: isAccepting ? null : onAccept,
+                            icon: isAccepting
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Icon(
+                                    Icons.check_circle_outline_rounded,
+                                    size: 16),
+                            label: Text(
+                              isAccepting ? 'Claiming…' : 'Accept',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 14),
                             ),
                           ),
                         ),
@@ -641,9 +579,7 @@ class _JobCard extends StatelessWidget {
               top: 0,
               bottom: 0,
               width: 4,
-              child: IgnorePointer(
-                child: ColoredBox(color: _accent),
-              ),
+              child: IgnorePointer(child: ColoredBox(color: accent)),
             ),
           ],
         ),
@@ -651,6 +587,8 @@ class _JobCard extends StatelessWidget {
     );
   }
 }
+
+// ── Meta row ──────────────────────────────────────────────────────────────────
 
 class _MetaRow extends StatelessWidget {
   const _MetaRow({
@@ -703,12 +641,12 @@ class _MetaRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 13,
                 color: valueColor,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -718,24 +656,31 @@ class _MetaRow extends StatelessWidget {
   }
 }
 
+// ── Phone row with tap-to-call ────────────────────────────────────────────────
+
 class _PhoneRow extends StatelessWidget {
   const _PhoneRow({
     required this.phone,
-    required this.iconBg,
+    required this.isDark,
     required this.labelColor,
     required this.valueColor,
   });
 
   final String phone;
-  final Color iconBg;
+  final bool isDark;
   final Color labelColor;
   final Color valueColor;
 
   @override
   Widget build(BuildContext context) {
+    final iconBg =
+        isDark ? const Color(0xFF1A2C4F) : const Color(0xFFE5EEFB);
+    const iconColor = Color(0xFF2D6CDF);
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
             width: 26,
@@ -745,8 +690,7 @@ class _PhoneRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(7),
             ),
             alignment: Alignment.center,
-            child: const Icon(Icons.phone_rounded, size: 14,
-                color: Color(0xFF2D6CDF)),
+            child: const Icon(Icons.phone_outlined, size: 14, color: iconColor),
           ),
           const SizedBox(width: 10),
           SizedBox(
@@ -768,7 +712,7 @@ class _PhoneRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 color: valueColor,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -780,24 +724,25 @@ class _PhoneRow extends StatelessWidget {
             },
             child: Container(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF2E7D32).withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(20),
+                color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                    color: const Color(0xFF2E7D32).withValues(alpha: 0.35)),
+                    color: const Color(0xFF2E7D32).withValues(alpha: 0.3)),
               ),
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.call_rounded, size: 12, color: Color(0xFF2E7D32)),
-                  SizedBox(width: 4),
+                  Icon(Icons.call_rounded,
+                      size: 12, color: Color(0xFF2E7D32)),
+                  SizedBox(width: 3),
                   Text(
                     'Call',
                     style: TextStyle(
                       color: Color(0xFF2E7D32),
                       fontSize: 11,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],

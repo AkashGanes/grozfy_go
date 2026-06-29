@@ -16,9 +16,12 @@ import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
+import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
 import '../../pickup_jobs/model/pickup_job.dart';
 import '../../pickup_jobs/repository/pickup_job_repository.dart';
+import 'cod_collection_sheet.dart';
+import 'cod_handover_sheet.dart';
 import 'delivery_proof_sheet.dart';
 import 'failed_delivery_bottom_sheet.dart';
 
@@ -37,6 +40,7 @@ class ExternalDeliveryTripDetailsScreen extends ConsumerStatefulWidget {
 class _ExternalDeliveryTripDetailsScreenState
     extends ConsumerState<ExternalDeliveryTripDetailsScreen> {
   late Future<ExternalDeliveryTrip> _future;
+  bool _tripAcceptedFired = false;
   static const List<String> _stopStatusOptions = <String>[
     'Pending',
     'Out for Delivery',
@@ -55,6 +59,15 @@ class _ExternalDeliveryTripDetailsScreenState
   void initState() {
     super.initState();
     _future = _loadTrip();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_tripAcceptedFired) {
+        _tripAcceptedFired = true;
+        _writeTimingEvent(
+          eventType: TimingEventType.tripAccepted,
+          tripRef: widget.tripName,
+        );
+      }
+    });
   }
 
   @override
@@ -867,6 +880,28 @@ class _ExternalDeliveryTripDetailsScreenState
       return;
     }
 
+    // COD handover reconciliation before completing the trip
+    final codHandover = await ExternalDeliveryRepository().fetchCodHandover(trip.name);
+    if (!mounted) return;
+    if (codHandover != null && codHandover.needsCollection) {
+      final handoverResult = await showCodHandoverSheet(
+        context,
+        codHandover: codHandover,
+      );
+      if (!mounted) return;
+      if (handoverResult == null) return;
+      try {
+        await ExternalDeliveryRepository().submitCodHandover(
+          name: codHandover.name,
+          actualAmount: handoverResult.actualAmount,
+          notes: handoverResult.notes,
+        );
+      } catch (_) {
+        if (mounted) showInfoSnack(context, 'COD handover save failed — continuing');
+      }
+      if (!mounted) return;
+    }
+
     setState(() => _returningToStore = true);
     try {
       await ExternalDeliveryRepository().markReturnedToStore(trip: trip);
@@ -1479,6 +1514,35 @@ class _ExternalDeliveryTripDetailsScreenState
       );
     }
 
+    // Check if this is a COD order and collect payment mode
+    ExternalDeliveryDetail? codDetail;
+    try {
+      codDetail = await ExternalDeliveryRepository().fetchDetail(
+        orderName,
+        resolveAddress: false,
+      );
+    } catch (_) {}
+    if (!mounted) return;
+
+    if (codDetail != null && codDetail.isCod && codDetail.codAmountToCollect != null) {
+      final codResult = await showCodCollectionSheet(
+        context,
+        amountToCollect: codDetail.codAmountToCollect!,
+      );
+      if (!mounted) return;
+      if (codResult == null) return;
+      try {
+        await ExternalDeliveryRepository().markDeliveredWithCod(
+          orderName,
+          codCollectionMode: codResult.mode,
+          codUpiReference: codResult.upiRef,
+        );
+      } catch (e) {
+        if (mounted) showInfoSnack(context, 'COD save failed — continuing');
+      }
+      if (!mounted) return;
+    }
+
     final stopKey = _stopKey(stop);
     setState(() => _updatingStops.add(stopKey));
     try {
@@ -1519,7 +1583,17 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Future<void> _handleFailedDelivery(ExternalDeliveryTripStop stop) async {
-    final result = await showFailedDeliverySheet(context);
+    bool isCodStop = false;
+    try {
+      final d = await ExternalDeliveryRepository().fetchDetail(
+        stop.externalDelivery.trim(),
+        resolveAddress: false,
+      );
+      isCodStop = d.isCod;
+    } catch (_) {}
+    if (!mounted) return;
+
+    final result = await showFailedDeliverySheet(context, isCod: isCodStop);
     if (result == null || !mounted) return;
 
     final orderName = stop.externalDelivery.trim();

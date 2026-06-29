@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/localization/localized_text.dart';
 import '../../../core/services/secure_token_storage.dart';
+import '../model/cod_handover.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 
@@ -39,6 +40,10 @@ class ExternalDeliveryRepository {
 
   static const String _prefDriverName = 'driver_name';
 
+  // Cached per-instance so the 100+ calls in downloadAllTripsAtTripStart
+  // don't each re-read SharedPreferences + keychain. Invalidated on token refresh.
+  Map<String, String>? _cachedHeaders;
+
   Future<String> _getLoggedInDriver() async {
     final prefs = await SharedPreferences.getInstance();
     final name = prefs.getString(_prefDriverName)?.trim() ?? '';
@@ -46,6 +51,10 @@ class ExternalDeliveryRepository {
   }
 
   Future<Map<String, String>> _authHeaders() async {
+    return _cachedHeaders ??= await _buildAuthHeaders();
+  }
+
+  Future<Map<String, String>> _buildAuthHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final String? token = await SecureTokenStorage.read(
       SecureTokenStorage.accessToken,
@@ -114,6 +123,7 @@ class ExternalDeliveryRepository {
           newRefresh,
         );
       }
+      _cachedHeaders = null;
       _logApi('refresh_token', 'session refreshed successfully');
       return true;
     } catch (e) {
@@ -155,6 +165,10 @@ class ExternalDeliveryRepository {
     'latitude',
     'longitude',
     'delivery_address',
+    'payment_method',
+    'payment_mode',
+    'grand_total',
+    'cod_amount_to_collect',
   ];
   static const List<String> _tripFields = [
     'name',
@@ -223,33 +237,58 @@ class ExternalDeliveryRepository {
         (storeName != null && storeName.isNotEmpty
             ? 'modified desc'
             : 'store_name asc, modified desc');
-    final params = <String, String>{
-      'fields': jsonEncode(_fields),
-      'limit_start': '$limitStart',
-      'limit_page_length': '$limitPageLength',
-      'order_by': effectiveOrderBy,
-    };
     final List<List<dynamic>> effectiveFilters = <List<dynamic>>[
       if (filters != null) ...filters,
       if (storeName != null && storeName.isNotEmpty)
         <dynamic>['External Delivery', 'store_name', '=', storeName],
     ];
-    if (effectiveFilters.isNotEmpty) {
-      params['filters'] = jsonEncode(effectiveFilters);
-    }
-    if (orFilters != null && orFilters.isNotEmpty) {
-      params['or_filters'] = jsonEncode(orFilters);
+
+    // Request the delivery coordinates so the screen can apply the
+    // delivery-radius filter. These fields may be rejected by the server's
+    // in_list_view restriction (it rejects the whole request on the first bad
+    // field), so fall back to the base fields once — the radius filter then
+    // simply no-ops for this page rather than the list failing to load.
+    final List<String> geoFields = <String>[
+      ..._fields,
+      'latitude',
+      'longitude',
+    ];
+
+    Future<http.Response> requestWith(List<String> fields) async {
+      final params = <String, String>{
+        'fields': jsonEncode(fields),
+        'limit_start': '$limitStart',
+        'limit_page_length': '$limitPageLength',
+        'order_by': effectiveOrderBy,
+      };
+      if (effectiveFilters.isNotEmpty) {
+        params['filters'] = jsonEncode(effectiveFilters);
+      }
+      if (orFilters != null && orFilters.isNotEmpty) {
+        params['or_filters'] = jsonEncode(orFilters);
+      }
+      final uri = Uri.parse(
+        ApiConstants.externalDeliveryList,
+      ).replace(queryParameters: params);
+      _logApi('external_delivery_list request', uri.toString());
+      return _get(uri, headers: await _authHeaders());
     }
 
-    final uri = Uri.parse(
-      ApiConstants.externalDeliveryList,
-    ).replace(queryParameters: params);
-
-    _logApi('external_delivery_list request', uri.toString());
     // Time the round-trip so slow loads can be attributed to the server vs the
     // app. Look for "external_delivery_list timing" in the logs.
     final Stopwatch sw = Stopwatch()..start();
-    final resp = await _get(uri, headers: await _authHeaders());
+    http.Response resp = await requestWith(geoFields);
+    // 417 is Frappe's typical "invalid field" response; retry without geo on any
+    // 4xx that isn't an auth failure, so a missing column never breaks the list.
+    if (resp.statusCode != 200 &&
+        resp.statusCode != 401 &&
+        resp.statusCode != 403) {
+      _logApi(
+        'external_delivery_list geo fallback',
+        'status=${resp.statusCode}; retrying without latitude/longitude',
+      );
+      resp = await requestWith(_fields);
+    }
     final int networkMs = sw.elapsedMilliseconds;
 
     if (resp.statusCode == 401) {
@@ -389,25 +428,41 @@ class ExternalDeliveryRepository {
     final tripRows = (jsonDecode(tripResp.body)['data']) as List;
     if (tripRows.isEmpty) return [];
 
-    // 2. Fetch trip details for each active trip (usually just 1)
-    final allStopNames = <String>[];
-    for (final row in tripRows) {
-      final tripName = (row as Map<String, dynamic>)['name']?.toString() ?? '';
-      if (tripName.isEmpty) continue;
-      try {
-        final trip = await fetchTripDetails(tripName);
-        for (final stop in trip.stops) {
-          if (stop.externalDelivery.isNotEmpty) {
-            allStopNames.add(stop.externalDelivery);
-          }
+    // 2. Fetch trip details for each active trip in parallel (usually just 1)
+    final tripNames = tripRows
+        .map((row) => (row as Map<String, dynamic>)['name']?.toString() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
+
+    final tripResults = await Future.wait(
+      tripNames.map((name) async {
+        try {
+          return await fetchTripDetails(name);
+        } catch (_) {
+          return null;
         }
-      } catch (_) {}
+      }),
+    );
+
+    final allStopNames = <String>[];
+    for (final trip in tripResults.whereType<ExternalDeliveryTrip>()) {
+      for (final stop in trip.stops) {
+        if (stop.externalDelivery.isNotEmpty) {
+          allStopNames.add(stop.externalDelivery);
+        }
+      }
     }
     if (allStopNames.isEmpty) return [];
 
     // 3. Fetch delivery details in parallel
     final results = await Future.wait(
-      allStopNames.map((name) => fetchDetail(name).catchError((_) => null)),
+      allStopNames.map((name) async {
+        try {
+          return await fetchDetail(name);
+        } catch (_) {
+          return null;
+        }
+      }),
     );
 
     const _inactiveStatuses = {
@@ -604,6 +659,46 @@ class ExternalDeliveryRepository {
     return data.length;
   }
 
+  /// Fetches multiple External Delivery records in ONE API call using Frappe's
+  /// `"name","in",[...]` filter, instead of one HTTP request per order.
+  /// Processes up to 500 names per page to stay within URL-length limits.
+  /// Does NOT resolve delivery addresses — use for bulk prefetch/caching only.
+  Future<List<ExternalDeliveryDetail>> fetchOrdersBatch(
+    List<String> names,
+  ) async {
+    if (names.isEmpty) return [];
+    const maxPerPage = 500;
+    final all = <ExternalDeliveryDetail>[];
+    final headers = await _authHeaders();
+    for (int i = 0; i < names.length; i += maxPerPage) {
+      final end = (i + maxPerPage).clamp(0, names.length);
+      final chunk = names.sublist(i, end);
+      final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
+        queryParameters: {
+          'fields': jsonEncode([
+            'name', 'store_name', 'store_url', 'customer_name', 'status',
+            'contact_mobile', 'delivery_address', 'pickup_address',
+            'latitude', 'longitude', 'geolocation', 'payment_mode',
+            'grand_total', 'creation', 'modified', 'proof_photo',
+            'failure_reason_code', 'delivery_notes',
+          ]),
+          'filters': jsonEncode([['name', 'in', chunk]]),
+          'limit_page_length': '${chunk.length}',
+        },
+      );
+      _logApi('fetch_orders_batch request (${chunk.length})', uri.toString());
+      final resp = await _get(uri, headers: headers);
+      if (!_okCodes.contains(resp.statusCode)) {
+        throw Exception(_extractErrorMessage(resp));
+      }
+      final data = (jsonDecode(resp.body)['data']) as List;
+      all.addAll(
+        data.map((row) => ExternalDeliveryDetail.fromJson(row as Map<String, dynamic>)),
+      );
+    }
+    return all;
+  }
+
   Future<ExternalDeliveryDetail> fetchDetail(
     String name, {
     bool resolveAddress = true,
@@ -626,6 +721,18 @@ class ExternalDeliveryRepository {
     }
 
     final data = (jsonDecode(resp.body)['data']) as Map<String, dynamic>;
+    _logApi(
+      'fetchDetail_cod_fields',
+      'payment_method=${data['payment_method']} '
+      'payment_mode=${data['payment_mode']} '
+      'mode_of_payment=${data['mode_of_payment']} '
+      'cod_amount_to_collect=${data['cod_amount_to_collect']} '
+      'grand_total=${data['grand_total']} '
+      'amount=${data['amount']} '
+      'total=${data['total']} '
+      'total_amount=${data['total_amount']}',
+    );
+    _logApi('fetchDetail_all_keys', data.keys.join(', '));
     if (resolveAddress) {
       final addressName = data['delivery_address']?.toString();
       if (addressName != null && addressName.isNotEmpty) {
@@ -1057,22 +1164,26 @@ class ExternalDeliveryRepository {
   }
 
   Future<ExternalDeliveryTrip> fetchTripDetails(String tripName) async {
-    final url =
-        '${ApiConstants.externalDeliveryTripList}/${Uri.encodeComponent(tripName)}';
-    _logApi('external_delivery_trip_details request', 'GET $url');
+    final uri = Uri.parse(
+      '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.form.load.getdoc',
+    ).replace(queryParameters: {
+      'doctype': 'External Delivery Trip',
+      'name': tripName,
+    });
+    _logApi('external_delivery_trip_details request', 'GET $uri');
 
-    final resp = await _get(Uri.parse(url), headers: await _authHeaders());
+    final resp = await _get(uri, headers: await _authHeaders());
 
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));
     }
 
-    final payload = jsonDecode(resp.body) as Map<String, dynamic>;
-    final data = payload['data'];
-    if (data is! Map<String, dynamic>) {
-      throw Exception('Trip details API returned unexpected response');
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final docs = decoded['docs'];
+    if (docs is! List || docs.isEmpty) {
+      throw Exception('Trip details not found: $tripName');
     }
-    return ExternalDeliveryTrip.fromJson(data);
+    return ExternalDeliveryTrip.fromJson(docs[0] as Map<String, dynamic>);
   }
 
   Future<String?> _fetchAddressText(String addressName) async {
@@ -1955,6 +2066,108 @@ class ExternalDeliveryRepository {
           .timeout(_networkTimeout);
     }
     return resp;
+  }
+
+  /// Marks an External Delivery as Delivered and records how the COD was paid.
+  /// Sends [codCollectionMode] ('Cash' or 'UPI') and optionally
+  /// [codUpiReference] alongside status=Delivered in a single PUT.
+  Future<void> markDeliveredWithCod(
+    String orderName, {
+    required String codCollectionMode,
+    String? codUpiReference,
+  }) async {
+    final uri = Uri.parse(
+      '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(orderName)}',
+    );
+    final payload = <String, dynamic>{
+      'status': 'Delivered',
+      'cod_collection_mode': codCollectionMode,
+    };
+    if (codUpiReference != null && codUpiReference.trim().isNotEmpty) {
+      payload['cod_upi_reference'] = codUpiReference.trim();
+    }
+    _logApi('mark_delivered_with_cod', 'PUT $uri mode=$codCollectionMode');
+    final resp = await _put(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
+  Future<void> markOrderFailed({
+    required String orderName,
+    required String reason,
+    String reasonCode = '',
+    String? photoPath,
+  }) async {
+    await _updateExternalDeliveryFields(orderName, {
+      'status': 'Failed',
+      'delivery_notes': reason,
+      'store_notified': 1,
+      if (reasonCode.isNotEmpty) 'failure_reason_code': reasonCode,
+    });
+    if (photoPath != null && photoPath.isNotEmpty) {
+      await uploadProofPhoto(orderName: orderName, filePath: photoPath);
+    }
+  }
+
+  /// Fetches the [CodHandover] doc for [tripName].
+  /// Returns null if no COD handover exists for this trip.
+  Future<CodHandover?> fetchCodHandover(String tripName) async {
+    final driver = await _getLoggedInDriver();
+    final codHandoverList = '${ApiConstants.erpBaseUrl}/api/resource/COD%20Handover';
+    final uri = Uri.parse(codHandoverList).replace(
+      queryParameters: {
+        'fields': jsonEncode([
+          'name',
+          'delivery_trip',
+          'cod_cash_expected',
+          'cod_cash_actual',
+          'status',
+          'notes',
+        ]),
+        'filters': jsonEncode([
+          ['COD Handover', 'delivery_trip', '=', tripName],
+          ['COD Handover', 'driver', '=', driver],
+        ]),
+        'limit_page_length': '1',
+      },
+    );
+    _logApi('fetch_cod_handover', 'GET $uri trip=$tripName driver=$driver');
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) return null;
+    final rows = (jsonDecode(resp.body)['data']) as List?;
+    if (rows == null || rows.isEmpty) return null;
+    return CodHandover.fromJson(rows.first as Map<String, dynamic>);
+  }
+
+  /// Saves the driver's actual cash-in-hand to the [CodHandover] doc.
+  Future<void> submitCodHandover({
+    required String name,
+    required double actualAmount,
+    String? notes,
+  }) async {
+    final codHandoverList = '${ApiConstants.erpBaseUrl}/api/resource/COD%20Handover';
+    final uri = Uri.parse(
+      '$codHandoverList/${Uri.encodeComponent(name)}',
+    );
+    final payload = <String, dynamic>{
+      'cod_cash_actual': actualAmount,
+      'status': 'Submitted',
+      if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+    };
+    _logApi('submit_cod_handover', 'PUT $uri name=$name amount=$actualAmount');
+    final resp = await _put(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
   }
 
   Future<http.Response> _put(

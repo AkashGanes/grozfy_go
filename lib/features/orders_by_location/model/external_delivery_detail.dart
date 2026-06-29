@@ -22,7 +22,7 @@ class DeliveryItem {
 
     return DeliveryItem(
       itemName: (m['item_name'] ?? m['item_code'] ?? '').toString(),
-      qty: toD(m['qty']) ?? 1,
+      qty: toD(m['qty'] ?? m['quantity']) ?? 1,
       rate: toD(m['rate']),
       amount: toD(m['amount']),
     );
@@ -42,7 +42,9 @@ class ExternalDeliveryDetail {
     this.latitude,
     this.longitude,
     this.paymentMode,
+    this.paymentMethod,
     this.grandTotal,
+    this.codAmountToCollect,
     this.items = const [],
     this.creation,
     this.modified,
@@ -62,13 +64,19 @@ class ExternalDeliveryDetail {
   final double? latitude;
   final double? longitude;
   final String? paymentMode;
+  final String? paymentMethod;
   final double? grandTotal;
+  final double? codAmountToCollect;
   final List<DeliveryItem> items;
   final String? creation;
   final String? modified;
   final String? proofPhoto;
   final String failureReasonCode;
   final String deliveryNotes;
+
+  bool get isCod =>
+      paymentMethod?.toUpperCase() == 'COD' ||
+      paymentMode?.toUpperCase() == 'COD';
 
   static const Map<String, String> _reasonLabels = {
     'customer_unavailable': 'Customer Unavailable',
@@ -133,7 +141,9 @@ class ExternalDeliveryDetail {
         m['mode_of_payment']?.toString() ??
         m['payment_method']?.toString(),
       ),
+      paymentMethod: _nullIfBlank(m['payment_method']?.toString()),
       grandTotal: toDouble(m['grand_total'] ?? m['total'] ?? m['amount']),
+      codAmountToCollect: toDouble(m['cod_amount_to_collect']),
       items: items,
       creation: _nullIfBlank(m['creation']?.toString()),
       modified: _nullIfBlank(m['modified']?.toString()),

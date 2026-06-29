@@ -11,7 +11,9 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../orders_by_location/ui/delivery_outcome_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
+import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
 import '../orders_by_location/ui/trip_stop_map_screen.dart';
 import 'widgets/order_timer_widget.dart';
@@ -119,6 +121,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ? storeAddress
                 : order.storeAddress,
             itemCount: 0,
+            recallStop: recallStop,
           );
           // Enrich with item count from detail (best-effort).
           try {
@@ -141,6 +144,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   ? storeAddress
                   : (detail.pickupAddress ?? order.storeAddress),
               itemCount: detail.items.length,
+              recallStop: recallStop,
             );
           } catch (_) {}
         }
@@ -197,8 +201,15 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   // ── Confirm recall ────────────────────────────────────────────────────────────
 
   Future<void> _handleConfirmRecall(DeliveryOrder order) async {
+    // ignore: avoid_print
+    print('[Recall] _handleConfirmRecall called — orderId=${order.orderId} recallData=${_recallData?.orderId} syncing=$_syncing');
+
     final data = _recallData;
-    if (data == null) return;
+    if (data == null || _syncing) {
+      // ignore: avoid_print
+      print('[Recall] early return — data=${data == null ? 'null' : 'ok'} syncing=$_syncing');
+      return;
+    }
 
     final customerLabel = data.customerName.isNotEmpty
         ? data.customerName
@@ -244,13 +255,54 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     if (confirmed != true || !mounted) return;
 
+    setState(() => _syncing = true);
+
+    // Step 1: Call dedicated backend API — this updates the linked Recall doc
+    // and sets status → Returned, store_notified=1 via server logic.
+    // ignore: avoid_print
+    print('[Recall] Step1 → confirm_recall_received_at_store order=${data.orderId}');
+    try {
+      await ExternalDeliveryRepository().confirmRecallReceivedAtStore(
+        externalDelivery: data.orderId,
+      );
+      // ignore: avoid_print
+      print('[Recall] Step1 ✓ API succeeded');
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Recall] Step1 ✗ API failed: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+
+    // Step 2: Always do direct field updates regardless of Step 1 outcome —
+    // sets trip stop → Returned and order → Returned + store_notified=1
+    // via frappe.client.set_value so it always reflects in ERPNext web.
+    if (data.recallStop != null) {
+      // ignore: avoid_print
+      print('[Recall] Step2 → confirmRecallReturn stop=${data.recallStop!.rawFields['name']} order=${data.orderId}');
+      try {
+        await ExternalDeliveryRepository().confirmRecallReturn(
+          stop: data.recallStop!,
+          orderName: data.orderId,
+        );
+        // ignore: avoid_print
+        print('[Recall] Step2 ✓ Direct update succeeded — status=Returned store_notified=1');
+      } catch (e) {
+        // ignore: avoid_print
+        print('[Recall] Step2 ✗ Direct update failed: $e');
+      }
+    } else {
+      // ignore: avoid_print
+      print('[Recall] Step2 skipped — recallStop is null (no trip stop available)');
+    }
+
+    if (!mounted) return;
     AppToast.show(context, 'Recall confirmed — items returned to store.');
     final app = AppScope.of(context);
     app.clearActiveOrder();
     if (mounted) {
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.dashboard,
+        (r) => false,
+      );
     }
   }
 
@@ -348,13 +400,55 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     setState(() => _syncing = true);
 
     if (next == OrderStatus.delivered) {
+      // Optional proof photo
       final photoPath = await showDeliveryProofSheet(context);
-      if (!mounted) return;
+      if (!mounted) { setState(() => _syncing = false); return; }
       if (photoPath != null) {
         await ExternalDeliveryRepository().uploadProofPhoto(
           orderName: order.orderId,
           filePath: photoPath,
         );
+        if (!mounted) { setState(() => _syncing = false); return; }
+      }
+
+      // Fetch COD info, then show unified delivery outcome sheet
+      bool isCod = order.paymentMode.toUpperCase() == 'COD';
+      double codAmount = 0;
+      try {
+        final detail = await ExternalDeliveryRepository().fetchDetail(
+          order.orderId,
+          resolveAddress: false,
+        );
+        isCod = detail.isCod;
+        codAmount = detail.codAmountToCollect ?? 0;
+      } catch (_) {}
+      if (!mounted) { setState(() => _syncing = false); return; }
+
+      // Show unified sheet: COD form + Confirm Delivery + Mark as Failed
+      final outcome = await showDeliveryOutcomeSheet(
+        context,
+        isCod: isCod,
+        codAmount: codAmount,
+      );
+      if (!mounted) { setState(() => _syncing = false); return; }
+      if (outcome == null) { setState(() => _syncing = false); return; }
+
+      if (outcome.outcome == 'failed') {
+        // Driver chose to mark as failed from within the delivery sheet
+        setState(() => _syncing = false);
+        await _onMarkFailed(context, order);
+        return;
+      }
+
+      // Outcome is 'delivered' — save COD data if applicable
+      if (isCod && outcome.codMode != null) {
+        try {
+          await ExternalDeliveryRepository().markDeliveredWithCod(
+            order.orderId,
+            codCollectionMode: outcome.codMode!,
+            codUpiReference: outcome.codRef,
+          );
+        } catch (_) {}
         if (!mounted) return;
       }
     }
@@ -381,30 +475,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
-  String _nextButtonLabel(OrderProgressStatus current) {
-    switch (current) {
-      case OrderStatus.pending:
-        return 'Accept Order';
-      case OrderStatus.accepted:
-        return 'Mark Reached Pickup';
-      case OrderStatus.rejected:
-        return 'Rejected';
-      case OrderStatus.reachedPickup:
-        return 'Mark Picked Up';
-      case OrderStatus.pickedUp:
-        return 'Start Out for Delivery';
-      case OrderStatus.outForDelivery:
-        return 'Mark Delivered';
-      case OrderStatus.delivered:
-        return 'Completed';
-      case OrderStatus.failed:
-        return 'Failed';
-      case OrderStatus.cancelled:
-        return 'Cancelled';
-      case OrderStatus.returned:
-        return 'Returned';
-    }
-  }
 
 
   Future<void> _onActionTap(BuildContext context, DeliveryOrder order) async {
@@ -712,7 +782,9 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       child: ElevatedButton(
                         onPressed: _syncing
                             ? null
-                            : () => _onActionTap(context, order),
+                            : order.orderStatus == OrderStatus.outForDelivery
+                                ? () => _advanceStatus(context)
+                                : () => _onActionTap(context, order),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: color,
                           foregroundColor: Colors.white,
@@ -1238,6 +1310,7 @@ class _RecallData {
     required this.storeName,
     required this.storeAddress,
     required this.itemCount,
+    this.recallStop,
   });
   final String orderId;
   final String customerName;
@@ -1245,4 +1318,6 @@ class _RecallData {
   final String storeName;
   final String storeAddress;
   final int itemCount;
+  final ExternalDeliveryTripStop? recallStop;
 }
+

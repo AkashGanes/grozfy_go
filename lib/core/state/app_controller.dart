@@ -92,13 +92,23 @@ class AppController extends ChangeNotifier {
   static const String _prefLicenseRequiresReupload =
       'license_requires_reupload';
   static const String _prefThemeMode = 'theme_mode';
+  static const String _prefDeliveryRadiusKm = 'delivery_radius_km';
+  // Mirror of the business-defined radius policy (from the Driver DocType), kept
+  // in prefs so the policy survives an offline cold start.
+  static const String _prefDeliveryRadiusEnabled = 'delivery_radius_enabled';
+  static const String _prefDeliveryRadiusDefaultKm = 'delivery_radius_default_km';
+  static const String _prefDeliveryRadiusMaxKm = 'delivery_radius_max_km';
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
   static const String _prefActiveOrderId = 'active_order_id';
   static const String _prefActiveTripId = 'active_trip_id';
   static const String _prefActiveOrderIds = 'active_order_ids';
   static const String _prefActiveTripIdsMap = 'active_trip_ids_map';
-  static const String _prefActiveOrdersCache = 'active_orders_cache';
+  // Per-driver keys so multiple users on the same device don't share avg data.
+  static String _prefTotalTripTimeTodayMs(String driver) =>
+      'total_trip_time_today_ms_$driver';
+  static String _prefTripTimeSavedDate(String driver) =>
+      'trip_time_saved_date_$driver';
   static const int maxConcurrentOrders = 3;
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 300;
@@ -145,6 +155,12 @@ class AppController extends ChangeNotifier {
   String? _sessionToken;
   String _tokenType = 'Bearer';
   String? _refreshToken;
+  // Cached result of buildAuthHeaders() — invalidated when token changes.
+  Map<String, String>? _cachedAuthHeaders;
+  String? _cachedAuthHeadersKey;
+  // Cached profileCompleteness — invalidated by fingerprint of inputs.
+  ProfileCompleteness? _cachedProfileCompleteness;
+  String? _cachedProfileCompletenessKey;
   String? _clientId;
   String? _apiKey;
   String? _apiSecret;
@@ -179,12 +195,27 @@ class AppController extends ChangeNotifier {
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
+  DateTime? _onlineSince;
+  Duration _completedDutyToday = Duration.zero;
+  int _completedTripsToday = 0;
+  Duration _totalTripTimeToday = Duration.zero;
+  final Map<String, DateTime> _tripAcceptedTimes = {};
+  final Set<String> _sessionTripAcceptances = {};
   bool _availabilitySyncing = false;
   bool _isTracking = false;
   int _trackingInterval = 10;
   String _liveCoordinates = '28.6139, 77.2090';
   double? _currentLatitude;
   double? _currentLongitude;
+  // Partner's self-selected delivery radius in km. null means "no limit" —
+  // every order is shown regardless of distance.
+  double? _deliveryRadiusKm;
+  // Business-defined radius policy, sourced from the logged-in Driver doc.
+  // `_deliveryRadiusFeatureEnabled` gates whether the radius limit is offered at
+  // all; the default/max drive the Settings slider's initial value and ceiling.
+  bool _deliveryRadiusFeatureEnabled = false;
+  double? _businessDefaultRadiusKm;
+  double? _businessMaxRadiusKm;
   String? _currentLocationLabel;
   String? _selectedStoreName;
   String? _profileImagePath;
@@ -252,6 +283,23 @@ class AppController extends ChangeNotifier {
       const Duration(seconds: 10),
       () => _recentEventKeys.remove(key),
     );
+    if (eventType == TimingEventType.tripAccepted && tripRef != null) {
+      if (!_sessionTripAcceptances.contains(tripRef)) {
+        _sessionTripAcceptances.add(tripRef);
+        _tripAcceptedTimes[tripRef] = DateTime.now();
+      }
+    } else if (eventType == TimingEventType.tripCompleted) {
+      _completedTripsToday++;
+      if (tripRef != null) {
+        final start = _tripAcceptedTimes.remove(tripRef);
+        if (start != null) {
+          final d = DateTime.now().difference(start);
+          if (!d.isNegative) _totalTripTimeToday += d;
+        }
+      }
+      _persistTripTimeToday();
+      notifyListeners();
+    }
     _writeTimingEvent(eventType: eventType, tripRef: tripRef, stopRef: stopRef);
   }
 
@@ -321,12 +369,22 @@ class AppController extends ChangeNotifier {
       Set<String>.unmodifiable(_vehicleRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
+  DateTime? get onlineSince => _onlineSince;
+  Duration get completedDutyToday => _completedDutyToday;
+  int get completedTripsToday => _completedTripsToday;
+  Duration get avgTripDurationToday => _completedTripsToday > 0
+      ? Duration(milliseconds: _totalTripTimeToday.inMilliseconds ~/ _completedTripsToday)
+      : Duration.zero;
   bool get availabilitySyncing => _availabilitySyncing;
   bool get isTracking => _isTracking;
   int get trackingInterval => _trackingInterval;
   String get liveCoordinates => _liveCoordinates;
   double? get currentLatitude => _currentLatitude;
   double? get currentLongitude => _currentLongitude;
+  double? get deliveryRadiusKm => _deliveryRadiusKm;
+  bool get deliveryRadiusFeatureEnabled => _deliveryRadiusFeatureEnabled;
+  double? get businessDefaultRadiusKm => _businessDefaultRadiusKm;
+  double? get businessMaxRadiusKm => _businessMaxRadiusKm;
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
@@ -481,6 +539,15 @@ class AppController extends ChangeNotifier {
       _permissionState.allGranted;
 
   ProfileCompleteness get profileCompleteness {
+    final hasPhoto = _profileImagePath != null || _serverProfileImageUrl != null;
+    final hasLocation = hasSelectedLocation;
+    final key = '${_profile?.fullName}_${hasPhoto}_${_kycCompleted}_'
+        '${_vehicle != null}_${_bank != null}_${hasLocation}_'
+        '${_permissionState.allGranted}';
+    if (_cachedProfileCompleteness != null && _cachedProfileCompletenessKey == key) {
+      return _cachedProfileCompleteness!;
+    }
+
     final List<ProfileCompletenessItem> items = <ProfileCompletenessItem>[
       ProfileCompletenessItem(
         name: 'profile_basic_profile',
@@ -491,8 +558,7 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'profile_photo',
         description: 'profile_photo_desc',
-        isCompleted:
-            _profileImagePath != null || _serverProfileImageUrl != null,
+        isCompleted: hasPhoto,
         route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
@@ -516,7 +582,7 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'delivery_zone',
         description: 'delivery_zone_desc',
-        isCompleted: hasSelectedLocation,
+        isCompleted: hasLocation,
         route: AppRoutes.currentLocation,
       ),
       ProfileCompletenessItem(
@@ -531,12 +597,14 @@ class AppController extends ChangeNotifier {
     final int totalCount = items.length;
     final double percentage = totalCount > 0 ? completedCount / totalCount : 0;
 
-    return ProfileCompleteness(
+    _cachedProfileCompleteness = ProfileCompleteness(
       percentage: percentage,
       items: items,
       completedCount: completedCount,
       totalCount: totalCount,
     );
+    _cachedProfileCompletenessKey = key;
+    return _cachedProfileCompleteness!;
   }
 
   Future<void> bootstrap() async {
@@ -594,6 +662,76 @@ class AppController extends ChangeNotifier {
       }
     }
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
+    // Read driver name early so the DB query below filters by the correct partner.
+    final String? earlyDriverName = _nullIfBlank(prefs.getString(_prefDriverName));
+    if (_timingDao != null) {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+      final rows = await _timingDao.getEventsInRange(
+        startOfDay,
+        endOfDay,
+        partner: earlyDriverName,
+      );
+      final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
+      final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
+      if (logins.isNotEmpty && logouts.isNotEmpty) {
+        final diff = DateTime.parse(logouts.last.eventTime)
+            .difference(DateTime.parse(logins.first.eventTime));
+        if (!diff.isNegative) _completedDutyToday = diff;
+      }
+      if (_isOnline && logins.isNotEmpty) {
+        _onlineSince = DateTime.tryParse(logins.last.eventTime);
+      }
+      _completedTripsToday = rows
+          .where((r) => r.eventType == TimingEventType.tripCompleted)
+          .length;
+
+      // Restore avg trip duration: prefs is the source of truth (saved after
+      // every trip_completed). Fall back to DB pairing if prefs has no entry
+      // for today (first run after an app update, etc.).
+      final now2 = DateTime.now();
+      final todayStr = '${now2.year}-${now2.month.toString().padLeft(2, '0')}-${now2.day.toString().padLeft(2, '0')}';
+      final driverKey = earlyDriverName ?? '';
+      final savedDate = driverKey.isNotEmpty ? prefs.getString(_prefTripTimeSavedDate(driverKey)) : null;
+      if (savedDate == todayStr) {
+        final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs(driverKey)) ?? 0;
+        _totalTripTimeToday = Duration(milliseconds: savedMs);
+      } else {
+        // Prefs is from a previous day — compute from DB event pairs instead.
+        final acceptedTimes = <String, DateTime>{};
+        for (final r in rows) {
+          if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+            acceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+          }
+        }
+        var restoredTripTime = Duration.zero;
+        for (final r in rows.where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)) {
+          final start = acceptedTimes[r.tripName!];
+          if (start != null) {
+            final d = DateTime.parse(r.eventTime).difference(start);
+            if (!d.isNegative) restoredTripTime += d;
+          }
+        }
+        _totalTripTimeToday = restoredTripTime;
+      }
+      // Mark already-recorded trip acceptances so the screen doesn't re-fire them.
+      // For trips still in progress (accepted today but NOT yet completed today),
+      // also restore _tripAcceptedTimes so the duration is captured when they finish.
+      final completedTodayRefs = rows
+          .where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)
+          .map((r) => r.tripName!)
+          .toSet();
+      for (final r in rows) {
+        if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+          _sessionTripAcceptances.add(r.tripName!);
+          if (!completedTodayRefs.contains(r.tripName!)) {
+            // Trip still in progress — restore start time from DB.
+            _tripAcceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+          }
+        }
+      }
+    }
     final String? persistedActiveOrderId = _nullIfBlank(
       prefs.getString(_prefActiveOrderId),
     );
@@ -604,6 +742,13 @@ class AppController extends ChangeNotifier {
     await PartnerWidgetManager.initialize();
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
     _currentLongitude = prefs.getDouble(_prefCurrentLng);
+    _deliveryRadiusKm = prefs.getDouble(_prefDeliveryRadiusKm);
+    // Restore the business policy from its prefs mirror so the Settings slider
+    // has sane bounds before the Driver doc is (re)fetched — important offline.
+    _deliveryRadiusFeatureEnabled =
+        prefs.getBool(_prefDeliveryRadiusEnabled) ?? false;
+    _businessDefaultRadiusKm = prefs.getDouble(_prefDeliveryRadiusDefaultKm);
+    _businessMaxRadiusKm = prefs.getDouble(_prefDeliveryRadiusMaxKm);
     _currentLocationLabel = _nullIfBlank(
       prefs.getString(_prefCurrentLocationLabel),
     );
@@ -789,6 +934,60 @@ class AppController extends ChangeNotifier {
       return prefs.setInt(_prefThemeMode, mode.index);
     });
     notifyListeners();
+  }
+
+  /// Sets the partner's delivery radius in km. Pass null (or a non-positive
+  /// value) to mean "no limit" — the stored pref is removed so it loads back as
+  /// null on next launch. The value is capped at the business-defined
+  /// [businessMaxRadiusKm] so a partner can never exceed the configured ceiling.
+  void setDeliveryRadiusKm(double? km) {
+    double? normalized = (km == null || km <= 0) ? null : km;
+    final double? max = _businessMaxRadiusKm;
+    if (normalized != null && max != null && max > 0 && normalized > max) {
+      normalized = max;
+    }
+    _deliveryRadiusKm = normalized;
+    _writePref((SharedPreferences prefs) {
+      return normalized == null
+          ? prefs.remove(_prefDeliveryRadiusKm)
+          : prefs.setDouble(_prefDeliveryRadiusKm, normalized);
+    });
+    notifyListeners();
+  }
+
+  /// Whether [order]'s delivery location falls within the partner's chosen
+  /// radius. Fails open: returns true when no radius is set or when the
+  /// partner's current location is unknown, so a GPS hiccup never empties the
+  /// work list.
+  bool isWithinDeliveryRadius(DeliveryOrder order) {
+    final double? radius = _deliveryRadiusKm;
+    if (radius == null) return true;
+    final double? lat = _currentLatitude;
+    final double? lng = _currentLongitude;
+    if (lat == null || lng == null) return true;
+    return order.distanceKm <= radius;
+  }
+
+  /// Distance in km from the partner's current location to [lat]/[lng], or null
+  /// when the partner's location is unknown.
+  double? distanceFromPartnerKm(double lat, double lng) {
+    final double? plat = _currentLatitude;
+    final double? plng = _currentLongitude;
+    if (plat == null || plng == null) return null;
+    return _calculateDistance(plat, plng, lat, lng);
+  }
+
+  /// Radius check for a raw delivery coordinate. Used by the listing screen,
+  /// which works with order summaries rather than [DeliveryOrder]. Fails open
+  /// (returns true) when no radius is set, the coordinate is missing, or the
+  /// partner's location is unknown — so nothing is wrongly hidden.
+  bool isWithinDeliveryRadiusAt(double? lat, double? lng) {
+    final double? radius = _deliveryRadiusKm;
+    if (radius == null) return true;
+    if (lat == null || lng == null) return true;
+    final double? distance = distanceFromPartnerKm(lat, lng);
+    if (distance == null) return true;
+    return distance <= radius;
   }
 
   void setBackgroundColor(Color color) {
@@ -1360,6 +1559,7 @@ class AppController extends ChangeNotifier {
       // dashboard renders with complete data (no race between navigation and
       // background fetch). The login screen's _busy spinner covers this wait.
       await _backgroundSync();
+      await _restoreSessionFromDb();
       notifyListeners();
       _writeTimingEvent(eventType: TimingEventType.login);
 
@@ -1567,6 +1767,7 @@ class AppController extends ChangeNotifier {
       await _persistSession(responseData);
 
       await _backgroundSync();
+      await _restoreSessionFromDb();
       notifyListeners();
 
       return null;
@@ -1637,6 +1838,12 @@ class AppController extends ChangeNotifier {
     _apiSecret = null;
     _isRefreshing = false;
     _isOnline = false;
+    _onlineSince = null;
+    _completedDutyToday = Duration.zero;
+    _completedTripsToday = 0;
+    _totalTripTimeToday = Duration.zero;
+    _tripAcceptedTimes.clear();
+    _sessionTripAcceptances.clear();
     _isTracking = false;
     _incomingOrder = null;
     _activeOrders.clear();
@@ -1652,6 +1859,12 @@ class AppController extends ChangeNotifier {
     _currentLatitude = null;
     _currentLongitude = null;
     _currentLocationLabel = null;
+    // Reset the delivery-radius selection and business policy so the next login
+    // starts from that driver's business default rather than a stale value.
+    _deliveryRadiusKm = null;
+    _deliveryRadiusFeatureEnabled = false;
+    _businessDefaultRadiusKm = null;
+    _businessMaxRadiusKm = null;
     _driverName = null;
     _vehicle = null;
     _submittedVehicleRaw = null;
@@ -1708,6 +1921,9 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefPermBackground),
       prefs.remove(_prefPermNotification),
       prefs.remove(_prefLicenseRequiresReupload),
+      // Per-driver prefs (avg duration, delivered count) are intentionally kept on logout.
+      // They are keyed by driver name so other users can't see them,
+      // and the same user logging back in the same day needs them intact.
     ]);
 
     // Server-side cleanup — fire-and-forget so the caller's navigation
@@ -2846,6 +3062,7 @@ class AppController extends ChangeNotifier {
       return prefs.setBool(_prefIsOnline, _isOnline);
     });
     if (_isOnline) {
+      _onlineSince = DateTime.now();
       startTracking();
       recordTimingEvent(eventType: TimingEventType.login);
       unawaited(FCMService().subscribe(this));
@@ -2858,6 +3075,11 @@ class AppController extends ChangeNotifier {
         ),
       );
     } else {
+      if (_onlineSince != null) {
+        final session = DateTime.now().difference(_onlineSince!);
+        if (!session.isNegative) _completedDutyToday += session;
+      }
+      _onlineSince = null;
       stopTracking();
       recordTimingEvent(eventType: TimingEventType.logout);
       unawaited(FCMService().unsubscribe(this));
@@ -2942,6 +3164,46 @@ class AppController extends ChangeNotifier {
 
     notifyListeners();
     return null;
+  }
+
+  /// Seeds the partner's current location with a single GPS fix when it isn't
+  /// already known. Used by screens (e.g. Orders by Location) that need an
+  /// origin point for the delivery-radius filter but don't start continuous
+  /// tracking. Returns true when a location is available afterwards (either it
+  /// was already set, or it was just fetched); false when it couldn't be
+  /// obtained (service off, permission denied, or fetch failure) so the caller
+  /// can fail open.
+  Future<bool> ensureCurrentLocation() async {
+    if (_currentLatitude != null && _currentLongitude != null) {
+      return true;
+    }
+    try {
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return false;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return false;
+      }
+
+      final Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      _currentLatitude = position.latitude;
+      _currentLongitude = position.longitude;
+      _liveCoordinates =
+          '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   void stopTracking() {
@@ -3082,6 +3344,10 @@ class AppController extends ChangeNotifier {
             time: DateTime.now(),
           ),
         );
+        recordTimingEvent(
+          eventType: TimingEventType.tripCompleted,
+          tripRef: targetId,
+        );
         _acceptedOrders.removeWhere((order) => order.orderId == targetId);
         clearOrder(targetId);
       } else if (status == OrderStatus.reachedPickup) {
@@ -3119,6 +3385,50 @@ class AppController extends ChangeNotifier {
     } catch (e) {
       return e.toString().replaceFirst('Exception: ', '');
     }
+  }
+
+  Future<String?> failDelivery({
+    required String orderId,
+    required String reason,
+    String? reasonCode,
+    String? photoPath,
+    bool shouldCreateReturnTrip = false,
+  }) async {
+    final String? tripId = _activeTripIds[orderId];
+    String? syncError;
+    try {
+      if (tripId != null) {
+        await _orderRepository.processFailedDeliveryReturnByIds(
+          tripId: tripId,
+          deliveryId: orderId,
+          reason: reason,
+          reasonCode: reasonCode,
+          photoPath: photoPath,
+          shouldCreateReturnTrip: shouldCreateReturnTrip,
+        );
+      } else {
+        await _orderRepository.updateStatusViaSetValue(orderId, 'Failed');
+        if (photoPath != null && photoPath.isNotEmpty) {
+          await _orderRepository.uploadProofPhoto(
+            orderName: orderId,
+            filePath: photoPath,
+          );
+        }
+      }
+    } catch (e) {
+      syncError = e.toString().replaceFirst('Exception: ', '');
+    }
+    _writeTimingEvent(eventType: TimingEventType.stopFailed, tripRef: tripId);
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Delivery failed',
+        message: 'Order $orderId marked as failed.',
+        time: DateTime.now(),
+      ),
+    );
+    clearOrder(orderId);
+    return syncError;
   }
 
   void clearOrder(String orderId) {
@@ -3460,6 +3770,8 @@ class AppController extends ChangeNotifier {
         activeOrder: activeOrder,
       );
       notifyListeners();
+      // Key by orderId so it matches tripCompleted's tripRef in this flow.
+      _tripAcceptedTimes[orderId] = DateTime.now();
       _writeTimingEvent(
         eventType: TimingEventType.tripAccepted,
         tripRef: _activeTripIds[orderId],
@@ -4325,6 +4637,104 @@ class AppController extends ChangeNotifier {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  /// Re-reads today's timing events from the local DB and restores all
+  /// in-memory counters. Called after login so the dashboard reflects
+  /// any trips/duty that occurred earlier in the day without a restart.
+  Future<void> _restoreSessionFromDb() async {
+    final dao = _timingDao;
+    if (dao == null) return;
+    final partner = _driverName ?? _profile?.mobile;
+    if (partner == null || partner.trim().isEmpty) return;
+
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final rows = await dao.getEventsInRange(
+      startOfDay,
+      endOfDay,
+      partner: partner.trim(),
+    );
+
+    // Duty hours from login/logout pairs (previous sessions only — current
+    // session starts fresh once the driver goes online).
+    final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
+    final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
+    if (logins.isNotEmpty && logouts.isNotEmpty) {
+      final diff = DateTime.parse(logouts.last.eventTime)
+          .difference(DateTime.parse(logins.first.eventTime));
+      if (!diff.isNegative) _completedDutyToday = diff;
+    }
+
+    // Trip count.
+    _completedTripsToday = rows
+        .where((r) => r.eventType == TimingEventType.tripCompleted)
+        .length;
+
+    // Avg trip duration — prefs first (saved after every completion).
+    final prefs = await SharedPreferences.getInstance();
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final savedDate = prefs.getString(_prefTripTimeSavedDate(partner.trim()));
+    if (savedDate == todayStr) {
+      final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs(partner.trim())) ?? 0;
+      _totalTripTimeToday = Duration(milliseconds: savedMs);
+    } else {
+      final acceptedTimes = <String, DateTime>{};
+      for (final r in rows) {
+        if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+          acceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+        }
+      }
+      var total = Duration.zero;
+      for (final r in rows.where(
+        (r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null,
+      )) {
+        final start = acceptedTimes[r.tripName!];
+        if (start != null) {
+          final d = DateTime.parse(r.eventTime).difference(start);
+          if (!d.isNegative) total += d;
+        }
+      }
+      _totalTripTimeToday = total;
+    }
+
+    // Restore start times for any trips still in progress today.
+    final completedRefs = rows
+        .where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)
+        .map((r) => r.tripName!)
+        .toSet();
+    for (final r in rows) {
+      if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+        _sessionTripAcceptances.add(r.tripName!);
+        if (!completedRefs.contains(r.tripName!)) {
+          _tripAcceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+        }
+      }
+    }
+
+    // Restore online state so the duty-hours live ticker resumes automatically
+    // after a logout+login on the same day, matching cold-restart behaviour.
+    // _onlineSince is set to now (not the last DB login time) so the live
+    // portion starts fresh — _completedDutyToday already covers prior sessions.
+    final wasOnline = prefs.getBool(_prefIsOnline) ?? false;
+    if (wasOnline) {
+      _isOnline = true;
+      _onlineSince = DateTime.now();
+    }
+  }
+
+  void _persistTripTimeToday() {
+    final driver = _driverName ?? _profile?.mobile ?? '';
+    if (driver.isEmpty) return;
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    _writePref((prefs) async {
+      await prefs.setInt(_prefTotalTripTimeTodayMs(driver), _totalTripTimeToday.inMilliseconds);
+      await prefs.setString(_prefTripTimeSavedDate(driver), dateStr);
+      return true;
+    });
+  }
+
   void _writePref(Future<bool> Function(SharedPreferences prefs) writer) {
     unawaited(() async {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -4360,6 +4770,74 @@ class AppController extends ChangeNotifier {
     final double parsed = double.tryParse(ratingRaw?.toString() ?? '') ?? 0.0;
     _performance = _performance.copyWith(rating: parsed);
     notifyListeners();
+  }
+
+  /// Reads the business-defined delivery-radius policy off the Driver doc
+  /// (`custom_delivery_radius_enabled`, `custom_default_delivery_radius_km`,
+  /// `custom_maximum_delivery_radius_km`), mirrors it to prefs for offline use, and
+  /// reconciles the partner's own saved selection with it: clearing it when the
+  /// business disables the limit, or clamping it down to a lowered cap.
+  void _applyDeliveryRadiusPolicy(Map<String, dynamic> driverDoc) {
+    final dynamic enabledRaw = driverDoc['custom_delivery_radius_enabled'];
+    _deliveryRadiusFeatureEnabled = enabledRaw == 1 ||
+        enabledRaw == true ||
+        enabledRaw?.toString() == '1';
+    _businessDefaultRadiusKm = _positiveOrNull(
+      driverDoc['custom_default_delivery_radius_km'],
+    );
+    _businessMaxRadiusKm = _positiveOrNull(
+      driverDoc['custom_maximum_delivery_radius_km'],
+    );
+
+    // Mirror the policy so an offline cold start still has sane slider bounds.
+    final bool enabled = _deliveryRadiusFeatureEnabled;
+    final double? defaultKm = _businessDefaultRadiusKm;
+    final double? maxKm = _businessMaxRadiusKm;
+    _writePref((SharedPreferences prefs) async {
+      await prefs.setBool(_prefDeliveryRadiusEnabled, enabled);
+      if (defaultKm != null) {
+        await prefs.setDouble(_prefDeliveryRadiusDefaultKm, defaultKm);
+      } else {
+        await prefs.remove(_prefDeliveryRadiusDefaultKm);
+      }
+      if (maxKm != null) {
+        await prefs.setDouble(_prefDeliveryRadiusMaxKm, maxKm);
+      } else {
+        await prefs.remove(_prefDeliveryRadiusMaxKm);
+      }
+      return true;
+    });
+
+    // Business turned the feature off → drop any local restriction so the
+    // partner sees every order again.
+    if (!_deliveryRadiusFeatureEnabled) {
+      if (_deliveryRadiusKm != null) {
+        setDeliveryRadiusKm(null);
+      }
+      return;
+    }
+    // Apply the business default whenever there is no saved selection. Logout
+    // clears the saved value, so this path runs on the next login and resets
+    // the radius to custom_default_delivery_radius_km. setDeliveryRadiusKm caps
+    // it at custom_maximum_delivery_radius_km. A mid-session selection survives app
+    // restarts because it is non-null here and only gets clamped to the cap.
+    if (_deliveryRadiusKm == null) {
+      if (defaultKm != null) {
+        setDeliveryRadiusKm(defaultKm);
+      }
+    } else if (maxKm != null && _deliveryRadiusKm! > maxKm) {
+      setDeliveryRadiusKm(maxKm);
+    }
+  }
+
+  /// Parses a Frappe Float to a positive double, returning null for missing,
+  /// unparseable, or non-positive values (treated as "not configured").
+  double? _positiveOrNull(dynamic raw) {
+    final double? value = (raw is num)
+        ? raw.toDouble()
+        : double.tryParse(raw?.toString() ?? '');
+    if (value == null || value <= 0) return null;
+    return value;
   }
 
   Future<void> fetchLoggedInEmployeeDriverProfile({
@@ -4458,6 +4936,7 @@ class AppController extends ChangeNotifier {
       );
 
       if (driverDoc != null) {
+        _applyDeliveryRadiusPolicy(driverDoc);
         _checkLicenseStatus(driverDoc);
         _applyRatingFromDriverDoc(driverDoc);
         final dynamic onlineRaw = driverDoc['custom_custom_is_online'];
@@ -5328,9 +5807,16 @@ class AppController extends ChangeNotifier {
   }
 
   /// Returns the primary auth header for use outside AppController (e.g. image loading).
+  /// Result is cached per token value — safe to call on every rebuild.
   Map<String, String> buildAuthHeaders() {
+    final key = '${_tokenType}_${_sessionToken ?? ''}';
+    if (_cachedAuthHeaders != null && _cachedAuthHeadersKey == key) {
+      return _cachedAuthHeaders!;
+    }
     final headers = _authorizationHeaders();
-    return headers.isNotEmpty ? headers.first : <String, String>{};
+    _cachedAuthHeaders = headers.isNotEmpty ? headers.first : const <String, String>{};
+    _cachedAuthHeadersKey = key;
+    return _cachedAuthHeaders!;
   }
 
   List<Map<String, String>> _authorizationHeaders({String? contentType}) {

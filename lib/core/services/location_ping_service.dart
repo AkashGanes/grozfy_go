@@ -217,7 +217,7 @@ class LocationPingService {
       final Position pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 8),
+          timeLimit: Duration(seconds: 5),
         ),
       );
       _latestPos = pos;
