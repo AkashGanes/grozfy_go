@@ -15,6 +15,16 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  // Smallest selectable radius. The default and maximum come from the business
+  // policy on the Driver doc; these constants are only used as a safety net when
+  // that policy hasn't loaded yet (e.g. first-ever launch while offline).
+  static const double _minRadiusKm = 1;
+  static const double _fallbackDefaultRadiusKm = 5;
+  static const double _fallbackMaxRadiusKm = 25;
+
+  // In-progress slider value while dragging; null means "use the stored value".
+  double? _radiusDraftKm;
+
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(appControllerProvider);
@@ -28,11 +38,144 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         children: [
           _buildThemeCustomizationSection(context, controller),
           const SizedBox(height: 16),
+          _buildDeliveryRadiusSection(context, controller),
+          const SizedBox(height: 16),
           _buildLanguageCustomizationSection(context, controller),
           const SizedBox(height: 16),
           _buildResetButton(context, controller),
           const SizedBox(height: 16),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDeliveryRadiusSection(
+    BuildContext context,
+    dynamic controller,
+  ) {
+    final theme = Theme.of(context);
+    // The business gates whether the limit is offered at all.
+    if (controller.deliveryRadiusFeatureEnabled != true) {
+      return const SizedBox.shrink();
+    }
+    // Slider bounds come from the Driver doc; fall back if the policy is absent.
+    final double rawMax =
+        (controller.businessMaxRadiusKm as double?) ?? _fallbackMaxRadiusKm;
+    final double maxRadiusKm =
+        rawMax < _minRadiusKm ? _fallbackMaxRadiusKm : rawMax;
+    final double defaultRadiusKm =
+        ((controller.businessDefaultRadiusKm as double?) ??
+                _fallbackDefaultRadiusKm)
+            .clamp(_minRadiusKm, maxRadiusKm);
+    final int divisions =
+        (maxRadiusKm - _minRadiusKm).round().clamp(1, 1000);
+    final double? storedRadius = controller.deliveryRadiusKm as double?;
+    final bool limitEnabled = storedRadius != null;
+    final double sliderValue = (_radiusDraftKm ?? storedRadius ?? defaultRadiusKm)
+        .clamp(_minRadiusKm, maxRadiusKm);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.my_location_rounded,
+                    color: theme.colorScheme.primary, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        controller.t('delivery_radius'),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        controller.t('delivery_radius_subtitle'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: theme.colorScheme.onSurface
+                              .withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: limitEnabled,
+                  onChanged: (on) {
+                    setState(() => _radiusDraftKm = null);
+                    controller.setDeliveryRadiusKm(
+                      on ? (storedRadius ?? defaultRadiusKm) : null,
+                    );
+                    AppToast.show(
+                      context,
+                      controller.t('delivery_radius_updated'),
+                    );
+                  },
+                ),
+              ],
+            ),
+            if (limitEnabled) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Slider(
+                      min: _minRadiusKm,
+                      max: maxRadiusKm,
+                      divisions: divisions,
+                      value: sliderValue,
+                      label: '${sliderValue.toStringAsFixed(0)} km',
+                      onChanged: (v) => setState(() => _radiusDraftKm = v),
+                      onChangeEnd: (v) {
+                        setState(() => _radiusDraftKm = null);
+                        controller.setDeliveryRadiusKm(v);
+                        AppToast.show(
+                          context,
+                          controller.t('delivery_radius_updated'),
+                        );
+                      },
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${sliderValue.toStringAsFixed(0)} km',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ] else
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: Text(
+                  controller.t('delivery_radius_no_limit'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -11,7 +11,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
-import '../orders_by_location/ui/cod_collection_sheet.dart';
+import '../orders_by_location/ui/delivery_outcome_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
@@ -30,9 +30,6 @@ class OrderStatusScreen extends StatefulWidget {
 class _OrderStatusScreenState extends State<OrderStatusScreen> {
   // ── Normal progress flow ─────────────────────────────────────────────────────
   bool _syncing = false;
-  bool _markingFailed = false;
-  bool _codCashConfirmed = false;
-  ({String mode, String? upiRef})? _codResult;
 
   static const _flow = <OrderProgressStatus>[
     OrderStatus.pending,
@@ -124,6 +121,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 ? storeAddress
                 : order.storeAddress,
             itemCount: 0,
+            recallStop: recallStop,
           );
           // Enrich with item count from detail (best-effort).
           try {
@@ -146,6 +144,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                   ? storeAddress
                   : (detail.pickupAddress ?? order.storeAddress),
               itemCount: detail.items.length,
+              recallStop: recallStop,
             );
           } catch (_) {}
         }
@@ -199,11 +198,80 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
+  // ── Mark failed ──────────────────────────────────────────────────────────────
+
+  /// Driver chose "Mark as Failed" from the delivery outcome sheet. Collects a
+  /// reason (+ optional photo) and submits it via [AppController.failDelivery].
+  /// Mirrors the dashboard's _handleFailedDelivery flow.
+  Future<void> _onMarkFailed(BuildContext context, DeliveryOrder order) async {
+    final app = AppScope.of(context);
+    final isCod = order.paymentMode.toUpperCase() == 'COD';
+    final result = await showFailedDeliverySheet(context, isCod: isCod);
+    if (result == null || !context.mounted) return;
+
+    final fullReason = result.notes.isEmpty
+        ? result.reason
+        : '${result.reason} — ${result.notes}';
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          content: Row(
+            children: [
+              const CircularProgressIndicator(strokeWidth: 2),
+              const SizedBox(width: 20),
+              Text(
+                'Marking delivery as failed...',
+                style: TextStyle(
+                  color: Theme.of(ctx).colorScheme.onSurface,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final error = await app.failDelivery(
+      orderId: order.orderId,
+      reason: fullReason,
+      reasonCode: result.reasonCode,
+      photoPath: result.photoPath,
+      shouldCreateReturnTrip: false,
+    );
+
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // dismiss loading dialog
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
+    AppToast.show(context, app.t('delivery_failed'));
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      AppRoutes.dashboard,
+      (route) => false,
+    );
+  }
+
   // ── Confirm recall ────────────────────────────────────────────────────────────
 
   Future<void> _handleConfirmRecall(DeliveryOrder order) async {
+    // ignore: avoid_print
+    print('[Recall] _handleConfirmRecall called — orderId=${order.orderId} recallData=${_recallData?.orderId} syncing=$_syncing');
+
     final data = _recallData;
-    if (data == null) return;
+    if (data == null || _syncing) {
+      // ignore: avoid_print
+      print('[Recall] early return — data=${data == null ? 'null' : 'ok'} syncing=$_syncing');
+      return;
+    }
 
     final customerLabel = data.customerName.isNotEmpty
         ? data.customerName
@@ -249,13 +317,54 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     if (confirmed != true || !mounted) return;
 
+    setState(() => _syncing = true);
+
+    // Step 1: Call dedicated backend API — this updates the linked Recall doc
+    // and sets status → Returned, store_notified=1 via server logic.
+    // ignore: avoid_print
+    print('[Recall] Step1 → confirm_recall_received_at_store order=${data.orderId}');
+    try {
+      await ExternalDeliveryRepository().confirmRecallReceivedAtStore(
+        externalDelivery: data.orderId,
+      );
+      // ignore: avoid_print
+      print('[Recall] Step1 ✓ API succeeded');
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Recall] Step1 ✗ API failed: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+
+    // Step 2: Always do direct field updates regardless of Step 1 outcome —
+    // sets trip stop → Returned and order → Returned + store_notified=1
+    // via frappe.client.set_value so it always reflects in ERPNext web.
+    if (data.recallStop != null) {
+      // ignore: avoid_print
+      print('[Recall] Step2 → confirmRecallReturn stop=${data.recallStop!.rawFields['name']} order=${data.orderId}');
+      try {
+        await ExternalDeliveryRepository().confirmRecallReturn(
+          stop: data.recallStop!,
+          orderName: data.orderId,
+        );
+        // ignore: avoid_print
+        print('[Recall] Step2 ✓ Direct update succeeded — status=Returned store_notified=1');
+      } catch (e) {
+        // ignore: avoid_print
+        print('[Recall] Step2 ✗ Direct update failed: $e');
+      }
+    } else {
+      // ignore: avoid_print
+      print('[Recall] Step2 skipped — recallStop is null (no trip stop available)');
+    }
+
+    if (!mounted) return;
     AppToast.show(context, 'Recall confirmed — items returned to store.');
     final app = AppScope.of(context);
     app.clearActiveOrder();
     if (mounted) {
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.dashboard,
+        (r) => false,
+      );
     }
   }
 
@@ -364,49 +473,45 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (!mounted) { setState(() => _syncing = false); return; }
       }
 
-      if (_codCashConfirmed && _codResult != null) {
-        // Cash was pre-confirmed. Skip the API call when not collected.
-        if (_codResult!.mode != 'Not Collected') {
-          try {
-            await ExternalDeliveryRepository().markDeliveredWithCod(
-              order.orderId,
-              codCollectionMode: _codResult!.mode,
-              codUpiReference: _codResult!.upiRef,
-            );
-          } catch (_) {}
-          if (!mounted) return;
-        }
-      } else {
-        // Fallback: determine COD on the fly (non-COD orders or edge cases).
-        bool isCod = order.paymentMode.toUpperCase() == 'COD';
-        double codAmount = 0;
+      // Fetch COD info, then show unified delivery outcome sheet
+      bool isCod = order.paymentMode.toUpperCase() == 'COD';
+      double codAmount = 0;
+      try {
+        final detail = await ExternalDeliveryRepository().fetchDetail(
+          order.orderId,
+          resolveAddress: false,
+        );
+        isCod = detail.isCod;
+        codAmount = detail.codAmountToCollect ?? 0;
+      } catch (_) {}
+      if (!mounted) { setState(() => _syncing = false); return; }
+
+      // Show unified sheet: COD form + Confirm Delivery + Mark as Failed
+      final outcome = await showDeliveryOutcomeSheet(
+        context,
+        isCod: isCod,
+        codAmount: codAmount,
+      );
+      if (!mounted) { setState(() => _syncing = false); return; }
+      if (outcome == null) { setState(() => _syncing = false); return; }
+
+      if (outcome.outcome == 'failed') {
+        // Driver chose to mark as failed from within the delivery sheet
+        setState(() => _syncing = false);
+        await _onMarkFailed(context, order);
+        return;
+      }
+
+      // Outcome is 'delivered' — save COD data if applicable
+      if (isCod && outcome.codMode != null) {
         try {
-          final detail = await ExternalDeliveryRepository().fetchDetail(
+          await ExternalDeliveryRepository().markDeliveredWithCod(
             order.orderId,
-            resolveAddress: false,
+            codCollectionMode: outcome.codMode!,
+            codUpiReference: outcome.codRef,
           );
-          isCod = detail.isCod;
-          codAmount = detail.codAmountToCollect ?? 0;
         } catch (_) {}
-        if (!mounted) { setState(() => _syncing = false); return; }
-        if (isCod) {
-          final codResult = await showCodCollectionSheet(
-            context,
-            amountToCollect: codAmount,
-          );
-          if (!mounted) { setState(() => _syncing = false); return; }
-          if (codResult == null) { setState(() => _syncing = false); return; }
-          if (codResult.mode != 'Not Collected') {
-            try {
-              await ExternalDeliveryRepository().markDeliveredWithCod(
-                order.orderId,
-                codCollectionMode: codResult.mode,
-                codUpiReference: codResult.upiRef,
-              );
-            } catch (_) {}
-            if (!mounted) return;
-          }
-        }
+        if (!mounted) return;
       }
     }
 
@@ -432,85 +537,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
-  Future<void> _handleCodCashCollection(BuildContext context, DeliveryOrder order) async {
-    if (_syncing) return;
-    setState(() => _syncing = true);
-    double codAmount = 0;
-    try {
-      final detail = await ExternalDeliveryRepository().fetchDetail(
-        order.orderId, resolveAddress: false,
-      );
-      codAmount = detail.codAmountToCollect ?? 0;
-    } catch (_) {}
-    if (!mounted) { setState(() => _syncing = false); return; }
-    final result = await showCodCollectionSheet(context, amountToCollect: codAmount);
-    if (!mounted) { setState(() => _syncing = false); return; }
-    if (result == null) { setState(() => _syncing = false); return; }
-    setState(() { _syncing = false; _codCashConfirmed = true; _codResult = result; });
-  }
-
-  Future<void> _onMarkFailed(BuildContext context, DeliveryOrder order) async {
-    final isCod = order.paymentMode.toUpperCase() == 'COD';
-    final result = await showFailedDeliverySheet(context, isCod: isCod);
-    if (result == null || !mounted) return;
-    setState(() => _markingFailed = true);
-    final app = AppScope.of(context);
-    final reason = result.notes.isNotEmpty ? result.notes : result.reason;
-    final tripId = app.tripIdForOrder(order.orderId);
-    try {
-      if (tripId != null && tripId.isNotEmpty) {
-        await ExternalDeliveryRepository().processFailedDeliveryReturnByIds(
-          tripId: tripId,
-          deliveryId: order.orderId,
-          reason: reason,
-          reasonCode: result.reasonCode,
-          photoPath: result.photoPath,
-        );
-      } else {
-        await ExternalDeliveryRepository().markOrderFailed(
-          orderName: order.orderId,
-          reason: reason,
-          reasonCode: result.reasonCode,
-          photoPath: result.photoPath,
-        );
-      }
-    } catch (_) {}
-    if (!mounted) { setState(() => _markingFailed = false); return; }
-    final error = await app.updateOrderStatus(OrderStatus.failed);
-    app.stopOrderTimer();
-    if (!context.mounted) return;
-    setState(() => _markingFailed = false);
-    if (error != null) {
-      AppToast.show(context, error);
-      return;
-    }
-    Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
-  }
-
-  String _nextButtonLabel(OrderProgressStatus current) {
-    switch (current) {
-      case OrderStatus.pending:
-        return 'Accept Order';
-      case OrderStatus.accepted:
-        return 'Mark Reached Pickup';
-      case OrderStatus.rejected:
-        return 'Rejected';
-      case OrderStatus.reachedPickup:
-        return 'Mark Picked Up';
-      case OrderStatus.pickedUp:
-        return 'Start Out for Delivery';
-      case OrderStatus.outForDelivery:
-        return 'Mark Delivered';
-      case OrderStatus.delivered:
-        return 'Completed';
-      case OrderStatus.failed:
-        return 'Failed';
-      case OrderStatus.cancelled:
-        return 'Cancelled';
-      case OrderStatus.returned:
-        return 'Returned';
-    }
-  }
 
 
   Future<void> _onActionTap(BuildContext context, DeliveryOrder order) async {
@@ -813,161 +839,50 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           : () => _handleConfirmRecall(order),
                       onCall: _launchCall,
                     )
-                  : order.orderStatus == OrderStatus.outForDelivery
-                      ? order.paymentMode.toUpperCase() == 'COD' && !_codCashConfirmed
-                          ? SizedBox(
-                              height: 56,
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: _syncing
-                                    ? null
-                                    : () => _handleCodCashCollection(context, order),
-                                icon: _syncing
-                                    ? const SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Icon(
-                                        Icons.account_balance_wallet_rounded,
-                                        size: 20,
-                                      ),
-                                label: const Text(
-                                  'Confirm COD Cash',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2E7D32),
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                ),
-                              ),
-                            )
-                          : Row(
-                              children: [
-                                Expanded(
-                                  child: SizedBox(
-                                    height: 56,
-                                    child: ElevatedButton(
-                                      onPressed: _syncing || _markingFailed ? null : () => _advanceStatus(context),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.green,
-                                        foregroundColor: Colors.white,
-                                        elevation: 0,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(16),
-                                        ),
-                                      ),
-                                      child: _syncing
-                                          ? const SizedBox(
-                                              width: 22,
-                                              height: 22,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2.5,
-                                                color: Colors.white,
-                                              ),
-                                            )
-                                          : const Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Icon(Icons.check_circle_outline, size: 20),
-                                                SizedBox(width: 6),
-                                                Text(
-                                                  'Mark Delivered',
-                                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-                                                ),
-                                              ],
-                                            ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: SizedBox(
-                                    height: 56,
-                                    child: OutlinedButton(
-                                      onPressed: _syncing || _markingFailed ? null : () => _onMarkFailed(context, order),
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.red,
-                                        side: const BorderSide(color: Colors.red),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(16),
-                                        ),
-                                      ),
-                                      child: _markingFailed
-                                          ? const SizedBox(
-                                              width: 22,
-                                              height: 22,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2.5,
-                                                color: Colors.red,
-                                              ),
-                                            )
-                                          : const Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Icon(Icons.cancel_outlined, size: 20),
-                                                SizedBox(width: 6),
-                                                Text(
-                                                  'Mark Failed',
-                                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-                                                ),
-                                              ],
-                                            ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                      : SizedBox(
-                          height: 56,
-                          child: ElevatedButton(
-                            onPressed: _syncing ? null : () => _onActionTap(context, order),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: color,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: _syncing
-                                ? const SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        _actionLabel(order.orderStatus),
-                                        style: const TextStyle(
-                                          fontSize: 15,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      const Icon(
-                                        Icons.arrow_forward_rounded,
-                                        size: 20,
-                                      ),
-                                    ],
-                                  ),
+                  : SizedBox(
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: _syncing
+                            ? null
+                            : order.orderStatus == OrderStatus.outForDelivery
+                                ? () => _advanceStatus(context)
+                                : () => _onActionTap(context, order),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: color,
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
                           ),
                         ),
+                        child: _syncing
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    _actionLabel(order.orderStatus),
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Icon(
+                                    Icons.arrow_forward_rounded,
+                                    size: 20,
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
             ),
           ],
         ),
@@ -1457,6 +1372,7 @@ class _RecallData {
     required this.storeName,
     required this.storeAddress,
     required this.itemCount,
+    this.recallStop,
   });
   final String orderId;
   final String customerName;
@@ -1464,5 +1380,6 @@ class _RecallData {
   final String storeName;
   final String storeAddress;
   final int itemCount;
+  final ExternalDeliveryTripStop? recallStop;
 }
 

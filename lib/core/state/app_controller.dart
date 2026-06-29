@@ -70,6 +70,7 @@ class AppController extends ChangeNotifier {
   static const String _prefCurrentLng = 'current_lng';
   static const String _prefCurrentLocationLabel = 'current_location_label';
   static const String _prefSelectedStore = 'selected_store_name';
+  static const String _prefActiveOrdersCache = 'active_orders_cache';
   static const String _prefProfileCompleted = 'profile_completed';
   static const String _prefDriverName = 'driver_name';
   static const String _prefKycCompleted = 'kyc_completed';
@@ -92,12 +93,23 @@ class AppController extends ChangeNotifier {
   static const String _prefLicenseRequiresReupload =
       'license_requires_reupload';
   static const String _prefThemeMode = 'theme_mode';
+  static const String _prefDeliveryRadiusKm = 'delivery_radius_km';
+  // Mirror of the business-defined radius policy (from the Driver DocType), kept
+  // in prefs so the policy survives an offline cold start.
+  static const String _prefDeliveryRadiusEnabled = 'delivery_radius_enabled';
+  static const String _prefDeliveryRadiusDefaultKm = 'delivery_radius_default_km';
+  static const String _prefDeliveryRadiusMaxKm = 'delivery_radius_max_km';
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
   static const String _prefActiveOrderId = 'active_order_id';
   static const String _prefActiveTripId = 'active_trip_id';
   static const String _prefActiveOrderIds = 'active_order_ids';
   static const String _prefActiveTripIdsMap = 'active_trip_ids_map';
+  // Per-driver keys so multiple users on the same device don't share avg data.
+  static String _prefTotalTripTimeTodayMs(String driver) =>
+      'total_trip_time_today_ms_$driver';
+  static String _prefTripTimeSavedDate(String driver) =>
+      'trip_time_saved_date_$driver';
   static const int maxConcurrentOrders = 3;
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 300;
@@ -144,6 +156,12 @@ class AppController extends ChangeNotifier {
   String? _sessionToken;
   String _tokenType = 'Bearer';
   String? _refreshToken;
+  // Cached result of buildAuthHeaders() — invalidated when token changes.
+  Map<String, String>? _cachedAuthHeaders;
+  String? _cachedAuthHeadersKey;
+  // Cached profileCompleteness — invalidated by fingerprint of inputs.
+  ProfileCompleteness? _cachedProfileCompleteness;
+  String? _cachedProfileCompletenessKey;
   String? _clientId;
   String? _apiKey;
   String? _apiSecret;
@@ -178,12 +196,27 @@ class AppController extends ChangeNotifier {
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
+  DateTime? _onlineSince;
+  Duration _completedDutyToday = Duration.zero;
+  int _completedTripsToday = 0;
+  Duration _totalTripTimeToday = Duration.zero;
+  final Map<String, DateTime> _tripAcceptedTimes = {};
+  final Set<String> _sessionTripAcceptances = {};
   bool _availabilitySyncing = false;
   bool _isTracking = false;
   int _trackingInterval = 10;
   String _liveCoordinates = '28.6139, 77.2090';
   double? _currentLatitude;
   double? _currentLongitude;
+  // Partner's self-selected delivery radius in km. null means "no limit" —
+  // every order is shown regardless of distance.
+  double? _deliveryRadiusKm;
+  // Business-defined radius policy, sourced from the logged-in Driver doc.
+  // `_deliveryRadiusFeatureEnabled` gates whether the radius limit is offered at
+  // all; the default/max drive the Settings slider's initial value and ceiling.
+  bool _deliveryRadiusFeatureEnabled = false;
+  double? _businessDefaultRadiusKm;
+  double? _businessMaxRadiusKm;
   String? _currentLocationLabel;
   String? _selectedStoreName;
   String? _profileImagePath;
@@ -251,6 +284,23 @@ class AppController extends ChangeNotifier {
       const Duration(seconds: 10),
       () => _recentEventKeys.remove(key),
     );
+    if (eventType == TimingEventType.tripAccepted && tripRef != null) {
+      if (!_sessionTripAcceptances.contains(tripRef)) {
+        _sessionTripAcceptances.add(tripRef);
+        _tripAcceptedTimes[tripRef] = DateTime.now();
+      }
+    } else if (eventType == TimingEventType.tripCompleted) {
+      _completedTripsToday++;
+      if (tripRef != null) {
+        final start = _tripAcceptedTimes.remove(tripRef);
+        if (start != null) {
+          final d = DateTime.now().difference(start);
+          if (!d.isNegative) _totalTripTimeToday += d;
+        }
+      }
+      _persistTripTimeToday();
+      notifyListeners();
+    }
     _writeTimingEvent(eventType: eventType, tripRef: tripRef, stopRef: stopRef);
   }
 
@@ -320,12 +370,22 @@ class AppController extends ChangeNotifier {
       Set<String>.unmodifiable(_vehicleRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
+  DateTime? get onlineSince => _onlineSince;
+  Duration get completedDutyToday => _completedDutyToday;
+  int get completedTripsToday => _completedTripsToday;
+  Duration get avgTripDurationToday => _completedTripsToday > 0
+      ? Duration(milliseconds: _totalTripTimeToday.inMilliseconds ~/ _completedTripsToday)
+      : Duration.zero;
   bool get availabilitySyncing => _availabilitySyncing;
   bool get isTracking => _isTracking;
   int get trackingInterval => _trackingInterval;
   String get liveCoordinates => _liveCoordinates;
   double? get currentLatitude => _currentLatitude;
   double? get currentLongitude => _currentLongitude;
+  double? get deliveryRadiusKm => _deliveryRadiusKm;
+  bool get deliveryRadiusFeatureEnabled => _deliveryRadiusFeatureEnabled;
+  double? get businessDefaultRadiusKm => _businessDefaultRadiusKm;
+  double? get businessMaxRadiusKm => _businessMaxRadiusKm;
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
@@ -345,10 +405,13 @@ class AppController extends ChangeNotifier {
   DeliveryOrder? get incomingOrder => _incomingOrder;
 
   // Multi-order getters
-  List<DeliveryOrder> get activeOrders =>
-      List<DeliveryOrder>.unmodifiable(_activeOrders);
+  List<DeliveryOrder> get activeOrders => List<DeliveryOrder>.unmodifiable(
+    _activeOrders.length > maxConcurrentOrders
+        ? _activeOrders.sublist(0, maxConcurrentOrders)
+        : _activeOrders,
+  );
   int get activeOrderCount => _activeOrders.length;
-  bool get canAcceptMoreOrders => true;
+  bool get canAcceptMoreOrders => _activeOrders.length < maxConcurrentOrders;
   int get currentlyViewedOrderIndex => _currentlyViewedOrderIndex;
 
   // Backward-compatible single-order getters (returns currently viewed order)
@@ -479,6 +542,15 @@ class AppController extends ChangeNotifier {
       _permissionState.allGranted;
 
   ProfileCompleteness get profileCompleteness {
+    final hasPhoto = _profileImagePath != null || _serverProfileImageUrl != null;
+    final hasLocation = hasSelectedLocation;
+    final key = '${_profile?.fullName}_${hasPhoto}_${_kycCompleted}_'
+        '${_vehicle != null}_${_bank != null}_${hasLocation}_'
+        '${_permissionState.allGranted}';
+    if (_cachedProfileCompleteness != null && _cachedProfileCompletenessKey == key) {
+      return _cachedProfileCompleteness!;
+    }
+
     final List<ProfileCompletenessItem> items = <ProfileCompletenessItem>[
       ProfileCompletenessItem(
         name: 'profile_basic_profile',
@@ -489,8 +561,7 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'profile_photo',
         description: 'profile_photo_desc',
-        isCompleted:
-            _profileImagePath != null || _serverProfileImageUrl != null,
+        isCompleted: hasPhoto,
         route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
@@ -514,7 +585,7 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'delivery_zone',
         description: 'delivery_zone_desc',
-        isCompleted: hasSelectedLocation,
+        isCompleted: hasLocation,
         route: AppRoutes.currentLocation,
       ),
       ProfileCompletenessItem(
@@ -529,12 +600,14 @@ class AppController extends ChangeNotifier {
     final int totalCount = items.length;
     final double percentage = totalCount > 0 ? completedCount / totalCount : 0;
 
-    return ProfileCompleteness(
+    _cachedProfileCompleteness = ProfileCompleteness(
       percentage: percentage,
       items: items,
       completedCount: completedCount,
       totalCount: totalCount,
     );
+    _cachedProfileCompletenessKey = key;
+    return _cachedProfileCompleteness!;
   }
 
   Future<void> bootstrap() async {
@@ -592,13 +665,93 @@ class AppController extends ChangeNotifier {
       }
     }
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
+    // Read driver name early so the DB query below filters by the correct partner.
+    final String? earlyDriverName = _nullIfBlank(prefs.getString(_prefDriverName));
+    if (_timingDao != null) {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+      final rows = await _timingDao.getEventsInRange(
+        startOfDay,
+        endOfDay,
+        partner: earlyDriverName,
+      );
+      final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
+      final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
+      if (logins.isNotEmpty && logouts.isNotEmpty) {
+        final diff = DateTime.parse(logouts.last.eventTime)
+            .difference(DateTime.parse(logins.first.eventTime));
+        if (!diff.isNegative) _completedDutyToday = diff;
+      }
+      if (_isOnline && logins.isNotEmpty) {
+        _onlineSince = DateTime.tryParse(logins.last.eventTime);
+      }
+      _completedTripsToday = rows
+          .where((r) => r.eventType == TimingEventType.tripCompleted)
+          .length;
+
+      // Restore avg trip duration: prefs is the source of truth (saved after
+      // every trip_completed). Fall back to DB pairing if prefs has no entry
+      // for today (first run after an app update, etc.).
+      final now2 = DateTime.now();
+      final todayStr = '${now2.year}-${now2.month.toString().padLeft(2, '0')}-${now2.day.toString().padLeft(2, '0')}';
+      final driverKey = earlyDriverName ?? '';
+      final savedDate = driverKey.isNotEmpty ? prefs.getString(_prefTripTimeSavedDate(driverKey)) : null;
+      if (savedDate == todayStr) {
+        final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs(driverKey)) ?? 0;
+        _totalTripTimeToday = Duration(milliseconds: savedMs);
+      } else {
+        // Prefs is from a previous day — compute from DB event pairs instead.
+        final acceptedTimes = <String, DateTime>{};
+        for (final r in rows) {
+          if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+            acceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+          }
+        }
+        var restoredTripTime = Duration.zero;
+        for (final r in rows.where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)) {
+          final start = acceptedTimes[r.tripName!];
+          if (start != null) {
+            final d = DateTime.parse(r.eventTime).difference(start);
+            if (!d.isNegative) restoredTripTime += d;
+          }
+        }
+        _totalTripTimeToday = restoredTripTime;
+      }
+      // Mark already-recorded trip acceptances so the screen doesn't re-fire them.
+      // For trips still in progress (accepted today but NOT yet completed today),
+      // also restore _tripAcceptedTimes so the duration is captured when they finish.
+      final completedTodayRefs = rows
+          .where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)
+          .map((r) => r.tripName!)
+          .toSet();
+      for (final r in rows) {
+        if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+          _sessionTripAcceptances.add(r.tripName!);
+          if (!completedTodayRefs.contains(r.tripName!)) {
+            // Trip still in progress — restore start time from DB.
+            _tripAcceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+          }
+        }
+      }
+    }
     final String? persistedActiveOrderId = _nullIfBlank(
       prefs.getString(_prefActiveOrderId),
+    );
+    final String? persistedActiveOrderIds = _nullIfBlank(
+      prefs.getString(_prefActiveOrderIds),
     );
 
     await PartnerWidgetManager.initialize();
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
     _currentLongitude = prefs.getDouble(_prefCurrentLng);
+    _deliveryRadiusKm = prefs.getDouble(_prefDeliveryRadiusKm);
+    // Restore the business policy from its prefs mirror so the Settings slider
+    // has sane bounds before the Driver doc is (re)fetched — important offline.
+    _deliveryRadiusFeatureEnabled =
+        prefs.getBool(_prefDeliveryRadiusEnabled) ?? false;
+    _businessDefaultRadiusKm = prefs.getDouble(_prefDeliveryRadiusDefaultKm);
+    _businessMaxRadiusKm = prefs.getDouble(_prefDeliveryRadiusMaxKm);
     _currentLocationLabel = _nullIfBlank(
       prefs.getString(_prefCurrentLocationLabel),
     );
@@ -669,8 +822,8 @@ class AppController extends ChangeNotifier {
       }
     }
 
-    if (persistedActiveOrderId != null) {
-      unawaited(_restoreActiveOrder(persistedActiveOrderId));
+    if (persistedActiveOrderId != null || persistedActiveOrderIds != null) {
+      unawaited(_restoreActiveOrder(persistedActiveOrderId ?? ''));
     } else {
       _activeOrders.clear();
       _activeTripIds.clear();
@@ -784,6 +937,60 @@ class AppController extends ChangeNotifier {
       return prefs.setInt(_prefThemeMode, mode.index);
     });
     notifyListeners();
+  }
+
+  /// Sets the partner's delivery radius in km. Pass null (or a non-positive
+  /// value) to mean "no limit" — the stored pref is removed so it loads back as
+  /// null on next launch. The value is capped at the business-defined
+  /// [businessMaxRadiusKm] so a partner can never exceed the configured ceiling.
+  void setDeliveryRadiusKm(double? km) {
+    double? normalized = (km == null || km <= 0) ? null : km;
+    final double? max = _businessMaxRadiusKm;
+    if (normalized != null && max != null && max > 0 && normalized > max) {
+      normalized = max;
+    }
+    _deliveryRadiusKm = normalized;
+    _writePref((SharedPreferences prefs) {
+      return normalized == null
+          ? prefs.remove(_prefDeliveryRadiusKm)
+          : prefs.setDouble(_prefDeliveryRadiusKm, normalized);
+    });
+    notifyListeners();
+  }
+
+  /// Whether [order]'s delivery location falls within the partner's chosen
+  /// radius. Fails open: returns true when no radius is set or when the
+  /// partner's current location is unknown, so a GPS hiccup never empties the
+  /// work list.
+  bool isWithinDeliveryRadius(DeliveryOrder order) {
+    final double? radius = _deliveryRadiusKm;
+    if (radius == null) return true;
+    final double? lat = _currentLatitude;
+    final double? lng = _currentLongitude;
+    if (lat == null || lng == null) return true;
+    return order.distanceKm <= radius;
+  }
+
+  /// Distance in km from the partner's current location to [lat]/[lng], or null
+  /// when the partner's location is unknown.
+  double? distanceFromPartnerKm(double lat, double lng) {
+    final double? plat = _currentLatitude;
+    final double? plng = _currentLongitude;
+    if (plat == null || plng == null) return null;
+    return _calculateDistance(plat, plng, lat, lng);
+  }
+
+  /// Radius check for a raw delivery coordinate. Used by the listing screen,
+  /// which works with order summaries rather than [DeliveryOrder]. Fails open
+  /// (returns true) when no radius is set, the coordinate is missing, or the
+  /// partner's location is unknown — so nothing is wrongly hidden.
+  bool isWithinDeliveryRadiusAt(double? lat, double? lng) {
+    final double? radius = _deliveryRadiusKm;
+    if (radius == null) return true;
+    if (lat == null || lng == null) return true;
+    final double? distance = distanceFromPartnerKm(lat, lng);
+    if (distance == null) return true;
+    return distance <= radius;
   }
 
   void setBackgroundColor(Color color) {
@@ -1355,6 +1562,7 @@ class AppController extends ChangeNotifier {
       // dashboard renders with complete data (no race between navigation and
       // background fetch). The login screen's _busy spinner covers this wait.
       await _backgroundSync();
+      await _restoreSessionFromDb();
       notifyListeners();
       _writeTimingEvent(eventType: TimingEventType.login);
 
@@ -1562,6 +1770,7 @@ class AppController extends ChangeNotifier {
       await _persistSession(responseData);
 
       await _backgroundSync();
+      await _restoreSessionFromDb();
       notifyListeners();
 
       return null;
@@ -1632,6 +1841,12 @@ class AppController extends ChangeNotifier {
     _apiSecret = null;
     _isRefreshing = false;
     _isOnline = false;
+    _onlineSince = null;
+    _completedDutyToday = Duration.zero;
+    _completedTripsToday = 0;
+    _totalTripTimeToday = Duration.zero;
+    _tripAcceptedTimes.clear();
+    _sessionTripAcceptances.clear();
     _isTracking = false;
     _incomingOrder = null;
     _activeOrders.clear();
@@ -1647,6 +1862,12 @@ class AppController extends ChangeNotifier {
     _currentLatitude = null;
     _currentLongitude = null;
     _currentLocationLabel = null;
+    // Reset the delivery-radius selection and business policy so the next login
+    // starts from that driver's business default rather than a stale value.
+    _deliveryRadiusKm = null;
+    _deliveryRadiusFeatureEnabled = false;
+    _businessDefaultRadiusKm = null;
+    _businessMaxRadiusKm = null;
     _driverName = null;
     _vehicle = null;
     _submittedVehicleRaw = null;
@@ -1695,11 +1916,17 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefBankAccountName),
       prefs.remove(_prefBankRawJson),
       prefs.remove(_prefActiveOrderId),
+      prefs.remove(_prefActiveOrderIds),
+      prefs.remove(_prefActiveTripIdsMap),
+      prefs.remove(_prefActiveOrdersCache),
       prefs.setBool(_prefRememberMe, false),
       prefs.remove(_prefPermForeground),
       prefs.remove(_prefPermBackground),
       prefs.remove(_prefPermNotification),
       prefs.remove(_prefLicenseRequiresReupload),
+      // Per-driver prefs (avg duration, delivered count) are intentionally kept on logout.
+      // They are keyed by driver name so other users can't see them,
+      // and the same user logging back in the same day needs them intact.
     ]);
 
     // Server-side cleanup — fire-and-forget so the caller's navigation
@@ -2838,6 +3065,7 @@ class AppController extends ChangeNotifier {
       return prefs.setBool(_prefIsOnline, _isOnline);
     });
     if (_isOnline) {
+      _onlineSince = DateTime.now();
       startTracking();
       recordTimingEvent(eventType: TimingEventType.login);
       unawaited(FCMService().subscribe(this));
@@ -2850,6 +3078,11 @@ class AppController extends ChangeNotifier {
         ),
       );
     } else {
+      if (_onlineSince != null) {
+        final session = DateTime.now().difference(_onlineSince!);
+        if (!session.isNegative) _completedDutyToday += session;
+      }
+      _onlineSince = null;
       stopTracking();
       recordTimingEvent(eventType: TimingEventType.logout);
       unawaited(FCMService().unsubscribe(this));
@@ -2934,6 +3167,46 @@ class AppController extends ChangeNotifier {
 
     notifyListeners();
     return null;
+  }
+
+  /// Seeds the partner's current location with a single GPS fix when it isn't
+  /// already known. Used by screens (e.g. Orders by Location) that need an
+  /// origin point for the delivery-radius filter but don't start continuous
+  /// tracking. Returns true when a location is available afterwards (either it
+  /// was already set, or it was just fetched); false when it couldn't be
+  /// obtained (service off, permission denied, or fetch failure) so the caller
+  /// can fail open.
+  Future<bool> ensureCurrentLocation() async {
+    if (_currentLatitude != null && _currentLongitude != null) {
+      return true;
+    }
+    try {
+      final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return false;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return false;
+      }
+
+      final Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+      _currentLatitude = position.latitude;
+      _currentLongitude = position.longitude;
+      _liveCoordinates =
+          '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   void stopTracking() {
@@ -3074,6 +3347,10 @@ class AppController extends ChangeNotifier {
             time: DateTime.now(),
           ),
         );
+        recordTimingEvent(
+          eventType: TimingEventType.tripCompleted,
+          tripRef: targetId,
+        );
         _acceptedOrders.removeWhere((order) => order.orderId == targetId);
         clearOrder(targetId);
       } else if (status == OrderStatus.reachedPickup) {
@@ -3111,6 +3388,50 @@ class AppController extends ChangeNotifier {
     } catch (e) {
       return e.toString().replaceFirst('Exception: ', '');
     }
+  }
+
+  Future<String?> failDelivery({
+    required String orderId,
+    required String reason,
+    String? reasonCode,
+    String? photoPath,
+    bool shouldCreateReturnTrip = false,
+  }) async {
+    final String? tripId = _activeTripIds[orderId];
+    String? syncError;
+    try {
+      if (tripId != null) {
+        await _orderRepository.processFailedDeliveryReturnByIds(
+          tripId: tripId,
+          deliveryId: orderId,
+          reason: reason,
+          reasonCode: reasonCode,
+          photoPath: photoPath,
+          shouldCreateReturnTrip: shouldCreateReturnTrip,
+        );
+      } else {
+        await _orderRepository.updateStatusViaSetValue(orderId, 'Failed');
+        if (photoPath != null && photoPath.isNotEmpty) {
+          await _orderRepository.uploadProofPhoto(
+            orderName: orderId,
+            filePath: photoPath,
+          );
+        }
+      }
+    } catch (e) {
+      syncError = e.toString().replaceFirst('Exception: ', '');
+    }
+    _writeTimingEvent(eventType: TimingEventType.stopFailed, tripRef: tripId);
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Delivery failed',
+        message: 'Order $orderId marked as failed.',
+        time: DateTime.now(),
+      ),
+    );
+    clearOrder(orderId);
+    return syncError;
   }
 
   void clearOrder(String orderId) {
@@ -3210,9 +3531,11 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<void> fetchActiveOrder() async {
-    _isFetchingActiveOrder = true;
-    notifyListeners();
+  Future<void> fetchActiveOrder({bool silent = false}) async {
+    if (!silent) {
+      _isFetchingActiveOrder = true;
+      notifyListeners();
+    }
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
@@ -3266,6 +3589,31 @@ class AppController extends ChangeNotifier {
         return;
       }
 
+      // For silent restores, show cached orders instantly while the network
+      // refresh runs. This makes orders appear in < 50ms instead of waiting
+      // for 1+ network round-trips.
+      if (silent && _activeOrders.isEmpty) {
+        final String? cachedJson = prefs.getString(_prefActiveOrdersCache);
+        if (cachedJson != null && cachedJson.isNotEmpty) {
+          try {
+            final dynamic decoded = jsonDecode(cachedJson);
+            if (decoded is List && decoded.isNotEmpty) {
+              final List<DeliveryOrder> cachedOrders = decoded
+                  .whereType<Map<String, dynamic>>()
+                  .map(_deliveryOrderFromCache)
+                  .toList();
+              if (cachedOrders.isNotEmpty) {
+                _activeOrders.addAll(cachedOrders);
+                for (final entry in restoredTripIds.entries) {
+                  _activeTripIds[entry.key] = entry.value;
+                }
+                notifyListeners();
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
       _activeOrders.clear();
       _activeTripIds.clear();
       const terminalStatuses = {
@@ -3274,28 +3622,38 @@ class AppController extends ChangeNotifier {
         OrderStatus.rejected,
       };
 
-      for (final orderId in orderIds) {
-        try {
-          final ExternalDeliveryDetail detail = await _orderRepository
-              .fetchDetail(orderId);
-          final OrderStatus status = _mapExternalStatus(detail.status);
-          if (terminalStatuses.contains(status)) continue;
-          final DeliveryOrder order = _deliveryOrderFromDetail(detail).copyWith(
-            orderStatus: status,
-            assignmentStatus: OrderAssignmentStatus.assigned,
-            assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
-            reachedStoreAt: status == OrderStatus.reachedPickup
-                ? DateTime.now()
-                : null,
-            deliveryPartnerLocation: _partnerLiveLocation,
-          );
-          _activeOrders.add(order);
-          if (restoredTripIds.containsKey(orderId)) {
-            _activeTripIds[orderId] = restoredTripIds[orderId]!;
+      // Fetch all order details in parallel instead of sequentially.
+      final fetchResults = await Future.wait(
+        orderIds.map((orderId) async {
+          try {
+            final detail = await _orderRepository.fetchDetail(orderId);
+            return (orderId: orderId, detail: detail);
+          } catch (_) {
+            return null;
           }
-          _replaceAcceptedOrder(order);
-        } catch (_) {
+        }),
+      );
+
+      for (final result in fetchResults) {
+        if (result == null) continue;
+        final orderId = result.orderId;
+        final detail = result.detail;
+        final OrderStatus status = _mapExternalStatus(detail.status);
+        if (terminalStatuses.contains(status)) continue;
+        final DeliveryOrder order = _deliveryOrderFromDetail(detail).copyWith(
+          orderStatus: status,
+          assignmentStatus: OrderAssignmentStatus.assigned,
+          assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+          reachedStoreAt: status == OrderStatus.reachedPickup
+              ? DateTime.now()
+              : null,
+          deliveryPartnerLocation: _partnerLiveLocation,
+        );
+        _activeOrders.add(order);
+        if (restoredTripIds.containsKey(orderId)) {
+          _activeTripIds[orderId] = restoredTripIds[orderId]!;
         }
+        _replaceAcceptedOrder(order);
       }
 
       _currentlyViewedOrderIndex = _currentlyViewedOrderIndex.clamp(
@@ -3415,6 +3773,8 @@ class AppController extends ChangeNotifier {
         activeOrder: activeOrder,
       );
       notifyListeners();
+      // Key by orderId so it matches tripCompleted's tripRef in this flow.
+      _tripAcceptedTimes[orderId] = DateTime.now();
       _writeTimingEvent(
         eventType: TimingEventType.tripAccepted,
         tripRef: _activeTripIds[orderId],
@@ -3487,64 +3847,72 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _restoreActiveOrder(String orderId) async {
-    // Delegate to the multi-order fetch which handles migration automatically.
-    await fetchActiveOrder();
+    // Silent — orders appear in background without showing a spinner on open.
+    await fetchActiveOrder(silent: true);
   }
 
   /// Fallback restore used after logout/login when SharedPreferences no longer
-  /// hold an active order ID. Queries the server for in-progress trips assigned
-  /// to the logged-in driver and restores state if one is found.
+  /// hold active order IDs. Queries the server for all in-progress orders
+  /// assigned to the logged-in driver and restores all of them.
   Future<void> _tryRestoreActiveOrderByDriver() async {
     if (_driverName == null || _driverName!.isEmpty) return;
     try {
-      final trip = await _orderRepository.fetchFirstActiveTripWithOrders(
-        _driverName!,
-      );
-      if (trip == null || trip.stops.isEmpty) return;
+      // Fetch all active orders for this driver in one shot.
+      final summaries =
+          await _orderRepository.fetchActiveOrdersForDriverDirect();
+      if (summaries.isEmpty) return;
+
+      // Build orderId → tripId map across all active trips (best-effort).
+      Map<String, String> tripIdByOrder = {};
+      try {
+        tripIdByOrder = await _orderRepository.fetchActiveTripOrderMap(
+          _driverName!,
+        );
+      } catch (_) {}
 
       const terminalStatuses = {
-        'delivered',
-        'cancelled',
-        'failed',
-        'returned',
-        'return initiated',
+        OrderStatus.delivered,
+        OrderStatus.cancelled,
+        OrderStatus.rejected,
+        OrderStatus.pending,
       };
 
-      ExternalDeliveryDetail? detail;
-      for (final stop in trip.stops) {
-        final id = stop.externalDelivery.trim();
-        if (id.isEmpty) continue;
-        if (terminalStatuses.contains(stop.status.trim().toLowerCase()))
-          continue;
-        try {
-          detail = await _orderRepository.fetchDetail(id);
-          break;
-        } catch (_) {}
-      }
-      if (detail == null) return;
+      // Fetch all order details in parallel.
+      final ids = summaries
+          .map((s) => s.name.trim())
+          .where((id) => id.isNotEmpty && !_activeOrders.any((o) => o.orderId == id))
+          .toList();
 
-      final OrderStatus status = _mapExternalStatus(detail.status);
-      if (status == OrderStatus.delivered ||
-          status == OrderStatus.cancelled ||
-          status == OrderStatus.rejected ||
-          status == OrderStatus.pending) {
-        return;
-      }
-
-      final DeliveryOrder restoredOrder = _deliveryOrderFromDetail(
-        detail,
-      ).copyWith(
-        orderStatus: status,
-        assignmentStatus: OrderAssignmentStatus.assigned,
-        assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
-        deliveryPartnerLocation: _partnerLiveLocation,
+      final fetchResults = await Future.wait(
+        ids.map((id) async {
+          try {
+            final detail = await _orderRepository.fetchDetail(id);
+            return (id: id, detail: detail);
+          } catch (_) {
+            return null;
+          }
+        }),
       );
-      if (!_activeOrders.any((o) => o.orderId == restoredOrder.orderId)) {
+
+      for (final result in fetchResults) {
+        if (result == null) continue;
+        final OrderStatus status = _mapExternalStatus(result.detail.status);
+        if (terminalStatuses.contains(status)) continue;
+
+        final restoredOrder = _deliveryOrderFromDetail(result.detail).copyWith(
+          orderStatus: status,
+          assignmentStatus: OrderAssignmentStatus.assigned,
+          assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+          deliveryPartnerLocation: _partnerLiveLocation,
+        );
         _activeOrders.add(restoredOrder);
-        _activeTripIds[restoredOrder.orderId] = trip.name;
-        _currentlyViewedOrderIndex = _activeOrders.length - 1;
+        final tripId = tripIdByOrder[result.id];
+        if (tripId != null) _activeTripIds[result.id] = tripId;
+        _replaceAcceptedOrder(restoredOrder);
       }
-      _replaceAcceptedOrder(restoredOrder);
+
+      if (_activeOrders.isEmpty) return;
+      _currentlyViewedOrderIndex = 0;
       await _persistActiveOrders();
       unawaited(_startLocationPingIfReady());
       PartnerWidgetManager.updateWidget(
@@ -3553,8 +3921,7 @@ class AppController extends ChangeNotifier {
         activeOrder: activeOrder,
       );
       notifyListeners();
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   String? _toFrappeStatus(OrderStatus status) {
@@ -3891,6 +4258,7 @@ class AppController extends ChangeNotifier {
     if (ids.isEmpty) {
       await prefs.remove(_prefActiveOrderIds);
       await prefs.remove(_prefActiveTripIdsMap);
+      await prefs.remove(_prefActiveOrdersCache);
       // Also clear legacy keys.
       await prefs.remove(_prefActiveOrderId);
       await prefs.remove(_prefActiveTripId);
@@ -3900,6 +4268,43 @@ class AppController extends ChangeNotifier {
         _prefActiveTripIdsMap,
         jsonEncode(_activeTripIds),
       );
+      // Save full order data so the next launch can show orders instantly
+      // from cache while the network refresh runs in the background.
+      final List<Map<String, dynamic>> cacheList = _activeOrders
+          .map(
+            (o) => <String, dynamic>{
+              'orderId': o.orderId,
+              'customerName': o.customerName,
+              'customerPhone': o.customerPhone,
+              'deliveryAddress': o.deliveryAddress,
+              'storeId': o.storeId,
+              'storeName': o.storeName,
+              'storeContact': o.storeContact,
+              'storeAddress': o.storeAddress,
+              'orderStatus': o.orderStatus.name,
+              'latitude': o.latitude,
+              'longitude': o.longitude,
+              'contactNumber': o.contactNumber,
+              'pickup': o.pickup,
+              'drop': o.drop,
+              'distanceKm': o.distanceKm,
+              'estimatedEarnings': o.estimatedEarnings,
+              'paymentMode': o.paymentMode,
+              'deliveryInstructions': o.deliveryInstructions,
+              'acceptedAt': o.acceptedAt?.toIso8601String(),
+              'orderItems': o.orderItems
+                  .map(
+                    (i) => <String, dynamic>{
+                      'name': i.name,
+                      'quantity': i.quantity,
+                      'price': i.price,
+                    },
+                  )
+                  .toList(),
+            },
+          )
+          .toList();
+      await prefs.setString(_prefActiveOrdersCache, jsonEncode(cacheList));
       // Write first order to legacy key for backward compat.
       await prefs.setString(_prefActiveOrderId, ids.first);
       final String? firstTripId = _activeTripIds[ids.first];
@@ -3907,6 +4312,53 @@ class AppController extends ChangeNotifier {
         await prefs.setString(_prefActiveTripId, firstTripId);
       }
     }
+  }
+
+  DeliveryOrder _deliveryOrderFromCache(Map<String, dynamic> json) {
+    final String statusName = (json['orderStatus'] as String?) ?? 'accepted';
+    final OrderStatus status = OrderStatus.values.firstWhere(
+      (s) => s.name == statusName,
+      orElse: () => OrderStatus.accepted,
+    );
+    final dynamic itemsRaw = json['orderItems'];
+    final List<OrderItem> items = itemsRaw is List
+        ? itemsRaw
+            .whereType<Map<String, dynamic>>()
+            .map(
+              (i) => OrderItem(
+                name: (i['name'] as String?) ?? '',
+                quantity: (i['quantity'] as int?) ?? 1,
+                price: (i['price'] as num?)?.toDouble() ?? 0,
+              ),
+            )
+            .toList()
+        : <OrderItem>[];
+    return DeliveryOrder(
+      orderId: (json['orderId'] as String?) ?? '',
+      customerName: (json['customerName'] as String?) ?? '',
+      customerPhone: (json['customerPhone'] as String?) ?? '',
+      deliveryAddress: (json['deliveryAddress'] as String?) ?? '',
+      storeId: (json['storeId'] as String?) ?? '',
+      storeName: (json['storeName'] as String?) ?? '',
+      storeContact: (json['storeContact'] as String?) ?? '',
+      storeAddress: (json['storeAddress'] as String?) ?? '',
+      orderItems: items,
+      orderStatus: status,
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
+      contactNumber: (json['contactNumber'] as String?) ?? '',
+      pickup: (json['pickup'] as String?) ?? '',
+      drop: (json['drop'] as String?) ?? '',
+      distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 0,
+      estimatedEarnings: (json['estimatedEarnings'] as num?)?.toDouble() ?? 0,
+      paymentMode: (json['paymentMode'] as String?) ?? '',
+      deliveryInstructions: (json['deliveryInstructions'] as String?) ?? '',
+      acceptedAt: json['acceptedAt'] != null
+          ? DateTime.tryParse(json['acceptedAt'] as String)
+          : null,
+      assignmentStatus: OrderAssignmentStatus.assigned,
+      assignedDeliveryPartnerId: _profile?.mobile ?? 'PARTNER001',
+    );
   }
 
   String t(
@@ -4188,6 +4640,104 @@ class AppController extends ChangeNotifier {
     return trimmed.isEmpty ? null : trimmed;
   }
 
+  /// Re-reads today's timing events from the local DB and restores all
+  /// in-memory counters. Called after login so the dashboard reflects
+  /// any trips/duty that occurred earlier in the day without a restart.
+  Future<void> _restoreSessionFromDb() async {
+    final dao = _timingDao;
+    if (dao == null) return;
+    final partner = _driverName ?? _profile?.mobile;
+    if (partner == null || partner.trim().isEmpty) return;
+
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final rows = await dao.getEventsInRange(
+      startOfDay,
+      endOfDay,
+      partner: partner.trim(),
+    );
+
+    // Duty hours from login/logout pairs (previous sessions only — current
+    // session starts fresh once the driver goes online).
+    final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
+    final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
+    if (logins.isNotEmpty && logouts.isNotEmpty) {
+      final diff = DateTime.parse(logouts.last.eventTime)
+          .difference(DateTime.parse(logins.first.eventTime));
+      if (!diff.isNegative) _completedDutyToday = diff;
+    }
+
+    // Trip count.
+    _completedTripsToday = rows
+        .where((r) => r.eventType == TimingEventType.tripCompleted)
+        .length;
+
+    // Avg trip duration — prefs first (saved after every completion).
+    final prefs = await SharedPreferences.getInstance();
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final savedDate = prefs.getString(_prefTripTimeSavedDate(partner.trim()));
+    if (savedDate == todayStr) {
+      final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs(partner.trim())) ?? 0;
+      _totalTripTimeToday = Duration(milliseconds: savedMs);
+    } else {
+      final acceptedTimes = <String, DateTime>{};
+      for (final r in rows) {
+        if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+          acceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+        }
+      }
+      var total = Duration.zero;
+      for (final r in rows.where(
+        (r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null,
+      )) {
+        final start = acceptedTimes[r.tripName!];
+        if (start != null) {
+          final d = DateTime.parse(r.eventTime).difference(start);
+          if (!d.isNegative) total += d;
+        }
+      }
+      _totalTripTimeToday = total;
+    }
+
+    // Restore start times for any trips still in progress today.
+    final completedRefs = rows
+        .where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)
+        .map((r) => r.tripName!)
+        .toSet();
+    for (final r in rows) {
+      if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+        _sessionTripAcceptances.add(r.tripName!);
+        if (!completedRefs.contains(r.tripName!)) {
+          _tripAcceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+        }
+      }
+    }
+
+    // Restore online state so the duty-hours live ticker resumes automatically
+    // after a logout+login on the same day, matching cold-restart behaviour.
+    // _onlineSince is set to now (not the last DB login time) so the live
+    // portion starts fresh — _completedDutyToday already covers prior sessions.
+    final wasOnline = prefs.getBool(_prefIsOnline) ?? false;
+    if (wasOnline) {
+      _isOnline = true;
+      _onlineSince = DateTime.now();
+    }
+  }
+
+  void _persistTripTimeToday() {
+    final driver = _driverName ?? _profile?.mobile ?? '';
+    if (driver.isEmpty) return;
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    _writePref((prefs) async {
+      await prefs.setInt(_prefTotalTripTimeTodayMs(driver), _totalTripTimeToday.inMilliseconds);
+      await prefs.setString(_prefTripTimeSavedDate(driver), dateStr);
+      return true;
+    });
+  }
+
   void _writePref(Future<bool> Function(SharedPreferences prefs) writer) {
     unawaited(() async {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -4223,6 +4773,74 @@ class AppController extends ChangeNotifier {
     final double parsed = double.tryParse(ratingRaw?.toString() ?? '') ?? 0.0;
     _performance = _performance.copyWith(rating: parsed);
     notifyListeners();
+  }
+
+  /// Reads the business-defined delivery-radius policy off the Driver doc
+  /// (`custom_delivery_radius_enabled`, `custom_default_delivery_radius_km`,
+  /// `custom_maximum_delivery_radius_km`), mirrors it to prefs for offline use, and
+  /// reconciles the partner's own saved selection with it: clearing it when the
+  /// business disables the limit, or clamping it down to a lowered cap.
+  void _applyDeliveryRadiusPolicy(Map<String, dynamic> driverDoc) {
+    final dynamic enabledRaw = driverDoc['custom_delivery_radius_enabled'];
+    _deliveryRadiusFeatureEnabled = enabledRaw == 1 ||
+        enabledRaw == true ||
+        enabledRaw?.toString() == '1';
+    _businessDefaultRadiusKm = _positiveOrNull(
+      driverDoc['custom_default_delivery_radius_km'],
+    );
+    _businessMaxRadiusKm = _positiveOrNull(
+      driverDoc['custom_maximum_delivery_radius_km'],
+    );
+
+    // Mirror the policy so an offline cold start still has sane slider bounds.
+    final bool enabled = _deliveryRadiusFeatureEnabled;
+    final double? defaultKm = _businessDefaultRadiusKm;
+    final double? maxKm = _businessMaxRadiusKm;
+    _writePref((SharedPreferences prefs) async {
+      await prefs.setBool(_prefDeliveryRadiusEnabled, enabled);
+      if (defaultKm != null) {
+        await prefs.setDouble(_prefDeliveryRadiusDefaultKm, defaultKm);
+      } else {
+        await prefs.remove(_prefDeliveryRadiusDefaultKm);
+      }
+      if (maxKm != null) {
+        await prefs.setDouble(_prefDeliveryRadiusMaxKm, maxKm);
+      } else {
+        await prefs.remove(_prefDeliveryRadiusMaxKm);
+      }
+      return true;
+    });
+
+    // Business turned the feature off → drop any local restriction so the
+    // partner sees every order again.
+    if (!_deliveryRadiusFeatureEnabled) {
+      if (_deliveryRadiusKm != null) {
+        setDeliveryRadiusKm(null);
+      }
+      return;
+    }
+    // Apply the business default whenever there is no saved selection. Logout
+    // clears the saved value, so this path runs on the next login and resets
+    // the radius to custom_default_delivery_radius_km. setDeliveryRadiusKm caps
+    // it at custom_maximum_delivery_radius_km. A mid-session selection survives app
+    // restarts because it is non-null here and only gets clamped to the cap.
+    if (_deliveryRadiusKm == null) {
+      if (defaultKm != null) {
+        setDeliveryRadiusKm(defaultKm);
+      }
+    } else if (maxKm != null && _deliveryRadiusKm! > maxKm) {
+      setDeliveryRadiusKm(maxKm);
+    }
+  }
+
+  /// Parses a Frappe Float to a positive double, returning null for missing,
+  /// unparseable, or non-positive values (treated as "not configured").
+  double? _positiveOrNull(dynamic raw) {
+    final double? value = (raw is num)
+        ? raw.toDouble()
+        : double.tryParse(raw?.toString() ?? '');
+    if (value == null || value <= 0) return null;
+    return value;
   }
 
   Future<void> fetchLoggedInEmployeeDriverProfile({
@@ -4321,6 +4939,7 @@ class AppController extends ChangeNotifier {
       );
 
       if (driverDoc != null) {
+        _applyDeliveryRadiusPolicy(driverDoc);
         _checkLicenseStatus(driverDoc);
         _applyRatingFromDriverDoc(driverDoc);
         final dynamic onlineRaw = driverDoc['custom_custom_is_online'];
@@ -5191,9 +5810,16 @@ class AppController extends ChangeNotifier {
   }
 
   /// Returns the primary auth header for use outside AppController (e.g. image loading).
+  /// Result is cached per token value — safe to call on every rebuild.
   Map<String, String> buildAuthHeaders() {
+    final key = '${_tokenType}_${_sessionToken ?? ''}';
+    if (_cachedAuthHeaders != null && _cachedAuthHeadersKey == key) {
+      return _cachedAuthHeaders!;
+    }
     final headers = _authorizationHeaders();
-    return headers.isNotEmpty ? headers.first : <String, String>{};
+    _cachedAuthHeaders = headers.isNotEmpty ? headers.first : const <String, String>{};
+    _cachedAuthHeadersKey = key;
+    return _cachedAuthHeaders!;
   }
 
   List<Map<String, String>> _authorizationHeaders({String? contentType}) {
