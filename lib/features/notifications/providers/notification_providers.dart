@@ -67,7 +67,7 @@ final notificationListFilterProvider =
 final notificationReadOverridesProvider =
     StateProvider.autoDispose<Set<String>>((ref) => <String>{});
 
-final unreadNotificationCountProvider = FutureProvider.autoDispose<int>((ref) {
-  final repository = ref.watch(notificationRepositoryProvider);
-  return repository.getUnreadCount();
+final unreadNotificationCountProvider = FutureProvider.autoDispose<int>((ref) async {
+  final counts = await ref.watch(notificationCountsProvider.future);
+  return counts.unread;
 });

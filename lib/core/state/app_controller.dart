@@ -98,6 +98,11 @@ class AppController extends ChangeNotifier {
   static const String _prefActiveTripId = 'active_trip_id';
   static const String _prefActiveOrderIds = 'active_order_ids';
   static const String _prefActiveTripIdsMap = 'active_trip_ids_map';
+  // Per-driver keys so multiple users on the same device don't share avg data.
+  static String _prefTotalTripTimeTodayMs(String driver) =>
+      'total_trip_time_today_ms_$driver';
+  static String _prefTripTimeSavedDate(String driver) =>
+      'trip_time_saved_date_$driver';
   static const int maxConcurrentOrders = 3;
   static const int _profileImageMaxBytes = 5 * 1024 * 1024;
   static const int _profileImageMinDimension = 300;
@@ -144,6 +149,12 @@ class AppController extends ChangeNotifier {
   String? _sessionToken;
   String _tokenType = 'Bearer';
   String? _refreshToken;
+  // Cached result of buildAuthHeaders() — invalidated when token changes.
+  Map<String, String>? _cachedAuthHeaders;
+  String? _cachedAuthHeadersKey;
+  // Cached profileCompleteness — invalidated by fingerprint of inputs.
+  ProfileCompleteness? _cachedProfileCompleteness;
+  String? _cachedProfileCompletenessKey;
   String? _clientId;
   String? _apiKey;
   String? _apiSecret;
@@ -178,6 +189,12 @@ class AppController extends ChangeNotifier {
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
+  DateTime? _onlineSince;
+  Duration _completedDutyToday = Duration.zero;
+  int _completedTripsToday = 0;
+  Duration _totalTripTimeToday = Duration.zero;
+  final Map<String, DateTime> _tripAcceptedTimes = {};
+  final Set<String> _sessionTripAcceptances = {};
   bool _availabilitySyncing = false;
   bool _isTracking = false;
   int _trackingInterval = 10;
@@ -251,6 +268,23 @@ class AppController extends ChangeNotifier {
       const Duration(seconds: 10),
       () => _recentEventKeys.remove(key),
     );
+    if (eventType == TimingEventType.tripAccepted && tripRef != null) {
+      if (!_sessionTripAcceptances.contains(tripRef)) {
+        _sessionTripAcceptances.add(tripRef);
+        _tripAcceptedTimes[tripRef] = DateTime.now();
+      }
+    } else if (eventType == TimingEventType.tripCompleted) {
+      _completedTripsToday++;
+      if (tripRef != null) {
+        final start = _tripAcceptedTimes.remove(tripRef);
+        if (start != null) {
+          final d = DateTime.now().difference(start);
+          if (!d.isNegative) _totalTripTimeToday += d;
+        }
+      }
+      _persistTripTimeToday();
+      notifyListeners();
+    }
     _writeTimingEvent(eventType: eventType, tripRef: tripRef, stopRef: stopRef);
   }
 
@@ -320,6 +354,12 @@ class AppController extends ChangeNotifier {
       Set<String>.unmodifiable(_vehicleRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
+  DateTime? get onlineSince => _onlineSince;
+  Duration get completedDutyToday => _completedDutyToday;
+  int get completedTripsToday => _completedTripsToday;
+  Duration get avgTripDurationToday => _completedTripsToday > 0
+      ? Duration(milliseconds: _totalTripTimeToday.inMilliseconds ~/ _completedTripsToday)
+      : Duration.zero;
   bool get availabilitySyncing => _availabilitySyncing;
   bool get isTracking => _isTracking;
   int get trackingInterval => _trackingInterval;
@@ -477,6 +517,15 @@ class AppController extends ChangeNotifier {
       _permissionState.allGranted;
 
   ProfileCompleteness get profileCompleteness {
+    final hasPhoto = _profileImagePath != null || _serverProfileImageUrl != null;
+    final hasLocation = hasSelectedLocation;
+    final key = '${_profile?.fullName}_${hasPhoto}_${_kycCompleted}_'
+        '${_vehicle != null}_${_bank != null}_${hasLocation}_'
+        '${_permissionState.allGranted}';
+    if (_cachedProfileCompleteness != null && _cachedProfileCompletenessKey == key) {
+      return _cachedProfileCompleteness!;
+    }
+
     final List<ProfileCompletenessItem> items = <ProfileCompletenessItem>[
       ProfileCompletenessItem(
         name: 'profile_basic_profile',
@@ -487,8 +536,7 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'profile_photo',
         description: 'profile_photo_desc',
-        isCompleted:
-            _profileImagePath != null || _serverProfileImageUrl != null,
+        isCompleted: hasPhoto,
         route: AppRoutes.profile,
       ),
       ProfileCompletenessItem(
@@ -512,7 +560,7 @@ class AppController extends ChangeNotifier {
       ProfileCompletenessItem(
         name: 'delivery_zone',
         description: 'delivery_zone_desc',
-        isCompleted: hasSelectedLocation,
+        isCompleted: hasLocation,
         route: AppRoutes.currentLocation,
       ),
       ProfileCompletenessItem(
@@ -527,12 +575,14 @@ class AppController extends ChangeNotifier {
     final int totalCount = items.length;
     final double percentage = totalCount > 0 ? completedCount / totalCount : 0;
 
-    return ProfileCompleteness(
+    _cachedProfileCompleteness = ProfileCompleteness(
       percentage: percentage,
       items: items,
       completedCount: completedCount,
       totalCount: totalCount,
     );
+    _cachedProfileCompletenessKey = key;
+    return _cachedProfileCompleteness!;
   }
 
   Future<void> bootstrap() async {
@@ -590,6 +640,76 @@ class AppController extends ChangeNotifier {
       }
     }
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
+    // Read driver name early so the DB query below filters by the correct partner.
+    final String? earlyDriverName = _nullIfBlank(prefs.getString(_prefDriverName));
+    if (_timingDao != null) {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+      final endOfDay = startOfDay.add(const Duration(days: 1));
+      final rows = await _timingDao.getEventsInRange(
+        startOfDay,
+        endOfDay,
+        partner: earlyDriverName,
+      );
+      final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
+      final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
+      if (logins.isNotEmpty && logouts.isNotEmpty) {
+        final diff = DateTime.parse(logouts.last.eventTime)
+            .difference(DateTime.parse(logins.first.eventTime));
+        if (!diff.isNegative) _completedDutyToday = diff;
+      }
+      if (_isOnline && logins.isNotEmpty) {
+        _onlineSince = DateTime.tryParse(logins.last.eventTime);
+      }
+      _completedTripsToday = rows
+          .where((r) => r.eventType == TimingEventType.tripCompleted)
+          .length;
+
+      // Restore avg trip duration: prefs is the source of truth (saved after
+      // every trip_completed). Fall back to DB pairing if prefs has no entry
+      // for today (first run after an app update, etc.).
+      final now2 = DateTime.now();
+      final todayStr = '${now2.year}-${now2.month.toString().padLeft(2, '0')}-${now2.day.toString().padLeft(2, '0')}';
+      final driverKey = earlyDriverName ?? '';
+      final savedDate = driverKey.isNotEmpty ? prefs.getString(_prefTripTimeSavedDate(driverKey)) : null;
+      if (savedDate == todayStr) {
+        final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs(driverKey)) ?? 0;
+        _totalTripTimeToday = Duration(milliseconds: savedMs);
+      } else {
+        // Prefs is from a previous day — compute from DB event pairs instead.
+        final acceptedTimes = <String, DateTime>{};
+        for (final r in rows) {
+          if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+            acceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+          }
+        }
+        var restoredTripTime = Duration.zero;
+        for (final r in rows.where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)) {
+          final start = acceptedTimes[r.tripName!];
+          if (start != null) {
+            final d = DateTime.parse(r.eventTime).difference(start);
+            if (!d.isNegative) restoredTripTime += d;
+          }
+        }
+        _totalTripTimeToday = restoredTripTime;
+      }
+      // Mark already-recorded trip acceptances so the screen doesn't re-fire them.
+      // For trips still in progress (accepted today but NOT yet completed today),
+      // also restore _tripAcceptedTimes so the duration is captured when they finish.
+      final completedTodayRefs = rows
+          .where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)
+          .map((r) => r.tripName!)
+          .toSet();
+      for (final r in rows) {
+        if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+          _sessionTripAcceptances.add(r.tripName!);
+          if (!completedTodayRefs.contains(r.tripName!)) {
+            // Trip still in progress — restore start time from DB.
+            _tripAcceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+          }
+        }
+      }
+    }
     final String? persistedActiveOrderId = _nullIfBlank(
       prefs.getString(_prefActiveOrderId),
     );
@@ -1353,6 +1473,7 @@ class AppController extends ChangeNotifier {
       // dashboard renders with complete data (no race between navigation and
       // background fetch). The login screen's _busy spinner covers this wait.
       await _backgroundSync();
+      await _restoreSessionFromDb();
       notifyListeners();
       _writeTimingEvent(eventType: TimingEventType.login);
 
@@ -1560,6 +1681,7 @@ class AppController extends ChangeNotifier {
       await _persistSession(responseData);
 
       await _backgroundSync();
+      await _restoreSessionFromDb();
       notifyListeners();
 
       return null;
@@ -1630,6 +1752,12 @@ class AppController extends ChangeNotifier {
     _apiSecret = null;
     _isRefreshing = false;
     _isOnline = false;
+    _onlineSince = null;
+    _completedDutyToday = Duration.zero;
+    _completedTripsToday = 0;
+    _totalTripTimeToday = Duration.zero;
+    _tripAcceptedTimes.clear();
+    _sessionTripAcceptances.clear();
     _isTracking = false;
     _incomingOrder = null;
     _activeOrders.clear();
@@ -1698,6 +1826,9 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefPermBackground),
       prefs.remove(_prefPermNotification),
       prefs.remove(_prefLicenseRequiresReupload),
+      // Per-driver prefs (avg duration, delivered count) are intentionally kept on logout.
+      // They are keyed by driver name so other users can't see them,
+      // and the same user logging back in the same day needs them intact.
     ]);
 
     // Server-side cleanup — fire-and-forget so the caller's navigation
@@ -2836,6 +2967,7 @@ class AppController extends ChangeNotifier {
       return prefs.setBool(_prefIsOnline, _isOnline);
     });
     if (_isOnline) {
+      _onlineSince = DateTime.now();
       startTracking();
       recordTimingEvent(eventType: TimingEventType.login);
       unawaited(FCMService().subscribe(this));
@@ -2848,6 +2980,11 @@ class AppController extends ChangeNotifier {
         ),
       );
     } else {
+      if (_onlineSince != null) {
+        final session = DateTime.now().difference(_onlineSince!);
+        if (!session.isNegative) _completedDutyToday += session;
+      }
+      _onlineSince = null;
       stopTracking();
       recordTimingEvent(eventType: TimingEventType.logout);
       unawaited(FCMService().unsubscribe(this));
@@ -3072,6 +3209,10 @@ class AppController extends ChangeNotifier {
             time: DateTime.now(),
           ),
         );
+        recordTimingEvent(
+          eventType: TimingEventType.tripCompleted,
+          tripRef: targetId,
+        );
         _acceptedOrders.removeWhere((order) => order.orderId == targetId);
         clearOrder(targetId);
       } else if (status == OrderStatus.reachedPickup) {
@@ -3109,6 +3250,50 @@ class AppController extends ChangeNotifier {
     } catch (e) {
       return e.toString().replaceFirst('Exception: ', '');
     }
+  }
+
+  Future<String?> failDelivery({
+    required String orderId,
+    required String reason,
+    String? reasonCode,
+    String? photoPath,
+    bool shouldCreateReturnTrip = false,
+  }) async {
+    final String? tripId = _activeTripIds[orderId];
+    String? syncError;
+    try {
+      if (tripId != null) {
+        await _orderRepository.processFailedDeliveryReturnByIds(
+          tripId: tripId,
+          deliveryId: orderId,
+          reason: reason,
+          reasonCode: reasonCode,
+          photoPath: photoPath,
+          shouldCreateReturnTrip: shouldCreateReturnTrip,
+        );
+      } else {
+        await _orderRepository.updateStatusViaSetValue(orderId, 'Failed');
+        if (photoPath != null && photoPath.isNotEmpty) {
+          await _orderRepository.uploadProofPhoto(
+            orderName: orderId,
+            filePath: photoPath,
+          );
+        }
+      }
+    } catch (e) {
+      syncError = e.toString().replaceFirst('Exception: ', '');
+    }
+    _writeTimingEvent(eventType: TimingEventType.stopFailed, tripRef: tripId);
+    _notices.insert(
+      0,
+      AppNotice(
+        title: 'Delivery failed',
+        message: 'Order $orderId marked as failed.',
+        time: DateTime.now(),
+      ),
+    );
+    clearOrder(orderId);
+    return syncError;
   }
 
   void clearOrder(String orderId) {
@@ -3413,6 +3598,8 @@ class AppController extends ChangeNotifier {
         activeOrder: activeOrder,
       );
       notifyListeners();
+      // Key by orderId so it matches tripCompleted's tripRef in this flow.
+      _tripAcceptedTimes[orderId] = DateTime.now();
       _writeTimingEvent(
         eventType: TimingEventType.tripAccepted,
         tripRef: _activeTripIds[orderId],
@@ -4184,6 +4371,104 @@ class AppController extends ChangeNotifier {
     }
     final String trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  /// Re-reads today's timing events from the local DB and restores all
+  /// in-memory counters. Called after login so the dashboard reflects
+  /// any trips/duty that occurred earlier in the day without a restart.
+  Future<void> _restoreSessionFromDb() async {
+    final dao = _timingDao;
+    if (dao == null) return;
+    final partner = _driverName ?? _profile?.mobile;
+    if (partner == null || partner.trim().isEmpty) return;
+
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+    final rows = await dao.getEventsInRange(
+      startOfDay,
+      endOfDay,
+      partner: partner.trim(),
+    );
+
+    // Duty hours from login/logout pairs (previous sessions only — current
+    // session starts fresh once the driver goes online).
+    final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
+    final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
+    if (logins.isNotEmpty && logouts.isNotEmpty) {
+      final diff = DateTime.parse(logouts.last.eventTime)
+          .difference(DateTime.parse(logins.first.eventTime));
+      if (!diff.isNegative) _completedDutyToday = diff;
+    }
+
+    // Trip count.
+    _completedTripsToday = rows
+        .where((r) => r.eventType == TimingEventType.tripCompleted)
+        .length;
+
+    // Avg trip duration — prefs first (saved after every completion).
+    final prefs = await SharedPreferences.getInstance();
+    final todayStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final savedDate = prefs.getString(_prefTripTimeSavedDate(partner.trim()));
+    if (savedDate == todayStr) {
+      final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs(partner.trim())) ?? 0;
+      _totalTripTimeToday = Duration(milliseconds: savedMs);
+    } else {
+      final acceptedTimes = <String, DateTime>{};
+      for (final r in rows) {
+        if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+          acceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+        }
+      }
+      var total = Duration.zero;
+      for (final r in rows.where(
+        (r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null,
+      )) {
+        final start = acceptedTimes[r.tripName!];
+        if (start != null) {
+          final d = DateTime.parse(r.eventTime).difference(start);
+          if (!d.isNegative) total += d;
+        }
+      }
+      _totalTripTimeToday = total;
+    }
+
+    // Restore start times for any trips still in progress today.
+    final completedRefs = rows
+        .where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)
+        .map((r) => r.tripName!)
+        .toSet();
+    for (final r in rows) {
+      if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+        _sessionTripAcceptances.add(r.tripName!);
+        if (!completedRefs.contains(r.tripName!)) {
+          _tripAcceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
+        }
+      }
+    }
+
+    // Restore online state so the duty-hours live ticker resumes automatically
+    // after a logout+login on the same day, matching cold-restart behaviour.
+    // _onlineSince is set to now (not the last DB login time) so the live
+    // portion starts fresh — _completedDutyToday already covers prior sessions.
+    final wasOnline = prefs.getBool(_prefIsOnline) ?? false;
+    if (wasOnline) {
+      _isOnline = true;
+      _onlineSince = DateTime.now();
+    }
+  }
+
+  void _persistTripTimeToday() {
+    final driver = _driverName ?? _profile?.mobile ?? '';
+    if (driver.isEmpty) return;
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    _writePref((prefs) async {
+      await prefs.setInt(_prefTotalTripTimeTodayMs(driver), _totalTripTimeToday.inMilliseconds);
+      await prefs.setString(_prefTripTimeSavedDate(driver), dateStr);
+      return true;
+    });
   }
 
   void _writePref(Future<bool> Function(SharedPreferences prefs) writer) {
@@ -5189,9 +5474,16 @@ class AppController extends ChangeNotifier {
   }
 
   /// Returns the primary auth header for use outside AppController (e.g. image loading).
+  /// Result is cached per token value — safe to call on every rebuild.
   Map<String, String> buildAuthHeaders() {
+    final key = '${_tokenType}_${_sessionToken ?? ''}';
+    if (_cachedAuthHeaders != null && _cachedAuthHeadersKey == key) {
+      return _cachedAuthHeaders!;
+    }
     final headers = _authorizationHeaders();
-    return headers.isNotEmpty ? headers.first : <String, String>{};
+    _cachedAuthHeaders = headers.isNotEmpty ? headers.first : const <String, String>{};
+    _cachedAuthHeadersKey = key;
+    return _cachedAuthHeaders!;
   }
 
   List<Map<String, String>> _authorizationHeaders({String? contentType}) {

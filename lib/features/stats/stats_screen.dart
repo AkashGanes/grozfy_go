@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
@@ -34,7 +35,18 @@ class StatsScreen extends ConsumerWidget {
 class _DailySection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final app = AppScope.of(context);
     final async = ref.watch(dailySummaryProvider);
+
+    final DateTime? onlineSince = app.onlineSince;
+    final Duration completed = app.completedDutyToday;
+    final Duration live = onlineSince != null
+        ? DateTime.now().difference(onlineSince)
+        : Duration.zero;
+    final Duration dutyHours =
+        completed + (live.isNegative ? Duration.zero : live);
+    final int tripsToday = app.completedTripsToday;
+    final Duration avgTripDuration = app.avgTripDurationToday;
 
     return FrostCard(
       child: Column(
@@ -58,7 +70,7 @@ class _DailySection extends ConsumerWidget {
           async.when(
             loading: _buildLoading,
             error: (e, _) => _buildError(e),
-            data: _buildData,
+            data: (s) => _buildData(s, dutyHours, tripsToday, avgTripDuration),
           ),
         ],
       ),
@@ -90,8 +102,8 @@ class _DailySection extends ConsumerWidget {
     );
   }
 
-  Widget _buildData(DailySummary s) {
-    if (s.tripsCompleted == 0 && s.dutyHours == Duration.zero) {
+  Widget _buildData(DailySummary s, Duration dutyHours, int tripsToday, Duration avgTripDuration) {
+    if (tripsToday == 0 && dutyHours == Duration.zero) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
         child: Text(
@@ -104,21 +116,21 @@ class _DailySection extends ConsumerWidget {
       children: [
         _statTile(
           'Duty Hours',
-          AppDateFormat.duration(s.dutyHours),
+          AppDateFormat.duration(dutyHours),
           Icons.access_time_rounded,
           AppTheme.oceanBlue,
         ),
         const SizedBox(width: 10),
         _statTile(
           'Trips Today',
-          '${s.tripsCompleted}',
+          '$tripsToday',
           Icons.check_circle_outline,
           const Color(0xFF2E7D32),
         ),
         const SizedBox(width: 10),
         _statTile(
           'Avg Trip',
-          AppDateFormat.duration(s.avgTripDuration),
+          avgTripDuration == Duration.zero ? '—' : AppDateFormat.duration(avgTripDuration),
           Icons.timer_outlined,
           AppTheme.mango,
         ),

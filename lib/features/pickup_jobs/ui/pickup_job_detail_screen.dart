@@ -9,7 +9,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/api_constants.dart';
+import '../../../core/database/partner_timing_log_dao.dart';
 import '../../../core/services/connectivity_service.dart';
+import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/app_toast.dart';
@@ -31,11 +33,21 @@ class _PickupJobDetailScreenState
     extends ConsumerState<PickupJobDetailScreen> {
   late Future<_JobDetail> _future;
   bool _isSubmitting = false;
+  bool _tripAcceptedFired = false;
 
   @override
   void initState() {
     super.initState();
     _future = _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_tripAcceptedFired) {
+        _tripAcceptedFired = true;
+        ref.read(appControllerProvider).recordTimingEvent(
+          eventType: TimingEventType.tripAccepted,
+          tripRef: widget.pickupJobName,
+        );
+      }
+    });
   }
 
   Future<_JobDetail> _load() async {
@@ -180,6 +192,10 @@ class _PickupJobDetailScreenState
     try {
       await PickupJobRepository().confirmCompleted(job.name);
       await PickupJobRepository().clearActiveJob();
+      ref.read(appControllerProvider).recordTimingEvent(
+        eventType: TimingEventType.tripCompleted,
+        tripRef: job.name,
+      );
       // Update the trip stop status in ERPNext.
       if (job.deliveryTrip != null && job.deliveryTrip!.isNotEmpty) {
         try {

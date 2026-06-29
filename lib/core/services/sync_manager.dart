@@ -204,57 +204,67 @@ class SyncManager {
   }
 
   Future<void> _processStatusUpdateQueue() async {
-    final pending = _storage.getPendingStatusUpdates();
-    if (pending.isEmpty) return;
-    debugPrint('[SyncManager] Flushing ${pending.length} status updates');
+    final all = _storage.getPendingStatusUpdates();
+    if (all.isEmpty) return;
+    debugPrint('[SyncManager] Flushing ${all.length} status updates');
 
-    for (final update in pending) {
-      if (update.status == SyncStatus.syncing) continue;
-      if (update.retryCount >= _maxRetries) {
-        await _storage.updateStatusUpdate(
-          update.copyWith(status: SyncStatus.failed),
-        );
-        continue;
-      }
+    final exhausted = all
+        .where((u) => u.retryCount >= _maxRetries && u.status != SyncStatus.failed)
+        .toList();
+    final actionable = all
+        .where((u) => u.status != SyncStatus.syncing && u.retryCount < _maxRetries)
+        .toList();
 
-      await _storage.updateStatusUpdate(
-        update.copyWith(status: SyncStatus.syncing),
+    for (final u in exhausted) {
+      await _storage.updateStatusUpdate(u.copyWith(status: SyncStatus.failed));
+    }
+
+    const batchSize = 3;
+    for (int i = 0; i < actionable.length; i += batchSize) {
+      final end = (i + batchSize).clamp(0, actionable.length);
+      final batch = actionable.sublist(i, end);
+
+      await Future.wait(
+        batch.map((u) => _storage.updateStatusUpdate(u.copyWith(status: SyncStatus.syncing))),
       );
 
-      try {
-        // Check for conflicts before pushing: if server's `modified` differs
-        // from what we saw when queueing, run the resolver.
-        final shouldPush = await _checkAndResolveConflict(update);
-        if (!shouldPush) {
-          // Conflict resolver decided server wins — drop the local intent.
-          await _storage.removeStatusUpdate(update.id);
-          continue;
-        }
+      await Future.wait(
+        batch.map((update) async {
+          try {
+            // Check for conflicts before pushing: if server's `modified` differs
+            // from what we saw when queueing, run the resolver.
+            final shouldPush = await _checkAndResolveConflict(update);
+            if (!shouldPush) {
+              // Conflict resolver decided server wins — drop the local intent.
+              await _storage.removeStatusUpdate(update.id);
+              return;
+            }
 
-        // Use set_value rather than PUT /api/resource: External Delivery is
-        // a submittable doctype, and PUT on a submitted (docstatus=1) doc
-        // is rejected by Frappe regardless of the field. set_value works
-        // for any field marked "Allow on Submit" — and silently no-ops
-        // for non-submittable docs too, so it's the safer flush path.
-        await _repository.updateStatusViaSetValue(
-          update.orderName,
-          update.newStatus,
-        );
-        await _storage.removeStatusUpdate(update.id);
-      } catch (e) {
-        debugPrint(
-          '[SyncManager] Status update flush failed for ${update.orderName} '
-          '(retry ${update.retryCount + 1}/$_maxRetries): $e',
-        );
-        await _storage.updateStatusUpdate(
-          update.copyWith(
-            retryCount: update.retryCount + 1,
-            errorMessage: e.toString(),
-            status: SyncStatus.failed,
-          ),
-        );
-        await Future.delayed(_backoffFor(update.retryCount));
-      }
+            // Use set_value rather than PUT /api/resource: External Delivery is
+            // a submittable doctype, and PUT on a submitted (docstatus=1) doc
+            // is rejected by Frappe regardless of the field. set_value works
+            // for any field marked "Allow on Submit" — and silently no-ops
+            // for non-submittable docs too, so it's the safer flush path.
+            await _repository.updateStatusViaSetValue(
+              update.orderName,
+              update.newStatus,
+            );
+            await _storage.removeStatusUpdate(update.id);
+          } catch (e) {
+            debugPrint(
+              '[SyncManager] Status update flush failed for ${update.orderName} '
+              '(retry ${update.retryCount + 1}/$_maxRetries): $e',
+            );
+            await _storage.updateStatusUpdate(
+              update.copyWith(
+                retryCount: update.retryCount + 1,
+                errorMessage: e.toString(),
+                status: SyncStatus.failed,
+              ),
+            );
+          }
+        }),
+      );
     }
   }
 
@@ -356,54 +366,64 @@ class SyncManager {
   }
 
   Future<void> _processStopStatusQueue() async {
-    final pending = _storage.getPendingStopStatusUpdates();
-    if (pending.isEmpty) return;
-    debugPrint('[SyncManager] Flushing ${pending.length} stop updates');
+    final all = _storage.getPendingStopStatusUpdates();
+    if (all.isEmpty) return;
+    debugPrint('[SyncManager] Flushing ${all.length} stop updates');
 
-    for (final update in pending) {
-      if (update.status == SyncStatus.syncing) continue;
-      if (update.retryCount >= _maxRetries) {
-        await _storage.updateStopStatusUpdate(
-          update.copyWith(status: SyncStatus.failed),
-        );
-        continue;
-      }
+    final exhausted = all
+        .where((u) => u.retryCount >= _maxRetries && u.status != SyncStatus.failed)
+        .toList();
+    final actionable = all
+        .where((u) => u.status != SyncStatus.syncing && u.retryCount < _maxRetries)
+        .toList();
 
-      await _storage.updateStopStatusUpdate(
-        update.copyWith(status: SyncStatus.syncing),
+    for (final u in exhausted) {
+      await _storage.updateStopStatusUpdate(u.copyWith(status: SyncStatus.failed));
+    }
+
+    const batchSize = 3;
+    for (int i = 0; i < actionable.length; i += batchSize) {
+      final end = (i + batchSize).clamp(0, actionable.length);
+      final batch = actionable.sublist(i, end);
+
+      await Future.wait(
+        batch.map((u) => _storage.updateStopStatusUpdate(u.copyWith(status: SyncStatus.syncing))),
       );
 
-      try {
-        // Conflict check: if the server already moved this stop into a
-        // terminal state (delivered/failed/etc), drop the local intent
-        // instead of overwriting an authoritative business outcome.
-        final shouldPush = await _checkAndResolveStopConflict(update);
-        if (!shouldPush) {
-          await _storage.removeStopStatusUpdate(update.id);
-          continue;
-        }
+      await Future.wait(
+        batch.map((update) async {
+          try {
+            // Conflict check: if the server already moved this stop into a
+            // terminal state (delivered/failed/etc), drop the local intent
+            // instead of overwriting an authoritative business outcome.
+            final shouldPush = await _checkAndResolveStopConflict(update);
+            if (!shouldPush) {
+              await _storage.removeStopStatusUpdate(update.id);
+              return;
+            }
 
-        await _repository.setStopStatusRaw(
-          stopDocType: update.stopDocType,
-          stopName: update.stopName,
-          parentTripName: update.parentTripName,
-          newStatus: update.newStatus,
-        );
-        await _storage.removeStopStatusUpdate(update.id);
-      } catch (e) {
-        debugPrint(
-          '[SyncManager] Stop status flush failed for ${update.stopName} '
-          '(retry ${update.retryCount + 1}/$_maxRetries): $e',
-        );
-        await _storage.updateStopStatusUpdate(
-          update.copyWith(
-            retryCount: update.retryCount + 1,
-            errorMessage: e.toString(),
-            status: SyncStatus.failed,
-          ),
-        );
-        await Future.delayed(_backoffFor(update.retryCount));
-      }
+            await _repository.setStopStatusRaw(
+              stopDocType: update.stopDocType,
+              stopName: update.stopName,
+              parentTripName: update.parentTripName,
+              newStatus: update.newStatus,
+            );
+            await _storage.removeStopStatusUpdate(update.id);
+          } catch (e) {
+            debugPrint(
+              '[SyncManager] Stop status flush failed for ${update.stopName} '
+              '(retry ${update.retryCount + 1}/$_maxRetries): $e',
+            );
+            await _storage.updateStopStatusUpdate(
+              update.copyWith(
+                retryCount: update.retryCount + 1,
+                errorMessage: e.toString(),
+                status: SyncStatus.failed,
+              ),
+            );
+          }
+        }),
+      );
     }
   }
 
