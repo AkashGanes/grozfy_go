@@ -11,7 +11,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
-import '../orders_by_location/ui/delivery_outcome_sheet.dart';
+import '../orders_by_location/ui/cod_collection_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
@@ -30,6 +30,9 @@ class OrderStatusScreen extends StatefulWidget {
 class _OrderStatusScreenState extends State<OrderStatusScreen> {
   // ── Normal progress flow ─────────────────────────────────────────────────────
   bool _syncing = false;
+  bool _markingFailed = false;
+  bool _codCashConfirmed = false;
+  ({String mode, String? upiRef})? _codResult;
 
   static const _flow = <OrderProgressStatus>[
     OrderStatus.pending,
@@ -198,57 +201,58 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     );
   }
 
+  // ── COD cash pre-confirmation ────────────────────────────────────────────────
+
+  Future<void> _handleCodCashCollection(BuildContext context, DeliveryOrder order) async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    double codAmount = 0;
+    try {
+      final detail = await ExternalDeliveryRepository().fetchDetail(
+        order.orderId, resolveAddress: false,
+      );
+      codAmount = detail.codAmountToCollect ?? 0;
+    } catch (_) {}
+    if (!context.mounted) { setState(() => _syncing = false); return; }
+    final result = await showCodCollectionSheet(context, amountToCollect: codAmount);
+    if (!mounted) { setState(() => _syncing = false); return; }
+    if (result == null) { setState(() => _syncing = false); return; }
+    setState(() { _syncing = false; _codCashConfirmed = true; _codResult = result; });
+  }
+
   // ── Mark failed ──────────────────────────────────────────────────────────────
 
-  /// Driver chose "Mark as Failed" from the delivery outcome sheet. Collects a
-  /// reason (+ optional photo) and submits it via [AppController.failDelivery].
-  /// Mirrors the dashboard's _handleFailedDelivery flow.
   Future<void> _onMarkFailed(BuildContext context, DeliveryOrder order) async {
     final app = AppScope.of(context);
     final isCod = order.paymentMode.toUpperCase() == 'COD';
     final result = await showFailedDeliverySheet(context, isCod: isCod);
-    if (result == null || !context.mounted) return;
-
-    final fullReason = result.notes.isEmpty
-        ? result.reason
-        : '${result.reason} — ${result.notes}';
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          content: Row(
-            children: [
-              const CircularProgressIndicator(strokeWidth: 2),
-              const SizedBox(width: 20),
-              Text(
-                'Marking delivery as failed...',
-                style: TextStyle(
-                  color: Theme.of(ctx).colorScheme.onSurface,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final error = await app.failDelivery(
-      orderId: order.orderId,
-      reason: fullReason,
-      reasonCode: result.reasonCode,
-      photoPath: result.photoPath,
-      shouldCreateReturnTrip: false,
-    );
-
+    if (result == null || !mounted) return;
+    setState(() => _markingFailed = true);
+    final reason = result.notes.isNotEmpty ? result.notes : result.reason;
+    final tripId = app.tripIdForOrder(order.orderId);
+    try {
+      if (tripId != null && tripId.isNotEmpty) {
+        await ExternalDeliveryRepository().processFailedDeliveryReturnByIds(
+          tripId: tripId,
+          deliveryId: order.orderId,
+          reason: reason,
+          reasonCode: result.reasonCode,
+          photoPath: result.photoPath,
+        );
+      } else {
+        await ExternalDeliveryRepository().markOrderFailed(
+          orderName: order.orderId,
+          reason: reason,
+          reasonCode: result.reasonCode,
+          photoPath: result.photoPath,
+        );
+      }
+    } catch (_) {}
+    if (!mounted) { setState(() => _markingFailed = false); return; }
+    final error = await app.updateOrderStatus(OrderStatus.failed);
+    app.stopOrderTimer();
     if (!context.mounted) return;
-    Navigator.of(context).pop(); // dismiss loading dialog
+    setState(() => _markingFailed = false);
     if (error != null) {
       AppToast.show(context, error);
       return;
@@ -473,45 +477,49 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         if (!mounted) { setState(() => _syncing = false); return; }
       }
 
-      // Fetch COD info, then show unified delivery outcome sheet
-      bool isCod = order.paymentMode.toUpperCase() == 'COD';
-      double codAmount = 0;
-      try {
-        final detail = await ExternalDeliveryRepository().fetchDetail(
-          order.orderId,
-          resolveAddress: false,
-        );
-        isCod = detail.isCod;
-        codAmount = detail.codAmountToCollect ?? 0;
-      } catch (_) {}
-      if (!mounted) { setState(() => _syncing = false); return; }
-
-      // Show unified sheet: COD form + Confirm Delivery + Mark as Failed
-      final outcome = await showDeliveryOutcomeSheet(
-        context,
-        isCod: isCod,
-        codAmount: codAmount,
-      );
-      if (!mounted) { setState(() => _syncing = false); return; }
-      if (outcome == null) { setState(() => _syncing = false); return; }
-
-      if (outcome.outcome == 'failed') {
-        // Driver chose to mark as failed from within the delivery sheet
-        setState(() => _syncing = false);
-        await _onMarkFailed(context, order);
-        return;
-      }
-
-      // Outcome is 'delivered' — save COD data if applicable
-      if (isCod && outcome.codMode != null) {
+      if (_codCashConfirmed && _codResult != null) {
+        // COD was pre-confirmed via the "Confirm COD Cash" button.
+        if (_codResult!.mode != 'Not Collected') {
+          try {
+            await ExternalDeliveryRepository().markDeliveredWithCod(
+              order.orderId,
+              codCollectionMode: _codResult!.mode,
+              codUpiReference: _codResult!.upiRef,
+            );
+          } catch (_) {}
+          if (!mounted) return;
+        }
+      } else {
+        // Fallback: non-COD orders or edge cases — check on the fly.
+        bool isCod = order.paymentMode.toUpperCase() == 'COD';
+        double codAmount = 0;
         try {
-          await ExternalDeliveryRepository().markDeliveredWithCod(
+          final detail = await ExternalDeliveryRepository().fetchDetail(
             order.orderId,
-            codCollectionMode: outcome.codMode!,
-            codUpiReference: outcome.codRef,
+            resolveAddress: false,
           );
+          isCod = detail.isCod;
+          codAmount = detail.codAmountToCollect ?? 0;
         } catch (_) {}
-        if (!mounted) return;
+        if (!context.mounted) { setState(() => _syncing = false); return; }
+        if (isCod) {
+          final codResult = await showCodCollectionSheet(
+            context,
+            amountToCollect: codAmount,
+          );
+          if (!mounted) { setState(() => _syncing = false); return; }
+          if (codResult == null) { setState(() => _syncing = false); return; }
+          if (codResult.mode != 'Not Collected') {
+            try {
+              await ExternalDeliveryRepository().markDeliveredWithCod(
+                order.orderId,
+                codCollectionMode: codResult.mode,
+                codUpiReference: codResult.upiRef,
+              );
+            } catch (_) {}
+            if (!mounted) return;
+          }
+        }
       }
     }
 
@@ -839,50 +847,176 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                           : () => _handleConfirmRecall(order),
                       onCall: _launchCall,
                     )
-                  : SizedBox(
-                      height: 56,
-                      child: ElevatedButton(
-                        onPressed: _syncing
-                            ? null
-                            : order.orderStatus == OrderStatus.outForDelivery
-                                ? () => _advanceStatus(context)
-                                : () => _onActionTap(context, order),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: color,
-                          foregroundColor: Colors.white,
-                          elevation: 0,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: _syncing
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: Colors.white,
+                  : order.orderStatus == OrderStatus.outForDelivery
+                      ? order.paymentMode.toUpperCase() == 'COD' && !_codCashConfirmed
+                          // ── COD order: show "Confirm COD Cash" first ──────
+                          ? SizedBox(
+                              height: 56,
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: _syncing
+                                    ? null
+                                    : () => _handleCodCashCollection(context, order),
+                                icon: _syncing
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.5,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.account_balance_wallet_rounded,
+                                        size: 20,
+                                      ),
+                                label: const Text(
+                                  'Confirm COD Cash',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    _actionLabel(order.orderStatus),
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w800,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF2E7D32),
+                                  foregroundColor: Colors.white,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                              ),
+                            )
+                          // ── COD confirmed (or non-COD): Mark Delivered + Mark Failed ─
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 56,
+                                    child: ElevatedButton(
+                                      onPressed: _syncing || _markingFailed
+                                          ? null
+                                          : () => _advanceStatus(context),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.green,
+                                        foregroundColor: Colors.white,
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      ),
+                                      child: _syncing
+                                          ? const SizedBox(
+                                              width: 22,
+                                              height: 22,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.check_circle_outline, size: 20),
+                                                SizedBox(width: 6),
+                                                Text(
+                                                  'Mark Delivered',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  const Icon(
-                                    Icons.arrow_forward_rounded,
-                                    size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 56,
+                                    child: OutlinedButton(
+                                      onPressed: _syncing || _markingFailed
+                                          ? null
+                                          : () => _onMarkFailed(context, order),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.red,
+                                        side: const BorderSide(color: Colors.red),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      ),
+                                      child: _markingFailed
+                                          ? const SizedBox(
+                                              width: 22,
+                                              height: 22,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5,
+                                                color: Colors.red,
+                                              ),
+                                            )
+                                          : const Row(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                Icon(Icons.cancel_outlined, size: 20),
+                                                SizedBox(width: 6),
+                                                Text(
+                                                  'Mark Failed',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                    ),
                                   ),
-                                ],
+                                ),
+                              ],
+                            )
+                      // ── All other statuses: single action button ──────────
+                      : SizedBox(
+                          height: 56,
+                          child: ElevatedButton(
+                            onPressed: _syncing
+                                ? null
+                                : () => _onActionTap(context, order),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: color,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
                               ),
-                      ),
-                    ),
+                            ),
+                            child: _syncing
+                                ? const SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.5,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        _actionLabel(order.orderStatus),
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Icon(
+                                        Icons.arrow_forward_rounded,
+                                        size: 20,
+                                      ),
+                                    ],
+                                  ),
+                          ),
+                        ),
             ),
           ],
         ),
