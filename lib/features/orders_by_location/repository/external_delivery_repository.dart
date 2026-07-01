@@ -2170,6 +2170,70 @@ class ExternalDeliveryRepository {
     }
   }
 
+  static const String _codHandoverBase =
+      '${ApiConstants.erpBaseUrl}/api/resource/COD%20Handover';
+
+  static const List<String> _codHandoverFields = [
+    'name',
+    'delivery_trip',
+    'cod_cash_expected',
+    'cod_cash_actual',
+    'status',
+    'notes',
+    'driver',
+    'creation',
+    'modified',
+  ];
+
+  /// Fetches a paginated list of [CodHandover] records for the logged-in driver.
+  /// Pass [statusFilter] ('Pending', 'Submitted', 'Discrepancy') to filter by status.
+  Future<List<CodHandover>> fetchCodHandoverList({
+    int limitStart = 0,
+    int limitPageLength = 20,
+    String? statusFilter,
+  }) async {
+    final driver = await _getLoggedInDriver();
+    final filters = <List<dynamic>>[
+      ['COD Handover', 'driver', '=', driver],
+      if (statusFilter != null && statusFilter.isNotEmpty)
+        ['COD Handover', 'status', '=', statusFilter],
+    ];
+    final uri = Uri.parse(_codHandoverBase).replace(
+      queryParameters: {
+        'fields': jsonEncode(_codHandoverFields),
+        'filters': jsonEncode(filters),
+        'limit_start': '$limitStart',
+        'limit_page_length': '$limitPageLength',
+        'order_by': 'modified desc',
+      },
+    );
+    _logApi('fetch_cod_handover_list', 'GET $uri limitStart=$limitStart');
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (resp.statusCode == 401) throw Exception('401: Invalid API credentials.');
+    if (resp.statusCode == 403) throw Exception('403: Access denied.');
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+    final rows = (jsonDecode(resp.body)['data']) as List;
+    return rows
+        .map((r) => CodHandover.fromJson(r as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Fetches a single [CodHandover] by document [name] for the detail screen.
+  Future<CodHandover> fetchCodHandoverDetail(String name) async {
+    final uri = Uri.parse(
+      '$_codHandoverBase/${Uri.encodeComponent(name)}',
+    );
+    _logApi('fetch_cod_handover_detail', 'GET $uri name=$name');
+    final resp = await _get(uri, headers: await _authHeaders());
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+    final data = (jsonDecode(resp.body)['data']) as Map<String, dynamic>;
+    return CodHandover.fromJson(data);
+  }
+
   Future<http.Response> _put(
     Uri uri, {
     required Map<String, String> headers,

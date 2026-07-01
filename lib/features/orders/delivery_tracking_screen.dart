@@ -19,6 +19,7 @@ import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/cod_collection_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
+import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 
 class DeliveryTrackingScreen extends StatefulWidget {
   final String? deliveryName;
@@ -801,30 +802,37 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
       );
     }
 
-    // COD: ask how customer paid before marking delivered
+    // Fetch order detail to determine payment mode
+    bool isCod = false;
+    double codAmount = 0;
     try {
       final detail = await ExternalDeliveryRepository().fetchDetail(
         deliveryName,
         resolveAddress: false,
       );
       if (!mounted) return;
-      if (detail.isCod && detail.codAmountToCollect != null) {
-        final codResult = await showCodCollectionSheet(
-          context,
-          amountToCollect: detail.codAmountToCollect!,
-        );
-        if (!mounted) return;
-        if (codResult == null) return;
-        try {
-          await ExternalDeliveryRepository().markDeliveredWithCod(
-            deliveryName,
-            codCollectionMode: codResult.mode,
-            codUpiReference: codResult.upiRef,
-          );
-        } catch (_) {}
-        if (!mounted) return;
-      }
+      isCod = detail.isCod;
+      codAmount = detail.codAmountToCollect ?? 0;
     } catch (_) {}
+    if (!mounted) return;
+
+    // COD: collect payment before marking delivered
+    if (isCod && codAmount > 0) {
+      final codResult = await showCodCollectionSheet(
+        context,
+        amountToCollect: codAmount,
+      );
+      if (!mounted) return;
+      if (codResult == null) return;
+      try {
+        await ExternalDeliveryRepository().markDeliveredWithCod(
+          deliveryName,
+          codCollectionMode: codResult.mode,
+          codUpiReference: codResult.upiRef,
+        );
+      } catch (_) {}
+      if (!mounted) return;
+    }
 
     AppToast.show(context, 'Confirming delivery $deliveryName...');
 
@@ -875,6 +883,50 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
         ],
       ),
     );
+  }
+
+  Future<void> _markDeliveryFailed() async {
+    final app = AppScope.of(context);
+    final navigator = Navigator.of(context);
+    final String deliveryName = _resolveDeliveryName(app);
+
+    if (deliveryName.isEmpty) {
+      AppToast.show(context, 'No active order found');
+      return;
+    }
+
+    bool isCod = false;
+    try {
+      final detail = await ExternalDeliveryRepository().fetchDetail(
+        deliveryName,
+        resolveAddress: false,
+      );
+      if (!mounted) return;
+      isCod = detail.isCod;
+    } catch (_) {}
+    if (!mounted) return;
+
+    final result = await showFailedDeliverySheet(context, isCod: isCod);
+    if (result == null || !mounted) return;
+
+    try {
+      await ExternalDeliveryRepository().markOrderFailed(
+        orderName: deliveryName,
+        reason: result.notes.isNotEmpty ? result.notes : result.reason,
+        reasonCode: result.reasonCode,
+        photoPath: result.photoPath,
+      );
+    } catch (_) {}
+    if (!mounted) return;
+
+    final error = await app.updateOrderStatus(OrderStatus.failed);
+    if (!mounted) return;
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
+    _stopLiveTracking();
+    navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
   }
 
   String _resolveDeliveryName(AppController app) {
@@ -1385,53 +1437,81 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                       ),
                       const SizedBox(height: 16),
 
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _destination != null
-                              ? (_isTracking
-                                    ? _stopLiveTracking
-                                    : _startLiveTracking)
-                              : () {
-                                  AppToast.show(
-                                    context,
-                                    'No delivery location available',
-                                  );
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _destination == null
-                                ? _primaryColor
-                                : (_isTracking ? Colors.orange : _primaryColor),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _destination == null
-                                    ? Icons.location_searching
-                                    : (_isTracking
-                                          ? Icons.stop
-                                          : Icons.navigation),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                _destination == null
-                                    ? 'Select Delivery Location'
-                                    : (_isTracking
-                                          ? 'Stop Navigation'
-                                          : 'Start Navigation'),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _destination != null
+                                  ? (_isTracking
+                                        ? _stopLiveTracking
+                                        : _startLiveTracking)
+                                  : () {
+                                      AppToast.show(
+                                        context,
+                                        'No delivery location available',
+                                      );
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _destination == null
+                                    ? _primaryColor
+                                    : (_isTracking ? Colors.orange : _primaryColor),
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
                               ),
-                            ],
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    _destination == null
+                                        ? Icons.location_searching
+                                        : (_isTracking ? Icons.stop : Icons.navigation),
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    _destination == null
+                                        ? 'Select Location'
+                                        : (_isTracking ? 'Stop Nav' : 'Navigate'),
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _markDeliveryFailed,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.cancel_outlined, size: 18),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Mark Failed',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
 
                       if (_hasArrived) ...[

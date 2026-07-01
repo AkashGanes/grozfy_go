@@ -8,10 +8,161 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
+import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../orders_by_location/ui/cod_collection_sheet.dart';
+import '../orders_by_location/ui/delivery_proof_sheet.dart';
+import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import 'delivery_tracking_screen.dart';
 
-class NavigationScreen extends StatelessWidget {
+class NavigationScreen extends StatefulWidget {
   const NavigationScreen({super.key});
+
+  @override
+  State<NavigationScreen> createState() => _NavigationScreenState();
+}
+
+class _NavigationScreenState extends State<NavigationScreen> {
+  bool _syncing = false;
+  bool _codCashConfirmed = false;
+  ({String mode, String? upiRef})? _codResult;
+
+  OrderProgressStatus _nextStatus(OrderProgressStatus s) {
+    if (s == OrderStatus.accepted) return OrderStatus.reachedPickup;
+    if (s == OrderStatus.reachedPickup) return OrderStatus.pickedUp;
+    if (s == OrderStatus.pickedUp) return OrderStatus.outForDelivery;
+    if (s == OrderStatus.outForDelivery) return OrderStatus.delivered;
+    return s;
+  }
+
+  String _actionLabel(OrderProgressStatus s) {
+    if (s == OrderStatus.accepted) return 'Mark Reached Pickup';
+    if (s == OrderStatus.reachedPickup) return 'Mark Picked Up';
+    if (s == OrderStatus.pickedUp) return 'Start Out for Delivery';
+    return '';
+  }
+
+  Future<void> _advanceStatus(BuildContext context, DeliveryOrder order) async {
+    final app = AppScope.of(context);
+    final next = _nextStatus(order.orderStatus);
+    if (next == order.orderStatus || _syncing) return;
+    setState(() => _syncing = true);
+
+    if (next == OrderStatus.delivered) {
+      final photoPath = await showDeliveryProofSheet(context);
+      if (!mounted) { setState(() => _syncing = false); return; }
+      if (photoPath != null) {
+        await ExternalDeliveryRepository().uploadProofPhoto(
+          orderName: order.orderId, filePath: photoPath,
+        );
+        if (!mounted) { setState(() => _syncing = false); return; }
+      }
+      if (_codCashConfirmed && _codResult != null) {
+        if (_codResult!.mode != 'Not Collected') {
+          try {
+            await ExternalDeliveryRepository().markDeliveredWithCod(
+              order.orderId,
+              codCollectionMode: _codResult!.mode,
+              codUpiReference: _codResult!.upiRef,
+            );
+          } catch (_) {}
+          if (!mounted) return;
+        }
+      } else {
+        bool isCod = false;
+        double codAmount = 0;
+        try {
+          final detail = await ExternalDeliveryRepository().fetchDetail(
+            order.orderId, resolveAddress: false,
+          );
+          isCod = detail.isCod;
+          codAmount = detail.codAmountToCollect ?? 0;
+        } catch (_) {}
+        if (!mounted) { setState(() => _syncing = false); return; }
+        if (isCod && codAmount > 0) {
+          final codResult = await showCodCollectionSheet(context, amountToCollect: codAmount);
+          if (!mounted) { setState(() => _syncing = false); return; }
+          if (codResult == null) { setState(() => _syncing = false); return; }
+          if (codResult.mode != 'Not Collected') {
+            try {
+              await ExternalDeliveryRepository().markDeliveredWithCod(
+                order.orderId,
+                codCollectionMode: codResult.mode,
+                codUpiReference: codResult.upiRef,
+              );
+            } catch (_) {}
+            if (!mounted) return;
+          }
+        }
+      }
+    }
+
+    final error = await app.updateOrderStatus(next);
+    if (next == OrderStatus.delivered || next == OrderStatus.cancelled) {
+      app.stopOrderTimer();
+    }
+    if (!context.mounted) return;
+    setState(() => _syncing = false);
+    if (error != null) { AppToast.show(context, error); return; }
+    if (next == OrderStatus.delivered) {
+      AppToast.show(context, 'Order delivered and earnings updated');
+      Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
+    } else {
+      Navigator.of(context).pushNamed(AppRoutes.orderStatus);
+    }
+  }
+
+  Future<void> _handleCodCashCollection(BuildContext context, DeliveryOrder order) async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    double codAmount = 0;
+    try {
+      final detail = await ExternalDeliveryRepository().fetchDetail(
+        order.orderId, resolveAddress: false,
+      );
+      codAmount = detail.codAmountToCollect ?? 0;
+    } catch (_) {}
+    if (!mounted) { setState(() => _syncing = false); return; }
+    final result = await showCodCollectionSheet(context, amountToCollect: codAmount);
+    if (!mounted) { setState(() => _syncing = false); return; }
+    if (result == null) { setState(() => _syncing = false); return; }
+    setState(() { _syncing = false; _codCashConfirmed = true; _codResult = result; });
+  }
+
+  Future<void> _onMarkFailed(BuildContext context, DeliveryOrder order) async {
+    if (_syncing) return;
+    final isCod = order.paymentMode.toUpperCase() == 'COD';
+    final result = await showFailedDeliverySheet(context, isCod: isCod);
+    if (result == null || !mounted) return;
+    setState(() => _syncing = true);
+    final reason = result.notes.isNotEmpty ? result.notes : result.reason;
+    final tripId = AppScope.of(context).tripIdForOrder(order.orderId);
+    try {
+      if (tripId != null && tripId.isNotEmpty) {
+        await ExternalDeliveryRepository().processFailedDeliveryReturnByIds(
+          tripId: tripId,
+          deliveryId: order.orderId,
+          reason: reason,
+          reasonCode: result.reasonCode,
+          photoPath: result.photoPath,
+        );
+      } else {
+        await ExternalDeliveryRepository().markOrderFailed(
+          orderName: order.orderId,
+          reason: reason,
+          reasonCode: result.reasonCode,
+          photoPath: result.photoPath,
+        );
+      }
+    } catch (_) {}
+    if (!mounted) { setState(() => _syncing = false); return; }
+    final app = AppScope.of(context);
+    final error = await app.updateOrderStatus(OrderStatus.failed);
+    app.stopOrderTimer();
+    if (!context.mounted) return;
+    setState(() => _syncing = false);
+    if (error != null) { AppToast.show(context, error); return; }
+    Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -150,20 +301,77 @@ class NavigationScreen extends StatelessWidget {
             label: Text(app.t('use_inapp_nav')),
           ),
           const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: () async {
-              final error = await app.updateOrderStatus(
-                OrderProgressStatus.reachedPickup,
-              );
-              if (!context.mounted) return;
-              if (error != null) {
-                AppToast.show(context, error);
-                return;
-              }
-              Navigator.of(context).pushNamed(AppRoutes.orderStatus);
-            },
-            child: Text(app.t('reached_pickup')),
-          ),
+          if (order.orderStatus == OrderStatus.outForDelivery)
+            order.paymentMode.toUpperCase() == 'COD' && !_codCashConfirmed
+                ? ElevatedButton.icon(
+                    onPressed: _syncing
+                        ? null
+                        : () => _handleCodCashCollection(context, order),
+                    icon: _syncing
+                        ? const SizedBox(
+                            width: 18, height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                          )
+                        : const Icon(Icons.account_balance_wallet_rounded),
+                    label: const Text('Confirm COD Cash'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF2E7D32),
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(double.infinity, 52),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _syncing ? null : () => _advanceStatus(context, order),
+                          icon: _syncing
+                              ? const SizedBox(
+                                  width: 18, height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                                )
+                              : const Icon(Icons.check_circle_outline),
+                          label: const Text('Mark Delivered'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _syncing ? null : () => _onMarkFailed(context, order),
+                          icon: const Icon(Icons.cancel_outlined),
+                          label: const Text('Mark Failed'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+          else if (_actionLabel(order.orderStatus).isNotEmpty)
+            ElevatedButton(
+              onPressed: _syncing ? null : () => _advanceStatus(context, order),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: _syncing
+                  ? const SizedBox(
+                      width: 20, height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                    )
+                  : Text(_actionLabel(order.orderStatus)),
+            ),
         ],
       ),
     );
