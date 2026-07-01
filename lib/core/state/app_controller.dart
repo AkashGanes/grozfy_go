@@ -427,6 +427,8 @@ class AppController extends ChangeNotifier {
     return _activeTripIds[order.orderId];
   }
 
+  String? tripIdForOrder(String orderId) => _activeTripIds[orderId];
+
   void createMockActiveOrder() {
     if (_activeOrders.isEmpty) {
       final mockOrder = DeliveryOrder(
