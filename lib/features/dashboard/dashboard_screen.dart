@@ -745,32 +745,13 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                       ],
                     ),
                   ),
-                ],
-                primaryActionLabel: order.orderStatus == OrderStatus.outForDelivery &&
-                        order.paymentMode.toUpperCase() == 'COD' &&
-                        !_codResultsMap.containsKey(order.orderId)
-                    ? 'Confirm COD Cash'
-                    : transition?.label,
-                onPrimaryAction: order.orderStatus == OrderStatus.outForDelivery &&
-                        order.paymentMode.toUpperCase() == 'COD' &&
-                        !_codResultsMap.containsKey(order.orderId)
-                    ? () => _handleCodCashCollection(ctx, order)
-                    : transition == null
-                        ? null
-                        : () => _runTransition(ctx, app, order, transition),
-                secondaryActionLabel: order.orderStatus == OrderStatus.outForDelivery &&
-                        (order.paymentMode.toUpperCase() != 'COD' ||
-                            _codResultsMap.containsKey(order.orderId))
-                    ? app.t('mark_failed')
-                    : null,
-                onSecondaryAction: order.orderStatus == OrderStatus.outForDelivery &&
-                        (order.paymentMode.toUpperCase() != 'COD' ||
-                            _codResultsMap.containsKey(order.orderId))
-                    ? () => _runFailedTransition(ctx, app, order)
-                    : null,
-              );
-            },
-            child: KeyedSubtree(
+                ),
+            ],
+          ),
+        ),
+
+        // Card carousel — swipe target, natural height.
+        KeyedSubtree(
               key: ValueKey(_currentPageIndex),
               child: () {
                 final recallData = _recallDataMap[currentOrder.orderId];
@@ -830,23 +811,31 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                       ),
                     ),
                   ],
-                  primaryActionLabel: transition?.label,
-                  onPrimaryAction: transition == null
-                      ? null
-                      : () => _runTransition(context, app, currentOrder, transition),
-                  secondaryActionLabel:
-                      currentOrder.orderStatus == OrderStatus.outForDelivery
-                          ? app.t('mark_failed')
-                          : null,
-                  onSecondaryAction:
-                      currentOrder.orderStatus == OrderStatus.outForDelivery
-                          ? () => _handleFailedDelivery(context, app, currentOrder)
-                          : null,
+                  primaryActionLabel: currentOrder.orderStatus == OrderStatus.outForDelivery &&
+                          currentOrder.paymentMode.toUpperCase() == 'COD' &&
+                          !_codResultsMap.containsKey(currentOrder.orderId)
+                      ? 'Confirm COD Cash'
+                      : transition?.label,
+                  onPrimaryAction: currentOrder.orderStatus == OrderStatus.outForDelivery &&
+                          currentOrder.paymentMode.toUpperCase() == 'COD' &&
+                          !_codResultsMap.containsKey(currentOrder.orderId)
+                      ? () => _handleCodCashCollection(context, currentOrder)
+                      : transition == null
+                          ? null
+                          : () => _runTransition(context, app, currentOrder, transition),
+                  secondaryActionLabel: currentOrder.orderStatus == OrderStatus.outForDelivery &&
+                          (currentOrder.paymentMode.toUpperCase() != 'COD' ||
+                              _codResultsMap.containsKey(currentOrder.orderId))
+                      ? app.t('mark_failed')
+                      : null,
+                  onSecondaryAction: currentOrder.orderStatus == OrderStatus.outForDelivery &&
+                          (currentOrder.paymentMode.toUpperCase() != 'COD' ||
+                              _codResultsMap.containsKey(currentOrder.orderId))
+                      ? () => _runFailedTransition(context, app, currentOrder)
+                      : null,
                 );
               }(),
             ),
-          ),
-        ),
 
         // Navigation bar — arrows + dots + counter (only for multiple orders).
         if (orders.length > 1)
