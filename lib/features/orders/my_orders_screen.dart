@@ -115,6 +115,41 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
     );
   }
 
+  // Reverse of _orderToSummary: build a DeliveryOrder from a fetched
+  // ExternalDelivery summary. Used as a fallback for the Active tab when an
+  // order isn't present in the (capped) app-state active orders list, so
+  // "View Details" always navigates instead of silently doing nothing.
+  DeliveryOrder _summaryToOrder(ExternalDelivery order) {
+    final OrderStatus status = switch (order.status) {
+      'Added to Trip' => OrderStatus.accepted,
+      'Reached Pickup' => OrderStatus.reachedPickup,
+      'Picked Up' => OrderStatus.pickedUp,
+      'Out for Delivery' => OrderStatus.outForDelivery,
+      'Delivered' => OrderStatus.delivered,
+      'Failed' => OrderStatus.failed,
+      'Cancelled' => OrderStatus.cancelled,
+      'Returned' => OrderStatus.returned,
+      _ => OrderStatus.pending,
+    };
+    return DeliveryOrder(
+      orderId: order.name,
+      customerName: order.customerName,
+      customerPhone: '',
+      deliveryAddress: order.deliveryAddress ?? '',
+      storeId: order.storeUrl,
+      storeName: order.storeName,
+      storeContact: '',
+      storeAddress: '',
+      orderItems: const [],
+      orderStatus: status,
+      latitude: 0,
+      longitude: 0,
+      failureReasonCode: order.failureReasonCode,
+      deliveryNotes: order.deliveryNotes,
+      completedAt: DateTime.tryParse(order.modified),
+    );
+  }
+
   Future<void> _loadPastOrders() async {
     if (_pastFuture != null) return;
     _pastLoadRequested = true;
@@ -542,12 +577,13 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
             onTap: () {
               final matches = appActiveOrders
                   .where((o) => o.orderId == order.name);
-              if (matches.isNotEmpty) {
-                Navigator.of(context).pushNamed(
-                  AppRoutes.orderDetails,
-                  arguments: matches.first,
-                );
-              }
+              final DeliveryOrder deliveryOrder = matches.isNotEmpty
+                  ? matches.first
+                  : _summaryToOrder(order);
+              Navigator.of(context).pushNamed(
+                AppRoutes.orderDetails,
+                arguments: deliveryOrder,
+              );
             },
           );
         },
@@ -621,6 +657,9 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
                 orderStatus: status,
                 latitude: 0,
                 longitude: 0,
+                failureReasonCode: order.failureReasonCode,
+                deliveryNotes: order.deliveryNotes,
+                completedAt: DateTime.tryParse(order.modified),
               );
               Navigator.of(context).pushNamed(
                 AppRoutes.orderDetails,

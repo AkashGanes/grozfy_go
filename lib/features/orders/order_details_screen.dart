@@ -68,6 +68,50 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   Color _textSecondary(BuildContext c) =>
       _isDark(c) ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
 
+  static const Map<String, String> _reasonLabels = {
+    'customer_unavailable': 'Customer Unavailable',
+    'address_inaccessible': 'Address Inaccessible',
+    'wrong_address': 'Wrong Address',
+    'customer_refused_at_door': 'Customer Refused at Door',
+    'damaged_in_transit': 'Damaged in Transit',
+    'lost_in_transit': 'Lost in Transit',
+    'suspected_fraud': 'Suspected Fraud',
+  };
+
+  String _reasonLabelFor(String code) =>
+      _reasonLabels[code] ?? (code.isNotEmpty ? code : '');
+
+  ({Color accent, IconData icon, String title}) _closedStatusConfig(
+      OrderStatus status) {
+    switch (status) {
+      case OrderStatus.delivered:
+        return (
+          accent: const Color(0xFF118A52),
+          icon: Icons.check_circle_rounded,
+          title: 'Order Delivered',
+        );
+      case OrderStatus.cancelled:
+        return (
+          accent: const Color(0xFFB42318),
+          icon: Icons.cancel_rounded,
+          title: 'Order Cancelled',
+        );
+      case OrderStatus.returned:
+        return (
+          accent: const Color(0xFF6A1B9A),
+          icon: Icons.assignment_return_rounded,
+          title: 'Order Returned',
+        );
+      case OrderStatus.failed:
+      default:
+        return (
+          accent: const Color(0xFFC62828),
+          icon: Icons.report_problem_rounded,
+          title: 'Delivery Failed',
+        );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = AppScope.of(context);
@@ -107,8 +151,27 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             order.orderStatus == OrderStatus.reachedPickup);
     final bool showTrackOrder =
         order.orderStatus == OrderStatus.pickedUp ||
-        order.orderStatus == OrderStatus.outForDelivery ||
-        order.orderStatus == OrderStatus.delivered;
+        order.orderStatus == OrderStatus.outForDelivery;
+    final bool isClosedStatus = order.orderStatus == OrderStatus.delivered ||
+        order.orderStatus == OrderStatus.cancelled ||
+        order.orderStatus == OrderStatus.returned ||
+        order.orderStatus == OrderStatus.failed;
+    // The detail fetch (_detail) hits the live per-order endpoint and is the
+    // source of truth; the nav-arg `order` may carry stale/blank reason data
+    // copied from a list summary, so prefer _detail whenever it has a value.
+    final String effectiveReasonCode =
+        (_detail?.failureReasonCode.isNotEmpty ?? false)
+            ? _detail!.failureReasonCode
+            : order.failureReasonCode;
+    final String effectiveNotes = (_detail?.deliveryNotes.isNotEmpty ?? false)
+        ? _detail!.deliveryNotes
+        : order.deliveryNotes;
+    final DateTime? effectiveCompletedAt =
+        DateTime.tryParse(_detail?.modified ?? '') ?? order.completedAt;
+    final String reasonLabel = _reasonLabelFor(effectiveReasonCode);
+    final bool hasNote =
+        effectiveNotes.isNotEmpty && effectiveNotes != reasonLabel;
+    final closedConfig = _closedStatusConfig(order.orderStatus);
 
     return Scaffold(
       backgroundColor: _pageBg(context),
@@ -119,13 +182,35 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               title: 'Order ${order.orderId}',
               subtitle: isPending
                   ? 'Review and accept this order'
-                  : 'Active order details',
+                  : isClosedStatus
+                      ? 'Order details'
+                      : 'Active order details',
               onBack: () => Navigator.of(context).maybePop(),
             ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
+                  if (isClosedStatus) ...[
+                    _StatusBanner(
+                      accent: closedConfig.accent,
+                      icon: closedConfig.icon,
+                      title: closedConfig.title,
+                      completedAt: effectiveCompletedAt,
+                      isDark: _isDark(context),
+                    ),
+                    if (reasonLabel.isNotEmpty || hasNote) ...[
+                      const SizedBox(height: 6),
+                      _ReasonNotesPanel(
+                        reasonLabel: reasonLabel,
+                        notes: effectiveNotes,
+                        hasNote: hasNote,
+                        accent: closedConfig.accent,
+                        isDark: _isDark(context),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                  ],
                   _SectionCard(
                     expanded: _customerExpanded,
                     onToggle: () => setState(
@@ -140,18 +225,22 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     cardBorder: _cardBorder(context),
                     textPrimary: _textPrimary(context),
                     body: Column(
-                      children: [
+                      children: _withRowDividers([
                         _InfoRow(
                           label: 'Name',
                           value: order.customerName,
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.person_outline_rounded,
+                          iconColor: const Color(0xFF2D6CDF),
                         ),
                         _InfoRow(
                           label: 'Phone',
                           value: order.customerPhone,
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.call_outlined,
+                          iconColor: const Color(0xFF2D6CDF),
                           action: order.customerPhone.isNotEmpty
                               ? _IconAction(
                                   icon: Icons.phone_rounded,
@@ -166,36 +255,37 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                           value: order.deliveryAddress,
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.location_on_outlined,
+                          iconColor: const Color(0xFF2D6CDF),
                         ),
                         _InfoRow(
                           label: 'Order ID',
                           value: order.orderId,
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.confirmation_number_outlined,
+                          iconColor: const Color(0xFF2D6CDF),
                         ),
                         _InfoRow(
                           label: 'Status',
                           value: order.orderStatus.label,
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.flag_outlined,
+                          iconColor: const Color(0xFF2D6CDF),
                           customValue: _StatusPill(
                               label: order.orderStatus.label),
                         ),
-                        if (order.orderStatus == OrderStatus.failed) ...[
-                          const SizedBox(height: 10),
-                          _FailureCard(
-                            reasonCode: order.failureReasonCode,
-                            notes: order.deliveryNotes,
-                          ),
-                        ],
                         if (order.deliveryInstructions.isNotEmpty)
                           _InfoRow(
                             label: 'Instructions',
                             value: order.deliveryInstructions,
                             textPrimary: _textPrimary(context),
                             textSecondary: _textSecondary(context),
+                            icon: Icons.notes_rounded,
+                            iconColor: const Color(0xFF2D6CDF),
                           ),
-                      ],
+                      ], _cardBorder(context)),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -213,18 +303,22 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     cardBorder: _cardBorder(context),
                     textPrimary: _textPrimary(context),
                     body: Column(
-                      children: [
+                      children: _withRowDividers([
                         _InfoRow(
                           label: 'Store Name',
                           value: order.storeName,
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.storefront_outlined,
+                          iconColor: const Color(0xFF1AB36A),
                         ),
                         _InfoRow(
                           label: 'Store ID',
                           value: order.storeId,
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.tag_rounded,
+                          iconColor: const Color(0xFF1AB36A),
                           action: order.storeId.isNotEmpty
                               ? _IconAction(
                                   icon: Icons.public_rounded,
@@ -243,6 +337,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                           value: order.storeContact,
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.call_outlined,
+                          iconColor: const Color(0xFF1AB36A),
                           action: order.storeContact.isNotEmpty
                               ? _IconAction(
                                   icon: Icons.phone_rounded,
@@ -257,6 +353,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                           value: order.storeAddress,
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.location_on_outlined,
+                          iconColor: const Color(0xFF1AB36A),
                           action: (order.latitude != 0 && order.longitude != 0)
                               ? _IconAction(
                                   icon: Icons.location_on_rounded,
@@ -272,6 +370,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                           value: '${order.distanceKm.toStringAsFixed(2)} km',
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.route_outlined,
+                          iconColor: const Color(0xFF1AB36A),
                         ),
                         _InfoRow(
                           label: 'Earnings',
@@ -279,8 +379,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                               'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}',
                           textPrimary: _textPrimary(context),
                           textSecondary: _textSecondary(context),
+                          icon: Icons.payments_outlined,
+                          iconColor: const Color(0xFF1AB36A),
                         ),
-                      ],
+                      ], _cardBorder(context)),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -321,6 +423,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               isPending: isPending,
               showNavigate: showNavigate,
               showTrackOrder: showTrackOrder,
+              isClosedStatus: isClosedStatus,
               busy: _busy,
               customerPhone: order.customerPhone,
               storePhone: order.storeContact,
@@ -328,6 +431,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               onReject: () => _rejectPendingOrder(context, order),
               onCallCustomer: () => _launchUri('tel:${order.customerPhone}'),
               onCallStore: () => _launchUri('tel:${order.storeContact}'),
+              onBackToOrders: () => Navigator.of(context).maybePop(),
               onNavigate: () =>
                   Navigator.of(context).pushNamed(AppRoutes.navigation),
               onTrack: () =>
@@ -626,9 +730,10 @@ class _StatusPill extends StatelessWidget {
   Color _bg(String s) {
     final lower = s.toLowerCase();
     if (lower.contains('deliver')) return const Color(0xFFE7F7EE);
-    if (lower.contains('cancel') || lower.contains('reject')) {
+    if (lower.contains('cancel') || lower.contains('reject') || lower.contains('fail')) {
       return const Color(0xFFFEF3F2);
     }
+    if (lower.contains('return')) return const Color(0xFFF4EBFB);
     if (lower.contains('pick') || lower.contains('out')) {
       return const Color(0xFFE5EEFB);
     }
@@ -638,9 +743,10 @@ class _StatusPill extends StatelessWidget {
   Color _fg(String s) {
     final lower = s.toLowerCase();
     if (lower.contains('deliver')) return const Color(0xFF118A52);
-    if (lower.contains('cancel') || lower.contains('reject')) {
+    if (lower.contains('cancel') || lower.contains('reject') || lower.contains('fail')) {
       return const Color(0xFFB42318);
     }
+    if (lower.contains('return')) return const Color(0xFF6A1B9A);
     if (lower.contains('pick') || lower.contains('out')) {
       return const Color(0xFF1F4FB6);
     }
@@ -712,28 +818,19 @@ class _SectionCard extends StatelessWidget {
           InkWell(
             onTap: onToggle,
             borderRadius: BorderRadius.circular(16),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-              decoration: BoxDecoration(
-                color: headerBg,
-                borderRadius: BorderRadius.vertical(
-                  top: const Radius.circular(16),
-                  bottom: expanded
-                      ? Radius.zero
-                      : const Radius.circular(16),
-                ),
-              ),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(14, 14, 14, expanded ? 10 : 14),
               child: Row(
                 children: [
                   Container(
-                    width: 34,
-                    height: 34,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
-                      color: cardBg,
+                      color: headerBg,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     alignment: Alignment.center,
-                    child: Icon(headerIcon, color: headerIconColor, size: 20),
+                    child: Icon(headerIcon, color: headerIconColor, size: 18),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -750,18 +847,20 @@ class _SectionCard extends StatelessWidget {
                     expanded
                         ? Icons.keyboard_arrow_up_rounded
                         : Icons.keyboard_arrow_down_rounded,
-                    color: textPrimary,
+                    color: textPrimary.withValues(alpha: 0.45),
                     size: 22,
                   ),
                 ],
               ),
             ),
           ),
-          if (expanded)
+          if (expanded) ...[
+            Divider(height: 1, color: cardBorder),
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
               child: body,
             ),
+          ],
         ],
       ),
     );
@@ -774,6 +873,8 @@ class _InfoRow extends StatelessWidget {
     required this.value,
     required this.textPrimary,
     required this.textSecondary,
+    this.icon,
+    this.iconColor,
     this.action,
     this.customValue,
   });
@@ -782,43 +883,57 @@ class _InfoRow extends StatelessWidget {
   final String value;
   final Color textPrimary;
   final Color textSecondary;
+  final IconData? icon;
+  final Color? iconColor;
   final Widget? action;
   final Widget? customValue;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(
-            width: 96,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                color: textSecondary,
-                fontWeight: FontWeight.w500,
+          if (icon != null) ...[
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: (iconColor ?? textSecondary).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(9),
               ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 15, color: iconColor ?? textSecondary),
             ),
-          ),
+            const SizedBox(width: 10),
+          ],
           Expanded(
-            child: customValue != null
-                ? Align(
-                    alignment: Alignment.centerLeft,
-                    child: customValue,
-                  )
-                : Text(
-                    value,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w700,
-                      color: textPrimary,
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: textPrimary,
+                    fontWeight: FontWeight.w800,
                   ),
+                ),
+                const SizedBox(height: 2),
+                customValue ??
+                    Text(
+                      value.isEmpty ? '—' : value,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w400,
+                        color: textSecondary,
+                      ),
+                    ),
+              ],
+            ),
           ),
           if (action != null) ...[
             const SizedBox(width: 8),
@@ -828,6 +943,17 @@ class _InfoRow extends StatelessWidget {
       ),
     );
   }
+}
+
+List<Widget> _withRowDividers(List<Widget> rows, Color color) {
+  final result = <Widget>[];
+  for (var i = 0; i < rows.length; i++) {
+    result.add(rows[i]);
+    if (i != rows.length - 1) {
+      result.add(Divider(height: 1, thickness: 1, color: color));
+    }
+  }
+  return result;
 }
 
 class _IconAction extends StatelessWidget {
@@ -865,6 +991,7 @@ class _BottomActions extends StatelessWidget {
     required this.isPending,
     required this.showNavigate,
     required this.showTrackOrder,
+    required this.isClosedStatus,
     required this.busy,
     required this.customerPhone,
     required this.storePhone,
@@ -872,6 +999,7 @@ class _BottomActions extends StatelessWidget {
     required this.onReject,
     required this.onCallCustomer,
     required this.onCallStore,
+    required this.onBackToOrders,
     required this.onNavigate,
     required this.onTrack,
     required this.cardBg,
@@ -881,6 +1009,7 @@ class _BottomActions extends StatelessWidget {
   final bool isPending;
   final bool showNavigate;
   final bool showTrackOrder;
+  final bool isClosedStatus;
   final bool busy;
   final String customerPhone;
   final String storePhone;
@@ -888,6 +1017,7 @@ class _BottomActions extends StatelessWidget {
   final VoidCallback onReject;
   final VoidCallback onCallCustomer;
   final VoidCallback onCallStore;
+  final VoidCallback onBackToOrders;
   final VoidCallback onNavigate;
   final VoidCallback onTrack;
   final Color cardBg;
@@ -1098,6 +1228,56 @@ class _BottomActions extends StatelessWidget {
                 ),
               ),
             ],
+            if (!showNavigate && !showTrackOrder) ...[
+              if (isClosedStatus) ...[
+                Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 15,
+                      color: isDark
+                          ? const Color(0xFFA4ABB8)
+                          : const Color(0xFF667085),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'This order is closed and no further action is needed.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: isDark
+                              ? const Color(0xFFA4ABB8)
+                              : const Color(0xFF667085),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+              ],
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: onBackToOrders,
+                  icon: const Icon(Icons.arrow_back_rounded, size: 18),
+                  label: const Text('Back to Orders'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1F5FE8),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ],
       ),
@@ -1105,85 +1285,163 @@ class _BottomActions extends StatelessWidget {
   }
 }
 
-class _FailureCard extends StatelessWidget {
-  const _FailureCard({required this.reasonCode, required this.notes});
-  final String? reasonCode;
-  final String? notes;
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({
+    required this.accent,
+    required this.icon,
+    required this.title,
+    required this.completedAt,
+    required this.isDark,
+  });
 
-  static const Map<String, String> _labels = {
-    'customer_unavailable': 'Customer Unavailable',
-    'address_inaccessible': 'Address Inaccessible',
-    'wrong_address': 'Wrong Address',
-    'customer_refused_at_door': 'Customer Refused at Door',
-    'damaged_in_transit': 'Damaged in Transit',
-    'lost_in_transit': 'Lost in Transit',
-    'suspected_fraud': 'Suspected Fraud',
-  };
+  final Color accent;
+  final IconData icon;
+  final String title;
+  final DateTime? completedAt;
+  final bool isDark;
+
+  static const List<String> _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+
+  String _formatTimestamp(DateTime dt) {
+    final hour12 = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    final minute = dt.minute.toString().padLeft(2, '0');
+    return '${dt.day} ${_months[dt.month - 1]} ${dt.year} • $hour12:$minute $period';
+  }
 
   @override
   Widget build(BuildContext context) {
-    final code = reasonCode ?? '';
-    final noteText = notes ?? '';
-    final reasonLabel = _labels[code] ?? (code.isNotEmpty ? code : '');
+    final Color textSecondary =
+        isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
+    final Color textPrimary =
+        isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFC62828).withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: const Color(0xFFC62828).withValues(alpha: 0.25),
-        ),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.cancel_rounded, color: Color(0xFFC62828), size: 15),
-                    SizedBox(width: 5),
-                    Text(
-                      'Failure Details',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFFC62828),
-                      ),
-                    ),
-                  ],
-                ),
-                if (reasonLabel.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    reasonLabel,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF7B1010),
-                    ),
-                  ),
-                ],
-                if (noteText.isNotEmpty && noteText != reasonLabel) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    noteText,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: const Color(0xFFC62828).withValues(alpha: 0.7),
-                    ),
-                  ),
-                ],
-                if (reasonLabel.isEmpty && noteText.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4),
-                    child: Text(
-                      'No failure details recorded.',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF7B1010)),
-                    ),
-                  ),
-              ],
+        children: [
+          Container(
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, color: accent, size: 52),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: textPrimary,
+            ),
+          ),
+          if (completedAt != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              _formatTimestamp(completedAt!),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: textSecondary,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
 }
+
+class _ReasonNotesPanel extends StatelessWidget {
+  const _ReasonNotesPanel({
+    required this.reasonLabel,
+    required this.notes,
+    required this.hasNote,
+    required this.accent,
+    required this.isDark,
+  });
+
+  final String reasonLabel;
+  final String notes;
+  final bool hasNote;
+  final Color accent;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color textPrimary =
+        isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: isDark ? 0.16 : 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.3), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (reasonLabel.isNotEmpty)
+            _row(Icons.info_rounded, 'Reason', reasonLabel, textPrimary),
+          if (hasNote) ...[
+            if (reasonLabel.isNotEmpty) const SizedBox(height: 12),
+            _row(Icons.sticky_note_2_rounded, 'Notes', notes, textPrimary),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _row(IconData icon, String label, String value, Color textPrimary) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          alignment: Alignment.center,
+          child: Icon(icon, size: 15, color: accent),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: accent,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w400,
+                  color: textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
