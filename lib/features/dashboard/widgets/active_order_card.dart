@@ -42,10 +42,10 @@ class ActiveOrderCard extends StatelessWidget {
     required this.heading,
     required this.statusLabel,
     required this.orderId,
-    required this.address,
     required this.meta,
     required this.actions,
     required this.onAddOrder,
+    this.trackOrderAction,
     this.primaryActionLabel,
     this.onPrimaryAction,
     this.secondaryActionLabel,
@@ -56,10 +56,10 @@ class ActiveOrderCard extends StatelessWidget {
   final String heading;
   final String statusLabel;
   final String orderId;
-  final String address;
   final ActiveOrderMeta meta;
   final List<ActiveOrderAction> actions;
   final VoidCallback onAddOrder;
+  final ActiveOrderAction? trackOrderAction;
   final String? primaryActionLabel;
   final VoidCallback? onPrimaryAction;
   final String? secondaryActionLabel;
@@ -138,24 +138,42 @@ class ActiveOrderCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        orderId,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: DashColors.textPrimary(context),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        address,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: DashColors.textTertiary(context),
-                          fontSize: 13,
-                          height: 1.35,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              orderId,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: DashColors.textPrimary(context),
+                              ),
+                            ),
+                          ),
+                          if (trackOrderAction != null)
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: trackOrderAction!.onTap,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Icon(
+                                      trackOrderAction!.icon,
+                                      size: 18,
+                                      color: const Color(0xFF1F4FB6),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       if (!meta.isEmpty) ...[
                         const SizedBox(height: 10),
@@ -303,28 +321,14 @@ class _ActionGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (actions.isEmpty) return const SizedBox.shrink();
-    final List<Widget> rows = [];
-    for (int i = 0; i < actions.length; i += 2) {
-      final left = actions[i];
-      final right = i + 1 < actions.length ? actions[i + 1] : null;
-      rows.add(
-        Row(
-          children: [
-            Expanded(child: _ActionTile(action: left)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: right != null
-                  ? _ActionTile(action: right)
-                  : const SizedBox.shrink(),
-            ),
-          ],
-        ),
-      );
-      if (i + 2 < actions.length) {
-        rows.add(const SizedBox(height: 10));
-      }
-    }
-    return Column(children: rows);
+    return Row(
+      children: [
+        for (int i = 0; i < actions.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(child: _ActionTile(action: actions[i])),
+        ],
+      ],
+    );
   }
 }
 
@@ -344,10 +348,10 @@ class _ActionTile extends StatelessWidget {
           height: 44,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: DashColors.cardBorder(context)),
           ),
           alignment: Alignment.center,
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(action.icon, size: 16, color: const Color(0xFF1F4FB6)),

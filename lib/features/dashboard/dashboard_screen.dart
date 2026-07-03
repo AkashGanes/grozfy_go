@@ -766,12 +766,6 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                   showHeading: false,
                   onAddOrder: () =>
                       Navigator.of(context).pushNamed(AppRoutes.orderListing),
-                  address: Formatters.stripHtml(
-                    currentOrder.drop.isNotEmpty
-                        ? currentOrder.drop
-                        : currentOrder.deliveryAddress,
-                    preserveLineBreaks: true,
-                  ),
                   meta: ActiveOrderMeta(
                     date: AppDateFormat.date(currentOrder.acceptedAt),
                     time: AppDateFormat.time(currentOrder.acceptedAt),
@@ -780,7 +774,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                         : (currentOrder.contactNumber.isNotEmpty
                             ? currentOrder.contactNumber
                             : null),
-                    email: app.profile?.email,
+                    email: currentOrder.customerEmail.isNotEmpty
+                        ? currentOrder.customerEmail
+                        : null,
                   ),
                   actions: [
                     ActiveOrderAction(
@@ -802,15 +798,15 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                       icon: Icons.map_outlined,
                       onTap: () => _openInMaps(context, currentOrder, app),
                     ),
-                    ActiveOrderAction(
-                      label: app.t('track_order'),
-                      icon: Icons.local_shipping_outlined,
-                      onTap: () => Navigator.of(context).pushNamed(
-                        AppRoutes.orderTracking,
-                        arguments: currentOrder,
-                      ),
-                    ),
                   ],
+                  trackOrderAction: ActiveOrderAction(
+                    label: app.t('track_order'),
+                    icon: Icons.local_shipping_outlined,
+                    onTap: () => Navigator.of(context).pushNamed(
+                      AppRoutes.orderTracking,
+                      arguments: currentOrder,
+                    ),
+                  ),
                   primaryActionLabel: currentOrder.orderStatus == OrderStatus.outForDelivery &&
                           currentOrder.paymentMode.toUpperCase() == 'COD' &&
                           !_codResultsMap.containsKey(currentOrder.orderId)
