@@ -34,15 +34,16 @@ import 'widgets/profile_progress_card.dart';
 import '../stats/widgets/daily_summary_card.dart';
 import '../pickup_jobs/model/pickup_job.dart';
 import '../pickup_jobs/repository/pickup_job_repository.dart';
+import '../cod_settlement/providers/settlement_provider.dart';
 
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
     with WidgetsBindingObserver {
   bool _licenseDialogShowing = false;
   bool _isNavigating = false;
@@ -73,6 +74,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _app.fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
+      ref.invalidate(settlementProvider);
     }
   }
 
@@ -139,13 +141,19 @@ class _DashboardScreenState extends State<DashboardScreen>
           Navigator.of(context)
               .push(NoAnimRoute(builder: (_) => const MyOrdersScreen()))
               .whenComplete(() {
-                if (mounted) setState(() => _isNavigating = false);
+                if (mounted) {
+                  setState(() => _isNavigating = false);
+                  ref.invalidate(settlementProvider);
+                }
               });
         } else if (index == 2) {
           Navigator.of(context)
               .push(NoAnimRoute(builder: (_) => const MoreScreen()))
               .whenComplete(() {
-                if (mounted) setState(() => _isNavigating = false);
+                if (mounted) {
+                  setState(() => _isNavigating = false);
+                  ref.invalidate(settlementProvider);
+                }
               });
         } else {
           setState(() => _isNavigating = false);
@@ -697,16 +705,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                   fontWeight: FontWeight.w800,
                   color: DashColors.textPrimary(context),
                 ),
-                meta: ActiveOrderMeta(
-                  date: AppDateFormat.date(order.acceptedAt),
-                  time: AppDateFormat.time(order.acceptedAt),
-                  phone: order.customerPhone.isNotEmpty
-                      ? order.customerPhone
-                      : (order.contactNumber.isNotEmpty
-                          ? order.contactNumber
-                          : null),
-                  email: null,
-                ),
+              ),
               const Spacer(),
               if (currentRecall == null && app.canAcceptMoreOrders)
                 GestureDetector(
@@ -737,87 +736,76 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                       ],
                     ),
                   ),
-                ],
-                primaryActionLabel: transition?.label,
-                onPrimaryAction: transition == null
-                    ? null
-                    : () => _runTransition(ctx, app, order, transition),
-                secondaryActionLabel: order.orderStatus == OrderStatus.outForDelivery
-                    ? app.t('mark_failed')
-                    : null,
-                onSecondaryAction: order.orderStatus == OrderStatus.outForDelivery
-                    ? () => _handleFailedDelivery(ctx, app, order)
-                    : null,
-              );
-            },
-            child: KeyedSubtree(
-              key: ValueKey(_currentPageIndex),
-              child: () {
-                final recallData = _recallDataMap[currentOrder.orderId];
-                if (recallData != null) {
-                  return _buildRecallCard(currentOrder, recallData);
-                }
-                final transition = _nextTransition(currentOrder.orderStatus, app);
-                return ActiveOrderCard(
-                  heading: app.t('active_order'),
-                  statusLabel: app.orderStatusLabel(currentOrder.orderStatus),
-                  orderId: currentOrder.orderId,
-                  showHeading: false,
-                  onAddOrder: () =>
-                      Navigator.of(context).pushNamed(AppRoutes.orderListing),
-                  address: Formatters.stripHtml(
-                    currentOrder.drop.isNotEmpty
-                        ? currentOrder.drop
-                        : currentOrder.deliveryAddress,
-                    preserveLineBreaks: true,
-                  ),
-                  meta: ActiveOrderMeta(
-                    date: AppDateFormat.date(currentOrder.acceptedAt),
-                    time: AppDateFormat.time(currentOrder.acceptedAt),
-                    phone: currentOrder.customerPhone.isNotEmpty
-                        ? currentOrder.customerPhone
-                        : (currentOrder.contactNumber.isNotEmpty
-                            ? currentOrder.contactNumber
-                            : null),
-                    email: app.profile?.email,
-                  ),
-                  actions: [
-                    ActiveOrderAction(
-                      label: app.t('view_order'),
-                      icon: Icons.receipt_long_outlined,
-                      onTap: () => Navigator.of(context).pushNamed(
-                        AppRoutes.orderDetails,
-                        arguments: currentOrder,
-                      ),
-                    ),
-                    ActiveOrderAction(
-                      label: app.t('navigate'),
-                      icon: Icons.navigation_rounded,
-                      onTap: () =>
-                          Navigator.of(context).pushNamed(AppRoutes.navigation),
-                    ),
-                    ActiveOrderAction(
-                      label: app.t('open_maps'),
-                      icon: Icons.map_outlined,
-                      onTap: () => _openInMaps(context, currentOrder, app),
-                    ),
-                    ActiveOrderAction(
-                      label: app.t('track_order'),
-                      icon: Icons.local_shipping_outlined,
-                      onTap: () => Navigator.of(context).pushNamed(
-                        AppRoutes.orderTracking,
-                        arguments: currentOrder,
-                      ),
-                    ),
-                  ],
-                  primaryActionLabel: transition?.label,
-                  onPrimaryAction: transition == null
-                      ? null
-                      : () => _runTransition(context, app, currentOrder, transition),
-                );
-              }(),
-            ),
+                ),
+            ],
           ),
+        ),
+        KeyedSubtree(
+          key: ValueKey(_currentPageIndex),
+          child: () {
+            final recallData = _recallDataMap[currentOrder.orderId];
+            if (recallData != null) {
+              return _buildRecallCard(currentOrder, recallData);
+            }
+            final transition = _nextTransition(currentOrder.orderStatus, app);
+            return ActiveOrderCard(
+              heading: app.t('active_order'),
+              statusLabel: app.orderStatusLabel(currentOrder.orderStatus),
+              orderId: currentOrder.orderId,
+              showHeading: false,
+              onAddOrder: () =>
+                  Navigator.of(context).pushNamed(AppRoutes.orderListing),
+              address: Formatters.stripHtml(
+                currentOrder.drop.isNotEmpty
+                    ? currentOrder.drop
+                    : currentOrder.deliveryAddress,
+                preserveLineBreaks: true,
+              ),
+              meta: ActiveOrderMeta(
+                date: AppDateFormat.date(currentOrder.acceptedAt),
+                time: AppDateFormat.time(currentOrder.acceptedAt),
+                phone: currentOrder.customerPhone.isNotEmpty
+                    ? currentOrder.customerPhone
+                    : (currentOrder.contactNumber.isNotEmpty
+                        ? currentOrder.contactNumber
+                        : null),
+                email: app.profile?.email,
+              ),
+              actions: [
+                ActiveOrderAction(
+                  label: app.t('view_order'),
+                  icon: Icons.receipt_long_outlined,
+                  onTap: () => Navigator.of(context).pushNamed(
+                    AppRoutes.orderDetails,
+                    arguments: currentOrder,
+                  ),
+                ),
+                ActiveOrderAction(
+                  label: app.t('navigate'),
+                  icon: Icons.navigation_rounded,
+                  onTap: () =>
+                      Navigator.of(context).pushNamed(AppRoutes.navigation),
+                ),
+                ActiveOrderAction(
+                  label: app.t('open_maps'),
+                  icon: Icons.map_outlined,
+                  onTap: () => _openInMaps(context, currentOrder, app),
+                ),
+                ActiveOrderAction(
+                  label: app.t('track_order'),
+                  icon: Icons.local_shipping_outlined,
+                  onTap: () => Navigator.of(context).pushNamed(
+                    AppRoutes.orderTracking,
+                    arguments: currentOrder,
+                  ),
+                ),
+              ],
+              primaryActionLabel: transition?.label,
+              onPrimaryAction: transition == null
+                  ? null
+                  : () => _runTransition(context, app, currentOrder, transition),
+            );
+          }(),
         ),
 
         // Navigation bar — arrows + dots + counter (only for multiple orders).

@@ -715,6 +715,13 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
           'Earnings & Trips',
           [
             _tile(
+              icon: Icons.payments_rounded,
+              label: 'My Settlement',
+              route: AppRoutes.codSettlement,
+              color: const Color(0xFF1AB36A),
+            ),
+            _divider(),
+            _tile(
               icon: Icons.monetization_on_rounded,
               label: 'Earnings Summary',
               route: AppRoutes.earnings,

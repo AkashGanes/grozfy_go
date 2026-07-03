@@ -51,6 +51,9 @@ import 'features/security/security_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/support/support_screen.dart';
+import 'features/cod_settlement/ui/daily_settlement_screen.dart';
+import 'features/cod_settlement/ui/order_breakdown_screen.dart';
+import 'features/cod_settlement/model/daily_driver_settlement.dart';
 import 'package:device_preview/device_preview.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -390,6 +393,22 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
             case AppRoutes.support:
               return MaterialPageRoute<void>(
                 builder: (_) => const SupportScreen(),
+              );
+            case AppRoutes.codSettlement:
+              return MaterialPageRoute<void>(
+                builder: (_) => const DailySettlementScreen(),
+              );
+            case AppRoutes.orderBreakdown:
+              final args = settings.arguments as Map<String, dynamic>?;
+              final orders =
+                  (args?['orders'] as List<SettlementOrder>?) ??
+                  const <SettlementOrder>[];
+              final date = (args?['date'] as String?) ?? '';
+              return MaterialPageRoute<void>(
+                builder: (_) => OrderBreakdownScreen(
+                  orders: orders,
+                  settlementDate: date,
+                ),
               );
             default:
               return MaterialPageRoute<void>(

@@ -45,4 +45,14 @@ class ApiConstants {
   static const String getTimingEvents = partnerTimingLog;
 
   static const String issueList = '$erpBaseUrl/api/resource/Issue';
+
+  // ---------------------------------------------------------------------------
+  // COD Settlement endpoints
+  // ---------------------------------------------------------------------------
+
+  static const String driverSettlementToday =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.cod_settlement.get_driver_settlement_today';
+
+  static const String submitBankTransfer =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.cod_settlement.submit_bank_transfer';
 }

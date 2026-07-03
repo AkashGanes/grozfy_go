@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -364,8 +365,6 @@ class _JobCard extends StatelessWidget {
   final bool isAccepting;
   final VoidCallback onAccept;
   final VoidCallback onDetail;
-
-  static const Color _accent = Color(0xFFF38B19);
 
   @override
   Widget build(BuildContext context) {

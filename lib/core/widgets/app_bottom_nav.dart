@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../features/cod_settlement/providers/settlement_provider.dart';
 import '../theme/app_theme.dart';
 
-class AppBottomNav extends StatelessWidget {
+class AppBottomNav extends ConsumerWidget {
   const AppBottomNav({
     super.key,
     required this.currentIndex,
@@ -13,9 +15,11 @@ class AppBottomNav extends StatelessWidget {
   final ValueChanged<int> onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool showSettlementBadge = ref.watch(settlementBadgeProvider);
+
     return Container(
       decoration: BoxDecoration(
         color: scheme.surface,
@@ -49,6 +53,7 @@ class AppBottomNav extends StatelessWidget {
                 icon: Icons.more_horiz_rounded,
                 label: 'More',
                 isSelected: currentIndex == 2,
+                showBadge: showSettlementBadge,
                 onTap: () => onTap(2),
               ),
             ],
@@ -65,17 +70,21 @@ class _NavItem extends StatelessWidget {
     required this.label,
     required this.isSelected,
     required this.onTap,
+    this.showBadge = false,
   });
 
   final IconData icon;
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
+  final bool showBadge;
 
   @override
   Widget build(BuildContext context) {
     final Color inactive =
         Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+    final Color iconColor = isSelected ? AppTheme.oceanBlue : inactive;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -84,16 +93,30 @@ class _NavItem extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              color: isSelected ? AppTheme.oceanBlue : inactive,
-              size: 26,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(icon, color: iconColor, size: 26),
+                if (showBadge)
+                  Positioned(
+                    top: -2,
+                    right: -4,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 3),
             Text(
               label,
               style: TextStyle(
-                color: isSelected ? AppTheme.oceanBlue : inactive,
+                color: iconColor,
                 fontSize: 12,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),
