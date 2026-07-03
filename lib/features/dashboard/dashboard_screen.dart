@@ -766,6 +766,14 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                   showHeading: false,
                   onAddOrder: () =>
                       Navigator.of(context).pushNamed(AppRoutes.orderListing),
+                  customerName: currentOrder.customerName,
+                  customerPhone: currentOrder.customerPhone,
+                  address: Formatters.stripHtml(
+                    currentOrder.drop.isNotEmpty
+                        ? currentOrder.drop
+                        : currentOrder.deliveryAddress,
+                    preserveLineBreaks: true,
+                  ),
                   meta: ActiveOrderMeta(
                     date: AppDateFormat.date(currentOrder.acceptedAt),
                     time: AppDateFormat.time(currentOrder.acceptedAt),
