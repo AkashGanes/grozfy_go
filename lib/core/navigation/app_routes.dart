@@ -55,4 +55,6 @@ class AppRoutes {
   static const pickupPool = '/pickup-pool';
   static const pickupJobDetail = '/pickup-job-detail';
   static const support = '/support';
+  static const codSettlement = '/cod-settlement';
+  static const orderBreakdown = '/order-breakdown';
 }

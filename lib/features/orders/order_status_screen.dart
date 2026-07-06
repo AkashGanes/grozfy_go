@@ -545,7 +545,31 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     }
   }
 
-
+  Future<void> _onMarkFailed(BuildContext context, DeliveryOrder order) async {
+    final bool isCod = order.paymentMode.toUpperCase() == 'COD';
+    final result = await showFailedDeliverySheet(context, isCod: isCod);
+    if (result == null || !mounted) return;
+    setState(() => _syncing = true);
+    try {
+      await ExternalDeliveryRepository().markOrderFailed(
+        orderName: order.orderId,
+        reason: result.notes.isNotEmpty ? result.notes : result.reason,
+        reasonCode: result.reasonCode,
+        photoPath: result.photoPath,
+      );
+    } catch (_) {}
+    if (!mounted) { setState(() => _syncing = false); return; }
+    final app = AppScope.of(context);
+    final error = await app.updateOrderStatus(OrderStatus.failed);
+    app.stopOrderTimer();
+    if (!context.mounted) return;
+    setState(() => _syncing = false);
+    if (error != null) {
+      AppToast.show(context, error);
+      return;
+    }
+    Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.dashboard, (r) => false);
+  }
 
   Future<void> _onActionTap(BuildContext context, DeliveryOrder order) async {
     final next = _nextStatus(order.orderStatus);
