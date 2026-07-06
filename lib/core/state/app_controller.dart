@@ -105,7 +105,6 @@ class AppController extends ChangeNotifier {
   static const String _prefActiveTripId = 'active_trip_id';
   static const String _prefActiveOrderIds = 'active_order_ids';
   static const String _prefActiveTripIdsMap = 'active_trip_ids_map';
-  static const String _prefActiveOrdersCache = 'active_orders_cache';
   // Per-driver keys so multiple users on the same device don't share avg data.
   static String _prefTotalTripTimeTodayMs(String driver) =>
       'total_trip_time_today_ms_$driver';
