@@ -156,6 +156,8 @@ class _CurrentLocationPickerScreenState
       _error = null;
     });
 
+    bool haveInitialFix = false;
+
     try {
       final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -190,12 +192,31 @@ class _CurrentLocationPickerScreenState
         return;
       }
 
+      // Show a cached fix immediately if the OS has one, instead of leaving
+      // the screen on a blocking spinner for the full high-accuracy GPS fix
+      // below (which can take several seconds on a cold fix). The precise
+      // fix still follows and silently refines the pin once it arrives.
+      final Position? lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null && mounted) {
+        haveInitialFix = true;
+        final LatLng cached = LatLng(lastKnown.latitude, lastKnown.longitude);
+        setState(() {
+          _selectedPoint = cached;
+          _loading = false;
+          _addressLabel = 'Getting address...';
+        });
+        _moveMapToSelected();
+        await _reverseGeocode(cached.latitude, cached.longitude);
+      }
+
       final Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
         ),
       );
 
+      if (!mounted) return;
       final LatLng current = LatLng(position.latitude, position.longitude);
       setState(() {
         _selectedPoint = current;
@@ -206,6 +227,10 @@ class _CurrentLocationPickerScreenState
       _moveMapToSelected();
       await _reverseGeocode(position.latitude, position.longitude);
     } catch (_) {
+      if (!mounted) return;
+      // Already showing a usable cached fix — a timed-out precise fix isn't
+      // worth surfacing as an error over what's already on screen.
+      if (haveInitialFix) return;
       setState(() {
         _loading = false;
         _error = 'Unable to fetch current location. Tap on map to select manually.';

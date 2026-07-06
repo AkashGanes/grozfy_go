@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'dashboard_colors.dart';
 import 'section_card.dart';
@@ -42,10 +43,13 @@ class ActiveOrderCard extends StatelessWidget {
     required this.heading,
     required this.statusLabel,
     required this.orderId,
-    required this.address,
     required this.meta,
     required this.actions,
     required this.onAddOrder,
+    this.customerName,
+    this.customerPhone,
+    this.address,
+    this.trackOrderAction,
     this.primaryActionLabel,
     this.onPrimaryAction,
     this.secondaryActionLabel,
@@ -56,10 +60,13 @@ class ActiveOrderCard extends StatelessWidget {
   final String heading;
   final String statusLabel;
   final String orderId;
-  final String address;
   final ActiveOrderMeta meta;
   final List<ActiveOrderAction> actions;
   final VoidCallback onAddOrder;
+  final String? customerName;
+  final String? customerPhone;
+  final String? address;
+  final ActiveOrderAction? trackOrderAction;
   final String? primaryActionLabel;
   final VoidCallback? onPrimaryAction;
   final String? secondaryActionLabel;
@@ -138,28 +145,99 @@ class ActiveOrderCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        orderId,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: DashColors.textPrimary(context),
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              orderId,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: DashColors.textPrimary(context),
+                              ),
+                            ),
+                          ),
+                          if (address != null && address!.isNotEmpty)
+                            GestureDetector(
+                              onTap: () => _showAddressPopup(context, address!),
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: Text(
+                                  '📍',
+                                  style: const TextStyle(fontSize: 20),
+                                ),
+                              ),
+                            ),
+                          if (customerPhone != null && customerPhone!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: GestureDetector(
+                                onTap: () => _callCustomer(customerPhone!),
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF1AB36A).withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.phone_rounded,
+                                    size: 18,
+                                    color: Color(0xFF1AB36A),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          if (trackOrderAction != null)
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: trackOrderAction!.onTap,
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: Icon(
+                                      trackOrderAction!.icon,
+                                      size: 18,
+                                      color: const Color(0xFF1F4FB6),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        address,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: DashColors.textTertiary(context),
-                          fontSize: 13,
-                          height: 1.35,
+                      if (customerName != null && customerName!.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.person_rounded,
+                              size: 16,
+                              color: const Color(0xFF1AB36A),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                customerName!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: DashColors.textSecondary(context),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      if (!meta.isEmpty) ...[
-                        const SizedBox(height: 10),
-                        _MetaRow(meta: meta),
                       ],
                       const SizedBox(height: 14),
                       _ActionGrid(actions: actions),
@@ -241,61 +319,6 @@ class ActiveOrderCard extends StatelessWidget {
   }
 }
 
-class _MetaRow extends StatelessWidget {
-  const _MetaRow({required this.meta});
-  final ActiveOrderMeta meta;
-
-  @override
-  Widget build(BuildContext context) {
-    final List<Widget> chips = [];
-    void add(IconData icon, String? value) {
-      if (value == null || value.isEmpty) return;
-      chips.add(_MetaChip(icon: icon, label: value));
-    }
-
-    add(Icons.calendar_today_outlined, meta.date);
-    add(Icons.access_time_rounded, meta.time);
-    add(Icons.phone_outlined, meta.phone);
-    add(Icons.email_outlined, meta.email);
-
-    return Wrap(
-      spacing: 14,
-      runSpacing: 6,
-      children: chips,
-    );
-  }
-}
-
-class _MetaChip extends StatelessWidget {
-  const _MetaChip({required this.icon, required this.label});
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: DashColors.textSecondary(context)),
-        const SizedBox(width: 5),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 180),
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: DashColors.textTertiary(context),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _ActionGrid extends StatelessWidget {
   const _ActionGrid({required this.actions});
   final List<ActiveOrderAction> actions;
@@ -303,28 +326,14 @@ class _ActionGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (actions.isEmpty) return const SizedBox.shrink();
-    final List<Widget> rows = [];
-    for (int i = 0; i < actions.length; i += 2) {
-      final left = actions[i];
-      final right = i + 1 < actions.length ? actions[i + 1] : null;
-      rows.add(
-        Row(
-          children: [
-            Expanded(child: _ActionTile(action: left)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: right != null
-                  ? _ActionTile(action: right)
-                  : const SizedBox.shrink(),
-            ),
-          ],
-        ),
-      );
-      if (i + 2 < actions.length) {
-        rows.add(const SizedBox(height: 10));
-      }
-    }
-    return Column(children: rows);
+    return Row(
+      children: [
+        for (int i = 0; i < actions.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(child: _ActionTile(action: actions[i])),
+        ],
+      ],
+    );
   }
 }
 
@@ -344,10 +353,10 @@ class _ActionTile extends StatelessWidget {
           height: 44,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: DashColors.cardBorder(context)),
           ),
           alignment: Alignment.center,
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(action.icon, size: 16, color: const Color(0xFF1F4FB6)),
@@ -371,3 +380,54 @@ class _ActionTile extends StatelessWidget {
     );
   }
 }
+
+void _showAddressPopup(BuildContext context, String address) {
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: Row(
+          children: [
+            const Icon(
+              Icons.location_on_rounded,
+              size: 24,
+              color: Color(0xFF1AB36A),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Delivery Address',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          address,
+          style: const TextStyle(
+            fontSize: 14,
+            height: 1.5,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+Future<void> _callCustomer(String phoneNumber) async {
+  final Uri telUri = Uri(scheme: 'tel', path: phoneNumber);
+  if (await canLaunchUrl(telUri)) {
+    await launchUrl(telUri);
+  }
+}
+

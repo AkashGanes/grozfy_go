@@ -273,6 +273,7 @@ class _ExternalDeliveryTripDetailsScreenState
     );
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -471,6 +472,7 @@ class _ExternalDeliveryTripDetailsScreenState
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Column(
         children: [
           FrostCard(
@@ -959,6 +961,7 @@ class _ExternalDeliveryTripDetailsScreenState
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Column(
         children: [
           if (trip.isReturnTrip) ...[

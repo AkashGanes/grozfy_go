@@ -37,6 +37,7 @@ class ExternalDeliveryDetail {
     required this.customerName,
     required this.status,
     this.contactMobile,
+    this.customerEmail,
     this.deliveryAddress,
     this.pickupAddress,
     this.latitude,
@@ -59,6 +60,7 @@ class ExternalDeliveryDetail {
   final String customerName;
   final String status;
   final String? contactMobile;
+  final String? customerEmail;
   final String? deliveryAddress;
   final String? pickupAddress;
   final double? latitude;
@@ -130,6 +132,8 @@ class ExternalDeliveryDetail {
       contactMobile: _nullIfBlank(m['contact_mobile']?.toString())
           ?? _nullIfBlank(m['customer_mobile']?.toString())
           ?? _nullIfBlank(m['mobile_no']?.toString()),
+      customerEmail: _nullIfBlank(m['customer_email']?.toString())
+          ?? _nullIfBlank(m['email']?.toString()),
       deliveryAddress: _nullIfBlank(m['delivery_address']?.toString())
           ?? _nullIfBlank(m['address']?.toString()),
       pickupAddress: _nullIfBlank(m['pickup_address']?.toString())

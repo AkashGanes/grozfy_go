@@ -1558,13 +1558,17 @@ class AppController extends ChangeNotifier {
       // Update FCM token on login
       unawaited(FCMService().subscribe(this));
 
-      // Hydrate profile, vehicle, and bank before notifying listeners so the
-      // dashboard renders with complete data (no race between navigation and
-      // background fetch). The login screen's _busy spinner covers this wait.
-      await _backgroundSync();
-      await _restoreSessionFromDb();
-      notifyListeners();
-      _writeTimingEvent(eventType: TimingEventType.login);
+      // profileCompleted/isKycComplete/hasSelectedLocation are already final
+      // at this point (set above from the verify-OTP response), so the login
+      // screen can navigate immediately. Profile/vehicle/bank/order hydration
+      // and duty-timing restore continue in the background and notify
+      // listeners as they complete, same as the bootstrap() cold-start path.
+      unawaited(() async {
+        await _backgroundSync();
+        await _restoreSessionFromDb();
+        notifyListeners();
+        _writeTimingEvent(eventType: TimingEventType.login);
+      }());
 
       return null;
     } catch (e) {
@@ -4035,6 +4039,7 @@ class AppController extends ChangeNotifier {
       latitude: latitude,
       longitude: longitude,
       contactNumber: detail.contactMobile ?? '',
+      customerEmail: detail.customerEmail ?? '',
       pickup: pickupAddress.isNotEmpty ? pickupAddress : detail.storeUrl,
       drop: dropAddress,
       deliveryInstructions: '',
@@ -4276,6 +4281,7 @@ class AppController extends ChangeNotifier {
               'orderId': o.orderId,
               'customerName': o.customerName,
               'customerPhone': o.customerPhone,
+              'customerEmail': o.customerEmail,
               'deliveryAddress': o.deliveryAddress,
               'storeId': o.storeId,
               'storeName': o.storeName,
@@ -4347,6 +4353,7 @@ class AppController extends ChangeNotifier {
       latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
       longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
       contactNumber: (json['contactNumber'] as String?) ?? '',
+      customerEmail: (json['customerEmail'] as String?) ?? '',
       pickup: (json['pickup'] as String?) ?? '',
       drop: (json['drop'] as String?) ?? '',
       distanceKm: (json['distanceKm'] as num?)?.toDouble() ?? 0,
@@ -4435,38 +4442,28 @@ class AppController extends ChangeNotifier {
     _kycCompleted = backendKycCompleted;
     _tokenType = tokenType ?? _tokenType;
 
-    await SecureTokenStorage.write(
-      SecureTokenStorage.accessToken,
-      _sessionToken!,
-    );
-    if (refreshToken != null) {
-      await SecureTokenStorage.write(
-        SecureTokenStorage.refreshToken,
-        refreshToken,
-      );
-    }
-    if (tokenType != null) {
-      await SecureTokenStorage.write(SecureTokenStorage.tokenType, tokenType);
-    }
-    if (expiresIn != null) {
-      await SecureTokenStorage.write(
-        SecureTokenStorage.expiresIn,
-        expiresIn.toString(),
-      );
-    }
-    await _persistAccessTokenExpiry(expiresIn);
-    if (clientId != null) {
-      await SecureTokenStorage.write(SecureTokenStorage.clientId, clientId);
-    }
-    if (apiKey != null) {
-      await SecureTokenStorage.write(SecureTokenStorage.apiKey, apiKey);
-    }
-    if (apiSecretVal != null) {
-      await SecureTokenStorage.write(
-        SecureTokenStorage.apiSecret,
-        apiSecretVal,
-      );
-    }
+    // These secure-storage writes target independent keys, so run them
+    // concurrently instead of one-by-one — each is a platform-channel round
+    // trip and was adding up to several seconds of serial latency here.
+    await Future.wait(<Future<dynamic>>[
+      SecureTokenStorage.write(SecureTokenStorage.accessToken, _sessionToken!),
+      if (refreshToken != null)
+        SecureTokenStorage.write(SecureTokenStorage.refreshToken, refreshToken),
+      if (tokenType != null)
+        SecureTokenStorage.write(SecureTokenStorage.tokenType, tokenType),
+      if (expiresIn != null)
+        SecureTokenStorage.write(
+          SecureTokenStorage.expiresIn,
+          expiresIn.toString(),
+        ),
+      _persistAccessTokenExpiry(expiresIn),
+      if (clientId != null)
+        SecureTokenStorage.write(SecureTokenStorage.clientId, clientId),
+      if (apiKey != null)
+        SecureTokenStorage.write(SecureTokenStorage.apiKey, apiKey),
+      if (apiSecretVal != null)
+        SecureTokenStorage.write(SecureTokenStorage.apiSecret, apiSecretVal),
+    ]);
 
     await Future.wait(<Future<bool>>[
       prefs.setBool(_prefRememberMe, _rememberMe),
