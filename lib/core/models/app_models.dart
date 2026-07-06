@@ -272,6 +272,7 @@ class DeliveryOrder {
     required this.longitude,
     this.id = '',
     this.contactNumber = '',
+    this.customerEmail = '',
     this.pickup = '',
     this.drop = '',
     this.deliveryInstructions = '',
@@ -303,6 +304,7 @@ class DeliveryOrder {
   final double latitude;
   final double longitude;
   final String contactNumber;
+  final String customerEmail;
   final String pickup;
   final String drop;
   final String deliveryInstructions;
@@ -337,6 +339,7 @@ class DeliveryOrder {
     double? latitude,
     double? longitude,
     String? contactNumber,
+    String? customerEmail,
     String? pickup,
     String? drop,
     String? deliveryInstructions,
@@ -366,6 +369,7 @@ class DeliveryOrder {
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       contactNumber: contactNumber ?? this.contactNumber,
+      customerEmail: customerEmail ?? this.customerEmail,
       pickup: pickup ?? this.pickup,
       drop: drop ?? this.drop,
       deliveryInstructions: deliveryInstructions ?? this.deliveryInstructions,

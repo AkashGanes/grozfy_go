@@ -329,6 +329,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   // Guards against re-surfacing a recall after the driver confirms it.
   final Set<String> _confirmedRecallOrderIds = {};
 
+  // COD cash pre-confirmation per order (orderId → payment result).
+  final Map<String, ({String mode, String? upiRef})> _codResultsMap = {};
+
   // Carousel state.
   int _currentPageIndex = 0;
   bool _swipingForward = true;
@@ -1421,6 +1424,24 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     }
   }
 
+  Future<void> _handleCodCashCollection(
+    BuildContext context,
+    DeliveryOrder order,
+  ) async {
+    double codAmount = 0;
+    try {
+      final detail = await ExternalDeliveryRepository().fetchDetail(
+        order.orderId, resolveAddress: false,
+      );
+      codAmount = detail.codAmountToCollect ?? 0;
+    } catch (_) {}
+    if (!context.mounted) return;
+    final result = await showCodCollectionSheet(context, amountToCollect: codAmount);
+    if (!context.mounted) return;
+    if (result == null) return;
+    setState(() => _codResultsMap[order.orderId] = result);
+  }
+
   Future<void> _runTransition(
     BuildContext context,
     AppController app,
@@ -1440,17 +1461,34 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         if (!context.mounted) return;
       }
 
-      // COD: ask how customer paid before marking delivered
-      try {
-        final detail = await ExternalDeliveryRepository().fetchDetail(
-          order.orderId,
-          resolveAddress: false,
-        );
+      final preConfirmed = _codResultsMap[order.orderId];
+      if (preConfirmed != null) {
+        if (preConfirmed.mode != 'Not Collected') {
+          try {
+            await ExternalDeliveryRepository().markDeliveredWithCod(
+              order.orderId,
+              codCollectionMode: preConfirmed.mode,
+              codUpiReference: preConfirmed.upiRef,
+            );
+          } catch (_) {}
+          if (!context.mounted) return;
+        }
+      } else {
+        bool isCod = false;
+        double codAmount = 0;
+        try {
+          final detail = await ExternalDeliveryRepository().fetchDetail(
+            order.orderId,
+            resolveAddress: false,
+          );
+          isCod = detail.isCod;
+          codAmount = detail.codAmountToCollect ?? 0;
+        } catch (_) {}
         if (!context.mounted) return;
-        if (detail.isCod) {
+        if (isCod) {
           final codResult = await showCodCollectionSheet(
             context,
-            amountToCollect: detail.codAmountToCollect ?? 0,
+            amountToCollect: codAmount,
           );
           if (!context.mounted) return;
           if (codResult == null) return;
@@ -1463,7 +1501,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
           } catch (_) {}
           if (!context.mounted) return;
         }
-      } catch (_) {}
+      }
     }
 
     final error = await app.updateOrderStatus(transition.next);
@@ -1480,63 +1518,43 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     }
   }
 
-  Future<void> _handleFailedDelivery(
+  Future<void> _runFailedTransition(
     BuildContext context,
     AppController app,
     DeliveryOrder order,
   ) async {
-    final result = await showFailedDeliverySheet(context);
+    final isCod = order.paymentMode.toUpperCase() == 'COD';
+    final result = await showFailedDeliverySheet(context, isCod: isCod);
     if (result == null || !context.mounted) return;
-
-    final fullReason = result.notes.isEmpty
-        ? result.reason
-        : '${result.reason} — ${result.notes}';
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          content: Row(
-            children: [
-              const CircularProgressIndicator(strokeWidth: 2),
-              const SizedBox(width: 20),
-              Text(
-                'Marking delivery as failed...',
-                style: TextStyle(
-                  color: Theme.of(ctx).colorScheme.onSurface,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final error = await app.failDelivery(
-      orderId: order.orderId,
-      reason: fullReason,
-      reasonCode: result.reasonCode,
-      photoPath: result.photoPath,
-      shouldCreateReturnTrip: false,
-    );
-
+    final reason = result.notes.isNotEmpty ? result.notes : result.reason;
+    final tripId = app.tripIdForOrder(order.orderId);
+    try {
+      if (tripId != null && tripId.isNotEmpty) {
+        await ExternalDeliveryRepository().processFailedDeliveryReturnByIds(
+          tripId: tripId,
+          deliveryId: order.orderId,
+          reason: reason,
+          reasonCode: result.reasonCode,
+          photoPath: result.photoPath,
+        );
+      } else {
+        await ExternalDeliveryRepository().markOrderFailed(
+          orderName: order.orderId,
+          reason: reason,
+          reasonCode: result.reasonCode,
+          photoPath: result.photoPath,
+        );
+      }
+    } catch (_) {}
     if (!context.mounted) return;
-    Navigator.of(context).pop();
+    final error = await app.updateOrderStatus(OrderStatus.failed);
+    app.stopOrderTimer();
+    if (!context.mounted) return;
     if (error != null) {
       AppToast.show(context, error);
       return;
     }
-    AppToast.show(context, app.t('delivery_failed'));
-    Navigator.of(context).pushNamedAndRemoveUntil(
-      AppRoutes.dashboard,
-      (route) => false,
-    );
+    Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
   }
 
   Future<void> _openInMaps(

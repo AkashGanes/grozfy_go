@@ -87,13 +87,13 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
 
   Widget _buildSearchBar() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: KycSearchInput(
         controller: _searchController,
         hint: 'Search by name, customer, address…',
         onChanged: (value) => setState(() => _searchQuery = value),
       ),
-    ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.04, end: 0);
+    );
   }
 
   // ── Haversine distance ─────────────────────────────────────────────────────
@@ -229,7 +229,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
                   child: ListView.builder(
                     physics: const BouncingScrollPhysics(
                         parent: AlwaysScrollableScrollPhysics()),
-                    padding: const EdgeInsets.fromLTRB(0, 4, 0, 20),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
                     itemCount: displayed.length,
                     itemBuilder: (context, index) => _JobCard(
                       job: displayed[index],
@@ -248,9 +248,6 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
                               pickupJobName: displayed[index].name),
                         ),
                       ),
-                    ).animate().fadeIn(
-                      delay: Duration(milliseconds: index * 40),
-                      duration: 200.ms,
                     ),
                   ),
                 );

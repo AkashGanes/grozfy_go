@@ -528,7 +528,7 @@ class _PickupJobDetailScreenState
   Widget _detailsTab(PickupJob job) {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
       child: Column(
         children: [
           if (job.customerName.isNotEmpty || job.customerMobile.isNotEmpty) ...[
@@ -548,7 +548,7 @@ class _PickupJobDetailScreenState
     if (tripStop != null) {
       return SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
         child: Column(children: [
           _tripStopCard(tripStop).animate().fadeIn(duration: 220.ms),
           const SizedBox(height: 8),
@@ -558,7 +558,7 @@ class _PickupJobDetailScreenState
     if (tripStopError != null) {
       return SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
         child: _tripStopErrorCard(tripStopError)
             .animate()
             .fadeIn(duration: 220.ms),
@@ -594,7 +594,7 @@ class _PickupJobDetailScreenState
     }
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
       child: Column(
         children: [
           if (job.items.isNotEmpty)
@@ -614,7 +614,7 @@ class _PickupJobDetailScreenState
   Widget _infoTab(Map<String, dynamic> extraFields) {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 16),
       child: Column(children: [
         _rawFieldsCard('Job Info', extraFields)
             .animate()

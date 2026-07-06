@@ -273,6 +273,7 @@ class _ExternalDeliveryTripDetailsScreenState
     );
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -471,6 +472,7 @@ class _ExternalDeliveryTripDetailsScreenState
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Column(
         children: [
           FrostCard(
@@ -868,6 +870,24 @@ class _ExternalDeliveryTripDetailsScreenState
 
     if (confirmed != true || !mounted) return;
 
+    // Block if any delivery stop is still in a non-terminal state.
+    const activeStatuses = {'pending', 'out for delivery', 'out_for_delivery'};
+    final unresolvedStops = trip.stops
+        .where(
+          (s) => activeStatuses.contains(
+            s.status.trim().toLowerCase().replaceAll('_', ' '),
+          ),
+        )
+        .length;
+    if (unresolvedStops > 0) {
+      showInfoSnack(
+        context,
+        'Please mark all $unresolvedStops remaining '
+        'stop${unresolvedStops == 1 ? '' : 's'} as Delivered or Failed first.',
+      );
+      return;
+    }
+
     // markReturnedToStore is a multi-step flow that mutates several docs
     // (stop status, parent trip status, completes_stops counter, completed_at
     // stamp). It can't run offline cleanly — gate it.
@@ -941,6 +961,7 @@ class _ExternalDeliveryTripDetailsScreenState
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       child: Column(
         children: [
           if (trip.isReturnTrip) ...[
@@ -1503,44 +1524,81 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Future<void> _handleDeliveredStop(ExternalDeliveryTripStop stop) async {
-    final photoPath = await showDeliveryProofSheet(context);
-    if (!mounted) return;
-
     final orderName = stop.externalDelivery.trim();
-    if (photoPath != null && orderName.isNotEmpty) {
-      await ExternalDeliveryRepository().uploadProofPhoto(
-        orderName: orderName,
-        filePath: photoPath,
-      );
-    }
 
-    // Check if this is a COD order and collect payment mode
-    ExternalDeliveryDetail? codDetail;
+    // Fetch order detail first to determine payment mode
+    ExternalDeliveryDetail? detail;
     try {
-      codDetail = await ExternalDeliveryRepository().fetchDetail(
+      detail = await ExternalDeliveryRepository().fetchDetail(
         orderName,
         resolveAddress: false,
       );
     } catch (_) {}
     if (!mounted) return;
 
-    if (codDetail != null && codDetail.isCod && codDetail.codAmountToCollect != null) {
+    final double codAmount = detail?.codAmountToCollect ?? 0;
+    final bool isCod = detail != null && detail.isCod && codAmount > 0;
+
+    // Capture proof photo for both online and COD
+    final photoPath = await showDeliveryProofSheet(context);
+    if (!mounted) return;
+    if (photoPath != null && orderName.isNotEmpty) {
+      await ExternalDeliveryRepository().uploadProofPhoto(
+        orderName: orderName,
+        filePath: photoPath,
+      );
+    }
+    if (!mounted) return;
+
+    if (isCod) {
+      // COD order: collect payment after proof
       final codResult = await showCodCollectionSheet(
         context,
-        amountToCollect: codDetail.codAmountToCollect!,
+        amountToCollect: codAmount,
       );
       if (!mounted) return;
       if (codResult == null) return;
-      try {
-        await ExternalDeliveryRepository().markDeliveredWithCod(
-          orderName,
-          codCollectionMode: codResult.mode,
-          codUpiReference: codResult.upiRef,
+      if (codResult.mode == 'Not Collected') {
+        // Cash wasn't collected — ask whether to deliver anyway or fail the stop.
+        final shouldFail = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Cash not collected'),
+            content: const Text(
+              'The customer did not pay. What would you like to do with this stop?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Deliver anyway'),
+              ),
+              TextButton(
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Mark Failed'),
+              ),
+            ],
+          ),
         );
-      } catch (e) {
-        if (mounted) showInfoSnack(context, 'COD save failed — continuing');
+        if (!mounted) return;
+        if (shouldFail == null) return;
+        if (shouldFail) {
+          await _handleFailedDelivery(stop);
+          return;
+        }
+        // Deliver anyway — fall through without calling markDeliveredWithCod.
+      } else {
+        try {
+          await ExternalDeliveryRepository().markDeliveredWithCod(
+            orderName,
+            codCollectionMode: codResult.mode,
+            codUpiReference: codResult.upiRef,
+          );
+        } catch (e) {
+          if (mounted) showInfoSnack(context, 'COD save failed — continuing');
+        }
+        if (!mounted) return;
       }
-      if (!mounted) return;
     }
 
     final stopKey = _stopKey(stop);
@@ -1549,13 +1607,24 @@ class _ExternalDeliveryTripDetailsScreenState
       final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
       final stopName = (stop.rawFields['name'] ?? '').toString().trim();
       final parentTripName = (stop.rawFields['parent'] ?? '').toString().trim();
-      await OfflineTripManager().updateStopStatusOffline(
-        stopDocType: stopDocType,
-        stopName: stopName,
-        parentTripName: parentTripName,
-        orderName: stop.externalDelivery.trim(),
-        newStatus: 'Delivered',
-      );
+
+      // COD + online: the async-queue flush (conflict check + PUT) can exceed
+      // the 800ms reload window, causing the stop to reappear as editable.
+      // Use the direct awaited path instead when we know we have connectivity.
+      if (isCod && ConnectivityService().isConnected) {
+        await ExternalDeliveryRepository().updateTripStopStatus(
+          stop: stop,
+          newStatus: 'Delivered',
+        );
+      } else {
+        await OfflineTripManager().updateStopStatusOffline(
+          stopDocType: stopDocType,
+          stopName: stopName,
+          parentTripName: parentTripName,
+          orderName: stop.externalDelivery.trim(),
+          newStatus: 'Delivered',
+        );
+      }
       _writeTimingEvent(
         eventType: TimingEventType.stopDelivered,
         tripRef: parentTripName.isEmpty ? null : parentTripName,
@@ -1693,8 +1762,10 @@ class _ExternalDeliveryTripDetailsScreenState
             : (stop.rawFields['name'] ?? '').toString().trim(),
       );
       showInfoSnack(context, processResult.message);
-      setState(() {
-        _future = _loadTrip();
+      // Defer setState past the Navigator.pop rebuild to avoid calling it
+      // during the build phase triggered by the dialog dismissal.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() { _future = _loadTrip(); });
       });
     } catch (e) {
       if (!mounted) return;
