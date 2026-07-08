@@ -2068,9 +2068,9 @@ class ExternalDeliveryRepository {
     return resp;
   }
 
-  /// Marks an External Delivery as Delivered and records how the COD was paid.
-  /// Sends [codCollectionMode] ('Cash' or 'UPI') and optionally
-  /// [codUpiReference] alongside status=Delivered in a single PUT.
+  /// Records COD collection on an External Delivery via a single PUT.
+  /// Sets cod_collected=1, [codCollectionMode] ('Cash', 'UPI', or 'Not Collected'),
+  /// and optionally [codUpiReference]. Status is managed server-side.
   Future<void> markDeliveredWithCod(
     String orderName, {
     required String codCollectionMode,
@@ -2080,7 +2080,7 @@ class ExternalDeliveryRepository {
       '${ApiConstants.externalDeliveryList}/${Uri.encodeComponent(orderName)}',
     );
     final payload = <String, dynamic>{
-      'status': 'Delivered',
+      'cod_collected': 1,
       'cod_collection_mode': codCollectionMode,
     };
     if (codUpiReference != null && codUpiReference.trim().isNotEmpty) {
