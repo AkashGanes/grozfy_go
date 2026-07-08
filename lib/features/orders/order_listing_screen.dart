@@ -80,6 +80,10 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   double? _lastRadiusKm;
   bool _radiusInitDone = false;
 
+  // Tracks the driver's availability so we can reload the list when it flips.
+  // Offline drivers must not see the available/Pending order pool.
+  bool? _lastOnline;
+
   @override
   void initState() {
     super.initState();
@@ -93,7 +97,24 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _app = AppScope.of(context);
+    _syncOnlineState();
     _syncDeliveryRadius();
+  }
+
+  /// Reloads the list when the driver's availability flips. AppScope is an
+  /// InheritedNotifier, so this fires whenever AppController notifies. Going
+  /// Offline empties the list (no available orders reach an Offline driver);
+  /// going back Online refills it.
+  void _syncOnlineState() {
+    final bool online = _app?.isOnline ?? false;
+    if (_lastOnline != null && online != _lastOnline) {
+      _lastGroupStore = null;
+      _hiddenByRadiusCount = 0;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _pagingController.refresh();
+      });
+    }
+    _lastOnline = online;
   }
 
   /// Reacts to delivery-radius changes (the Settings slider). On first run it
@@ -333,6 +354,15 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     // Reset grouping tracker at the start of each new list
     if (pageKey == 0) _lastGroupStore = null;
 
+    // Offline drivers must not receive new/available orders. Skip the fetch
+    // entirely and show an empty list; the paged list's noItemsFound builder
+    // renders an explicit "You are Offline" notice.
+    if (!app.isOnline) {
+      if (!mounted) return;
+      _pagingController.appendLastPage(<_ListItem>[]);
+      return;
+    }
+
     try {
       final fetched = await _fetchOrdersEnriched(app, pageKey);
       if (!mounted) return;
@@ -571,6 +601,14 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
 
   Future<void> _createBatchTrip() async {
     if (_selectedOrderIds.isEmpty || _creatingBatchTrip) return;
+
+    // Offline drivers can't take on work. This path creates a trip directly
+    // via the repository, bypassing AppController.acceptOrder, so it needs its
+    // own guard.
+    if (!(_app?.isOnline ?? false)) {
+      AppToast.show(context, 'You are Offline. Go Online to accept orders.');
+      return;
+    }
 
     if (_checkDistanceWarning()) {
       final proceed = await showDialog<bool>(
@@ -978,8 +1016,9 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             _ErrorState(onRetry: _pagingController.refresh),
         newPageErrorIndicatorBuilder: (_) =>
             _ErrorState(onRetry: _pagingController.retryLastFailedRequest),
-        noItemsFoundIndicatorBuilder: (_) =>
-            _EmptyState(storeName: _selectedStore),
+        noItemsFoundIndicatorBuilder: (_) => (_app?.isOnline ?? true)
+            ? _EmptyState(storeName: _selectedStore)
+            : const _OfflineState(),
         itemBuilder: (context, item, index) {
           if (item is _HeaderItem) {
             return _StoreHeaderWidget(storeName: item.storeName);
@@ -1599,6 +1638,46 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(msg),
+        ],
+      ),
+    );
+  }
+}
+
+class _OfflineState extends StatelessWidget {
+  const _OfflineState();
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.cloud_off_rounded,
+            size: 64,
+            color: scheme.onSurface.withValues(alpha: 0.4),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'You are Offline',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Go Online to see available orders.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              color: scheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
         ],
       ),
     );

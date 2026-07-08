@@ -59,6 +59,8 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
 
   Future<void> _silentRefresh() async {
     if (!ConnectivityService().isConnected || !mounted) return;
+    // Don't refill the pool while Offline — the driver shouldn't receive jobs.
+    if (!ref.read(appControllerProvider).isOnline) return;
     try {
       final pool = await PickupJobRepository().fetchPool();
       if (!mounted) return;
@@ -125,6 +127,11 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
   // ── Accept ─────────────────────────────────────────────────────────────────
 
   Future<void> _acceptJob(PickupJob job) async {
+    // Offline drivers can't claim pickup jobs.
+    if (!ref.read(appControllerProvider).isOnline) {
+      showInfoSnack(context, 'You are Offline. Go Online to accept jobs.');
+      return;
+    }
     if (_acceptingJobs.contains(job.name)) return;
     setState(() => _acceptingJobs.add(job.name));
     try {
@@ -174,6 +181,13 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
     final driverLat = controller.currentLatitude;
     final driverLng = controller.currentLongitude;
 
+    // Reload the pool when the driver comes back Online (it's hidden Offline).
+    ref.listen(appControllerProvider.select((c) => c.isOnline), (prev, next) {
+      if (next == true && prev != true && mounted) {
+        setState(() => _future = _loadPool());
+      }
+    });
+
     return AppShell(
       title: 'Pickup Pool',
       subtitle: 'Available return pickups',
@@ -183,7 +197,9 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
         children: [
           _buildSearchBar(),
           Expanded(
-            child: FutureBuilder<List<PickupJob>>(
+            child: !controller.isOnline
+                ? _offlineView()
+                : FutureBuilder<List<PickupJob>>(
               future: _future,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
@@ -262,6 +278,36 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
   Widget _loadingView() => const Center(
         child: CircularProgressIndicator(color: AppTheme.oceanBlue),
       );
+
+  Widget _offlineView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: FrostCard(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.cloud_off_rounded,
+                size: 56,
+                color: AppTheme.oceanBlue.withValues(alpha: 0.4),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'You are Offline',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Go Online to see available pickups.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _errorView(String message) {
     return Center(
