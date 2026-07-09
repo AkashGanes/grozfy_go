@@ -21,10 +21,18 @@ class AppTheme {
   static const Color darkSurface = Color(0xFF1B1E2A);
   static const Color darkSubtleFill = Color(0xFF252A38);
   static const Color darkOnSurface = Color(0xFFF2F4F7);
-  static const Color darkOnSurfaceVariant = Color(0xFFA4ABB8);
-  static const Color darkOutline = Color(0xFF3A4050);
+  static const Color darkOnSurfaceVariant = Color(0xFFB6BDCA);
+  static const Color darkOutline = Color(0xFF4A5164);
   static const Color darkOutlineVariant = Color(0xFF2A2F3D);
-  static const Color darkError = Color(0xFFFF6B6B);
+  static const Color darkError = Color(0xFFFF8080);
+
+  /// Lifts a (possibly dark) accent so buttons, icons and indicators stay
+  /// vivid on dark surfaces. Light mode uses the accent untouched.
+  static Color brightenForDark(Color color) {
+    final HSLColor hsl = HSLColor.fromColor(color);
+    if (hsl.lightness >= 0.58) return color;
+    return hsl.withLightness(0.58).toColor();
+  }
 
   static const List<Color> backgroundColorOptions = [
     Color(0xFFF0F4FA),
@@ -217,7 +225,7 @@ class AppTheme {
     Color? primaryColor,
   }) {
     final Color bgColor = scaffoldBackgroundColor ?? darkScaffold;
-    final Color primary = primaryColor ?? oceanBlue;
+    final Color primary = brightenForDark(primaryColor ?? oceanBlue);
 
     final ThemeData base = ThemeData(
       useMaterial3: true,

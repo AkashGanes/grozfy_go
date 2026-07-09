@@ -13,10 +13,12 @@ extension AppColors on BuildContext {
   Color get textTertiary => scheme.onSurface.withValues(alpha: 0.5);
   Color get textDisabled => scheme.onSurface.withValues(alpha: 0.4);
 
-  // Icons
+  // Icons (muted tints get a lift in dark mode so they don't disappear).
   Color get iconPrimary => scheme.onSurface;
-  Color get iconMuted => scheme.onSurface.withValues(alpha: 0.4);
-  Color get iconSubtle => scheme.onSurface.withValues(alpha: 0.5);
+  Color get iconMuted =>
+      scheme.onSurface.withValues(alpha: isDark ? 0.55 : 0.4);
+  Color get iconSubtle =>
+      scheme.onSurface.withValues(alpha: isDark ? 0.65 : 0.5);
 
   // Surfaces & fills
   Color get surface => scheme.surface;
@@ -37,21 +39,21 @@ extension AppColors on BuildContext {
 
   // Semantic status colors (foreground + tinted container background).
   Color get success =>
-      isDark ? const Color(0xFF34C97F) : const Color(0xFF118A52);
+      isDark ? const Color(0xFF43DB8E) : const Color(0xFF118A52);
   Color get successContainer =>
       isDark ? const Color(0xFF14352A) : const Color(0xFFE7F7EE);
 
   Color get warning =>
-      isDark ? const Color(0xFFF6B93F) : const Color(0xFFB45309);
+      isDark ? const Color(0xFFFFC44D) : const Color(0xFFB45309);
   Color get warningContainer =>
       isDark ? const Color(0xFF3A2E14) : const Color(0xFFFFF4E0);
 
   Color get danger =>
-      isDark ? const Color(0xFFFF6B6B) : const Color(0xFFB42318);
+      isDark ? const Color(0xFFFF8080) : const Color(0xFFB42318);
   Color get dangerContainer =>
       isDark ? const Color(0xFF3A1B1E) : const Color(0xFFFBEAEA);
 
-  Color get info => isDark ? const Color(0xFF6EA8FF) : const Color(0xFF2D6CDF);
+  Color get info => isDark ? const Color(0xFF82B4FF) : const Color(0xFF2D6CDF);
   Color get infoContainer =>
       isDark ? const Color(0xFF1A2C4F) : const Color(0xFFE5EEFB);
 }
