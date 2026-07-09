@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
@@ -266,7 +267,6 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
         _selectedUom != null;
 
     return Scaffold(
-      backgroundColor: KycColors.pageBg(context),
       body: SafeArea(
         child: Stack(
           children: [
@@ -334,7 +334,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                                 label: 'Fuel Type',
                                 trailing: Icon(
                                   Icons.keyboard_arrow_down_rounded,
-                                  color: KycColors.textHint(context),
+                                  color: context.textTertiary,
                                 ),
                                 onTap: () async {
                                   final picked = await _pickFromList(
@@ -356,7 +356,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                                 label: 'Fuel UOM',
                                 trailing: Icon(
                                   Icons.keyboard_arrow_down_rounded,
-                                  color: KycColors.textHint(context),
+                                  color: context.textTertiary,
                                 ),
                                 onTap: () async {
                                   final picked = await _pickFromList(
@@ -380,7 +380,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                                 label: 'Acquisition Date',
                                 trailing: Icon(
                                   Icons.calendar_today_outlined,
-                                  color: KycColors.textHint(context),
+                                  color: context.textTertiary,
                                   size: 20,
                                 ),
                                 onTap: () => _pickDate(_acquisitionDateCtrl),
@@ -425,7 +425,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                                 label: 'Employee',
                                 trailing: Icon(
                                   Icons.keyboard_arrow_down_rounded,
-                                  color: KycColors.textHint(context),
+                                  color: context.textTertiary,
                                 ),
                                 onTap: () async {
                                   final picked = await _pickFromList(
@@ -471,7 +471,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                                 label: 'Insurance Start Date',
                                 trailing: Icon(
                                   Icons.calendar_today_outlined,
-                                  color: KycColors.textHint(context),
+                                  color: context.textTertiary,
                                   size: 20,
                                 ),
                                 onTap: () => _pickDate(_startDateCtrl),
@@ -485,7 +485,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                                 label: 'Insurance End Date',
                                 trailing: Icon(
                                   Icons.calendar_today_outlined,
-                                  color: KycColors.textHint(context),
+                                  color: context.textTertiary,
                                   size: 20,
                                 ),
                                 onTap: () => _pickDate(_endDateCtrl),
@@ -499,7 +499,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
                                 label: 'Last Carbon Check Date',
                                 trailing: Icon(
                                   Icons.calendar_today_outlined,
-                                  color: KycColors.textHint(context),
+                                  color: context.textTertiary,
                                   size: 20,
                                 ),
                                 onTap: () => _pickDate(_carbonCheckDateCtrl),
@@ -594,7 +594,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
       textCapitalization: textCapitalization,
       validator: validator,
       style: kycInputStyle(context),
-      decoration: kycHintDecoration(hint, hintColor: KycColors.textHint(context)),
+      decoration: kycHintDecoration(context, hint),
     );
   }
 
@@ -604,7 +604,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
       readOnly: true,
       enableInteractiveSelection: false,
       style: kycInputStyle(context),
-      decoration: kycHintDecoration(hint, hintColor: KycColors.textHint(context)),
+      decoration: kycHintDecoration(context, hint),
     );
   }
 
@@ -619,7 +619,7 @@ class _VehicleDetailsScreenState extends State<VehicleDetailsScreen> {
         style: TextStyle(
           fontSize: 14,
           fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-          color: hasValue ? KycColors.textPrimary(context) : KycColors.textHint(context),
+          color: hasValue ? context.textPrimary : context.textTertiary,
         ),
       ),
     );
@@ -730,7 +730,7 @@ class _ListPickerSheetState extends State<_ListPickerSheet> {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
-                            color: KycColors.textPrimary(context),
+                            color: context.textPrimary,
                           ),
                         ),
                       ],
@@ -747,7 +747,7 @@ class _ListPickerSheetState extends State<_ListPickerSheet> {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: KycColors.textSecondary(context),
+                              color: context.textSecondary,
                               letterSpacing: 0.4,
                             ),
                           ),

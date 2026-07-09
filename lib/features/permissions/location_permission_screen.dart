@@ -4,25 +4,13 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/theme/context_colors.dart';
 
 const Color _kAccent = Color(0xFF4F46E5);
-const Color _kSuccess = Color(0xFF1AB36A);
 
-bool _isDark(BuildContext c) => Theme.of(c).brightness == Brightness.dark;
+// Brand indigo tint — no central token for the accent's soft background.
 Color _accentSoft(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF2B274F) : const Color(0xFFEEF0FF);
-Color _pageBg(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF12141C) : const Color(0xFFF6F7FB);
-Color _cardBg(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF1B1E2A) : Colors.white;
-Color _cardBorder(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF2A2F3D) : const Color(0xFFEAECF0);
-Color _textPrimary(BuildContext c) =>
-    _isDark(c) ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
-Color _textSecondary(BuildContext c) =>
-    _isDark(c) ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
-Color _successSoft(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF1A3A2A) : const Color(0xFFE7F7EE);
+    c.isDark ? const Color(0xFF2B274F) : const Color(0xFFEEF0FF);
 
 class LocationPermissionScreen extends StatefulWidget {
   const LocationPermissionScreen({super.key});
@@ -120,7 +108,6 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _pageBg(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -135,9 +122,9 @@ class _LocationPermissionScreenState extends State<LocationPermissionScreen>
                     Container(
                       padding: const EdgeInsets.all(40),
                       decoration: BoxDecoration(
-                        color: _cardBg(context),
+                        color: context.cardColor,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: _cardBorder(context)),
+                        border: Border.all(color: context.borderSubtle),
                       ),
                       child: const Center(
                         child: CircularProgressIndicator(
@@ -197,7 +184,7 @@ class _PermissionHeader extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
-                    color: _textPrimary(context),
+                    color: context.textPrimary,
                     height: 1.15,
                   ),
                 ),
@@ -206,7 +193,7 @@ class _PermissionHeader extends StatelessWidget {
                   'Location + Notifications are mandatory for order matching',
                   style: TextStyle(
                     fontSize: 13,
-                    color: _textSecondary(context),
+                    color: context.textSecondary,
                     height: 1.35,
                   ),
                 ),
@@ -250,7 +237,7 @@ class _BackChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = _cardBg(context);
+    final cardBg = context.cardColor;
     return Material(
       color: cardBg,
       borderRadius: BorderRadius.circular(12),
@@ -263,10 +250,10 @@ class _BackChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: cardBg,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _cardBorder(context)),
+            border: Border.all(color: context.borderSubtle),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
+                color: context.shadowColor,
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -275,7 +262,7 @@ class _BackChip extends StatelessWidget {
           child: Icon(
             Icons.arrow_back_rounded,
             size: 22,
-            color: _textPrimary(context),
+            color: context.textPrimary,
           ),
         ),
       ),
@@ -291,9 +278,9 @@ class _InfoBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
-        color: _cardBg(context),
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _cardBorder(context)),
+        border: Border.all(color: context.borderSubtle),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -323,7 +310,7 @@ class _InfoBanner extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
-                    color: _textPrimary(context),
+                    color: context.textPrimary,
                     height: 1.35,
                   ),
                 ),
@@ -332,7 +319,7 @@ class _InfoBanner extends StatelessWidget {
                   'Notification access is required for instant order alerts.',
                   style: TextStyle(
                     fontSize: 13,
-                    color: _textSecondary(context),
+                    color: context.textSecondary,
                     height: 1.35,
                   ),
                 ),
@@ -366,18 +353,16 @@ class _PermissionStack extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: _cardBg(context),
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _cardBorder(context)),
+        border: Border.all(color: context.borderSubtle),
       ),
       child: Column(
         children: [
           _PermissionRow(
             icon: Icons.location_on_rounded,
-            iconColor: const Color(0xFF2D6CDF),
-            iconBg: _isDark(context)
-                ? const Color(0xFF1F2C4D)
-                : const Color(0xFFE5EEFB),
+            iconColor: context.info,
+            iconBg: context.infoContainer,
             title: 'Foreground Location',
             description:
                 "Allows the app to access your location while you're using the app.",
@@ -388,7 +373,7 @@ class _PermissionStack extends StatelessWidget {
           _PermissionRow(
             icon: Icons.gps_fixed_rounded,
             iconColor: const Color(0xFF7C3AED),
-            iconBg: _isDark(context)
+            iconBg: context.isDark
                 ? const Color(0xFF2D2148)
                 : const Color(0xFFEFE9FE),
             title: 'Background Location',
@@ -401,10 +386,8 @@ class _PermissionStack extends StatelessWidget {
           _RowDivider(),
           _PermissionRow(
             icon: Icons.notifications_rounded,
-            iconColor: const Color(0xFFE0A100),
-            iconBg: _isDark(context)
-                ? const Color(0xFF3A2E12)
-                : const Color(0xFFFFF4D6),
+            iconColor: context.warning,
+            iconBg: context.warningContainer,
             title: 'Notifications',
             description:
                 'Get real-time alerts for new orders and important updates.',
@@ -422,7 +405,7 @@ class _RowDivider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Divider(height: 1, color: _cardBorder(context), thickness: 1),
+      child: const Divider(height: 1, thickness: 1),
     );
   }
 }
@@ -479,7 +462,7 @@ class _PermissionRow extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
-                      color: _textPrimary(context),
+                      color: context.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -487,7 +470,7 @@ class _PermissionRow extends StatelessWidget {
                     description,
                     style: TextStyle(
                       fontSize: 12.5,
-                      color: _textSecondary(context),
+                      color: context.textSecondary,
                       height: 1.35,
                     ),
                   ),
@@ -513,7 +496,6 @@ class _PermissionStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = _isDark(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
@@ -522,20 +504,14 @@ class _PermissionStatus extends StatelessWidget {
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: granted
-                ? _kSuccess
-                : (isDark ? const Color(0xFF3A4051) : const Color(0xFFE4E7EC)),
+            color: granted ? context.success : context.fillMuted,
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
           child: Icon(
             granted ? Icons.check_rounded : Icons.priority_high_rounded,
             size: 18,
-            color: granted
-                ? Colors.white
-                : (isDark
-                    ? const Color(0xFFA4ABB8)
-                    : const Color(0xFF98A2B3)),
+            color: granted ? Colors.white : context.textSecondary,
           ),
         ),
         const SizedBox(height: 6),
@@ -543,10 +519,8 @@ class _PermissionStatus extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
           decoration: BoxDecoration(
             color: granted
-                ? _successSoft(context)
-                : (isDark
-                    ? const Color(0xFF3A1E20)
-                    : const Color(0xFFFEF3F2)),
+                ? context.successContainer
+                : context.dangerContainer,
             borderRadius: BorderRadius.circular(99),
           ),
           child: Text(
@@ -554,13 +528,7 @@ class _PermissionStatus extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w800,
-              color: granted
-                  ? (isDark
-                      ? const Color(0xFF74D8A1)
-                      : const Color(0xFF118A52))
-                  : (isDark
-                      ? const Color(0xFFE49A9F)
-                      : const Color(0xFFB42318)),
+              color: granted ? context.success : context.danger,
             ),
           ),
         ),
@@ -570,7 +538,7 @@ class _PermissionStatus extends StatelessWidget {
             suffix!,
             style: TextStyle(
               fontSize: 11,
-              color: _textSecondary(context),
+              color: context.textSecondary,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -586,7 +554,7 @@ class _OpenSettingsTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = _cardBg(context);
+    final cardBg = context.cardColor;
     return Material(
       color: cardBg,
       borderRadius: BorderRadius.circular(16),
@@ -598,7 +566,7 @@ class _OpenSettingsTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: cardBg,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _cardBorder(context)),
+            border: Border.all(color: context.borderSubtle),
           ),
           child: Row(
             children: [
@@ -623,13 +591,13 @@ class _OpenSettingsTile extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14.5,
                     fontWeight: FontWeight.w800,
-                    color: _textPrimary(context),
+                    color: context.textPrimary,
                   ),
                 ),
               ),
               Icon(
                 Icons.chevron_right_rounded,
-                color: _textSecondary(context),
+                color: context.textSecondary,
                 size: 22,
               ),
             ],
@@ -648,14 +616,14 @@ class _BottomCta extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = _isDark(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
       decoration: BoxDecoration(
-        color: _cardBg(context),
+        color: context.cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
+            color: Colors.black
+                .withValues(alpha: context.isDark ? 0.4 : 0.08),
             blurRadius: 14,
             offset: const Offset(0, -2),
           ),
@@ -741,14 +709,14 @@ class _BottomCta extends StatelessWidget {
               Icon(
                 Icons.lock_outline_rounded,
                 size: 14,
-                color: _textSecondary(context),
+                color: context.textSecondary,
               ),
               const SizedBox(width: 6),
               Text(
                 'Your privacy and data are safe with us',
                 style: TextStyle(
                   fontSize: 12,
-                  color: _textSecondary(context),
+                  color: context.textSecondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),

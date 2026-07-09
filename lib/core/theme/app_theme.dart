@@ -7,6 +7,25 @@ class AppTheme {
   static const Color mango = Color(0xFFF6A623);
   static const Color card = Color(0xFFF4F7FB);
 
+  // Light neutral tokens (match the palette already used across screens).
+  static const Color lightOnSurface = Color(0xFF101828);
+  static const Color lightOnSurfaceVariant = Color(0xFF667085);
+  static const Color lightOutline = Color(0xFF98A2B3);
+  static const Color lightOutlineVariant = Color(0xFFE4E7EC);
+  static const Color lightSubtleFill = Color(0xFFEEF2F7);
+  static const Color lightBody = Color(0xFF293847);
+  static const Color lightError = Color(0xFFDC2626);
+
+  // Dark neutral tokens — single source of truth for dark mode surfaces/text.
+  static const Color darkScaffold = Color(0xFF12141C);
+  static const Color darkSurface = Color(0xFF1B1E2A);
+  static const Color darkSubtleFill = Color(0xFF252A38);
+  static const Color darkOnSurface = Color(0xFFF2F4F7);
+  static const Color darkOnSurfaceVariant = Color(0xFFA4ABB8);
+  static const Color darkOutline = Color(0xFF3A4050);
+  static const Color darkOutlineVariant = Color(0xFF2A2F3D);
+  static const Color darkError = Color(0xFFFF6B6B);
+
   static const List<Color> backgroundColorOptions = [
     Color(0xFFF0F4FA),
     Color(0xFFFFFFFF),
@@ -47,20 +66,46 @@ class AppTheme {
         secondary: mint,
         tertiary: mango,
         surface: card,
+      ).copyWith(
+        onSurface: lightOnSurface,
+        onSurfaceVariant: lightOnSurfaceVariant,
+        outline: lightOutline,
+        outlineVariant: lightOutlineVariant,
+        surfaceContainerHighest: lightSubtleFill,
+        error: lightError,
       ),
     );
 
     return base.copyWith(
-      appBarTheme: AppBarTheme(
+      cardColor: Colors.white,
+      dividerColor: lightOutlineVariant,
+      appBarTheme: const AppBarTheme(
         elevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: nightBlue,
         centerTitle: true,
       ),
+      iconTheme: const IconThemeData(color: lightOnSurface),
+      dividerTheme: const DividerThemeData(
+        color: lightOutlineVariant,
+        thickness: 1,
+      ),
       cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      ),
+      listTileTheme: const ListTileThemeData(
+        iconColor: lightOnSurfaceVariant,
+        textColor: lightOnSurface,
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+      ),
+      dialogTheme: const DialogThemeData(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -83,18 +128,18 @@ class AppTheme {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFFDC2626), width: 1.2),
+          borderSide: const BorderSide(color: lightError, width: 1.2),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFFDC2626), width: 1.6),
+          borderSide: const BorderSide(color: lightError, width: 1.6),
         ),
         helperStyle: const TextStyle(
           color: Colors.transparent,
           fontSize: 11.5,
         ),
         errorStyle: const TextStyle(
-          color: Color(0xFFDC2626),
+          color: lightError,
           fontSize: 11.5,
           fontWeight: FontWeight.w500,
         ),
@@ -112,23 +157,57 @@ class AppTheme {
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primary,
+          side: const BorderSide(color: lightOutline),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: primary),
+      ),
       chipTheme: base.chipTheme.copyWith(
         side: BorderSide.none,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       textTheme: base.textTheme.copyWith(
-        headlineMedium: TextStyle(
+        headlineMedium: const TextStyle(
           fontSize: 30,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.2,
           color: nightBlue,
         ),
-        titleLarge: TextStyle(
+        titleLarge: const TextStyle(
           fontSize: 21,
           fontWeight: FontWeight.w700,
           color: nightBlue,
         ),
-        bodyLarge: TextStyle(fontSize: 16, color: Color(0xFF293847)),
+        titleMedium: base.textTheme.titleMedium?.copyWith(
+          color: lightOnSurface,
+          fontWeight: FontWeight.w600,
+        ),
+        titleSmall: base.textTheme.titleSmall?.copyWith(
+          color: lightOnSurface,
+          fontWeight: FontWeight.w600,
+        ),
+        bodyLarge: const TextStyle(fontSize: 16, color: lightBody),
+        bodyMedium: base.textTheme.bodyMedium?.copyWith(color: lightBody),
+        bodySmall: base.textTheme.bodySmall?.copyWith(
+          color: lightOnSurfaceVariant,
+        ),
+        labelLarge: base.textTheme.labelLarge?.copyWith(
+          color: lightOnSurface,
+          fontWeight: FontWeight.w600,
+        ),
+        labelMedium: base.textTheme.labelMedium?.copyWith(
+          color: lightOnSurfaceVariant,
+        ),
+        labelSmall: base.textTheme.labelSmall?.copyWith(
+          color: lightOnSurfaceVariant,
+        ),
       ),
     );
   }
@@ -137,9 +216,8 @@ class AppTheme {
     Color? scaffoldBackgroundColor,
     Color? primaryColor,
   }) {
-    final Color bgColor = scaffoldBackgroundColor ?? const Color(0xFF1A1A2E);
+    final Color bgColor = scaffoldBackgroundColor ?? darkScaffold;
     final Color primary = primaryColor ?? oceanBlue;
-    final Color surface = const Color(0xFF252540);
 
     final ThemeData base = ThemeData(
       useMaterial3: true,
@@ -152,25 +230,52 @@ class AppTheme {
         primary: primary,
         secondary: mint,
         tertiary: mango,
-        surface: surface,
+        surface: darkSurface,
+      ).copyWith(
+        onPrimary: Colors.white,
+        onSurface: darkOnSurface,
+        onSurfaceVariant: darkOnSurfaceVariant,
+        outline: darkOutline,
+        outlineVariant: darkOutlineVariant,
+        surfaceContainerHighest: darkSubtleFill,
+        error: darkError,
       ),
     );
 
     return base.copyWith(
-      appBarTheme: AppBarTheme(
+      cardColor: darkSurface,
+      dividerColor: darkOutlineVariant,
+      appBarTheme: const AppBarTheme(
         elevation: 0,
         backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
+        foregroundColor: darkOnSurface,
         centerTitle: true,
       ),
+      iconTheme: const IconThemeData(color: darkOnSurface),
+      dividerTheme: const DividerThemeData(
+        color: darkOutlineVariant,
+        thickness: 1,
+      ),
       cardTheme: CardThemeData(
-        color: surface,
+        color: darkSurface,
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       ),
+      listTileTheme: const ListTileThemeData(
+        iconColor: darkOnSurfaceVariant,
+        textColor: darkOnSurface,
+      ),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: darkSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
+      dialogTheme: const DialogThemeData(
+        backgroundColor: darkSurface,
+        surfaceTintColor: Colors.transparent,
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surface,
+        fillColor: darkSurface,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 14,
@@ -189,18 +294,18 @@ class AppTheme {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFFFF6B6B), width: 1.2),
+          borderSide: const BorderSide(color: darkError, width: 1.2),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: Color(0xFFFF6B6B), width: 1.6),
+          borderSide: const BorderSide(color: darkError, width: 1.6),
         ),
         helperStyle: const TextStyle(
           color: Colors.transparent,
           fontSize: 11.5,
         ),
         errorStyle: const TextStyle(
-          color: Color(0xFFFF6B6B),
+          color: darkError,
           fontSize: 11.5,
           fontWeight: FontWeight.w500,
         ),
@@ -218,6 +323,18 @@ class AppTheme {
           textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: darkOnSurface,
+          side: const BorderSide(color: darkOutline),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: darkOnSurface),
+      ),
       chipTheme: base.chipTheme.copyWith(
         side: BorderSide.none,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -227,14 +344,36 @@ class AppTheme {
           fontSize: 30,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.2,
-          color: Colors.white,
+          color: darkOnSurface,
         ),
         titleLarge: const TextStyle(
           fontSize: 21,
           fontWeight: FontWeight.w700,
-          color: Colors.white,
+          color: darkOnSurface,
         ),
-        bodyLarge: TextStyle(fontSize: 16, color: Colors.grey[300]),
+        titleMedium: base.textTheme.titleMedium?.copyWith(
+          color: darkOnSurface,
+          fontWeight: FontWeight.w600,
+        ),
+        titleSmall: base.textTheme.titleSmall?.copyWith(
+          color: darkOnSurface,
+          fontWeight: FontWeight.w600,
+        ),
+        bodyLarge: const TextStyle(fontSize: 16, color: darkOnSurface),
+        bodyMedium: base.textTheme.bodyMedium?.copyWith(color: darkOnSurface),
+        bodySmall: base.textTheme.bodySmall?.copyWith(
+          color: darkOnSurfaceVariant,
+        ),
+        labelLarge: base.textTheme.labelLarge?.copyWith(
+          color: darkOnSurface,
+          fontWeight: FontWeight.w600,
+        ),
+        labelMedium: base.textTheme.labelMedium?.copyWith(
+          color: darkOnSurfaceVariant,
+        ),
+        labelSmall: base.textTheme.labelSmall?.copyWith(
+          color: darkOnSurfaceVariant,
+        ),
       ),
     );
   }

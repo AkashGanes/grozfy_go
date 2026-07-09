@@ -9,6 +9,7 @@ import '../../core/constants/api_constants.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/providers.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
 import 'widgets/kyc_form_widgets.dart';
@@ -27,18 +28,18 @@ extension _DocStatusStyle on _DocStatus {
     _DocStatus.reuploadRequired => 'Re-upload Required',
   };
 
-  Color get color => switch (this) {
-    _DocStatus.missing => const Color(0xFF98A2B3),
-    _DocStatus.uploaded => const Color(0xFF1AB36A),
-    _DocStatus.expired => const Color(0xFFE53935),
-    _DocStatus.reuploadRequired => const Color(0xFFE57700),
+  Color color(BuildContext context) => switch (this) {
+    _DocStatus.missing => context.textTertiary,
+    _DocStatus.uploaded => context.success,
+    _DocStatus.expired => context.danger,
+    _DocStatus.reuploadRequired => context.warning,
   };
 
-  Color get bgColor => switch (this) {
-    _DocStatus.missing => const Color(0xFFF2F4F7),
-    _DocStatus.uploaded => const Color(0xFFE6F9F1),
-    _DocStatus.expired => const Color(0xFFFEECEB),
-    _DocStatus.reuploadRequired => const Color(0xFFFFF3E0),
+  Color bgColor(BuildContext context) => switch (this) {
+    _DocStatus.missing => context.surfaceContainer,
+    _DocStatus.uploaded => context.successContainer,
+    _DocStatus.expired => context.dangerContainer,
+    _DocStatus.reuploadRequired => context.warningContainer,
   };
 
   IconData get icon => switch (this) {
@@ -524,7 +525,6 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
     final isFormValid = _isFormValid;
 
     return Scaffold(
-      backgroundColor: KycColors.pageBg(context),
       body: SafeArea(
         child: Stack(
           children: [
@@ -736,7 +736,7 @@ class _NumberField extends StatelessWidget {
       style: TextStyle(
         fontSize: 14,
         fontWeight: editable ? FontWeight.w600 : FontWeight.w600,
-        color: KycColors.textPrimary(context),
+        color: context.textPrimary,
       ),
       decoration: editable ? _activeDecoration(context) : _lockedDecoration(context),
     );
@@ -749,7 +749,7 @@ class _NumberField extends StatelessWidget {
         fillColor: KycColors.accentSoft(context),
         hintText: hint,
         hintStyle: TextStyle(
-          color: KycColors.textHint(context),
+          color: context.textTertiary,
           fontSize: 13,
           fontWeight: FontWeight.w400,
         ),
@@ -765,11 +765,14 @@ class _NumberField extends StatelessWidget {
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFE53935)),
+          borderSide: BorderSide(color: Theme.of(context).colorScheme.error),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFFE53935), width: 1.5),
+          borderSide: BorderSide(
+            color: Theme.of(context).colorScheme.error,
+            width: 1.5,
+          ),
         ),
         errorStyle: const TextStyle(fontSize: 11, height: 1.2),
         counterText: '',
@@ -781,7 +784,7 @@ class _NumberField extends StatelessWidget {
         filled: false,
         hintText: hint,
         hintStyle: TextStyle(
-          color: KycColors.textHint(context),
+          color: context.textTertiary,
           fontSize: 13,
           fontWeight: FontWeight.w400,
         ),
@@ -805,16 +808,16 @@ class _KycStatusCard extends StatelessWidget {
   final int total;
   final List<_DocEntry> entries;
 
-  Color _accentColor() {
+  Color _accentColor(BuildContext context) {
     if (entries.any((e) => e.status == _DocStatus.reuploadRequired)) {
-      return const Color(0xFFE57700);
+      return context.warning;
     }
     if (entries.any((e) => e.status == _DocStatus.expired)) {
-      return const Color(0xFFE57700);
+      return context.warning;
     }
-    if (uploaded == total) return const Color(0xFF1AB36A);
-    if (uploaded == 0) return const Color(0xFF98A2B3);
-    return const Color(0xFF2DBA9F);
+    if (uploaded == total) return context.success;
+    if (uploaded == 0) return context.textTertiary;
+    return KycColors.accent;
   }
 
   String _summaryText() {
@@ -831,14 +834,14 @@ class _KycStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _accentColor();
+    final color = _accentColor(context);
 
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: KycColors.cardBg(context),
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: KycColors.cardBorder(context)),
+        border: Border.all(color: context.borderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -868,7 +871,7 @@ class _KycStatusCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: KycColors.textSecondary(context),
+                        color: context.textSecondary,
                       ),
                     ),
                     Text(
@@ -900,7 +903,7 @@ class _KycStatusCard extends StatelessWidget {
                   height: 5,
                   margin: const EdgeInsets.symmetric(horizontal: 2),
                   decoration: BoxDecoration(
-                    color: e.status.color,
+                    color: e.status.color(context),
                     borderRadius: BorderRadius.circular(4),
                   ),
                 ),
@@ -917,7 +920,7 @@ class _KycStatusCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 9,
                     fontWeight: FontWeight.w700,
-                    color: e.status.color,
+                    color: e.status.color(context),
                   ),
                 ),
               );
@@ -971,12 +974,12 @@ class _FilterRow extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                 decoration: BoxDecoration(
                   color:
-                      isActive ? KycColors.accent : KycColors.cardBg(context),
+                      isActive ? KycColors.accent : context.cardColor,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isActive
                         ? KycColors.accent
-                        : KycColors.cardBorder(context),
+                        : context.borderSubtle,
                   ),
                 ),
                 child: Row(
@@ -989,7 +992,7 @@ class _FilterRow extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                         color: isActive
                             ? Colors.white
-                            : KycColors.textSecondary(context),
+                            : context.textSecondary,
                       ),
                     ),
                     if (count > 0) ...[
@@ -1066,12 +1069,12 @@ class _DocumentCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        color: KycColors.cardBg(context),
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: alertBorder
-              ? status.color.withValues(alpha: 0.4)
-              : KycColors.cardBorder(context),
+              ? status.color(context).withValues(alpha: 0.4)
+              : context.borderSubtle,
           width: alertBorder ? 1.5 : 1,
         ),
       ),
@@ -1102,7 +1105,7 @@ class _DocumentCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
-                          color: KycColors.textPrimary(context),
+                          color: context.textPrimary,
                         ),
                       ),
                       Text(
@@ -1116,7 +1119,7 @@ class _DocumentCard extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           color: entry.isRequired
                               ? KycColors.accent
-                              : KycColors.textHint(context),
+                              : context.textTertiary,
                         ),
                       ),
                     ],
@@ -1148,7 +1151,7 @@ class _DocumentCard extends StatelessWidget {
               ],
             ),
           ),
-          Divider(height: 1, color: KycColors.cardBorder(context)),
+          Divider(height: 1, color: context.borderSubtle),
           // ── Card body ──
           Padding(
             padding: const EdgeInsets.all(14),
@@ -1187,7 +1190,7 @@ class _DocumentCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w700,
-                          color: KycColors.textHint(context),
+                          color: context.textTertiary,
                           letterSpacing: 0.4,
                         ),
                       ),
@@ -1205,7 +1208,7 @@ class _DocumentCard extends StatelessWidget {
           ),
           // ── Action buttons ──
           if (hasAnyFile || entry.editable) ...[
-            Divider(height: 1, color: KycColors.cardBorder(context)),
+            Divider(height: 1, color: context.borderSubtle),
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
               child: Row(
@@ -1362,7 +1365,7 @@ class _DocThumbnail extends StatelessWidget {
     color: KycColors.accentSoft(context),
     child: Icon(
       Icons.broken_image_outlined,
-      color: KycColors.textHint(context),
+      color: context.textTertiary,
       size: 26,
     ),
   );
@@ -1376,26 +1379,23 @@ class _DocStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: isDark
-            ? status.color.withValues(alpha: 0.18)
-            : status.bgColor,
+        color: status.bgColor(context),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(status.icon, size: 12, color: status.color),
+          Icon(status.icon, size: 12, color: status.color(context)),
           const SizedBox(width: 4),
           Text(
             status.label,
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: status.color,
+              color: status.color(context),
             ),
           ),
         ],
@@ -1432,8 +1432,8 @@ class _DatePickerCell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasDate = date != null;
-    final warnColor = const Color(0xFFE57700);
-    final textColor = _warn ? warnColor : KycColors.textPrimary(context);
+    final warnColor = context.warning;
+    final textColor = _warn ? warnColor : context.textPrimary;
 
     return GestureDetector(
       onTap: onTap,
@@ -1448,7 +1448,7 @@ class _DatePickerCell extends StatelessWidget {
             Icon(
               Icons.calendar_today_outlined,
               size: 12,
-              color: _warn ? warnColor : KycColors.textHint(context),
+              color: _warn ? warnColor : context.textTertiary,
             ),
             const SizedBox(width: 5),
             Expanded(
@@ -1460,7 +1460,7 @@ class _DatePickerCell extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 8,
                       fontWeight: FontWeight.w700,
-                      color: KycColors.textHint(context),
+                      color: context.textTertiary,
                       letterSpacing: 0.4,
                     ),
                   ),
@@ -1472,7 +1472,7 @@ class _DatePickerCell extends StatelessWidget {
                           hasDate ? FontWeight.w700 : FontWeight.w400,
                       color: hasDate
                           ? textColor
-                          : KycColors.textHint(context),
+                          : context.textTertiary,
                     ),
                   ),
                 ],
@@ -1510,7 +1510,7 @@ class _UploadSourceSheet extends StatelessWidget {
               'JPG or PNG · max 5 MB',
               style: TextStyle(
                 fontSize: 12,
-                color: KycColors.textHint(context),
+                color: context.textTertiary,
               ),
             ),
             const SizedBox(height: 16),
@@ -1565,7 +1565,7 @@ class _SourceOption extends StatelessWidget {
         decoration: BoxDecoration(
           color: KycColors.accentSoft(context),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: KycColors.cardBorder(context)),
+          border: Border.all(color: context.borderSubtle),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1577,7 +1577,7 @@ class _SourceOption extends StatelessWidget {
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 14,
-                color: KycColors.textPrimary(context),
+                color: context.textPrimary,
               ),
             ),
             const SizedBox(height: 2),
@@ -1585,7 +1585,7 @@ class _SourceOption extends StatelessWidget {
               subtitle,
               style: TextStyle(
                 fontSize: 11,
-                color: KycColors.textHint(context),
+                color: context.textTertiary,
               ),
             ),
           ],
@@ -1614,14 +1614,13 @@ class _SubmitBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       decoration: BoxDecoration(
-        color: KycColors.cardBg(context),
+        color: context.cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
+            color: Colors.black.withValues(alpha: context.isDark ? 0.4 : 0.08),
             blurRadius: 14,
             offset: const Offset(0, -3),
           ),
@@ -1647,7 +1646,7 @@ class _SubmitBar extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: KycColors.textSecondary(context),
+                    color: context.textSecondary,
                   ),
                 ),
               ],
@@ -1656,7 +1655,7 @@ class _SubmitBar extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
-                backgroundColor: KycColors.cardBorder(context),
+                backgroundColor: context.borderSubtle,
                 color: KycColors.accent,
                 minHeight: 4,
               ),
@@ -1723,7 +1722,7 @@ class _EmptyFilterPlaceholder extends StatelessWidget {
           Icon(
             Icons.folder_open_rounded,
             size: 48,
-            color: KycColors.textHint(context),
+            color: context.textTertiary,
           ),
           const SizedBox(height: 12),
           Text(
@@ -1731,7 +1730,7 @@ class _EmptyFilterPlaceholder extends StatelessWidget {
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
-              color: KycColors.textHint(context),
+              color: context.textTertiary,
             ),
           ),
         ],
@@ -1748,20 +1747,20 @@ class _ReuploadWarningBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFEF6E7),
+        color: context.warningContainer,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFF6D697)),
+        border: Border.all(color: context.warning.withValues(alpha: 0.4)),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.warning_amber_rounded, color: Color(0xFFB87707)),
-          SizedBox(width: 10),
+          Icon(Icons.warning_amber_rounded, color: context.warning),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               'Your driving license is missing or expired. Please upload a valid copy to continue.',
               style: TextStyle(
                 fontSize: 13,
-                color: Color(0xFF7A4F08),
+                color: context.textPrimary,
                 height: 1.4,
               ),
             ),

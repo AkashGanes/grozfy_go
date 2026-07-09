@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/services/secure_token_storage.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 
@@ -95,14 +96,13 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
 
   void _showImageSourceSheet() {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
 
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: BoxDecoration(
-          color: isDark ? theme.colorScheme.surface : Colors.white,
+          color: ctx.surface,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
         ),
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
@@ -145,7 +145,7 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                 ctx: ctx,
                 icon: Icons.delete_outline_rounded,
                 label: 'Remove Image',
-                color: Colors.red,
+                color: ctx.danger,
                 onTap: () {
                   Navigator.of(ctx).pop();
                   setState(() => _pickedImage = null);
@@ -337,7 +337,7 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                           'Your Feedback',
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
-                            color: isDark ? Colors.white : AppTheme.nightBlue,
+                            color: context.textPrimary,
                           ),
                         ),
                       ],
@@ -394,7 +394,7 @@ class _SupportScreenState extends ConsumerState<SupportScreen> {
                           'Attachment',
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w700,
-                            color: isDark ? Colors.white : AppTheme.nightBlue,
+                            color: context.textPrimary,
                           ),
                         ),
                         const Spacer(),

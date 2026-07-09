@@ -8,6 +8,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../providers/notification_providers.dart';
 import '../../../../core/models/app_models.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/context_colors.dart';
 import '../../../../core/widgets/app_shell.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
@@ -276,11 +277,11 @@ class _InboxSummaryBar extends ConsumerWidget {
       decoration: BoxDecoration(
         color: scheme.surface.withValues(alpha: 0.62),
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x100A1D3A),
+            color: context.shadowColor,
             blurRadius: 16,
-            offset: Offset(0, 10),
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -386,11 +387,11 @@ class _NotificationFilterPill extends StatelessWidget {
             color: background,
             borderRadius: BorderRadius.circular(14),
             boxShadow: selected
-                ? const [
+                ? [
                     BoxShadow(
-                      color: Color(0x1A0A1D3A),
+                      color: context.shadowColor,
                       blurRadius: 14,
-                      offset: Offset(0, 8),
+                      offset: const Offset(0, 8),
                     ),
                   ]
                 : null,

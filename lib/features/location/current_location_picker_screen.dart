@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 
 class SearchResult {
@@ -443,23 +444,17 @@ class _CurrentLocationPickerScreenState
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final pageBg = isDark ? const Color(0xFF12141C) : const Color(0xFFF7F9FC);
-    final cardBg = isDark ? const Color(0xFF1B1E2A) : Colors.white;
-    final cardBorder =
-        isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE7EBF0);
-    final textPrimary =
-        isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
-    final textSecondary =
-        isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
-    final textHint =
-        isDark ? const Color(0xFF747B8B) : const Color(0xFF98A2B3);
+    final bool isDark = context.isDark;
+    final cardBg = context.cardColor;
+    final cardBorder = context.borderSubtle;
+    final textPrimary = context.textPrimary;
+    final textSecondary = context.textSecondary;
+    final textHint = context.textTertiary;
     final accent = const Color(0xFF1F5FE8);
     final accentSoft =
         isDark ? const Color(0xFF1A2E58) : const Color(0xFFE6EEFC);
 
     return Scaffold(
-      backgroundColor: pageBg,
       body: SafeArea(
         child: Column(
           children: [
@@ -578,7 +573,6 @@ class _CurrentLocationPickerScreenState
               textSecondary: textSecondary,
               accent: accent,
               accentSoft: accentSoft,
-              isDark: isDark,
             ),
           ],
         ),
@@ -647,7 +641,7 @@ class _CurrentLocationPickerScreenState
               border: Border.all(color: cardBorder),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
+                  color: context.shadowColor,
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
@@ -722,7 +716,6 @@ class _CurrentLocationPickerScreenState
     required Color textSecondary,
     required Color accent,
     required Color accentSoft,
-    required bool isDark,
   }) {
     final bool disableConfirm = _loading || _saving || _error != null;
     return Container(
@@ -731,7 +724,7 @@ class _CurrentLocationPickerScreenState
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
+            color: context.shadowColor,
             blurRadius: 18,
             offset: const Offset(0, -4),
           ),
@@ -748,9 +741,7 @@ class _CurrentLocationPickerScreenState
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF3D4255)
-                      : const Color(0xFFD0D5DD),
+                  color: context.borderStrong,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
@@ -850,16 +841,14 @@ class _CurrentLocationPickerScreenState
               Container(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF14352A)
-                      : const Color(0xFFE7F7EE),
+                  color: context.successContainer,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.shield_outlined,
-                      color: Color(0xFF118A52),
+                      color: context.success,
                       size: 18,
                     ),
                     const SizedBox(width: 8),
@@ -868,9 +857,7 @@ class _CurrentLocationPickerScreenState
                         'You can change your delivery zone anytime.',
                         style: TextStyle(
                           fontSize: 12.5,
-                          color: isDark
-                              ? const Color(0xFF8FD2A8)
-                              : const Color(0xFF118A52),
+                          color: context.success,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -954,7 +941,7 @@ class _BackChip extends StatelessWidget {
             border: Border.all(color: cardBorder),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
+                color: context.shadowColor,
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -994,7 +981,7 @@ class _UseMyLocationPill extends StatelessWidget {
             borderRadius: BorderRadius.circular(99),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
+                color: context.shadowColor,
                 blurRadius: 14,
                 offset: const Offset(0, 4),
               ),
@@ -1058,7 +1045,7 @@ class _MapControls extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
+                color: context.shadowColor,
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -1126,7 +1113,7 @@ class _MapControlButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
+                color: context.shadowColor,
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -1169,7 +1156,7 @@ class _SearchResultsDropdown extends StatelessWidget {
           border: Border.all(color: cardBorder),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
+              color: context.shadowColor,
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -1220,26 +1207,26 @@ class _ErrorBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFEF3F2),
+        color: context.dangerContainer,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFDA29B)),
+        border: Border.all(color: context.danger.withValues(alpha: 0.45)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.location_off_rounded,
-                color: Color(0xFFB42318),
+                color: context.danger,
                 size: 18,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   message,
-                  style: const TextStyle(
-                    color: Color(0xFFB42318),
+                  style: TextStyle(
+                    color: context.danger,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1256,8 +1243,10 @@ class _ErrorBanner extends StatelessWidget {
                   icon: const Icon(Icons.gps_fixed_rounded, size: 16),
                   label: const Text('Turn On GPS'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFB42318),
-                    side: const BorderSide(color: Color(0xFFFDA29B)),
+                    foregroundColor: context.danger,
+                    side: BorderSide(
+                      color: context.danger.withValues(alpha: 0.45),
+                    ),
                   ),
                 ),
               ),
@@ -1268,8 +1257,10 @@ class _ErrorBanner extends StatelessWidget {
                   icon: const Icon(Icons.refresh_rounded, size: 16),
                   label: const Text('Retry'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFB42318),
-                    side: const BorderSide(color: Color(0xFFFDA29B)),
+                    foregroundColor: context.danger,
+                    side: BorderSide(
+                      color: context.danger.withValues(alpha: 0.45),
+                    ),
                   ),
                 ),
               ),

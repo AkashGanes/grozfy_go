@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../theme/context_colors.dart';
 import '../widgets/app_toast.dart';
 
 Future<void> makePhoneCall(
@@ -75,13 +76,13 @@ class CallButton extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: const Color(0xFFE8F5E9),
+          color: context.successContainer,
           shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFF4CAF50).withAlpha(77)),
+          border: Border.all(color: context.success.withAlpha(77)),
         ),
         child: Icon(
           Icons.phone_rounded,
-          color: const Color(0xFF4CAF50),
+          color: context.success,
           size: iconSize,
         ),
       ),

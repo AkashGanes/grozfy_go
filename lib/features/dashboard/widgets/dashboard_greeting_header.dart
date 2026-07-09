@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/authed_network_image.dart';
 
 class DashboardGreetingHeader extends StatelessWidget {
@@ -53,7 +54,7 @@ class DashboardGreetingHeader extends StatelessWidget {
                 color: scheme.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
+                    color: context.shadowColor,
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -189,7 +190,7 @@ class _IconButtonChip extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
+                color: context.shadowColor,
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),

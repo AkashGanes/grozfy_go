@@ -13,6 +13,7 @@ import '../../../core/database/partner_timing_log_dao.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/app_toast.dart';
 import '../model/pickup_job.dart';
@@ -83,10 +84,10 @@ class _PickupJobDetailScreenState
           children: [
             const Icon(Icons.inventory_2_outlined, color: AppTheme.oceanBlue),
             const SizedBox(width: 8),
-            const Text(
+            Text(
               'Confirm Pickup',
               style: TextStyle(
-                  color: AppTheme.nightBlue,
+                  color: ctx.textPrimary,
                   fontWeight: FontWeight.w700,
                   fontSize: 16),
             ),
@@ -95,7 +96,7 @@ class _PickupJobDetailScreenState
         content: Text(
           'Confirm you have collected the items from ${job.customerName.isNotEmpty ? job.customerName : "the customer"}?',
           style:
-              const TextStyle(color: Colors.black54),
+              TextStyle(color: ctx.textSecondary),
         ),
         actions: [
           TextButton(
@@ -150,10 +151,10 @@ class _PickupJobDetailScreenState
           children: [
             const Icon(Icons.store_rounded, color: AppTheme.oceanBlue),
             const SizedBox(width: 8),
-            const Text(
+            Text(
               'Drop at Store',
               style: TextStyle(
-                  color: AppTheme.nightBlue,
+                  color: ctx.textPrimary,
                   fontWeight: FontWeight.w700,
                   fontSize: 16),
             ),
@@ -161,7 +162,7 @@ class _PickupJobDetailScreenState
         ),
         content: Text(
           'Confirm you have dropped the items for ${job.customerName.isNotEmpty ? job.customerName : "this customer"} at the store dock?',
-          style: const TextStyle(color: Colors.black54),
+          style: TextStyle(color: ctx.textSecondary),
         ),
         actions: [
           TextButton(
@@ -270,14 +271,14 @@ class _PickupJobDetailScreenState
       builder: (ctx) => AlertDialog(
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.directions_car_rounded, color: AppTheme.oceanBlue),
-            SizedBox(width: 8),
+            const Icon(Icons.directions_car_rounded, color: AppTheme.oceanBlue),
+            const SizedBox(width: 8),
             Text(
               'Mark En Route',
               style: TextStyle(
-                  color: AppTheme.nightBlue,
+                  color: ctx.textPrimary,
                   fontWeight: FontWeight.w700,
                   fontSize: 16),
             ),
@@ -285,7 +286,7 @@ class _PickupJobDetailScreenState
         ),
         content: Text(
           'Confirm you are heading to pick up from ${job.customerName.isNotEmpty ? job.customerName : "the customer"}?',
-          style: const TextStyle(color: Colors.black54),
+          style: TextStyle(color: ctx.textSecondary),
         ),
         actions: [
           TextButton(
@@ -335,27 +336,27 @@ class _PickupJobDetailScreenState
       builder: (ctx) => AlertDialog(
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32)),
-            SizedBox(width: 8),
+            Icon(Icons.check_circle_rounded, color: ctx.success),
+            const SizedBox(width: 8),
             Text(
               'Pickup Complete',
               style: TextStyle(
-                  color: AppTheme.nightBlue,
+                  color: ctx.textPrimary,
                   fontWeight: FontWeight.w700,
                   fontSize: 16),
             ),
           ],
         ),
-        content: const Text(
+        content: Text(
           'Items received at the store.\n\nThe customer\'s refund will be issued within 5–7 business days.',
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: ctx.textSecondary),
         ),
         actions: [
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2E7D32),
+              backgroundColor: ctx.success,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
@@ -411,7 +412,7 @@ class _PickupJobDetailScreenState
                             .toString()
                             .replaceFirst('Exception: ', ''),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.black54),
+                        style: TextStyle(color: context.textSecondary),
                       ),
                       const SizedBox(height: 14),
                       ElevatedButton(
@@ -445,7 +446,7 @@ class _PickupJobDetailScreenState
                   indicatorColor: AppTheme.oceanBlue,
                   indicatorWeight: 2,
                   labelColor: AppTheme.oceanBlue,
-                  unselectedLabelColor: Colors.black45,
+                  unselectedLabelColor: context.textSecondary,
                   labelStyle: const TextStyle(
                       fontWeight: FontWeight.w600, fontSize: 13),
                   unselectedLabelStyle: const TextStyle(
@@ -568,11 +569,11 @@ class _PickupJobDetailScreenState
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.local_shipping_outlined,
-              size: 44, color: Colors.black26),
+          Icon(Icons.local_shipping_outlined,
+              size: 44, color: context.iconMuted),
           const SizedBox(height: 10),
-          const Text('No delivery trip assigned',
-              style: TextStyle(color: Colors.black38, fontSize: 13)),
+          Text('No delivery trip assigned',
+              style: TextStyle(color: context.textTertiary, fontSize: 13)),
         ],
       ).animate().fadeIn(duration: 220.ms),
     );
@@ -583,11 +584,12 @@ class _PickupJobDetailScreenState
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.inventory_2_outlined, size: 44, color: Colors.black26),
-            SizedBox(height: 10),
+          children: [
+            Icon(Icons.inventory_2_outlined,
+                size: 44, color: context.iconMuted),
+            const SizedBox(height: 10),
             Text('No items',
-                style: TextStyle(color: Colors.black38, fontSize: 13)),
+                style: TextStyle(color: context.textTertiary, fontSize: 13)),
           ],
         ).animate().fadeIn(duration: 220.ms),
       );
@@ -638,15 +640,15 @@ class _PickupJobDetailScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Delivery Trip Stop',
+                Text('Delivery Trip Stop',
                     style: TextStyle(
-                        color: AppTheme.nightBlue,
+                        color: context.textPrimary,
                         fontSize: 12,
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 3),
                 Text(error,
-                    style: const TextStyle(
-                        color: Colors.black45, fontSize: 11)),
+                    style: TextStyle(
+                        color: context.textSecondary, fontSize: 11)),
               ],
             ),
           ),
@@ -670,11 +672,11 @@ class _PickupJobDetailScreenState
     Color stopColor;
     switch (stopStatus.trim().toLowerCase()) {
       case 'received at store':
-        stopColor = const Color(0xFF2E7D32);
+        stopColor = context.success;
       case 'picked up':
         stopColor = AppTheme.oceanBlue;
       case 'failed':
-        stopColor = Colors.red;
+        stopColor = context.danger;
       default:
         stopColor = AppTheme.mango;
     }
@@ -814,7 +816,7 @@ class _PickupJobDetailScreenState
     } else {
       valueWidget = Text(
         isDate ? _formatCreation(raw) : raw,
-        style: const TextStyle(color: AppTheme.nightBlue, fontSize: 13),
+        style: TextStyle(color: context.textPrimary, fontSize: 13),
       );
     }
 
@@ -825,8 +827,8 @@ class _PickupJobDetailScreenState
           width: 130,
           child: Text(
             label,
-            style: const TextStyle(
-              color: Colors.black45,
+            style: TextStyle(
+              color: context.textSecondary,
               fontSize: 12,
               fontWeight: FontWeight.w500,
             ),
@@ -864,10 +866,10 @@ class _PickupJobDetailScreenState
     Color statusColor;
     String statusLabel;
     if (failed) {
-      statusColor = Colors.red;
+      statusColor = context.danger;
       statusLabel = 'Failed';
     } else if (completed) {
-      statusColor = const Color(0xFF2E7D32);
+      statusColor = context.success;
       statusLabel = 'Received at Store';
     } else if (pickedUp) {
       statusColor = AppTheme.oceanBlue;
@@ -886,10 +888,10 @@ class _PickupJobDetailScreenState
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Status',
                 style: TextStyle(
-                  color: Colors.black45,
+                  color: context.textSecondary,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.4,
@@ -934,7 +936,7 @@ class _PickupJobDetailScreenState
   }
 
   Widget _stepDot({required bool done, required String label}) {
-    final color = done ? AppTheme.oceanBlue : Colors.black26;
+    final color = done ? AppTheme.oceanBlue : context.textTertiary;
     return Expanded(
       flex: 2,
       child: Column(
@@ -947,7 +949,7 @@ class _PickupJobDetailScreenState
               color: done ? AppTheme.oceanBlue : Colors.transparent,
               border: done
                   ? null
-                  : Border.all(color: Colors.black26, width: 1.5),
+                  : Border.all(color: context.borderStrong, width: 1.5),
             ),
             child: done
                 ? const Icon(Icons.check, size: 14, color: Colors.white)
@@ -977,7 +979,7 @@ class _PickupJobDetailScreenState
         margin: const EdgeInsets.only(bottom: 18),
         color: done
             ? AppTheme.oceanBlue.withValues(alpha: 0.4)
-            : Colors.black12,
+            : context.borderSubtle,
       ),
     );
   }
@@ -1057,8 +1059,8 @@ class _PickupJobDetailScreenState
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.black45,
+                style: TextStyle(
+                  color: context.textSecondary,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1066,15 +1068,15 @@ class _PickupJobDetailScreenState
               const SizedBox(height: 2),
               Text(
                 address.isNotEmpty ? address : '—',
-                style: const TextStyle(
-                    color: AppTheme.nightBlue, fontSize: 13),
+                style: TextStyle(
+                    color: context.textPrimary, fontSize: 13),
               ),
               if (hasCoords) ...[
                 const SizedBox(height: 3),
                 Text(
                   '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
-                  style: const TextStyle(
-                      color: Colors.black38, fontSize: 11),
+                  style: TextStyle(
+                      color: context.textTertiary, fontSize: 11),
                 ),
               ],
             ],
@@ -1169,15 +1171,15 @@ class _PickupJobDetailScreenState
             children: [
               Text(
                 item.itemName,
-                style: const TextStyle(
-                    color: AppTheme.nightBlue,
+                style: TextStyle(
+                    color: context.textPrimary,
                     fontSize: 13,
                     fontWeight: FontWeight.w500),
               ),
               if (item.description != null && item.description!.isNotEmpty)
                 Text(item.description!,
-                    style: const TextStyle(
-                        color: Colors.black45, fontSize: 11)),
+                    style: TextStyle(
+                        color: context.textSecondary, fontSize: 11)),
             ],
           ),
         ),
@@ -1186,15 +1188,15 @@ class _PickupJobDetailScreenState
           children: [
             Text(
               'Qty: ${item.qty % 1 == 0 ? item.qty.toInt() : item.qty}',
-              style: const TextStyle(
-                  color: AppTheme.nightBlue,
+              style: TextStyle(
+                  color: context.textPrimary,
                   fontSize: 12,
                   fontWeight: FontWeight.w600),
             ),
             if (item.amount != null)
               Text(
                 '₹${item.amount!.toStringAsFixed(2)}',
-                style: const TextStyle(color: Colors.black45, fontSize: 11),
+                style: TextStyle(color: context.textSecondary, fontSize: 11),
               ),
           ],
         ),
@@ -1247,12 +1249,13 @@ class _PickupJobDetailScreenState
               errorBuilder: (_, e, s) => Container(
                 height: 80,
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.05),
+                  color: context.fillSubtle,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Center(
+                child: Center(
                   child: Text('Image unavailable',
-                      style: TextStyle(color: Colors.black38, fontSize: 12)),
+                      style: TextStyle(
+                          color: context.textTertiary, fontSize: 12)),
                 ),
               ),
             ),
@@ -1265,8 +1268,8 @@ class _PickupJobDetailScreenState
   Widget _sectionTitle(String title) {
     return Text(
       title.toUpperCase(),
-      style: const TextStyle(
-        color: Colors.black38,
+      style: TextStyle(
+        color: context.textTertiary,
         fontSize: 10,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.8,
@@ -1337,21 +1340,21 @@ class _PickupJobDetailScreenState
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF2E7D32).withValues(alpha: 0.08),
+          color: context.successContainer,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-              color: const Color(0xFF2E7D32).withValues(alpha: 0.25)),
+              color: context.success.withValues(alpha: 0.25)),
         ),
-        child: const Row(
+        child: Row(
           children: [
             Icon(Icons.check_circle_rounded,
-                size: 18, color: Color(0xFF2E7D32)),
-            SizedBox(width: 10),
+                size: 18, color: context.success),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 'Pickup complete. Refund issued within 5–7 business days.',
                 style: TextStyle(
-                    color: Color(0xFF2E7D32),
+                    color: context.success,
                     fontWeight: FontWeight.w600,
                     fontSize: 13),
               ),
@@ -1367,19 +1370,19 @@ class _PickupJobDetailScreenState
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.red.withValues(alpha: 0.06),
+          color: context.dangerContainer,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.red.withValues(alpha: 0.25)),
+          border: Border.all(color: context.danger.withValues(alpha: 0.25)),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            Icon(Icons.cancel_outlined, size: 18, color: Colors.red),
-            SizedBox(width: 10),
+            Icon(Icons.cancel_outlined, size: 18, color: context.danger),
+            const SizedBox(width: 10),
             Expanded(
               child: Text(
                 'Pickup marked as failed.',
                 style: TextStyle(
-                    color: Colors.red,
+                    color: context.danger,
                     fontWeight: FontWeight.w600,
                     fontSize: 13),
               ),
@@ -1398,8 +1401,8 @@ class _PickupJobDetailScreenState
       height: 46,
       child: OutlinedButton.icon(
         style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.red,
-          side: BorderSide(color: Colors.red.withValues(alpha: 0.5)),
+          foregroundColor: context.danger,
+          side: BorderSide(color: context.danger.withValues(alpha: 0.5)),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14)),
         ),
@@ -1444,7 +1447,7 @@ class _PickupJobDetailScreenState
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 2),
-          child: Icon(icon, size: 15, color: Colors.black38),
+          child: Icon(icon, size: 15, color: context.iconMuted),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -1454,20 +1457,20 @@ class _PickupJobDetailScreenState
                   children: [
                     Text(
                       label,
-                      style: const TextStyle(
-                          color: Colors.black45,
+                      style: TextStyle(
+                          color: context.textSecondary,
                           fontSize: 11,
                           fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 1),
                     Text(text,
-                        style: const TextStyle(
-                            color: AppTheme.nightBlue, fontSize: 13)),
+                        style: TextStyle(
+                            color: context.textPrimary, fontSize: 13)),
                   ],
                 )
               : Text(text,
-                  style: const TextStyle(
-                      color: AppTheme.nightBlue, fontSize: 13)),
+                  style: TextStyle(
+                      color: context.textPrimary, fontSize: 13)),
         ),
       ],
     );
@@ -1476,12 +1479,12 @@ class _PickupJobDetailScreenState
   Widget _callRow(String phone) {
     return Row(
       children: [
-        const Icon(Icons.phone_outlined, size: 15, color: Colors.black38),
+        Icon(Icons.phone_outlined, size: 15, color: context.iconMuted),
         const SizedBox(width: 8),
         Expanded(
           child: Text(phone,
-              style: const TextStyle(
-                  color: AppTheme.nightBlue, fontSize: 13)),
+              style: TextStyle(
+                  color: context.textPrimary, fontSize: 13)),
         ),
         GestureDetector(
           onTap: () async {
@@ -1492,20 +1495,20 @@ class _PickupJobDetailScreenState
             padding:
                 const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+              color: context.successContainer,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                  color: const Color(0xFF2E7D32).withValues(alpha: 0.3)),
+                  color: context.success.withValues(alpha: 0.3)),
             ),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.call_rounded,
-                    size: 13, color: Color(0xFF2E7D32)),
-                SizedBox(width: 4),
+                    size: 13, color: context.success),
+                const SizedBox(width: 4),
                 Text('Call',
                     style: TextStyle(
-                        color: Color(0xFF2E7D32),
+                        color: context.success,
                         fontSize: 11,
                         fontWeight: FontWeight.w600)),
               ],
@@ -1563,7 +1566,6 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
   void _showSourceSheet() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
       builder: (ctx) => SafeArea(
@@ -1592,9 +1594,9 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
             if (_pickedFile != null)
               ListTile(
                 leading:
-                    const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('Remove Photo',
-                    style: TextStyle(color: Colors.red)),
+                    Icon(Icons.delete_outline, color: context.danger),
+                title: Text('Remove Photo',
+                    style: TextStyle(color: context.danger)),
                 onTap: () {
                   Navigator.of(ctx).pop();
                   setState(() => _pickedFile = null);
@@ -1611,10 +1613,10 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
   Widget build(BuildContext context) {
     final inset = MediaQuery.of(context).viewInsets.bottom;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
         borderRadius:
-            BorderRadius.vertical(top: Radius.circular(24)),
+            const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + inset),
       child: SingleChildScrollView(
@@ -1627,7 +1629,7 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                    color: Colors.black12,
+                    color: context.fillMuted,
                     borderRadius: BorderRadius.circular(4)),
               ),
             ),
@@ -1645,19 +1647,19 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
                       color: AppTheme.oceanBlue, size: 20),
                 ),
                 const SizedBox(width: 10),
-                const Text(
+                Text(
                   'Proof of Pickup',
                   style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.nightBlue),
+                      color: context.textPrimary),
                 ),
               ],
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Optionally capture a photo of the items before collecting.',
-              style: TextStyle(fontSize: 13, color: Colors.black54),
+              style: TextStyle(fontSize: 13, color: context.textSecondary),
             ),
             const SizedBox(height: 18),
             GestureDetector(
@@ -1667,24 +1669,24 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
                       width: double.infinity,
                       height: 160,
                       decoration: BoxDecoration(
-                        color: Colors.grey.withValues(alpha: 0.06),
+                        color: context.fillSubtle,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                            color: Colors.black.withValues(alpha: 0.10)),
+                            color: context.borderMuted),
                       ),
-                      child: const Column(
+                      child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.add_a_photo_outlined,
-                              color: Colors.black38, size: 36),
-                          SizedBox(height: 8),
+                              color: context.iconMuted, size: 36),
+                          const SizedBox(height: 8),
                           Text('Tap to capture photo',
                               style: TextStyle(
-                                  color: Colors.black38, fontSize: 13)),
-                          SizedBox(height: 4),
+                                  color: context.textTertiary, fontSize: 13)),
+                          const SizedBox(height: 4),
                           Text('Camera or gallery',
                               style: TextStyle(
-                                  color: Colors.black26, fontSize: 11)),
+                                  color: context.textDisabled, fontSize: 11)),
                         ],
                       ),
                     )
@@ -1733,12 +1735,12 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
                       side: BorderSide(
-                          color: Colors.black.withValues(alpha: 0.20)),
+                          color: context.borderStrong),
                     ),
-                    child: const Text('Skip',
+                    child: Text('Skip',
                         style: TextStyle(
                             fontWeight: FontWeight.w600,
-                            color: Colors.black54)),
+                            color: context.textSecondary)),
                   ),
                 ),
                 const SizedBox(width: 12),

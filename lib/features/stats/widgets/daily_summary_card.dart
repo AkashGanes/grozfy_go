@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/navigation/app_routes.dart';
 import '../../../core/state/app_scope.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../models/driver_stats.dart';
 import '../providers/stats_providers.dart';
@@ -130,20 +131,20 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
       children: [
         const Icon(Icons.today_rounded, size: 15, color: AppTheme.oceanBlue),
         const SizedBox(width: 6),
-        const Expanded(
+        Expanded(
           child: Text(
             'Today',
             style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: AppTheme.nightBlue,
+              color: context.textPrimary,
               fontSize: 13,
             ),
           ),
         ),
-        const Icon(
+        Icon(
           Icons.chevron_right_rounded,
           size: 18,
-          color: Colors.black38,
+          color: context.iconMuted,
         ),
       ],
     );
@@ -166,9 +167,9 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
             children: [
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.nightBlue,
+                  color: context.textPrimary,
                   fontSize: 15,
                 ),
               ),
@@ -188,7 +189,7 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
           const SizedBox(height: 2),
           Text(
             label,
-            style: const TextStyle(color: Colors.black45, fontSize: 10),
+            style: TextStyle(color: context.textSecondary, fontSize: 10),
             textAlign: TextAlign.center,
           ),
         ],
@@ -197,7 +198,7 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
   }
 
   Widget _divider() {
-    return Container(width: 1, height: 36, color: Colors.black12);
+    return Container(width: 1, height: 36, color: context.divider);
   }
 
   static String _formatDuration(Duration d) {

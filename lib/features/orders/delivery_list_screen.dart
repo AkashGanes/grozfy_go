@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
@@ -616,7 +617,7 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
+                color: context.textSecondary,
               ),
             ),
             const SizedBox(height: 8),
@@ -637,7 +638,7 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
+                color: context.textSecondary,
               ),
             ),
             const SizedBox(height: 8),

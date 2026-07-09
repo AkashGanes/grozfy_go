@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 
 class FailedPickupResult {
@@ -91,9 +92,9 @@ class _FailedPickupSheetState extends State<_FailedPickupSheet> {
             if (_pickedFile != null)
               ListTile(
                 leading:
-                    const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('Remove Photo',
-                    style: TextStyle(color: Colors.red)),
+                    Icon(Icons.delete_outline, color: context.danger),
+                title: Text('Remove Photo',
+                    style: TextStyle(color: context.danger)),
                 onTap: () {
                   Navigator.of(ctx).pop();
                   setState(() => _pickedFile = null);
@@ -112,7 +113,7 @@ class _FailedPickupSheetState extends State<_FailedPickupSheet> {
       scrollable: true,
       title: 'Pickup Failed',
       leadingIcon: Icons.cancel_outlined,
-      leadingIconColor: Colors.red,
+      leadingIconColor: context.danger,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -316,7 +317,7 @@ class _FailedPickupSheetState extends State<_FailedPickupSheet> {
           AppSheetPrimaryButton(
             label: 'Confirm Pickup Failed',
             icon: Icons.cancel_outlined,
-            color: Colors.red,
+            color: context.danger,
             onPressed: () {
               Navigator.of(context).pop(
                 FailedPickupResult(

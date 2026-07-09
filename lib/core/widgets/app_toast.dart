@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../theme/context_colors.dart';
+
 class AppToast {
   AppToast._();
 
@@ -117,7 +119,7 @@ class _ToastWidgetState extends State<_ToastWidget>
                       borderRadius: BorderRadius.circular(999),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.25),
+                          color: context.shadowColor,
                           blurRadius: 14,
                           offset: const Offset(0, 6),
                         ),

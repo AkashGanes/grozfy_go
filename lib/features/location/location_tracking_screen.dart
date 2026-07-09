@@ -8,6 +8,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 
@@ -78,9 +79,9 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
                     ),
                     if (app.isTracking)
                       IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.my_location_rounded,
-                          color: AppTheme.nightBlue,
+                          color: context.iconPrimary,
                         ),
                         onPressed: () => _centerMap(app),
                         tooltip: 'Center on position',
@@ -132,27 +133,22 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
                         : Container(
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(16),
-                              gradient: const LinearGradient(
-                                colors: [
-                                  Color(0xFFE6F2FF),
-                                  Color(0xFFDDF7EE),
-                                ],
-                              ),
+                              color: context.surfaceContainer,
                             ),
-                            child: const Center(
+                            child: Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
                                     Icons.location_off_rounded,
                                     size: 48,
-                                    color: Colors.grey,
+                                    color: context.iconMuted,
                                   ),
-                                  SizedBox(height: 8),
+                                  const SizedBox(height: 8),
                                   Text(
                                     'Start tracking to see live map',
                                     style: TextStyle(
-                                      color: Colors.grey,
+                                      color: context.textSecondary,
                                       fontSize: 13,
                                     ),
                                   ),
@@ -170,7 +166,9 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
                           ? Icons.gps_fixed_rounded
                           : Icons.gps_off_rounded,
                       size: 16,
-                      color: app.isTracking ? Colors.green : Colors.grey,
+                      color: app.isTracking
+                          ? context.success
+                          : context.iconMuted,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -201,19 +199,19 @@ class _LocationTrackingScreenState extends State<LocationTrackingScreen> {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.battery_alert_rounded,
                           size: 16,
-                          color: Colors.orange,
+                          color: context.warning,
                         ),
                         const SizedBox(width: 6),
                         Text(
                           app.trackingInterval <= 10
                               ? 'High accuracy — higher battery usage'
                               : 'Balanced accuracy and battery usage',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.orange,
+                            color: context.warning,
                           ),
                         ),
                       ],

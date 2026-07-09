@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_toast.dart';
 
@@ -56,17 +57,18 @@ Widget buildProofPhotoWidget(BuildContext context, String photoUrl) {
         errorBuilder: (context, error, stack) => Container(
           height: 200,
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: context.surfaceContainer,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Column(
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.broken_image_outlined, color: Colors.black38, size: 36),
-              SizedBox(height: 8),
+              Icon(Icons.broken_image_outlined,
+                  color: context.textTertiary, size: 36),
+              const SizedBox(height: 8),
               Text(
                 'Could not load photo',
-                style: TextStyle(color: Colors.black38, fontSize: 12),
+                style: TextStyle(color: context.textTertiary, fontSize: 12),
               ),
             ],
           ),
@@ -210,9 +212,9 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
             if (_pickedFile != null)
               ListTile(
                 leading:
-                    const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('Remove Photo',
-                    style: TextStyle(color: Colors.red)),
+                    Icon(Icons.delete_outline, color: ctx.danger),
+                title: Text('Remove Photo',
+                    style: TextStyle(color: ctx.danger)),
                 onTap: () {
                   Navigator.of(ctx).pop();
                   setState(() => _pickedFile = null);
@@ -245,28 +247,28 @@ class _DeliveryProofSheetState extends State<_DeliveryProofSheet> {
                       width: double.infinity,
                       height: 160,
                       decoration: BoxDecoration(
-                        color: Colors.grey.withValues(alpha: 0.06),
+                        color: context.fillSubtle,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: Colors.black.withValues(alpha: 0.10),
+                          color: context.borderMuted,
                         ),
                       ),
-                      child: const Column(
+                      child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.add_a_photo_outlined,
-                              color: Colors.black38, size: 36),
-                          SizedBox(height: 8),
+                              color: context.textTertiary, size: 36),
+                          const SizedBox(height: 8),
                           Text(
                             'Tap to capture photo',
                             style: TextStyle(
-                                color: Colors.black38, fontSize: 13),
+                                color: context.textTertiary, fontSize: 13),
                           ),
-                          SizedBox(height: 4),
+                          const SizedBox(height: 4),
                           Text(
                             'Camera or gallery',
                             style: TextStyle(
-                                color: Colors.black26, fontSize: 11),
+                                color: context.textDisabled, fontSize: 11),
                           ),
                         ],
                       ),

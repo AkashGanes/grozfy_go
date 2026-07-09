@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 
 class DeliveryLocationPickerScreen extends StatefulWidget {
@@ -362,7 +363,10 @@ class _DeliveryLocationPickerScreenState
                   const SizedBox(height: 8),
                   Text(
                     'Selected: ${_selectedPoint.latitude.toStringAsFixed(6)}, ${_selectedPoint.longitude.toStringAsFixed(6)}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -373,12 +377,12 @@ class _DeliveryLocationPickerScreenState
             FrostCard(
               child: Row(
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.red),
+                  Icon(Icons.error_outline, color: context.danger),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _error!,
-                      style: const TextStyle(color: Colors.red),
+                      style: TextStyle(color: context.danger),
                     ),
                   ),
                 ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/context_colors.dart';
 import 'app_bottom_nav.dart';
 import 'app_toast.dart';
 import 'offline_status_indicator.dart';
@@ -199,13 +200,11 @@ class FrostCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = context.isDark;
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: isDark
-            ? theme.colorScheme.surface.withValues(alpha: 0.9)
-            : Colors.white.withValues(alpha: 0.86),
+        color: context.surfaceMuted,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(
           color: isDark
@@ -214,9 +213,7 @@ class FrostCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.2)
-                : const Color(0x140A1D3A),
+            color: context.shadowColor,
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -366,26 +363,26 @@ class _SafeMapState extends State<SafeMap> {
     if (_hasError) {
       return Container(
         decoration: BoxDecoration(
-          color: Colors.grey[100],
+          color: context.surfaceContainer,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.map_outlined, size: 48, color: Colors.grey[400]),
+              Icon(Icons.map_outlined, size: 48, color: context.iconMuted),
               const SizedBox(height: 8),
               Text(
                 'Map unavailable',
                 style: TextStyle(
-                  color: Colors.grey[600],
+                  color: context.textSecondary,
                   fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 'Check your internet connection',
-                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                style: TextStyle(color: context.textTertiary, fontSize: 12),
               ),
               const SizedBox(height: 12),
               TextButton.icon(

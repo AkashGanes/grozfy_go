@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/context_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/timing_event.dart';
@@ -23,9 +24,6 @@ class TripStageTimelineWidget extends ConsumerWidget {
     'trip_completed': 'Trip Completed',
   };
 
-  static const Color _green = Color(0xFF2E7D32);
-  static const Color _red = Color(0xFFB71C1C);
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(tripTimelineProvider(tripName));
@@ -41,11 +39,11 @@ class TripStageTimelineWidget extends ConsumerWidget {
                 color: AppTheme.oceanBlue,
               ),
               const SizedBox(width: 8),
-              const Text(
+              Text(
                 'Trip Stage Timeline',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.nightBlue,
+                  color: context.textPrimary,
                   fontSize: 13,
                 ),
               ),
@@ -54,8 +52,8 @@ class TripStageTimelineWidget extends ConsumerWidget {
           const SizedBox(height: 14),
           async.when(
             loading: _buildLoading,
-            error: (e, _) => _buildError(e),
-            data: _buildContent,
+            error: (e, _) => _buildError(context, e),
+            data: (result) => _buildContent(context, result),
           ),
         ],
       ),
@@ -74,7 +72,7 @@ class TripStageTimelineWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildError(Object error) {
+  Widget _buildError(BuildContext context, Object error) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
@@ -84,7 +82,7 @@ class TripStageTimelineWidget extends ConsumerWidget {
           Expanded(
             child: Text(
               error.toString().replaceFirst('Exception: ', ''),
-              style: const TextStyle(color: Colors.black54, fontSize: 12),
+              style: TextStyle(color: context.textSecondary, fontSize: 12),
             ),
           ),
         ],
@@ -92,45 +90,45 @@ class TripStageTimelineWidget extends ConsumerWidget {
     );
   }
 
-  Widget _buildContent(TimelineResult result) {
+  Widget _buildContent(BuildContext context, TimelineResult result) {
     return switch (result) {
-      TimelineEmpty() => _buildEmpty(),
-      TimelinePending() => _buildPending(),
-      TimelineData(:final events) => _buildTimeline(events),
+      TimelineEmpty() => _buildEmpty(context),
+      TimelinePending() => _buildPending(context),
+      TimelineData(:final events) => _buildTimeline(context, events),
     };
   }
 
-  Widget _buildPending() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 12),
+  Widget _buildPending(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         children: [
-          SizedBox(
+          const SizedBox(
             width: 14,
             height: 14,
             child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.oceanBlue),
           ),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           Text(
             'Syncing trip data...',
-            style: TextStyle(color: Colors.black54, fontSize: 12),
+            style: TextStyle(color: context.textSecondary, fontSize: 12),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmpty() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 12),
+  Widget _buildEmpty(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Text(
         'No timeline data for this trip yet.',
-        style: TextStyle(color: Colors.black45, fontSize: 12),
+        style: TextStyle(color: context.textSecondary, fontSize: 12),
       ),
     );
   }
 
-  Widget _buildTimeline(List<TimingEvent> events) {
+  Widget _buildTimeline(BuildContext context, List<TimingEvent> events) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: List.generate(events.length, (i) {
@@ -144,16 +142,16 @@ class TripStageTimelineWidget extends ConsumerWidget {
           label: _labels[event.eventType] ?? _titleCase(event.eventType),
           duration: duration,
           isLast: isLast,
-          dotColor: _dotColor(event.eventType),
+          dotColor: _dotColor(context, event.eventType),
         );
       }),
     );
   }
 
-  Color _dotColor(String eventType) {
-    if (eventType == 'stop_failed') return _red;
+  Color _dotColor(BuildContext context, String eventType) {
+    if (eventType == 'stop_failed') return context.danger;
     if (eventType == 'trip_completed' || eventType == 'stop_delivered') {
-      return _green;
+      return context.success;
     }
     return AppTheme.oceanBlue;
   }
@@ -206,7 +204,7 @@ class _TimelineRow extends StatelessWidget {
                 Container(
                   width: _lineWidth,
                   height: 44,
-                  color: Colors.black12,
+                  color: context.borderSubtle,
                 ),
             ],
           ),
@@ -225,8 +223,8 @@ class _TimelineRow extends StatelessWidget {
                     Flexible(
                       child: Text(
                         label,
-                        style: const TextStyle(
-                          color: AppTheme.nightBlue,
+                        style: TextStyle(
+                          color: context.textPrimary,
                           fontWeight: FontWeight.w600,
                           fontSize: 12,
                         ),
@@ -234,8 +232,8 @@ class _TimelineRow extends StatelessWidget {
                     ),
                     Text(
                       AppDateFormat.time(event.eventTime),
-                      style: const TextStyle(
-                        color: Colors.black54,
+                      style: TextStyle(
+                        color: context.textSecondary,
                         fontSize: 11,
                       ),
                     ),
@@ -245,8 +243,8 @@ class _TimelineRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     '↓  ${AppDateFormat.duration(duration!)}',
-                    style: const TextStyle(
-                      color: Colors.black38,
+                    style: TextStyle(
+                      color: context.textTertiary,
                       fontSize: 11,
                     ),
                   ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/context_colors.dart';
 import 'dashboard_colors.dart';
 import 'section_card.dart';
 
@@ -122,8 +123,8 @@ class AvailableDeliveriesCard extends StatelessWidget {
                     ),
                     child: Text(
                       actionLabel,
-                      style: const TextStyle(
-                        color: Color(0xFF118A52),
+                      style: TextStyle(
+                        color: context.success,
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
                       ),

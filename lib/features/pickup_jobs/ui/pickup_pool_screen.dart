@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -10,6 +9,7 @@ import '../../../core/navigation/app_routes.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../kyc/widgets/kyc_form_widgets.dart';
 import '../model/pickup_job.dart';
@@ -276,7 +276,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
               const SizedBox(height: 10),
               Text(message,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.black54)),
+                  style: TextStyle(color: context.textSecondary)),
               const SizedBox(height: 14),
               ElevatedButton(
                 onPressed: () => setState(() { _future = _loadPool(); }),
@@ -296,21 +296,21 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.search_off_rounded,
-                  size: 48, color: Colors.black.withValues(alpha: 0.15)),
+                  size: 48, color: context.iconMuted),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'No pickups match your search',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                    color: Colors.black45,
+                    color: context.textSecondary,
                     fontSize: 15,
                     fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Try a different name, phone, or address',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.black26, fontSize: 13),
+                style: TextStyle(color: context.textTertiary, fontSize: 13),
               ),
             ],
           ),
@@ -324,21 +324,21 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.inventory_2_outlined,
-                  size: 56, color: Colors.black.withValues(alpha: 0.15)),
+                  size: 56, color: context.iconMuted),
               const SizedBox(height: 16),
-              const Text(
+              Text(
                 'No pickups available right now',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                    color: Colors.black45,
+                    color: context.textSecondary,
                     fontSize: 15,
                     fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 6),
-              const Text(
+              Text(
                 'Pull down to refresh',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.black26, fontSize: 13),
+                style: TextStyle(color: context.textTertiary, fontSize: 13),
               ),
             ],
           ),
@@ -365,14 +365,10 @@ class _JobCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color cardBg = isDark ? const Color(0xFF1B1E2A) : Colors.white;
-    final Color cardBorder =
-        isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE4E7EC);
-    final Color textPrimary =
-        isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
-    final Color textSecondary =
-        isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
+    final Color cardBg = context.cardColor;
+    final Color cardBorder = context.borderSubtle;
+    final Color textPrimary = context.textPrimary;
+    final Color textSecondary = context.textSecondary;
     const Color accent = AppTheme.oceanBlue;
 
     return Padding(
@@ -390,8 +386,7 @@ class _JobCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color:
-                        Colors.black.withValues(alpha: isDark ? 0.25 : 0.04),
+                    color: context.shadowColor,
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -450,10 +445,8 @@ class _JobCard extends StatelessWidget {
                         const SizedBox(height: 10),
                         _MetaRow(
                           icon: Icons.person_rounded,
-                          iconColor: const Color(0xFF1AB36A),
-                          iconBg: isDark
-                              ? const Color(0xFF14352A)
-                              : const Color(0xFFE7F7EE),
+                          iconColor: context.success,
+                          iconBg: context.successContainer,
                           label: 'Customer',
                           value: job.customerName,
                           labelColor: textSecondary,
@@ -462,14 +455,13 @@ class _JobCard extends StatelessWidget {
                         if (job.customerMobile.isNotEmpty)
                           _PhoneRow(
                             phone: job.customerMobile,
-                            isDark: isDark,
                             labelColor: textSecondary,
                             valueColor: textPrimary,
                           ),
                         _MetaRow(
                           icon: Icons.my_location_outlined,
                           iconColor: const Color(0xFF7C3AED),
-                          iconBg: isDark
+                          iconBg: context.isDark
                               ? const Color(0xFF2D2148)
                               : const Color(0xFFEFE9FE),
                           label: 'Pickup',
@@ -480,7 +472,7 @@ class _JobCard extends StatelessWidget {
                         _MetaRow(
                           icon: Icons.store_rounded,
                           iconColor: const Color(0xFFF38B19),
-                          iconBg: isDark
+                          iconBg: context.isDark
                               ? const Color(0xFF3A2613)
                               : const Color(0xFFFFEFDA),
                           label: 'Store',
@@ -493,7 +485,7 @@ class _JobCard extends StatelessWidget {
                           _MetaRow(
                             icon: Icons.schedule_outlined,
                             iconColor: const Color(0xFF0891B2),
-                            iconBg: isDark
+                            iconBg: context.isDark
                                 ? const Color(0xFF0C2A30)
                                 : const Color(0xFFE0F2F7),
                             label: 'Schedule',
@@ -657,21 +649,18 @@ class _MetaRow extends StatelessWidget {
 class _PhoneRow extends StatelessWidget {
   const _PhoneRow({
     required this.phone,
-    required this.isDark,
     required this.labelColor,
     required this.valueColor,
   });
 
   final String phone;
-  final bool isDark;
   final Color labelColor;
   final Color valueColor;
 
   @override
   Widget build(BuildContext context) {
-    final iconBg =
-        isDark ? const Color(0xFF1A2C4F) : const Color(0xFFE5EEFB);
-    const iconColor = Color(0xFF2D6CDF);
+    final iconBg = context.infoContainer;
+    final iconColor = context.info;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -686,7 +675,7 @@ class _PhoneRow extends StatelessWidget {
               borderRadius: BorderRadius.circular(7),
             ),
             alignment: Alignment.center,
-            child: const Icon(Icons.phone_outlined, size: 14, color: iconColor),
+            child: Icon(Icons.phone_outlined, size: 14, color: iconColor),
           ),
           const SizedBox(width: 10),
           SizedBox(
@@ -722,21 +711,21 @@ class _PhoneRow extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+                color: context.successContainer,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                    color: const Color(0xFF2E7D32).withValues(alpha: 0.3)),
+                    color: context.success.withValues(alpha: 0.3)),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.call_rounded,
-                      size: 12, color: Color(0xFF2E7D32)),
-                  SizedBox(width: 3),
+                      size: 12, color: context.success),
+                  const SizedBox(width: 3),
                   Text(
                     'Call',
                     style: TextStyle(
-                      color: Color(0xFF2E7D32),
+                      color: context.success,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),

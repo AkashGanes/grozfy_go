@@ -13,6 +13,7 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/utils/call_utils.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
@@ -212,11 +213,11 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.location_off, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('Location Services'),
+            Icon(Icons.location_off, color: context.warning),
+            const SizedBox(width: 8),
+            const Text('Location Services'),
           ],
         ),
         content: const Text(
@@ -250,11 +251,11 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.location_disabled, color: Colors.red),
-            SizedBox(width: 8),
-            Text('Permission Denied'),
+            Icon(Icons.location_disabled, color: context.danger),
+            const SizedBox(width: 8),
+            const Text('Permission Denied'),
           ],
         ),
         content: const Text(
@@ -612,7 +613,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
+                    color: context.shadowColor,
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -637,7 +638,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.18),
+                    color: context.shadowColor,
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),
@@ -657,7 +658,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.18),
+                    color: context.shadowColor,
                     blurRadius: 6,
                     offset: const Offset(0, 2),
                   ),
@@ -738,9 +739,9 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
               Navigator.pop(context);
               _cancelDelivery();
             },
-            child: const Text(
+            child: Text(
               'Yes, Cancel',
-              style: TextStyle(color: Colors.red),
+              style: TextStyle(color: context.danger),
             ),
           ),
         ],
@@ -861,11 +862,11 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.check_circle, color: Colors.green, size: 32),
-            SizedBox(width: 8),
-            Text('Delivered!'),
+            Icon(Icons.check_circle, color: dialogContext.success, size: 32),
+            const SizedBox(width: 8),
+            const Text('Delivered!'),
           ],
         ),
         content: const Text('Order delivered successfully!'),
@@ -1055,17 +1056,17 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
               left: 16,
               right: 16,
               child: Card(
-                color: Colors.red.shade50,
+                color: context.dangerContainer,
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline, color: Colors.red),
+                      Icon(Icons.error_outline, color: context.danger),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _errorMessage!,
-                          style: const TextStyle(color: Colors.red),
+                          style: TextStyle(color: context.danger),
                         ),
                       ),
                       TextButton(
@@ -1089,7 +1090,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
+                          color: context.shadowColor,
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -1107,7 +1108,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
+                          color: context.shadowColor,
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -1116,7 +1117,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                     child: IconButton(
                       icon: Icon(
                         Icons.my_location,
-                        color: _isFollowMode ? _primaryColor : Colors.grey,
+                        color: _isFollowMode ? _primaryColor : context.iconMuted,
                       ),
                       onPressed: () {
                         setState(() => _isFollowMode = true);
@@ -1147,7 +1148,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
+                    color: context.shadowColor,
                     blurRadius: 20,
                     offset: const Offset(0, -5),
                   ),
@@ -1359,10 +1360,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                                                     ? Icons.directions_bike
                                                     : Icons.pending),
                                           color: _hasArrived
-                                              ? Colors.green
+                                              ? context.success
                                               : (_isTracking
                                                     ? _primaryColor
-                                                    : Colors.orange),
+                                                    : context.warning),
                                           size: 22,
                                         ),
                                         const SizedBox(width: 4),
@@ -1376,10 +1377,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                                             fontWeight: FontWeight.bold,
                                             fontSize: 18,
                                             color: _hasArrived
-                                                ? Colors.green
+                                                ? context.success
                                                 : (_isTracking
                                                       ? _primaryColor
-                                                      : Colors.orange),
+                                                      : context.warning),
                                           ),
                                         ),
                                       ],
@@ -1423,7 +1424,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                               icon: const Icon(Icons.cancel_outlined),
                               label: const Text('Cancel'),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
+                                foregroundColor: context.danger,
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 14,
                                 ),
@@ -1488,8 +1489,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                             child: OutlinedButton(
                               onPressed: _markDeliveryFailed,
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
+                                foregroundColor: context.danger,
+                                side: BorderSide(color: context.danger),
                                 padding: const EdgeInsets.symmetric(vertical: 16),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -1560,7 +1561,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
+                    color: context.shadowColor,
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
