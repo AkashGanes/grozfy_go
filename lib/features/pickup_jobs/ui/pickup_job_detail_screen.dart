@@ -82,7 +82,7 @@ class _PickupJobDetailScreenState
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.inventory_2_outlined, color: AppTheme.oceanBlue),
+            Icon(Icons.inventory_2_outlined, color: context.scheme.primary),
             const SizedBox(width: 8),
             Text(
               'Confirm Pickup',
@@ -105,7 +105,7 @@ class _PickupJobDetailScreenState
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.oceanBlue,
+              backgroundColor: context.scheme.primary,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
@@ -149,7 +149,7 @@ class _PickupJobDetailScreenState
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.store_rounded, color: AppTheme.oceanBlue),
+            Icon(Icons.store_rounded, color: context.scheme.primary),
             const SizedBox(width: 8),
             Text(
               'Drop at Store',
@@ -171,7 +171,7 @@ class _PickupJobDetailScreenState
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.oceanBlue,
+              backgroundColor: context.scheme.primary,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
@@ -273,7 +273,7 @@ class _PickupJobDetailScreenState
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            const Icon(Icons.directions_car_rounded, color: AppTheme.oceanBlue),
+            Icon(Icons.directions_car_rounded, color: context.scheme.primary),
             const SizedBox(width: 8),
             Text(
               'Mark En Route',
@@ -295,7 +295,7 @@ class _PickupJobDetailScreenState
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.oceanBlue,
+              backgroundColor: context.scheme.primary,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
@@ -392,8 +392,8 @@ class _PickupJobDetailScreenState
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppTheme.oceanBlue),
+            return Center(
+              child: CircularProgressIndicator(color: context.scheme.primary),
             );
           }
           if (snapshot.hasError) {
@@ -443,9 +443,9 @@ class _PickupJobDetailScreenState
                       .fadeIn(duration: 220.ms),
                 ),
                 TabBar(
-                  indicatorColor: AppTheme.oceanBlue,
+                  indicatorColor: context.scheme.primary,
                   indicatorWeight: 2,
-                  labelColor: AppTheme.oceanBlue,
+                  labelColor: context.scheme.primary,
                   unselectedLabelColor: context.textSecondary,
                   labelStyle: const TextStyle(
                       fontWeight: FontWeight.w600, fontSize: 13),
@@ -674,7 +674,7 @@ class _PickupJobDetailScreenState
       case 'received at store':
         stopColor = context.success;
       case 'picked up':
-        stopColor = AppTheme.oceanBlue;
+        stopColor = context.scheme.primary;
       case 'failed':
         stopColor = context.danger;
       default:
@@ -806,8 +806,8 @@ class _PickupJobDetailScreenState
         },
         child: Text(
           raw,
-          style: const TextStyle(
-            color: AppTheme.oceanBlue,
+          style: TextStyle(
+            color: context.scheme.primary,
             fontSize: 13,
             decoration: TextDecoration.underline,
           ),
@@ -872,10 +872,10 @@ class _PickupJobDetailScreenState
       statusColor = context.success;
       statusLabel = 'Received at Store';
     } else if (pickedUp) {
-      statusColor = AppTheme.oceanBlue;
+      statusColor = context.scheme.primary;
       statusLabel = 'Picked Up';
     } else if (enRoute) {
-      statusColor = AppTheme.oceanBlue;
+      statusColor = context.scheme.primary;
       statusLabel = 'Scheduled';
     } else {
       statusColor = AppTheme.mango;
@@ -936,7 +936,7 @@ class _PickupJobDetailScreenState
   }
 
   Widget _stepDot({required bool done, required String label}) {
-    final color = done ? AppTheme.oceanBlue : context.textTertiary;
+    final color = done ? context.scheme.primary : context.textTertiary;
     return Expanded(
       flex: 2,
       child: Column(
@@ -946,7 +946,7 @@ class _PickupJobDetailScreenState
             height: 24,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: done ? AppTheme.oceanBlue : Colors.transparent,
+              color: done ? context.scheme.primary : Colors.transparent,
               border: done
                   ? null
                   : Border.all(color: context.borderStrong, width: 1.5),
@@ -978,7 +978,7 @@ class _PickupJobDetailScreenState
         height: 2,
         margin: const EdgeInsets.only(bottom: 18),
         color: done
-            ? AppTheme.oceanBlue.withValues(alpha: 0.4)
+            ? context.scheme.primary.withValues(alpha: 0.4)
             : context.borderSubtle,
       ),
     );
@@ -1050,7 +1050,7 @@ class _PickupJobDetailScreenState
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 2),
-          child: Icon(icon, size: 15, color: AppTheme.oceanBlue),
+          child: Icon(icon, size: 15, color: context.scheme.primary),
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -1093,20 +1093,20 @@ class _PickupJobDetailScreenState
               padding:
                   const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               decoration: BoxDecoration(
-                color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                color: context.scheme.primary.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.25)),
+                    color: context.scheme.primary.withValues(alpha: 0.25)),
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.map_outlined,
-                      size: 12, color: AppTheme.oceanBlue),
-                  SizedBox(width: 3),
+                      size: 12, color: context.scheme.primary),
+                  const SizedBox(width: 3),
                   Text('Map',
                       style: TextStyle(
-                          color: AppTheme.oceanBlue,
+                          color: context.scheme.primary,
                           fontSize: 11,
                           fontWeight: FontWeight.w600)),
                 ],
@@ -1130,8 +1130,8 @@ class _PickupJobDetailScreenState
               const Spacer(),
               Text(
                 '${job.items.length} item${job.items.length == 1 ? '' : 's'}',
-                style: const TextStyle(
-                    color: AppTheme.oceanBlue,
+                style: TextStyle(
+                    color: context.scheme.primary,
                     fontSize: 11,
                     fontWeight: FontWeight.w600),
               ),
@@ -1158,11 +1158,11 @@ class _PickupJobDetailScreenState
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+            color: context.scheme.primary.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: const Icon(Icons.inventory_2_outlined,
-              size: 14, color: AppTheme.oceanBlue),
+          child: Icon(Icons.inventory_2_outlined,
+              size: 14, color: context.scheme.primary),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -1239,11 +1239,11 @@ class _PickupJobDetailScreenState
               fit: BoxFit.cover,
               loadingBuilder: (_, child, progress) => progress == null
                   ? child
-                  : const SizedBox(
+                  : SizedBox(
                       height: 120,
                       child: Center(
                         child: CircularProgressIndicator(
-                            color: AppTheme.oceanBlue, strokeWidth: 2),
+                            color: context.scheme.primary, strokeWidth: 2),
                       ),
                     ),
               errorBuilder: (_, e, s) => Container(
@@ -1281,10 +1281,10 @@ class _PickupJobDetailScreenState
     final statusNorm = job.status.trim().toLowerCase();
 
     if (_isSubmitting) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
-          child: CircularProgressIndicator(color: AppTheme.oceanBlue),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: CircularProgressIndicator(color: context.scheme.primary),
         ),
       );
     }
@@ -1426,7 +1426,7 @@ class _PickupJobDetailScreenState
       height: 52,
       child: ElevatedButton.icon(
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppTheme.oceanBlue,
+          backgroundColor: context.scheme.primary,
           foregroundColor: Colors.white,
           elevation: 0,
           shape: RoundedRectangleBorder(
@@ -1574,8 +1574,8 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
           children: [
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.camera_alt_outlined,
-                  color: AppTheme.oceanBlue),
+              leading: Icon(Icons.camera_alt_outlined,
+                  color: context.scheme.primary),
               title: const Text('Take Photo'),
               onTap: () {
                 Navigator.of(ctx).pop();
@@ -1583,8 +1583,8 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined,
-                  color: AppTheme.oceanBlue),
+              leading: Icon(Icons.photo_library_outlined,
+                  color: context.scheme.primary),
               title: const Text('Choose from Gallery'),
               onTap: () {
                 Navigator.of(ctx).pop();
@@ -1640,11 +1640,11 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.1),
+                    color: context.scheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(Icons.camera_alt_rounded,
-                      color: AppTheme.oceanBlue, size: 20),
+                  child: Icon(Icons.camera_alt_rounded,
+                      color: context.scheme.primary, size: 20),
                 ),
                 const SizedBox(width: 10),
                 Text(
@@ -1748,7 +1748,7 @@ class _PickupProofSheetState extends State<_PickupProofSheet> {
                   flex: 2,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.oceanBlue,
+                      backgroundColor: context.scheme.primary,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(

@@ -251,16 +251,16 @@ class _CompleteButton extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  color: Color(0xFF1F4FB6),
+                style: TextStyle(
+                  color: context.scheme.primary,
                   fontWeight: FontWeight.w700,
                   fontSize: 12,
                 ),
               ),
               const SizedBox(width: 6),
-              const Icon(
+              Icon(
                 Icons.arrow_forward_rounded,
-                color: Color(0xFF1F4FB6),
+                color: context.scheme.primary,
                 size: 16,
               ),
             ],

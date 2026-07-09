@@ -721,7 +721,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1F4FB6),
+                      color: context.scheme.primary,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Row(
@@ -1312,7 +1312,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                               height: 46,
                               child: ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1F4FB6),
+                                  backgroundColor: context.scheme.primary,
                                   foregroundColor: Colors.white,
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
@@ -1635,7 +1635,7 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
     final statusNorm = job.status.trim().toLowerCase();
     final statusColor = statusNorm == 'picked up'
         ? const Color(0xFF35C2B5)
-        : AppTheme.oceanBlue;
+        : context.scheme.primary;
 
     return Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -1646,10 +1646,10 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(
-            color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+            color: context.scheme.primary.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.20),
+              color: context.scheme.primary.withValues(alpha: 0.20),
             ),
           ),
           child: Row(
@@ -1658,13 +1658,13 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                  color: context.scheme.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.inventory_2_outlined,
                   size: 16,
-                  color: AppTheme.oceanBlue,
+                  color: context.scheme.primary,
                 ),
               ),
               const SizedBox(width: 12),

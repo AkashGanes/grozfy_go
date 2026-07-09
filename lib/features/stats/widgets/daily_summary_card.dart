@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_routes.dart';
 import '../../../core/state/app_scope.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../models/driver_stats.dart';
@@ -68,13 +67,13 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
       children: [
         _header(),
         const SizedBox(height: 14),
-        const Center(
+        Center(
           child: SizedBox(
             height: 20,
             width: 20,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: AppTheme.oceanBlue,
+              color: context.scheme.primary,
             ),
           ),
         ),
@@ -129,7 +128,7 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
   Widget _header() {
     return Row(
       children: [
-        const Icon(Icons.today_rounded, size: 15, color: AppTheme.oceanBlue),
+        Icon(Icons.today_rounded, size: 15, color: context.scheme.primary),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
@@ -159,7 +158,7 @@ class _DailySummaryCardState extends ConsumerState<DailySummaryCard> {
     return Expanded(
       child: Column(
         children: [
-          Icon(icon, size: 18, color: AppTheme.oceanBlue),
+          Icon(icon, size: 18, color: context.scheme.primary),
           const SizedBox(height: 4),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,

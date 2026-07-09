@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/theme/context_colors.dart';
 import 'dashboard_colors.dart';
 import 'section_card.dart';
 
@@ -89,10 +90,10 @@ class CurrentLocationCard extends StatelessWidget {
                                   point: center,
                                   width: 44,
                                   height: 44,
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.location_pin,
                                     size: 36,
-                                    color: Color(0xFF1F4FB6),
+                                    color: context.scheme.primary,
                                   ),
                                 ),
                               ],
@@ -122,11 +123,11 @@ class CurrentLocationCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.only(top: 2),
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
                 child: Icon(
                   Icons.location_on_rounded,
-                  color: Color(0xFF1F4FB6),
+                  color: context.scheme.primary,
                   size: 22,
                 ),
               ),
@@ -190,16 +191,16 @@ class _ChangeChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
+              Icon(
                 Icons.gps_fixed_rounded,
                 size: 14,
-                color: Color(0xFF1F4FB6),
+                color: context.scheme.primary,
               ),
               const SizedBox(width: 6),
               Text(
                 label,
-                style: const TextStyle(
-                  color: Color(0xFF1F4FB6),
+                style: TextStyle(
+                  color: context.scheme.primary,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),

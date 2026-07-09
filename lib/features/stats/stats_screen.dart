@@ -55,7 +55,7 @@ class _DailySection extends ConsumerWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.today_rounded, size: 15, color: AppTheme.oceanBlue),
+              Icon(Icons.today_rounded, size: 15, color: context.scheme.primary),
               const SizedBox(width: 6),
               Text(
                 'Today',
@@ -69,7 +69,7 @@ class _DailySection extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           async.when(
-            loading: _buildLoading,
+            loading: () => _buildLoading(context),
             error: (e, _) => _buildError(context, e),
             data: (s) =>
                 _buildData(context, s, dutyHours, tripsToday, avgTripDuration),
@@ -82,13 +82,13 @@ class _DailySection extends ConsumerWidget {
         .slideY(begin: 0.04, end: 0);
   }
 
-  Widget _buildLoading() {
-    return const Center(
+  Widget _buildLoading(BuildContext context) {
+    return Center(
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.symmetric(vertical: 20),
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: AppTheme.oceanBlue,
+          color: context.scheme.primary,
         ),
       ),
     );
@@ -122,7 +122,7 @@ class _DailySection extends ConsumerWidget {
           'Duty Hours',
           AppDateFormat.duration(dutyHours),
           Icons.access_time_rounded,
-          AppTheme.oceanBlue,
+          context.scheme.primary,
         ),
         const SizedBox(width: 10),
         _statTile(
@@ -194,7 +194,7 @@ class _MonthlySection extends ConsumerWidget {
           _MonthSelector(period: period),
           const SizedBox(height: 14),
           async.when(
-            loading: _buildLoading,
+            loading: () => _buildLoading(context),
             error: (e, _) => _buildError(context, e),
             data: (s) => _buildData(context, s),
           ),
@@ -206,13 +206,13 @@ class _MonthlySection extends ConsumerWidget {
         .slideY(begin: 0.04, end: 0);
   }
 
-  Widget _buildLoading() {
-    return const Center(
+  Widget _buildLoading(BuildContext context) {
+    return Center(
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.symmetric(vertical: 20),
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: AppTheme.oceanBlue,
+          color: context.scheme.primary,
         ),
       ),
     );
@@ -255,7 +255,7 @@ class _MonthlySection extends ConsumerWidget {
               'Total Road Time',
               AppDateFormat.duration(s.totalRoadTime),
               Icons.route_outlined,
-              AppTheme.oceanBlue,
+              context.scheme.primary,
             ),
           ],
         ),
@@ -277,7 +277,7 @@ class _MonthlySection extends ConsumerWidget {
                   ? '${s.onTimePercent!.toStringAsFixed(0)}%'
                   : '—',
               Icons.verified_outlined,
-              AppTheme.oceanBlue,
+              context.scheme.primary,
             ),
           ],
         ),
@@ -335,10 +335,10 @@ class _MonthSelector extends ConsumerWidget {
 
     return Row(
       children: [
-        const Icon(
+        Icon(
           Icons.calendar_month_rounded,
           size: 15,
-          color: AppTheme.oceanBlue,
+          color: context.scheme.primary,
         ),
         const SizedBox(width: 6),
         Expanded(
@@ -357,7 +357,7 @@ class _MonthSelector extends ConsumerWidget {
               .state = _prevMonth(period),
           icon: const Icon(Icons.chevron_left_rounded),
           iconSize: 20,
-          color: AppTheme.oceanBlue,
+          color: context.scheme.primary,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(),
         ),
@@ -370,7 +370,8 @@ class _MonthSelector extends ConsumerWidget {
                   .state = _nextMonth(period),
           icon: const Icon(Icons.chevron_right_rounded),
           iconSize: 20,
-          color: isCurrentMonth ? context.textDisabled : AppTheme.oceanBlue,
+          color:
+              isCurrentMonth ? context.textDisabled : context.scheme.primary,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(),
         ),
@@ -402,10 +403,10 @@ class _LifetimeSection extends ConsumerWidget {
         children: [
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.all_inclusive_rounded,
                 size: 15,
-                color: AppTheme.oceanBlue,
+                color: context.scheme.primary,
               ),
               const SizedBox(width: 6),
               Text(
@@ -420,7 +421,7 @@ class _LifetimeSection extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           async.when(
-            loading: _buildLoading,
+            loading: () => _buildLoading(context),
             error: (e, _) => _buildError(context, e),
             data: (s) => _buildData(context, s),
           ),
@@ -432,13 +433,13 @@ class _LifetimeSection extends ConsumerWidget {
         .slideY(begin: 0.04, end: 0);
   }
 
-  Widget _buildLoading() {
-    return const Center(
+  Widget _buildLoading(BuildContext context) {
+    return Center(
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.symmetric(vertical: 20),
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: AppTheme.oceanBlue,
+          color: context.scheme.primary,
         ),
       ),
     );
@@ -500,7 +501,7 @@ class _LifetimeSection extends ConsumerWidget {
   Widget _row(BuildContext context, IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: AppTheme.oceanBlue),
+        Icon(icon, size: 16, color: context.scheme.primary),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
