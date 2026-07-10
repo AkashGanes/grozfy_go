@@ -8,7 +8,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/authed_network_image.dart';
@@ -481,12 +480,12 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
           curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
-            color: selected ? AppTheme.oceanBlue : Colors.transparent,
+            color: selected ? context.scheme.primary : Colors.transparent,
             borderRadius: BorderRadius.circular(9),
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: AppTheme.oceanBlue.withValues(alpha: 0.3),
+                      color: context.scheme.primary.withValues(alpha: 0.3),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -1400,7 +1399,7 @@ class _OrderCard extends StatelessWidget {
     final Color cardBorder = context.borderSubtle;
     final Color textPrimary = context.textPrimary;
     final Color textSecondary = context.textSecondary;
-    const Color accent = Color(0xFF1F5FE8);
+    final Color accent = context.scheme.primary;
     final statusColor = order.status.statusColorIn(context);
 
     return Padding(

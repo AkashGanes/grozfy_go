@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/cod_settlement/providers/settlement_provider.dart';
-import '../theme/app_theme.dart';
 import '../theme/context_colors.dart';
 
 class AppBottomNav extends ConsumerWidget {
@@ -83,7 +82,7 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color inactive =
         Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
-    final Color iconColor = isSelected ? AppTheme.oceanBlue : inactive;
+    final Color iconColor = isSelected ? context.scheme.primary : inactive;
 
     return InkWell(
       onTap: onTap,

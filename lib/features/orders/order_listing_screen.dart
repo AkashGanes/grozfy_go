@@ -8,7 +8,6 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/models/app_models.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
@@ -204,11 +203,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                 children: [
                   const SizedBox(height: 12),
                   if (loading)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
                       child: Center(
                         child: CircularProgressIndicator(
-                          color: AppTheme.oceanBlue,
+                          color: context.scheme.primary,
                         ),
                       ),
                     )
@@ -242,7 +241,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                               leading: Icon(
                                 Icons.public_rounded,
                                 color: selected
-                                    ? AppTheme.oceanBlue
+                                    ? context.scheme.primary
                                     : ctx.iconMuted,
                               ),
                               title: Text(
@@ -252,14 +251,14 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                                       ? FontWeight.w700
                                       : FontWeight.w500,
                                   color: selected
-                                      ? AppTheme.oceanBlue
+                                      ? context.scheme.primary
                                       : scheme.onSurface,
                                 ),
                               ),
                               trailing: selected
-                                  ? const Icon(
+                                  ? Icon(
                                       Icons.check_circle_rounded,
-                                      color: AppTheme.oceanBlue,
+                                      color: context.scheme.primary,
                                     )
                                   : null,
                               onTap: () {
@@ -280,7 +279,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                             leading: Icon(
                               Icons.store_rounded,
                               color: selected
-                                  ? AppTheme.oceanBlue
+                                  ? context.scheme.primary
                                   : scheme.onSurface.withValues(alpha: 0.4),
                             ),
                             title: Text(
@@ -290,14 +289,14 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                                     ? FontWeight.w700
                                     : FontWeight.w500,
                                 color: selected
-                                    ? AppTheme.oceanBlue
+                                    ? context.scheme.primary
                                     : scheme.onSurface,
                               ),
                             ),
                             trailing: selected
-                                ? const Icon(
+                                ? Icon(
                                     Icons.check_circle_rounded,
-                                    color: AppTheme.oceanBlue,
+                                    color: context.scheme.primary,
                                   )
                                 : null,
                             onTap: () {
@@ -600,7 +599,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1F5FE8),
+                backgroundColor: context.scheme.primary,
                 foregroundColor: Colors.white,
               ),
               onPressed: () => Navigator.of(ctx).pop(true),
@@ -718,8 +717,8 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             // in any unconstrained-width context including Positioned children).
             Material(
               color: _creatingBatchTrip
-                  ? const Color(0xFF1F5FE8).withValues(alpha: 0.6)
-                  : const Color(0xFF1F5FE8),
+                  ? context.scheme.primary.withValues(alpha: 0.6)
+                  : context.scheme.primary,
               borderRadius: BorderRadius.circular(10),
               child: InkWell(
                 onTap: _creatingBatchTrip ? null : _createBatchTrip,
@@ -815,12 +814,12 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
               child: Row(
                 children: [
                   if (_searchLoading) ...[
-                    const SizedBox(
+                    SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppTheme.oceanBlue,
+                        color: context.scheme.primary,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -855,17 +854,17 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                        color: context.scheme.primary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.2),
+                          color: context.scheme.primary.withValues(alpha: 0.2),
                         ),
                       ),
                       child: Text(
                         '${_searchResults.length} result${_searchResults.length == 1 ? '' : 's'}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppTheme.oceanBlue,
+                          color: context.scheme.primary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -934,14 +933,14 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+        color: context.scheme.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.oceanBlue.withValues(alpha: 0.2)),
+        border: Border.all(color: context.scheme.primary.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.my_location_rounded,
-              size: 18, color: AppTheme.oceanBlue),
+          Icon(Icons.my_location_rounded,
+              size: 18, color: context.scheme.primary),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1109,7 +1108,7 @@ class _FullOrderCard extends StatelessWidget {
         isSelected ? context.success : context.borderSubtle;
     final Color textPrimary = context.textPrimary;
     final Color textSecondary = context.textSecondary;
-    const Color accent = Color(0xFF1F5FE8);
+    final Color accent = context.scheme.primary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1419,12 +1418,12 @@ class _SearchResultCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                    color: context.scheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.shopping_bag_rounded,
-                    color: AppTheme.oceanBlue,
+                    color: context.scheme.primary,
                     size: 22,
                   ),
                 ),
@@ -1508,9 +1507,9 @@ class _Highlight extends StatelessWidget {
           TextSpan(
             text: text.substring(idx, idx + query.length),
             style: style.copyWith(
-              color: AppTheme.oceanBlue,
+              color: context.scheme.primary,
               fontWeight: FontWeight.bold,
-              backgroundColor: AppTheme.oceanBlue.withValues(alpha: 0.1),
+              backgroundColor: context.scheme.primary.withValues(alpha: 0.1),
             ),
           ),
           TextSpan(text: text.substring(idx + query.length)),
