@@ -11,6 +11,7 @@ import '../../../core/services/connectivity_service.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../../../core/widgets/offline_state_view.dart';
 import '../../kyc/widgets/kyc_form_widgets.dart';
 import '../model/pickup_job.dart';
 import '../repository/pickup_job_repository.dart';
@@ -198,7 +199,11 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
           _buildSearchBar(),
           Expanded(
             child: !controller.isOnline
-                ? _offlineView()
+                ? OfflineStateView(
+                    message: 'Go Online to see available pickups.',
+                    onGoOnline: () =>
+                        ref.read(appControllerProvider).setOnline(true),
+                  )
                 : FutureBuilder<List<PickupJob>>(
               future: _future,
               builder: (context, snapshot) {
@@ -279,35 +284,6 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
         child: CircularProgressIndicator(color: AppTheme.oceanBlue),
       );
 
-  Widget _offlineView() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: FrostCard(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.cloud_off_rounded,
-                size: 56,
-                color: AppTheme.oceanBlue.withValues(alpha: 0.4),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'You are Offline',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Go Online to see available pickups.',
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _errorView(String message) {
     return Center(

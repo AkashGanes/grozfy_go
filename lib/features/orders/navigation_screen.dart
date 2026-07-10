@@ -43,11 +43,6 @@ class _NavigationScreenState extends State<NavigationScreen> {
 
   Future<void> _advanceStatus(BuildContext context, DeliveryOrder order) async {
     final app = AppScope.of(context);
-    // Offline drivers can't advance order status (including mark Delivered).
-    if (!app.isOnline) {
-      AppToast.show(context, 'You are Offline. Go Online to update orders.');
-      return;
-    }
     final next = _nextStatus(order.orderStatus);
     if (next == order.orderStatus || _syncing) return;
     setState(() => _syncing = true);

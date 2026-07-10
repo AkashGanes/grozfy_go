@@ -1455,13 +1455,6 @@ class _ExternalDeliveryTripDetailsScreenState
     ExternalDeliveryTripStop stop,
     String newStatus,
   ) async {
-    // Offline drivers can't change order status (mark Delivered/Failed/etc.).
-    // Guarded here at the single entry point so the proof/reason sheets never
-    // even open while Offline.
-    if (!ref.read(appControllerProvider).isOnline) {
-      showInfoSnack(context, 'You are Offline. Go Online to update orders.');
-      return;
-    }
     final current = stop.status.trim().toLowerCase();
     if (current == newStatus.trim().toLowerCase()) return;
 

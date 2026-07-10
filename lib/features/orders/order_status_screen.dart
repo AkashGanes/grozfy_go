@@ -456,11 +456,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Future<void> _advanceStatus(BuildContext context) async {
     final app = AppScope.of(context);
-    // Offline drivers can't advance order status (including mark Delivered).
-    if (!app.isOnline) {
-      AppToast.show(context, 'You are Offline. Go Online to update orders.');
-      return;
-    }
     final order = app.activeOrder;
     if (order == null || _syncing) return;
     final navigator = Navigator.of(context);

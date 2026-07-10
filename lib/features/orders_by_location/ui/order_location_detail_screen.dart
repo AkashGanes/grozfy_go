@@ -11,7 +11,6 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
-import '../../../core/state/app_scope.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/call_utils.dart';
 import '../../../core/utils/formatters.dart';
@@ -182,11 +181,6 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   }
 
   Future<void> _updateStatus(String newStatus) async {
-    // Offline drivers can't change order status (accept/start, mark Delivered).
-    if (!AppScope.of(context).isOnline) {
-      AppToast.show(context, 'You are Offline. Go Online to update orders.');
-      return;
-    }
     setState(() => _updating = true);
     try {
       // Always go through the offline-aware path. It queues + flushes
@@ -780,11 +774,6 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   }
 
   Future<void> _onSlideDelivered() async {
-    // Offline drivers can't mark an order Delivered.
-    if (!AppScope.of(context).isOnline) {
-      AppToast.show(context, 'You are Offline. Go Online to update orders.');
-      return;
-    }
     // COD: ask how customer paid before proceeding
     final detail = _detail;
     if (detail != null && detail.isCod) {

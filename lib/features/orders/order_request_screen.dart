@@ -60,10 +60,15 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
 
   void _resolveOrder({required bool accept, bool timeout = false}) {
     if (_resolved || !mounted) return;
+    final app = AppScope.of(context);
+    // Incoming-order prompts are NEW work — not actionable while Offline.
+    // Treat an accept attempt from an Offline driver as a reject.
+    if (accept && !app.isOnline) {
+      accept = false;
+    }
     setState(() => _resolved = true);
 
     _timer?.cancel();
-    final app = AppScope.of(context);
     app.respondToOrderRequest(accept: accept);
 
     if (accept) {

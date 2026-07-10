@@ -1442,11 +1442,6 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     DeliveryOrder order,
     ({String label, OrderProgressStatus next}) transition,
   ) async {
-    // Offline drivers can't advance order status (including mark Delivered).
-    if (!app.isOnline) {
-      showInfoSnack(context, 'You are Offline. Go Online to update orders.');
-      return;
-    }
     final navigator = Navigator.of(context);
 
     if (transition.next == OrderStatus.delivered) {

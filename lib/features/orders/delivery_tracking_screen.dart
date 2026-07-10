@@ -784,12 +784,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
 
   Future<void> _confirmDelivery() async {
     final app = AppScope.of(context);
-    // Offline drivers can't mark an order Delivered — block before the proof /
-    // COD sheets open.
-    if (!app.isOnline) {
-      AppToast.show(context, 'You are Offline. Go Online to update orders.');
-      return;
-    }
     final navigator = Navigator.of(context);
     final String deliveryName = _resolveDeliveryName(app);
 

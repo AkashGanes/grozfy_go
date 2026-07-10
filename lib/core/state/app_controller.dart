@@ -3315,13 +3315,11 @@ class AppController extends ChangeNotifier {
     OrderProgressStatus status, {
     String? orderId,
   }) async {
-    // Offline drivers can't advance/complete orders. Central guard so every
-    // status-change entry point (advance, mark delivered, mark failed) is
-    // blocked here regardless of which screen invokes it.
-    if (!_isOnline) {
-      return 'You are Offline. Go Online to update orders.';
-    }
-
+    // NOTE: availability (Online/Offline) is intentionally NOT checked here.
+    // Advancing/completing an already-accepted order is committed work and
+    // must succeed even when the driver is Offline (industry-standard: Offline
+    // only blocks NEW work, not finishing in-progress trips). Network-offline
+    // completion is handled separately by OfflineTripManager's sync queue.
     final String? targetId = orderId ?? activeOrder?.orderId;
     if (targetId == null) return 'No active order found';
 

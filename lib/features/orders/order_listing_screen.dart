@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
+import '../../core/widgets/offline_state_view.dart';
 import '../kyc/widgets/kyc_form_widgets.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/model/external_delivery_detail.dart';
@@ -469,6 +470,17 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
 
   Future<void> _runSearch(String query) async {
     if (!mounted) return;
+    // Search returns available (Pending) orders — that's NEW work, so an
+    // Offline driver must not be able to surface it. Mirror the _fetchPage
+    // gate: return no results while Offline.
+    if (!(_app?.isOnline ?? false)) {
+      setState(() {
+        _searchLoading = false;
+        _searchError = null;
+        _searchResults = [];
+      });
+      return;
+    }
     setState(() {
       _searchLoading = true;
       _searchError = null;
@@ -1018,7 +1030,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             _ErrorState(onRetry: _pagingController.retryLastFailedRequest),
         noItemsFoundIndicatorBuilder: (_) => (_app?.isOnline ?? true)
             ? _EmptyState(storeName: _selectedStore)
-            : const _OfflineState(),
+            : OfflineStateView(
+                message: 'Go Online to see available orders.',
+                onGoOnline:
+                    _app == null ? null : () => _app!.setOnline(true),
+              ),
         itemBuilder: (context, item, index) {
           if (item is _HeaderItem) {
             return _StoreHeaderWidget(storeName: item.storeName);
@@ -1638,46 +1654,6 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(msg),
-        ],
-      ),
-    );
-  }
-}
-
-class _OfflineState extends StatelessWidget {
-  const _OfflineState();
-
-  @override
-  Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.cloud_off_rounded,
-            size: 64,
-            color: scheme.onSurface.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'You are Offline',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: scheme.onSurface,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Go Online to see available orders.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              color: scheme.onSurface.withValues(alpha: 0.6),
-            ),
-          ),
         ],
       ),
     );
