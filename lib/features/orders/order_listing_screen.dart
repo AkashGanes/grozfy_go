@@ -446,6 +446,8 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       deliveryAddress: s.deliveryAddress,
       creation: s.creation,
       modified: s.modified,
+      latitude: s.latitude,
+      longitude: s.longitude,
     );
   }
 
@@ -1315,8 +1317,9 @@ class _FullOrderCard extends StatelessWidget {
                                 ? const Color(0xFF3A2613)
                                 : const Color(0xFFFFEFDA),
                             label: 'Distance',
-                            value:
-                                '${order.distanceKm.toStringAsFixed(2)} km',
+                            value: order.distanceKm > 0
+                                ? '${order.distanceKm.toStringAsFixed(2)} km'
+                                : '—',
                             labelColor: textSecondary,
                             valueColor: textPrimary,
                           ),

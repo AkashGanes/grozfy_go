@@ -4051,8 +4051,15 @@ class AppController extends ChangeNotifier {
       (double sum, OrderItem item) => sum + (item.price * item.quantity),
     );
 
-    final double latitude = detail.latitude ?? _currentLatitude ?? 28.6139;
-    final double longitude = detail.longitude ?? _currentLongitude ?? 77.2090;
+    // The order's real drop coordinates, or null when the backend didn't
+    // provide them. `0` is the app-wide sentinel for "no coordinates"
+    // (see hasCoords checks in the listing/details screens), so we fall back
+    // to 0 rather than inventing a location — a bogus coordinate would wrongly
+    // enable "Open in Maps" and route the driver to the wrong place.
+    final double? orderLatitude = detail.latitude;
+    final double? orderLongitude = detail.longitude;
+    final double latitude = orderLatitude ?? 0;
+    final double longitude = orderLongitude ?? 0;
     final OrderStatus status = _mapExternalStatus(detail.status);
 
     // Frappe stores addresses with HTML markup (<br> for line breaks,
@@ -4090,12 +4097,18 @@ class AppController extends ChangeNotifier {
       drop: dropAddress,
       deliveryInstructions: '',
       paymentMode: detail.paymentMode ?? '',
-      distanceKm: _calculateDistance(
-        _currentLatitude ?? latitude,
-        _currentLongitude ?? longitude,
-        latitude,
-        longitude,
-      ),
+      distanceKm:
+          (_currentLatitude != null &&
+              _currentLongitude != null &&
+              orderLatitude != null &&
+              orderLongitude != null)
+          ? _calculateDistance(
+              _currentLatitude!,
+              _currentLongitude!,
+              orderLatitude,
+              orderLongitude,
+            )
+          : 0,
       estimatedEarnings: detail.grandTotal ?? totalAmount,
       assignmentStatus: status == OrderStatus.pending
           ? OrderAssignmentStatus.unassigned
