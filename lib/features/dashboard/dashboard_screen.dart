@@ -504,17 +504,11 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   }
 
   String? _getTripIdForOrder(String orderId) {
-    // Access trip ID through the activeTripIds exposed by AppController.
-    // We use the activeTripId getter with a temporary index switch.
-    final orders = widget.app.activeOrders;
-    final idx = orders.indexWhere((o) => o.orderId == orderId);
-    if (idx == -1) return null;
-    // Temporarily switch viewed index to get the right tripId.
-    final savedIdx = widget.app.currentlyViewedOrderIndex;
-    widget.app.setViewedOrderIndex(idx);
-    final tripId = widget.app.activeTripId;
-    widget.app.setViewedOrderIndex(savedIdx);
-    return tripId;
+    // Read the trip ID directly from AppController's orderId → tripId map.
+    // (Do NOT switch the viewed-order index here: that fires notifyListeners
+    // and, when called from initState/build, throws "Tried to modify a
+    // provider while the widget tree was building".)
+    return widget.app.tripIdForOrder(orderId);
   }
 
   // ── Interstitial ─────────────────────────────────────────────────────────────

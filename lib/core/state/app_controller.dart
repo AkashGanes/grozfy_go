@@ -19,6 +19,7 @@ import '../models/app_models.dart';
 import '../navigation/app_routes.dart';
 import '../services/connectivity_service.dart';
 import '../services/timing_sync_engine.dart';
+import '../services/fcm_initializer.dart';
 import '../services/fcm_service.dart';
 import '../services/location_ping_service.dart';
 import '../services/secure_token_storage.dart';
@@ -3059,10 +3060,22 @@ class AppController extends ChangeNotifier {
 
     final String? syncError = await _syncAvailabilityToBackend(value);
     if (syncError != null) {
-      _isOnline = previous;
-      _availabilitySyncing = false;
-      notifyListeners();
-      return syncError;
+      if (value) {
+        // Going Online: if the backend never recorded us online, we won't be
+        // assigned orders anyway — so don't show a misleading Online state.
+        // Roll back to the previous state and surface the error.
+        _isOnline = previous;
+        _availabilitySyncing = false;
+        notifyListeners();
+        return syncError;
+      }
+      // Going Offline is safety-critical: the driver asked to stop receiving
+      // work. We MUST stay Offline locally even though the backend write
+      // failed — never revert to Online. Persist it, run the offline
+      // side-effects below, and retry the backend write in the background so
+      // the server's flag eventually matches.
+      debugPrint('[Availability] Offline sync failed, staying offline: $syncError');
+      _retryOfflineSyncInBackground();
     }
 
     _writePref((SharedPreferences prefs) {
@@ -3090,6 +3103,9 @@ class AppController extends ChangeNotifier {
       stopTracking();
       recordTimingEvent(eventType: TimingEventType.logout);
       unawaited(FCMService().unsubscribe(this));
+      // Clear any order alerts still sitting in the tray so an Offline
+      // driver can neither see nor tap through to a new order.
+      unawaited(FCMInitializer().clearNotifications());
     }
 
     PartnerWidgetManager.updateWidget(
@@ -3118,6 +3134,26 @@ class AppController extends ChangeNotifier {
     } catch (e) {
       return 'Failed to sync availability: ${e.toString().replaceAll('Exception: ', '')}';
     }
+  }
+
+  /// Best-effort background retry of the "go Offline" backend write. Used when
+  /// the driver toggles Offline but the network call fails: we keep them
+  /// Offline locally (never revert to Online) and re-attempt so the server's
+  /// availability flag eventually matches. Aborts if the driver goes back
+  /// Online in the meantime, since that toggle supersedes this one.
+  void _retryOfflineSyncInBackground() {
+    unawaited(() async {
+      for (int attempt = 1; attempt <= 3; attempt++) {
+        await Future.delayed(Duration(seconds: 5 * attempt));
+        if (_isOnline) return; // a later toggle to Online supersedes this
+        final String? err = await _syncAvailabilityToBackend(false);
+        if (err == null) {
+          debugPrint('[Availability] Offline re-sync succeeded (attempt $attempt)');
+          return;
+        }
+        debugPrint('[Availability] Offline re-sync failed (attempt $attempt): $err');
+      }
+    }());
   }
 
   Future<String?> startTracking() async {
@@ -3279,6 +3315,11 @@ class AppController extends ChangeNotifier {
     OrderProgressStatus status, {
     String? orderId,
   }) async {
+    // NOTE: availability (Online/Offline) is intentionally NOT checked here.
+    // Advancing/completing an already-accepted order is committed work and
+    // must succeed even when the driver is Offline (industry-standard: Offline
+    // only blocks NEW work, not finishing in-progress trips). Network-offline
+    // completion is handled separately by OfflineTripManager's sync queue.
     final String? targetId = orderId ?? activeOrder?.orderId;
     if (targetId == null) return 'No active order found';
 
@@ -3682,6 +3723,11 @@ class AppController extends ChangeNotifier {
   }
 
   Future<String?> acceptOrder(String orderId) async {
+    // Offline drivers must not be able to take on work. This is the primary
+    // guard for the order-details and orders-by-location accept flows.
+    if (!_isOnline) {
+      return 'You are Offline. Go Online to accept orders.';
+    }
     if (_activeOrders.any((o) => o.orderId == orderId)) {
       return 'Order already accepted';
     }
@@ -4005,8 +4051,15 @@ class AppController extends ChangeNotifier {
       (double sum, OrderItem item) => sum + (item.price * item.quantity),
     );
 
-    final double latitude = detail.latitude ?? _currentLatitude ?? 28.6139;
-    final double longitude = detail.longitude ?? _currentLongitude ?? 77.2090;
+    // The order's real drop coordinates, or null when the backend didn't
+    // provide them. `0` is the app-wide sentinel for "no coordinates"
+    // (see hasCoords checks in the listing/details screens), so we fall back
+    // to 0 rather than inventing a location — a bogus coordinate would wrongly
+    // enable "Open in Maps" and route the driver to the wrong place.
+    final double? orderLatitude = detail.latitude;
+    final double? orderLongitude = detail.longitude;
+    final double latitude = orderLatitude ?? 0;
+    final double longitude = orderLongitude ?? 0;
     final OrderStatus status = _mapExternalStatus(detail.status);
 
     // Frappe stores addresses with HTML markup (<br> for line breaks,
@@ -4044,12 +4097,18 @@ class AppController extends ChangeNotifier {
       drop: dropAddress,
       deliveryInstructions: '',
       paymentMode: detail.paymentMode ?? '',
-      distanceKm: _calculateDistance(
-        _currentLatitude ?? latitude,
-        _currentLongitude ?? longitude,
-        latitude,
-        longitude,
-      ),
+      distanceKm:
+          (_currentLatitude != null &&
+              _currentLongitude != null &&
+              orderLatitude != null &&
+              orderLongitude != null)
+          ? _calculateDistance(
+              _currentLatitude!,
+              _currentLongitude!,
+              orderLatitude,
+              orderLongitude,
+            )
+          : 0,
       estimatedEarnings: detail.grandTotal ?? totalAmount,
       assignmentStatus: status == OrderStatus.pending
           ? OrderAssignmentStatus.unassigned

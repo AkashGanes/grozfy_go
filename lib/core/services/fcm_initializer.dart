@@ -122,6 +122,18 @@ class FCMInitializer {
     }
   }
 
+  /// Clears every notification this app has posted to the system tray.
+  /// Called when the driver goes Offline so stale order alerts don't linger
+  /// where they could still be tapped or seen. The app only posts order/trip
+  /// alerts via local notifications, so this is effectively order-scoped.
+  Future<void> clearNotifications() async {
+    try {
+      await _localNotificationsPlugin.cancelAll();
+    } catch (e) {
+      debugPrint('FCM clearNotifications error: $e');
+    }
+  }
+
   void _showForegroundNotify(RemoteMessage message) {
     debugPrint(
       'FCM showing local notification: '

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/state/app_scope.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/theme/app_theme.dart';
@@ -491,6 +492,13 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
   }
 
   Future<void> _acceptDelivery(BuildContext context) async {
+    // Offline drivers can't take on work — this accept path creates a trip
+    // directly via the repository, bypassing AppController.acceptOrder, so it
+    // needs its own guard.
+    if (!AppScope.of(context).isOnline) {
+      AppToast.show(context, 'You are Offline. Go Online to accept orders.');
+      return;
+    }
     final navigator = Navigator.of(context);
     AppToast.show(context, 'Creating trip...');
     try {

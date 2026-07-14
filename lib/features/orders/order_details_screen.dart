@@ -401,7 +401,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               ),
             ),
             _BottomActions(
-              isPending: isPending,
+              // Accept/Reject is NEW work — only offer it while Online. An
+              // Offline driver viewing a Pending order sees no accept action.
+              isPending: isPending && app.isOnline,
               showNavigate: showNavigate,
               showTrackOrder: showTrackOrder,
               isClosedStatus: isClosedStatus,

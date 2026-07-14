@@ -11,6 +11,7 @@ import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../../../core/widgets/offline_state_view.dart';
 import '../../kyc/widgets/kyc_form_widgets.dart';
 import '../model/pickup_job.dart';
 import '../repository/pickup_job_repository.dart';
@@ -59,6 +60,8 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
 
   Future<void> _silentRefresh() async {
     if (!ConnectivityService().isConnected || !mounted) return;
+    // Don't refill the pool while Offline — the driver shouldn't receive jobs.
+    if (!ref.read(appControllerProvider).isOnline) return;
     try {
       final pool = await PickupJobRepository().fetchPool();
       if (!mounted) return;
@@ -125,6 +128,11 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
   // ── Accept ─────────────────────────────────────────────────────────────────
 
   Future<void> _acceptJob(PickupJob job) async {
+    // Offline drivers can't claim pickup jobs.
+    if (!ref.read(appControllerProvider).isOnline) {
+      showInfoSnack(context, 'You are Offline. Go Online to accept jobs.');
+      return;
+    }
     if (_acceptingJobs.contains(job.name)) return;
     setState(() => _acceptingJobs.add(job.name));
     try {
@@ -174,6 +182,13 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
     final driverLat = controller.currentLatitude;
     final driverLng = controller.currentLongitude;
 
+    // Reload the pool when the driver comes back Online (it's hidden Offline).
+    ref.listen(appControllerProvider.select((c) => c.isOnline), (prev, next) {
+      if (next == true && prev != true && mounted) {
+        setState(() => _future = _loadPool());
+      }
+    });
+
     return AppShell(
       title: 'Pickup Pool',
       subtitle: 'Available return pickups',
@@ -183,7 +198,13 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
         children: [
           _buildSearchBar(),
           Expanded(
-            child: FutureBuilder<List<PickupJob>>(
+            child: !controller.isOnline
+                ? OfflineStateView(
+                    message: 'Go Online to see available pickups.',
+                    onGoOnline: () =>
+                        ref.read(appControllerProvider).setOnline(true),
+                  )
+                : FutureBuilder<List<PickupJob>>(
               future: _future,
               builder: (context, snapshot) {
                 if (snapshot.connectionState != ConnectionState.done) {
@@ -262,6 +283,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
   Widget _loadingView() => Center(
         child: CircularProgressIndicator(color: context.scheme.primary),
       );
+
 
   Widget _errorView(String message) {
     return Center(

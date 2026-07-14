@@ -342,9 +342,14 @@ class _OrdersByLocationScreenState
     }
 
     if (_isEligibleForTrip(order)) {
+      final app = ref.read(appControllerProvider);
+      // Accepting an available order is NEW work — blocked while Offline.
+      if (!app.isOnline) {
+        showInfoSnack(context, 'You are Offline. Go Online to accept orders.');
+        return;
+      }
       setState(() => _submittingOrderIds.add(order.name));
       try {
-        final app = ref.read(appControllerProvider);
         final error = await app.acceptOrder(order.name);
         if (!mounted) return;
 
