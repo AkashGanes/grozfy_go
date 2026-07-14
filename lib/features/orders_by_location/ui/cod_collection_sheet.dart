@@ -72,7 +72,7 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
       title: 'COD Payment',
       subtitle: 'Collect cash or confirm UPI before marking delivered',
       leadingIcon: Icons.payments_rounded,
-      leadingIconColor: const Color(0xFF2E7D32),
+      leadingIconColor: context.success,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -83,10 +83,10 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFF2E7D32).withValues(alpha: 0.08),
+              color: context.successContainer,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: const Color(0xFF2E7D32).withValues(alpha: 0.25),
+                color: context.success.withValues(alpha: 0.25),
               ),
             ),
             child: Row(
@@ -95,12 +95,12 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF2E7D32).withValues(alpha: 0.15),
+                    color: context.success.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.currency_rupee_rounded,
-                    color: Color(0xFF2E7D32),
+                    color: context.success,
                     size: 22,
                   ),
                 ),
@@ -119,10 +119,10 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
                     const SizedBox(height: 2),
                     Text(
                       amountText,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF2E7D32),
+                        color: context.success,
                         letterSpacing: -0.5,
                       ),
                     ),
@@ -229,12 +229,12 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
                             ),
                             errorBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Colors.red),
+                              borderSide: BorderSide(color: scheme.error),
                             ),
                             focusedErrorBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: Colors.red,
+                              borderSide: BorderSide(
+                                color: scheme.error,
                                 width: 1.5,
                               ),
                             ),
@@ -262,12 +262,12 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
               decoration: BoxDecoration(
                 color: _mode == 'Not Collected'
-                    ? const Color(0xFFE65100).withValues(alpha: 0.08)
+                    ? context.warningContainer
                     : scheme.onSurface.withValues(alpha: 0.04),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: _mode == 'Not Collected'
-                      ? const Color(0xFFE65100).withValues(alpha: 0.5)
+                      ? context.warning.withValues(alpha: 0.5)
                       : scheme.onSurface.withValues(alpha: 0.1),
                   width: _mode == 'Not Collected' ? 1.5 : 1,
                 ),
@@ -278,7 +278,7 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
                     Icons.money_off_rounded,
                     size: 22,
                     color: _mode == 'Not Collected'
-                        ? const Color(0xFFE65100)
+                        ? context.warning
                         : scheme.onSurface.withValues(alpha: 0.4),
                   ),
                   const SizedBox(width: 12),
@@ -292,7 +292,7 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: _mode == 'Not Collected'
-                                ? const Color(0xFFE65100)
+                                ? context.warning
                                 : scheme.onSurface.withValues(alpha: 0.7),
                           ),
                         ),
@@ -313,11 +313,11 @@ class _CodCollectionSheetState extends State<_CodCollectionSheet> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: _mode == 'Not Collected'
-                          ? const Color(0xFFE65100)
+                          ? context.warning
                           : Colors.transparent,
                       border: Border.all(
                         color: _mode == 'Not Collected'
-                            ? const Color(0xFFE65100)
+                            ? context.warning
                             : scheme.onSurface.withValues(alpha: 0.3),
                         width: 1.5,
                       ),

@@ -12,6 +12,7 @@ import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/state/app_scope.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../kyc/widgets/kyc_form_widgets.dart';
 import '../model/external_delivery.dart';
@@ -306,16 +307,16 @@ class _TripCard extends StatelessWidget {
     final done = trip.completedStops.clamp(0, total > 0 ? total : 0);
     final progress = total > 0 ? done / total : 0.0;
     final isComplete = total > 0 && done >= total;
-    final progressColor = isComplete ? const Color(0xFF2E7D32) : colorScheme.primary;
+    final progressColor = isComplete ? context.success : colorScheme.primary;
 
     final Color badgeColor;
     switch (trip.docstatus) {
       case 2:
-        badgeColor = Colors.red;
+        badgeColor = context.danger;
       case 1:
         badgeColor = colorScheme.primary;
       default:
-        badgeColor = Colors.black45;
+        badgeColor = context.textSecondary;
     }
 
     return Padding(
@@ -349,18 +350,18 @@ class _TripCard extends StatelessWidget {
                       children: [
                         Text(
                           trip.name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
-                            color: AppTheme.nightBlue,
+                            color: context.textPrimary,
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           AppDateFormat.dateFromString(trip.tripDate),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.black45,
+                            color: context.textSecondary,
                           ),
                         ),
                       ],
@@ -393,7 +394,7 @@ class _TripCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(4),
                       child: LinearProgressIndicator(
                         value: progress,
-                        backgroundColor: Colors.black12,
+                        backgroundColor: context.borderSubtle,
                         valueColor: AlwaysStoppedAnimation<Color>(progressColor),
                         minHeight: 6,
                       ),
@@ -405,7 +406,7 @@ class _TripCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: isComplete ? const Color(0xFF2E7D32) : Colors.black54,
+                      color: isComplete ? context.success : context.textSecondary,
                     ),
                   ),
                 ],

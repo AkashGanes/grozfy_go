@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/context_colors.dart';
 
 class TripStopMapScreen extends StatefulWidget {
   const TripStopMapScreen({
@@ -228,7 +229,7 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: context.cardColor,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
@@ -238,9 +239,9 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                     ),
                   ],
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.arrow_back_rounded,
-                  color: AppTheme.nightBlue,
+                  color: context.textPrimary,
                   size: 20,
                 ),
               ),
@@ -258,7 +259,7 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: context.cardColor,
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
@@ -268,9 +269,9 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                       ),
                     ],
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.fit_screen_rounded,
-                    color: AppTheme.nightBlue,
+                    color: context.textPrimary,
                     size: 20,
                   ),
                 ),
@@ -283,10 +284,11 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
             right: 0,
             bottom: 0,
             child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                boxShadow: [
+              decoration: BoxDecoration(
+                color: context.cardColor,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(20)),
+                boxShadow: const [
                   BoxShadow(
                     color: Colors.black12,
                     blurRadius: 16,
@@ -307,7 +309,7 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                           width: 36,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: Colors.black12,
+                            color: context.borderSubtle,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -336,19 +338,19 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                                   widget.stopNumber != null
                                       ? 'Stop ${widget.stopNumber}'
                                       : 'Delivery Stop',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.black45,
+                                    color: context.textSecondary,
                                     fontWeight: FontWeight.w500,
                                   ),
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   widget.address,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
-                                    color: AppTheme.nightBlue,
+                                    color: context.textPrimary,
                                   ),
                                 ),
                               ],
@@ -360,15 +362,15 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                         const SizedBox(height: 10),
                         Row(
                           children: [
-                            const Icon(Icons.info_outline,
-                                size: 14, color: Colors.orange),
+                            Icon(Icons.info_outline,
+                                size: 14, color: context.warning),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 _error!,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.orange,
+                                  color: context.warning,
                                 ),
                               ),
                             ),

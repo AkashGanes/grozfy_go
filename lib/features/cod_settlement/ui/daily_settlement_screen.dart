@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/navigation/app_routes.dart';
+import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../model/daily_driver_settlement.dart';
 import '../providers/settlement_provider.dart';
@@ -133,12 +134,12 @@ class _DailySettlementScreenState
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: const Color(0xFF1C4E80).withValues(alpha: 0.1),
+                color: ctx.scheme.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.send_rounded,
-                color: Color(0xFF1C4E80),
+                color: ctx.scheme.primary,
                 size: 20,
               ),
             ),
@@ -180,7 +181,7 @@ class _DailySettlementScreenState
                 child: ElevatedButton(
                   onPressed: () => Navigator.of(ctx).pop(true),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1C4E80),
+                    backgroundColor: ctx.scheme.primary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 13),
                     elevation: 0,
@@ -313,13 +314,13 @@ class _DailySettlementScreenState
                   width: 80,
                   height: 80,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE53935).withValues(alpha: 0.1),
+                    color: context.dangerContainer,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.wifi_off_rounded,
                     size: 36,
-                    color: Color(0xFFE53935),
+                    color: context.danger,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -356,7 +357,7 @@ class _DailySettlementScreenState
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1C4E80),
+                      backgroundColor: context.scheme.primary,
                       foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -391,13 +392,13 @@ class _DailySettlementScreenState
                   width: 96,
                   height: 96,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF16A34A).withValues(alpha: 0.1),
+                    color: context.successContainer,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.check_circle_rounded,
                     size: 48,
-                    color: Color(0xFF16A34A),
+                    color: context.success,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -658,16 +659,13 @@ class _BreakdownRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF1E2235) : Colors.white;
-
     return Container(
       decoration: BoxDecoration(
-        color: cardColor,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.09),
+            color: context.shadowColor,
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -777,7 +775,6 @@ class _OrderBreakdownButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final count = settlement.settlementOrders.length;
 
     return InkWell(
@@ -792,12 +789,10 @@ class _OrderBreakdownButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: isDark
-              ? const Color(0xFF1E2235)
-              : const Color(0xFFF0F4FA),
+          color: context.surfaceContainer,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: const Color(0xFF1C4E80).withValues(alpha: 0.15),
+            color: context.scheme.primary.withValues(alpha: 0.15),
           ),
         ),
         child: Row(
@@ -806,12 +801,12 @@ class _OrderBreakdownButton extends StatelessWidget {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: const Color(0xFF1C4E80).withValues(alpha: 0.10),
+                color: context.scheme.primary.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.receipt_long_rounded,
-                color: Color(0xFF1C4E80),
+                color: context.scheme.primary,
                 size: 19,
               ),
             ),
@@ -935,17 +930,14 @@ class _SubmittedDetailsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF1E2235) : Colors.white;
-
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+            color: context.shadowColor,
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
@@ -1073,20 +1065,16 @@ class _TransferFormCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? const Color(0xFF1E2235) : Colors.white;
-    final fieldFill = isDark
-        ? Colors.white.withValues(alpha: 0.05)
-        : const Color(0xFFF5F7FA);
+    final fieldFill = context.surfaceContainer;
 
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+            color: context.shadowColor,
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),

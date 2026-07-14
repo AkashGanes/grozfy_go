@@ -8,7 +8,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/models/app_models.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
@@ -203,11 +203,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                 children: [
                   const SizedBox(height: 12),
                   if (loading)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
                       child: Center(
                         child: CircularProgressIndicator(
-                          color: AppTheme.oceanBlue,
+                          color: context.scheme.primary,
                         ),
                       ),
                     )
@@ -241,8 +241,8 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                               leading: Icon(
                                 Icons.public_rounded,
                                 color: selected
-                                    ? AppTheme.oceanBlue
-                                    : Colors.black38,
+                                    ? context.scheme.primary
+                                    : ctx.iconMuted,
                               ),
                               title: Text(
                                 'All Stores',
@@ -251,14 +251,14 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                                       ? FontWeight.w700
                                       : FontWeight.w500,
                                   color: selected
-                                      ? AppTheme.oceanBlue
+                                      ? context.scheme.primary
                                       : scheme.onSurface,
                                 ),
                               ),
                               trailing: selected
-                                  ? const Icon(
+                                  ? Icon(
                                       Icons.check_circle_rounded,
-                                      color: AppTheme.oceanBlue,
+                                      color: context.scheme.primary,
                                     )
                                   : null,
                               onTap: () {
@@ -279,7 +279,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                             leading: Icon(
                               Icons.store_rounded,
                               color: selected
-                                  ? AppTheme.oceanBlue
+                                  ? context.scheme.primary
                                   : scheme.onSurface.withValues(alpha: 0.4),
                             ),
                             title: Text(
@@ -289,14 +289,14 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                                     ? FontWeight.w700
                                     : FontWeight.w500,
                                 color: selected
-                                    ? AppTheme.oceanBlue
+                                    ? context.scheme.primary
                                     : scheme.onSurface,
                               ),
                             ),
                             trailing: selected
-                                ? const Icon(
+                                ? Icon(
                                     Icons.check_circle_rounded,
-                                    color: AppTheme.oceanBlue,
+                                    color: context.scheme.primary,
                                   )
                                 : null,
                             onTap: () {
@@ -579,11 +579,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          title: const Row(
+          title: Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: Color(0xFFF38B19)),
-              SizedBox(width: 8),
-              Text(
+              Icon(Icons.warning_amber_rounded, color: ctx.warning),
+              const SizedBox(width: 8),
+              const Text(
                 'Large Distance',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
@@ -599,7 +599,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1F5FE8),
+                backgroundColor: context.scheme.primary,
                 foregroundColor: Colors.white,
               ),
               onPressed: () => Navigator.of(ctx).pop(true),
@@ -692,7 +692,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
           color: Theme.of(context).colorScheme.surface,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
+              color: context.shadowColor,
               blurRadius: 16,
               offset: const Offset(0, -4),
             ),
@@ -717,8 +717,8 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             // in any unconstrained-width context including Positioned children).
             Material(
               color: _creatingBatchTrip
-                  ? const Color(0xFF1F5FE8).withValues(alpha: 0.6)
-                  : const Color(0xFF1F5FE8),
+                  ? context.scheme.primary.withValues(alpha: 0.6)
+                  : context.scheme.primary,
               borderRadius: BorderRadius.circular(10),
               child: InkWell(
                 onTap: _creatingBatchTrip ? null : _createBatchTrip,
@@ -791,7 +791,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         actions: [
           if (!_selectionMode)
             IconButton(
-              icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
+              icon: Icon(Icons.store_rounded, color: context.iconPrimary),
               tooltip: 'Filter by store',
               onPressed: _showStorePicker,
             ),
@@ -814,12 +814,12 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
               child: Row(
                 children: [
                   if (_searchLoading) ...[
-                    const SizedBox(
+                    SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: AppTheme.oceanBlue,
+                        color: context.scheme.primary,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -834,7 +834,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                     Icon(
                       Icons.error_outline,
                       size: 14,
-                      color: Colors.red.shade400,
+                      color: context.danger,
                     ),
                     const SizedBox(width: 6),
                     Expanded(
@@ -842,7 +842,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                         _searchError!,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.red.shade400,
+                          color: context.danger,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -854,17 +854,17 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                        color: context.scheme.primary.withValues(alpha: 0.08),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.2),
+                          color: context.scheme.primary.withValues(alpha: 0.2),
                         ),
                       ),
                       child: Text(
                         '${_searchResults.length} result${_searchResults.length == 1 ? '' : 's'}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: AppTheme.oceanBlue,
+                          color: context.scheme.primary,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -933,21 +933,21 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+        color: context.scheme.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.oceanBlue.withValues(alpha: 0.2)),
+        border: Border.all(color: context.scheme.primary.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.my_location_rounded,
-              size: 18, color: AppTheme.oceanBlue),
+          Icon(Icons.my_location_rounded,
+              size: 18, color: context.scheme.primary),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               '$_hiddenByRadiusCount order'
               '${_hiddenByRadiusCount == 1 ? '' : 's'} hidden by your '
               '$radiusLabel km radius',
-              style: const TextStyle(fontSize: 13, color: AppTheme.nightBlue),
+              style: TextStyle(fontSize: 13, color: context.textPrimary),
             ),
           ),
         ],
@@ -1048,7 +1048,6 @@ class _StoreHeaderWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.fromLTRB(2, 12, 2, 6),
       child: Row(
@@ -1057,9 +1056,7 @@ class _StoreHeaderWidget extends StatelessWidget {
             width: 28,
             height: 28,
             decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1A2C4F)
-                  : const Color(0xFFE5EEFB),
+              color: context.infoContainer,
               borderRadius: BorderRadius.circular(8),
             ),
             alignment: Alignment.center,
@@ -1076,9 +1073,7 @@ class _StoreHeaderWidget extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: isDark
-                    ? const Color(0xFFF2F4F7)
-                    : const Color(0xFF101828),
+                color: context.textPrimary,
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -1108,16 +1103,12 @@ class _FullOrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color cardBg = isDark ? const Color(0xFF1B1E2A) : Colors.white;
-    final Color cardBorder = isSelected
-        ? const Color(0xFF1AB36A)
-        : (isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE4E7EC));
-    final Color textPrimary =
-        isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
-    final Color textSecondary =
-        isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
-    const Color accent = Color(0xFF1F5FE8);
+    final Color cardBg = context.cardColor;
+    final Color cardBorder =
+        isSelected ? context.success : context.borderSubtle;
+    final Color textPrimary = context.textPrimary;
+    final Color textSecondary = context.textSecondary;
+    final Color accent = context.scheme.primary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1136,7 +1127,7 @@ class _FullOrderCard extends StatelessWidget {
               child: Container(
                 decoration: BoxDecoration(
                   color: isSelected
-                      ? const Color(0xFF1AB36A).withValues(alpha: 0.06)
+                      ? context.success.withValues(alpha: 0.06)
                       : cardBg,
                   border: Border.all(
                     color: cardBorder,
@@ -1145,8 +1136,7 @@ class _FullOrderCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black
-                          .withValues(alpha: isDark ? 0.25 : 0.04),
+                      color: context.shadowColor,
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -1179,12 +1169,12 @@ class _FullOrderCard extends StatelessWidget {
                                   height: 24,
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? const Color(0xFF1AB36A)
+                                        ? context.success
                                         : Colors.transparent,
                                     border: Border.all(
                                       color: isSelected
-                                          ? const Color(0xFF1AB36A)
-                                          : const Color(0xFF9AA3AF),
+                                          ? context.success
+                                          : context.borderStrong,
                                       width: 2,
                                     ),
                                     borderRadius: BorderRadius.circular(6),
@@ -1204,15 +1194,15 @@ class _FullOrderCard extends StatelessWidget {
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFEF3E2),
+                                  color: context.warningContainer,
                                   borderRadius: BorderRadius.circular(99),
                                 ),
-                                child: const Text(
+                                child: Text(
                                   'UNASSIGNED',
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w800,
-                                    color: Color(0xFFB87707),
+                                    color: context.warning,
                                     letterSpacing: 0.6,
                                   ),
                                 ),
@@ -1223,9 +1213,7 @@ class _FullOrderCard extends StatelessWidget {
                           _MetaRow(
                             icon: Icons.store_rounded,
                             iconColor: const Color(0xFF2D6CDF),
-                            iconBg: isDark
-                                ? const Color(0xFF1A2C4F)
-                                : const Color(0xFFE5EEFB),
+                            iconBg: context.infoContainer,
                             label: 'Store',
                             value: order.storeName,
                             labelColor: textSecondary,
@@ -1234,9 +1222,7 @@ class _FullOrderCard extends StatelessWidget {
                           _MetaRow(
                             icon: Icons.person_rounded,
                             iconColor: const Color(0xFF1AB36A),
-                            iconBg: isDark
-                                ? const Color(0xFF14352A)
-                                : const Color(0xFFE7F7EE),
+                            iconBg: context.successContainer,
                             label: 'Customer',
                             value: order.customerName,
                             labelColor: textSecondary,
@@ -1245,7 +1231,7 @@ class _FullOrderCard extends StatelessWidget {
                           _MetaRow(
                             icon: Icons.location_on_rounded,
                             iconColor: const Color(0xFF7C3AED),
-                            iconBg: isDark
+                            iconBg: context.isDark
                                 ? const Color(0xFF2D2148)
                                 : const Color(0xFFEFE9FE),
                             label: 'Drop',
@@ -1256,7 +1242,7 @@ class _FullOrderCard extends StatelessWidget {
                           _MetaRow(
                             icon: Icons.route_rounded,
                             iconColor: const Color(0xFFF38B19),
-                            iconBg: isDark
+                            iconBg: context.isDark
                                 ? const Color(0xFF3A2613)
                                 : const Color(0xFFFFEFDA),
                             label: 'Distance',
@@ -1268,9 +1254,7 @@ class _FullOrderCard extends StatelessWidget {
                           _MetaRow(
                             icon: Icons.currency_rupee_rounded,
                             iconColor: const Color(0xFF1AB36A),
-                            iconBg: isDark
-                                ? const Color(0xFF14352A)
-                                : const Color(0xFFE7F7EE),
+                            iconBg: context.successContainer,
                             label: 'Earnings',
                             value: order.estimatedEarnings > 0
                                 ? 'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}'
@@ -1434,12 +1418,12 @@ class _SearchResultCard extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+                    color: context.scheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.shopping_bag_rounded,
-                    color: AppTheme.oceanBlue,
+                    color: context.scheme.primary,
                     size: 22,
                   ),
                 ),
@@ -1523,9 +1507,9 @@ class _Highlight extends StatelessWidget {
           TextSpan(
             text: text.substring(idx, idx + query.length),
             style: style.copyWith(
-              color: AppTheme.oceanBlue,
+              color: context.scheme.primary,
               fontWeight: FontWeight.bold,
-              backgroundColor: AppTheme.oceanBlue.withValues(alpha: 0.1),
+              backgroundColor: context.scheme.primary.withValues(alpha: 0.1),
             ),
           ),
           TextSpan(text: text.substring(idx + query.length)),

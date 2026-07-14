@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/models/app_models.dart';
+import '../../../core/theme/context_colors.dart';
 import 'status_pill.dart';
 
 class ProfileProgressCard extends StatelessWidget {
@@ -250,16 +251,16 @@ class _CompleteButton extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(
-                  color: Color(0xFF1F4FB6),
+                style: TextStyle(
+                  color: context.scheme.primary,
                   fontWeight: FontWeight.w700,
                   fontSize: 12,
                 ),
               ),
               const SizedBox(width: 6),
-              const Icon(
+              Icon(
                 Icons.arrow_forward_rounded,
-                color: Color(0xFF1F4FB6),
+                color: context.scheme.primary,
                 size: 16,
               ),
             ],
@@ -324,11 +325,10 @@ class _ItemsStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shown = items.take(4).toList();
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1B1E2A) : Colors.white,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -403,9 +403,7 @@ class _ItemChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? const Color(0xFFF2F4F7)
-                      : const Color(0xFF101828),
+                  color: context.textPrimary,
                 ),
               ),
               const SizedBox(height: 6),

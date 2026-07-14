@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 
 class OrderRequestScreen extends StatefulWidget {
@@ -154,7 +155,7 @@ class _OrderRequestScreenState extends State<OrderRequestScreen> {
         children: [
           SizedBox(
             width: 120,
-            child: Text(label, style: const TextStyle(color: Colors.black54)),
+            child: Text(label, style: TextStyle(color: context.textSecondary)),
           ),
           Expanded(
             child: Text(

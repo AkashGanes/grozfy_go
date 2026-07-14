@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
 import 'models/driver_stats.dart';
@@ -53,14 +54,14 @@ class _DailySection extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: const [
-              Icon(Icons.today_rounded, size: 15, color: AppTheme.oceanBlue),
-              SizedBox(width: 6),
+            children: [
+              Icon(Icons.today_rounded, size: 15, color: context.scheme.primary),
+              const SizedBox(width: 6),
               Text(
                 'Today',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.nightBlue,
+                  color: context.textPrimary,
                   fontSize: 13,
                 ),
               ),
@@ -68,9 +69,10 @@ class _DailySection extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           async.when(
-            loading: _buildLoading,
-            error: (e, _) => _buildError(e),
-            data: (s) => _buildData(s, dutyHours, tripsToday, avgTripDuration),
+            loading: () => _buildLoading(context),
+            error: (e, _) => _buildError(context, e),
+            data: (s) =>
+                _buildData(context, s, dutyHours, tripsToday, avgTripDuration),
           ),
         ],
       ),
@@ -80,55 +82,59 @@ class _DailySection extends ConsumerWidget {
         .slideY(begin: 0.04, end: 0);
   }
 
-  Widget _buildLoading() {
-    return const Center(
+  Widget _buildLoading(BuildContext context) {
+    return Center(
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.symmetric(vertical: 20),
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: AppTheme.oceanBlue,
+          color: context.scheme.primary,
         ),
       ),
     );
   }
 
-  Widget _buildError(Object e) {
+  Widget _buildError(BuildContext context, Object e) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Text(
         e.toString().replaceFirst('Exception: ', ''),
-        style: const TextStyle(color: Colors.black54, fontSize: 12),
+        style: TextStyle(color: context.textSecondary, fontSize: 12),
       ),
     );
   }
 
-  Widget _buildData(DailySummary s, Duration dutyHours, int tripsToday, Duration avgTripDuration) {
+  Widget _buildData(BuildContext context, DailySummary s, Duration dutyHours,
+      int tripsToday, Duration avgTripDuration) {
     if (tripsToday == 0 && dutyHours == Duration.zero) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
           'No activity today.',
-          style: TextStyle(color: Colors.black45, fontSize: 13),
+          style: TextStyle(color: context.textSecondary, fontSize: 13),
         ),
       );
     }
     return Row(
       children: [
         _statTile(
+          context,
           'Duty Hours',
           AppDateFormat.duration(dutyHours),
           Icons.access_time_rounded,
-          AppTheme.oceanBlue,
+          context.scheme.primary,
         ),
         const SizedBox(width: 10),
         _statTile(
+          context,
           'Trips Today',
           '$tripsToday',
           Icons.check_circle_outline,
-          const Color(0xFF2E7D32),
+          context.success,
         ),
         const SizedBox(width: 10),
         _statTile(
+          context,
           'Avg Trip',
           avgTripDuration == Duration.zero ? '—' : AppDateFormat.duration(avgTripDuration),
           Icons.timer_outlined,
@@ -138,7 +144,8 @@ class _DailySection extends ConsumerWidget {
     );
   }
 
-  Widget _statTile(String label, String value, IconData icon, Color color) {
+  Widget _statTile(BuildContext context, String label, String value,
+      IconData icon, Color color) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
@@ -155,14 +162,14 @@ class _DailySection extends ConsumerWidget {
               value,
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color: AppTheme.nightBlue,
+                color: context.textPrimary,
                 fontSize: 17,
               ),
             ),
             const SizedBox(height: 2),
             Text(
               label,
-              style: const TextStyle(color: Colors.black45, fontSize: 11),
+              style: TextStyle(color: context.textSecondary, fontSize: 11),
             ),
           ],
         ),
@@ -187,9 +194,9 @@ class _MonthlySection extends ConsumerWidget {
           _MonthSelector(period: period),
           const SizedBox(height: 14),
           async.when(
-            loading: _buildLoading,
-            error: (e, _) => _buildError(e),
-            data: _buildData,
+            loading: () => _buildLoading(context),
+            error: (e, _) => _buildError(context, e),
+            data: (s) => _buildData(context, s),
           ),
         ],
       ),
@@ -199,35 +206,35 @@ class _MonthlySection extends ConsumerWidget {
         .slideY(begin: 0.04, end: 0);
   }
 
-  Widget _buildLoading() {
-    return const Center(
+  Widget _buildLoading(BuildContext context) {
+    return Center(
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.symmetric(vertical: 20),
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: AppTheme.oceanBlue,
+          color: context.scheme.primary,
         ),
       ),
     );
   }
 
-  Widget _buildError(Object e) {
+  Widget _buildError(BuildContext context, Object e) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Text(
         e.toString().replaceFirst('Exception: ', ''),
-        style: const TextStyle(color: Colors.black54, fontSize: 12),
+        style: TextStyle(color: context.textSecondary, fontSize: 12),
       ),
     );
   }
 
-  Widget _buildData(MonthlySummary s) {
+  Widget _buildData(BuildContext context, MonthlySummary s) {
     if (s.tripsCompleted == 0) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
           'No trips in this month.',
-          style: TextStyle(color: Colors.black45, fontSize: 13),
+          style: TextStyle(color: context.textSecondary, fontSize: 13),
         ),
       );
     }
@@ -236,17 +243,19 @@ class _MonthlySection extends ConsumerWidget {
         Row(
           children: [
             _statTile(
+              context,
               'Trips Completed',
               '${s.tripsCompleted}',
               Icons.check_circle_outline,
-              const Color(0xFF2E7D32),
+              context.success,
             ),
             const SizedBox(width: 10),
             _statTile(
+              context,
               'Total Road Time',
               AppDateFormat.duration(s.totalRoadTime),
               Icons.route_outlined,
-              AppTheme.oceanBlue,
+              context.scheme.primary,
             ),
           ],
         ),
@@ -254,6 +263,7 @@ class _MonthlySection extends ConsumerWidget {
         Row(
           children: [
             _statTile(
+              context,
               'Avg Trip Duration',
               AppDateFormat.duration(s.avgTripDuration),
               Icons.timer_outlined,
@@ -261,12 +271,13 @@ class _MonthlySection extends ConsumerWidget {
             ),
             const SizedBox(width: 10),
             _statTile(
+              context,
               'On-Time Stops',
               s.onTimePercent != null
                   ? '${s.onTimePercent!.toStringAsFixed(0)}%'
                   : '—',
               Icons.verified_outlined,
-              AppTheme.oceanBlue,
+              context.scheme.primary,
             ),
           ],
         ),
@@ -274,7 +285,8 @@ class _MonthlySection extends ConsumerWidget {
     );
   }
 
-  Widget _statTile(String label, String value, IconData icon, Color color) {
+  Widget _statTile(BuildContext context, String label, String value,
+      IconData icon, Color color) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
@@ -291,14 +303,14 @@ class _MonthlySection extends ConsumerWidget {
               value,
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                color: AppTheme.nightBlue,
+                color: context.textPrimary,
                 fontSize: 17,
               ),
             ),
             const SizedBox(height: 2),
             Text(
               label,
-              style: const TextStyle(color: Colors.black45, fontSize: 11),
+              style: TextStyle(color: context.textSecondary, fontSize: 11),
             ),
           ],
         ),
@@ -323,18 +335,18 @@ class _MonthSelector extends ConsumerWidget {
 
     return Row(
       children: [
-        const Icon(
+        Icon(
           Icons.calendar_month_rounded,
           size: 15,
-          color: AppTheme.oceanBlue,
+          color: context.scheme.primary,
         ),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             AppDateFormat.monthYearFromParts(period.month, period.year),
-            style: const TextStyle(
+            style: TextStyle(
               fontWeight: FontWeight.w700,
-              color: AppTheme.nightBlue,
+              color: context.textPrimary,
               fontSize: 13,
             ),
           ),
@@ -345,7 +357,7 @@ class _MonthSelector extends ConsumerWidget {
               .state = _prevMonth(period),
           icon: const Icon(Icons.chevron_left_rounded),
           iconSize: 20,
-          color: AppTheme.oceanBlue,
+          color: context.scheme.primary,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(),
         ),
@@ -358,7 +370,8 @@ class _MonthSelector extends ConsumerWidget {
                   .state = _nextMonth(period),
           icon: const Icon(Icons.chevron_right_rounded),
           iconSize: 20,
-          color: isCurrentMonth ? Colors.black26 : AppTheme.oceanBlue,
+          color:
+              isCurrentMonth ? context.textDisabled : context.scheme.primary,
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(),
         ),
@@ -389,18 +402,18 @@ class _LifetimeSection extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: const [
+            children: [
               Icon(
                 Icons.all_inclusive_rounded,
                 size: 15,
-                color: AppTheme.oceanBlue,
+                color: context.scheme.primary,
               ),
-              SizedBox(width: 6),
+              const SizedBox(width: 6),
               Text(
                 'All Time',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.nightBlue,
+                  color: context.textPrimary,
                   fontSize: 13,
                 ),
               ),
@@ -408,9 +421,9 @@ class _LifetimeSection extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           async.when(
-            loading: _buildLoading,
-            error: (e, _) => _buildError(e),
-            data: _buildData,
+            loading: () => _buildLoading(context),
+            error: (e, _) => _buildError(context, e),
+            data: (s) => _buildData(context, s),
           ),
         ],
       ),
@@ -420,43 +433,45 @@ class _LifetimeSection extends ConsumerWidget {
         .slideY(begin: 0.04, end: 0);
   }
 
-  Widget _buildLoading() {
-    return const Center(
+  Widget _buildLoading(BuildContext context) {
+    return Center(
       child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 20),
+        padding: const EdgeInsets.symmetric(vertical: 20),
         child: CircularProgressIndicator(
           strokeWidth: 2,
-          color: AppTheme.oceanBlue,
+          color: context.scheme.primary,
         ),
       ),
     );
   }
 
-  Widget _buildError(Object e) {
+  Widget _buildError(BuildContext context, Object e) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Text(
         e.toString().replaceFirst('Exception: ', ''),
-        style: const TextStyle(color: Colors.black54, fontSize: 12),
+        style: TextStyle(color: context.textSecondary, fontSize: 12),
       ),
     );
   }
 
-  Widget _buildData(LifetimeStats s) {
+  Widget _buildData(BuildContext context, LifetimeStats s) {
     if (s.totalTrips == 0) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
           'No trips yet.',
-          style: TextStyle(color: Colors.black45, fontSize: 13),
+          style: TextStyle(color: context.textSecondary, fontSize: 13),
         ),
       );
     }
     return Column(
       children: [
-        _row(Icons.local_shipping_outlined, 'Total Trips', '${s.totalTrips}'),
+        _row(context, Icons.local_shipping_outlined, 'Total Trips',
+            '${s.totalTrips}'),
         const SizedBox(height: 10),
         _row(
+          context,
           Icons.access_time_rounded,
           'Total Hours',
           _fmtHours(s.totalHours),
@@ -464,6 +479,7 @@ class _LifetimeSection extends ConsumerWidget {
         if (s.bestMonth != null) ...[
           const SizedBox(height: 10),
           _row(
+            context,
             Icons.emoji_events_outlined,
             'Best Month',
             s.bestMonth!,
@@ -472,6 +488,7 @@ class _LifetimeSection extends ConsumerWidget {
         if (s.longestStreak > 0) ...[
           const SizedBox(height: 10),
           _row(
+            context,
             Icons.local_fire_department_outlined,
             'Longest Streak',
             '${s.longestStreak} days',
@@ -481,22 +498,22 @@ class _LifetimeSection extends ConsumerWidget {
     );
   }
 
-  Widget _row(IconData icon, String label, String value) {
+  Widget _row(BuildContext context, IconData icon, String label, String value) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: AppTheme.oceanBlue),
+        Icon(icon, size: 16, color: context.scheme.primary),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(color: Colors.black54, fontSize: 13),
+            style: TextStyle(color: context.textSecondary, fontSize: 13),
           ),
         ),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontWeight: FontWeight.w700,
-            color: AppTheme.nightBlue,
+            color: context.textPrimary,
             fontSize: 13,
           ),
         ),

@@ -13,6 +13,7 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/utils/call_utils.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
@@ -445,7 +446,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool isDark = context.isDark;
     final app = AppScope.of(context);
     final order = app.activeOrder;
 
@@ -629,7 +630,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                         borderRadius: BorderRadius.circular(14),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
+                            color: context.shadowColor,
                             blurRadius: 10,
                             offset: const Offset(0, 3),
                           ),
@@ -642,7 +643,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                             width: 9,
                             height: 9,
                             decoration: BoxDecoration(
-                              color: _isTracking ? Colors.green : Colors.orange,
+                              color: _isTracking
+                                  ? context.success
+                                  : context.warning,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -692,7 +695,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
+                        color: context.shadowColor,
                         blurRadius: 8,
                       ),
                     ],
@@ -738,7 +741,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                     const BorderRadius.vertical(top: Radius.circular(24)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
+                    color: context.shadowColor,
                     blurRadius: 20,
                     offset: const Offset(0, -4),
                   ),
@@ -824,7 +827,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                               : Icons.gps_not_fixed,
                           label: 'GPS',
                           value: _isTracking ? 'Live' : 'Searching…',
-                          color: _isTracking ? Colors.green : Colors.orange,
+                          color: _isTracking
+                              ? context.success
+                              : context.warning,
                         ),
                       ),
                     ],
@@ -897,8 +902,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                             child: OutlinedButton(
                               onPressed: _syncing ? null : () => _onMarkFailed(context, order),
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
+                                foregroundColor: context.danger,
+                                side: BorderSide(color: context.danger),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
@@ -1015,7 +1020,7 @@ class _MapIconButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
+              color: context.shadowColor,
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),

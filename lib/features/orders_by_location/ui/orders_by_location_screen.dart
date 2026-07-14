@@ -7,6 +7,7 @@ import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_bottom_sheet.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/skeleton_loader.dart';
@@ -467,7 +468,7 @@ class _OrdersByLocationScreenState
                                 Icons.public_rounded,
                                 color: selected
                                     ? AppTheme.oceanBlue
-                                    : Colors.black38,
+                                    : scheme.onSurface.withValues(alpha: 0.4),
                               ),
                               title: Text(
                                 'All Stores',
@@ -477,7 +478,7 @@ class _OrdersByLocationScreenState
                                       : FontWeight.w500,
                                   color: selected
                                       ? AppTheme.oceanBlue
-                                      : AppTheme.nightBlue,
+                                      : scheme.onSurface,
                                 ),
                               ),
                               trailing: selected
@@ -594,7 +595,7 @@ class _OrdersByLocationScreenState
                     runSpacing: 8,
                     children: _filterableStatuses.map((status) {
                       final selected = tempStatuses.contains(status);
-                      final color = status.statusColor;
+                      final color = status.statusColorIn(context);
                       return GestureDetector(
                         onTap: () => setModal(() {
                           if (selected) {
@@ -801,9 +802,9 @@ class _OrdersByLocationScreenState
       clipBehavior: Clip.none,
       children: [
         IconButton(
-          icon: const Icon(
+          icon: Icon(
             Icons.filter_list_rounded,
-            color: AppTheme.nightBlue,
+            color: context.textPrimary,
           ),
           tooltip: 'Filter orders',
           onPressed: _showFilterSheet,
@@ -818,7 +819,7 @@ class _OrdersByLocationScreenState
               decoration: BoxDecoration(
                 color: AppTheme.mango,
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 1.5),
+                border: Border.all(color: context.surface, width: 1.5),
               ),
             ),
           ),
@@ -844,7 +845,7 @@ class _OrdersByLocationScreenState
       actions: [
         _buildFilterAction(),
         IconButton(
-          icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
+          icon: Icon(Icons.store_rounded, color: context.textPrimary),
           tooltip: 'Change location',
           onPressed: () => _showStorePicker(),
         ),
@@ -950,7 +951,7 @@ class _OrdersByLocationScreenState
               '$_hiddenByRadiusCount order'
               '${_hiddenByRadiusCount == 1 ? '' : 's'} hidden by your '
               '$radiusLabel km radius',
-              style: const TextStyle(fontSize: 13, color: AppTheme.nightBlue),
+              style: TextStyle(fontSize: 13, color: context.textPrimary),
             ),
           ),
         ],
@@ -1006,7 +1007,7 @@ class _OrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    final statusColor = order.status.statusColor;
+    final statusColor = order.status.statusColorIn(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Opacity(
@@ -1118,18 +1119,18 @@ class _OrderCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.store_outlined,
                               size: 12,
-                              color: Colors.black38,
+                              color: context.textTertiary,
                             ),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 order.storeName,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.black38,
+                                  color: context.textTertiary,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),

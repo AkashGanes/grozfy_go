@@ -91,7 +91,7 @@ class _DeliveryOutcomeSheetState extends State<_DeliveryOutcomeSheet> {
           ? 'Collect COD payment, then confirm or report issue'
           : 'Confirm delivery or report a problem',
       leadingIcon: Icons.local_shipping_rounded,
-      leadingIconColor: const Color(0xFF2E7D32),
+      leadingIconColor: context.success,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -104,10 +104,10 @@ class _DeliveryOutcomeSheetState extends State<_DeliveryOutcomeSheet> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF3CD),
+                color: context.warningContainer,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: const Color(0xFFE6A817).withValues(alpha: 0.6),
+                  color: context.warning.withValues(alpha: 0.6),
                 ),
               ),
               child: Row(
@@ -116,12 +116,12 @@ class _DeliveryOutcomeSheetState extends State<_DeliveryOutcomeSheet> {
                     width: 42,
                     height: 42,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE6A817).withValues(alpha: 0.2),
+                      color: context.warning.withValues(alpha: 0.2),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(
+                    child: Icon(
                       Icons.currency_rupee_rounded,
-                      color: Color(0xFF8A5700),
+                      color: context.warning,
                       size: 22,
                     ),
                   ),
@@ -142,10 +142,10 @@ class _DeliveryOutcomeSheetState extends State<_DeliveryOutcomeSheet> {
                         widget.codAmount > 0
                             ? '₹${widget.codAmount.toStringAsFixed(widget.codAmount.truncateToDouble() == widget.codAmount ? 0 : 2)}'
                             : 'Collect from customer',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
-                          color: Color(0xFF8A5700),
+                          color: context.warning,
                         ),
                       ),
                     ],
@@ -252,12 +252,12 @@ class _DeliveryOutcomeSheetState extends State<_DeliveryOutcomeSheet> {
                               errorBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide:
-                                    const BorderSide(color: Colors.red),
+                                    BorderSide(color: scheme.error),
                               ),
                               focusedErrorBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
-                                borderSide: const BorderSide(
-                                  color: Colors.red,
+                                borderSide: BorderSide(
+                                  color: scheme.error,
                                   width: 1.5,
                                 ),
                               ),
@@ -304,9 +304,9 @@ class _DeliveryOutcomeSheetState extends State<_DeliveryOutcomeSheet> {
               icon: const Icon(Icons.cancel_outlined, size: 18),
               label: const Text('Mark as Failed'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFC62828),
-                side: const BorderSide(
-                  color: Color(0xFFC62828),
+                foregroundColor: context.danger,
+                side: BorderSide(
+                  color: context.danger,
                   width: 1.5,
                 ),
                 shape: RoundedRectangleBorder(

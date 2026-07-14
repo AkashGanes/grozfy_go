@@ -8,6 +8,7 @@ import '../../../../core/utils/formatters.dart';
 import '../../providers/notification_providers.dart';
 import '../../../../core/models/app_models.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/theme/context_colors.dart';
 import '../../../../core/widgets/app_shell.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
@@ -214,7 +215,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           const SizedBox(height: 12),
           Expanded(
             child: RefreshIndicator(
-              color: AppTheme.oceanBlue,
+              color: context.scheme.primary,
               onRefresh: _refresh,
               child: PagedListView<int, NotificationLog>(
                 pagingController: _pagingController,
@@ -276,11 +277,11 @@ class _InboxSummaryBar extends ConsumerWidget {
       decoration: BoxDecoration(
         color: scheme.surface.withValues(alpha: 0.62),
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x100A1D3A),
+            color: context.shadowColor,
             blurRadius: 16,
-            offset: Offset(0, 10),
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -295,7 +296,7 @@ class _InboxSummaryBar extends ConsumerWidget {
                     Icon(
                       Icons.notifications_active_rounded,
                       size: 16,
-                      color: AppTheme.oceanBlue.withValues(alpha: 0.9),
+                      color: context.scheme.primary.withValues(alpha: 0.9),
                     ),
                     const SizedBox(width: 6),
                     Text(
@@ -313,13 +314,13 @@ class _InboxSummaryBar extends ConsumerWidget {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: AppTheme.oceanBlue.withValues(alpha: 0.10),
+                          color: context.scheme.primary.withValues(alpha: 0.10),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
                           '$unreadCount',
                           style: TextStyle(
-                            color: AppTheme.oceanBlue.withValues(alpha: 0.95),
+                            color: context.scheme.primary.withValues(alpha: 0.95),
                             fontWeight: FontWeight.w800,
                             fontSize: 12,
                           ),
@@ -363,15 +364,15 @@ class _NotificationFilterPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final Color background = selected
-        ? AppTheme.oceanBlue
+        ? context.scheme.primary
         : scheme.surface.withValues(alpha: 0.6);
     final Color foreground = selected ? Colors.white : scheme.onSurface;
     final Color badgeBackground = selected
         ? Colors.white.withValues(alpha: 0.18)
-        : AppTheme.oceanBlue.withValues(alpha: 0.12);
+        : context.scheme.primary.withValues(alpha: 0.12);
     final Color badgeForeground = selected
         ? Colors.white
-        : AppTheme.oceanBlue.withValues(alpha: 0.95);
+        : context.scheme.primary.withValues(alpha: 0.95);
 
     return Material(
       color: Colors.transparent,
@@ -386,11 +387,11 @@ class _NotificationFilterPill extends StatelessWidget {
             color: background,
             borderRadius: BorderRadius.circular(14),
             boxShadow: selected
-                ? const [
+                ? [
                     BoxShadow(
-                      color: Color(0x1A0A1D3A),
+                      color: context.shadowColor,
                       blurRadius: 14,
-                      offset: Offset(0, 8),
+                      offset: const Offset(0, 8),
                     ),
                   ]
                 : null,
@@ -567,12 +568,12 @@ class _NotificationTile extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: isUnread
                       ? AppTheme.mango.withValues(alpha: 0.18)
-                      : AppTheme.oceanBlue.withValues(alpha: 0.1),
+                      : context.scheme.primary.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   _iconForNotification(),
-                  color: isUnread ? AppTheme.mango : AppTheme.oceanBlue,
+                  color: isUnread ? AppTheme.mango : context.scheme.primary,
                   size: 20,
                 ),
               ),
@@ -624,8 +625,8 @@ class _NotificationTile extends ConsumerWidget {
                 Container(
                   width: 9,
                   height: 9,
-                  decoration: const BoxDecoration(
-                    color: AppTheme.oceanBlue,
+                  decoration: BoxDecoration(
+                    color: context.scheme.primary,
                     shape: BoxShape.circle,
                   ),
                 ),

@@ -3,7 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/theme/app_theme.dart';
-import 'widgets/kyc_form_widgets.dart';
+import '../../core/theme/context_colors.dart';
 
 class VehicleSubmittedDetailsScreen extends StatelessWidget {
   const VehicleSubmittedDetailsScreen({
@@ -35,7 +35,6 @@ class VehicleSubmittedDetailsScreen extends StatelessWidget {
         _has('end_date');
 
     return Scaffold(
-      backgroundColor: KycColors.pageBg(context),
       body: SafeArea(
         child: Column(
           children: [
@@ -482,12 +481,10 @@ class _StatChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark
-            ? KycColors.cardBg(context)
-            : Colors.white,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: KycColors.cardBorder(context),
+          color: context.borderSubtle,
         ),
         boxShadow: isDark
             ? null
@@ -514,7 +511,7 @@ class _StatChip extends StatelessWidget {
           Text(
             label,
             style: theme.textTheme.labelSmall?.copyWith(
-              color: KycColors.textSecondary(context),
+              color: context.textSecondary,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -524,7 +521,7 @@ class _StatChip extends StatelessWidget {
             value,
             style: theme.textTheme.bodySmall?.copyWith(
               fontWeight: FontWeight.w700,
-              color: KycColors.textPrimary(context),
+              color: context.textPrimary,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -563,9 +560,9 @@ class _InfoSection extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? KycColors.cardBg(context) : Colors.white,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: KycColors.cardBorder(context)),
+        border: Border.all(color: context.borderSubtle),
         boxShadow: isDark
             ? null
             : [
@@ -597,7 +594,7 @@ class _InfoSection extends StatelessWidget {
                   title,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: KycColors.textPrimary(context),
+                    color: context.textPrimary,
                   ),
                 ),
               ],
@@ -605,7 +602,7 @@ class _InfoSection extends StatelessWidget {
           ),
           Divider(
             height: 1,
-            color: KycColors.cardBorder(context),
+            color: context.borderSubtle,
           ),
           // Tile grid
           Padding(
@@ -707,7 +704,7 @@ class _InfoTile extends StatelessWidget {
                 Text(
                   label,
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: KycColors.textSecondary(context),
+                    color: context.textSecondary,
                     height: 1,
                   ),
                 ),
@@ -716,7 +713,7 @@ class _InfoTile extends StatelessWidget {
                   value,
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: KycColors.textPrimary(context),
+                    color: context.textPrimary,
                   ),
                   maxLines: full ? 2 : 1,
                   overflow: TextOverflow.ellipsis,

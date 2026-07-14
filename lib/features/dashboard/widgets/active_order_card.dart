@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/theme/context_colors.dart';
 import 'dashboard_colors.dart';
 import 'section_card.dart';
 import 'status_pill.dart';
@@ -103,7 +104,7 @@ class ActiveOrderCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1F4FB6),
+                      color: context.scheme.primary,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Row(
@@ -206,7 +207,7 @@ class ActiveOrderCard extends StatelessWidget {
                                     child: Icon(
                                       trackOrderAction!.icon,
                                       size: 18,
-                                      color: const Color(0xFF1F4FB6),
+                                      color: context.scheme.primary,
                                     ),
                                   ),
                                 ),
@@ -263,7 +264,7 @@ class ActiveOrderCard extends StatelessWidget {
                                     ),
                                   ),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF1F4FB6),
+                                    backgroundColor: context.scheme.primary,
                                     foregroundColor: Colors.white,
                                     elevation: 0,
                                     shape: RoundedRectangleBorder(
@@ -359,15 +360,15 @@ class _ActionTile extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(action.icon, size: 16, color: const Color(0xFF1F4FB6)),
+              Icon(action.icon, size: 16, color: context.scheme.primary),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   action.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF1F4FB6),
+                  style: TextStyle(
+                    color: context.scheme.primary,
                     fontWeight: FontWeight.w700,
                     fontSize: 12,
                   ),

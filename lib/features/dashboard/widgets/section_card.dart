@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/context_colors.dart';
+
 class SectionCard extends StatelessWidget {
   const SectionCard({
     super.key,
@@ -14,8 +16,6 @@ class SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     // Outer DecoratedBox carries the shadow (shadows can't be on Material).
     // Inner Material provides the background so ListTile ink splashes are visible.
     return DecoratedBox(
@@ -23,16 +23,14 @@ class SectionCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(borderRadius),
         boxShadow: [
           BoxShadow(
-            color: isDark
-                ? Colors.black.withValues(alpha: 0.18)
-                : const Color(0x10000000),
+            color: context.shadowColor,
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Material(
-        color: isDark ? theme.colorScheme.surface : Colors.white,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(borderRadius),
         clipBehavior: Clip.antiAlias,
         child: Padding(
