@@ -220,7 +220,7 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
                 }
 
                 return RefreshIndicator(
-                  color: AppTheme.oceanBlue,
+                  color: context.scheme.primary,
                   onRefresh: () async {
                     final next = _loadPool();
                     setState(() { _future = next; });
@@ -259,8 +259,8 @@ class _PickupPoolScreenState extends ConsumerState<PickupPoolScreen> {
     );
   }
 
-  Widget _loadingView() => const Center(
-        child: CircularProgressIndicator(color: AppTheme.oceanBlue),
+  Widget _loadingView() => Center(
+        child: CircularProgressIndicator(color: context.scheme.primary),
       );
 
   Widget _errorView(String message) {
@@ -369,7 +369,7 @@ class _JobCard extends StatelessWidget {
     final Color cardBorder = context.borderSubtle;
     final Color textPrimary = context.textPrimary;
     final Color textSecondary = context.textSecondary;
-    const Color accent = AppTheme.oceanBlue;
+    final Color accent = context.scheme.primary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -526,10 +526,10 @@ class _JobCard extends StatelessWidget {
                           flex: 2,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.oceanBlue,
+                              backgroundColor: accent,
                               foregroundColor: Colors.white,
                               disabledBackgroundColor:
-                                  AppTheme.oceanBlue.withValues(alpha: 0.5),
+                                  accent.withValues(alpha: 0.5),
                               padding:
                                   const EdgeInsets.symmetric(vertical: 11),
                               elevation: 0,
