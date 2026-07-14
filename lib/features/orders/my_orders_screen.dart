@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
+import '../../core/state/app_controller.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
@@ -15,6 +16,7 @@ import '../dashboard/widgets/dashboard_colors.dart';
 import '../dashboard/widgets/section_card.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
+import '../profile/profile_completeness_sheet.dart';
 import '../stats/providers/stats_providers.dart';
 
 class MyOrdersScreen extends ConsumerStatefulWidget {
@@ -273,7 +275,11 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final appActiveOrders = ref.watch(appControllerProvider).activeOrders;
+    final app = ref.watch(appControllerProvider);
+    if (app.profileCompleteness.percentage < 1.0) {
+      return _buildIncompleteProfileState(context, app);
+    }
+    final appActiveOrders = app.activeOrders;
     final List<ExternalDelivery> activeOrders = _buildActiveOrders(appActiveOrders);
     return AppShell(
       title: 'My Orders',
@@ -301,6 +307,68 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildIncompleteProfileState(BuildContext context, AppController app) {
+    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final nextItem = app.profileCompleteness.nextIncompleteItem;
+    return AppShell(
+      title: 'My Orders',
+      subtitle: 'Track your deliveries',
+      showBottomNav: true,
+      bottomNavIndex: 1,
+      onBottomNavTap: _handleTabTap,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: scheme.onSurface.withValues(alpha: 0.04),
+                ),
+                child: Icon(
+                  Icons.lock_outline_rounded,
+                  size: 44,
+                  color: scheme.onSurface.withValues(alpha: 0.3),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Complete your profile to continue',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface.withValues(alpha: 0.7),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                nextItem != null
+                    ? 'You need to finish "${app.t(nextItem.name)}" and any other pending steps before you can view or manage active orders.'
+                    : 'Finish setting up your profile before you can view or manage active orders.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: scheme.onSurface.withValues(alpha: 0.45),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () => showProfileCompletenessSheet(context),
+                icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+                label: const Text('Complete Profile'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

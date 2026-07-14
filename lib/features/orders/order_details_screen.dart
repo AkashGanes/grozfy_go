@@ -588,6 +588,22 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     DeliveryOrder order,
   ) async {
     final app = AppScope.of(context);
+    if (app.profileCompleteness.percentage < 1.0) {
+      AppToast.show(context, 'Complete your profile to process orders.');
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.dashboard,
+        (route) => false,
+      );
+      return;
+    }
+    if (!app.isOnline) {
+      AppToast.show(context, 'You are offline — go online to process orders.');
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.dashboard,
+        (route) => false,
+      );
+      return;
+    }
     setState(() => _busy = true);
     final error = await app.acceptOrder(order.orderId);
     if (!context.mounted) {

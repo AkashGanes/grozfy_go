@@ -92,6 +92,7 @@ class AppController extends ChangeNotifier {
   static const String _prefPermNotification = 'perm_notification';
   static const String _prefLicenseRequiresReupload =
       'license_requires_reupload';
+  static const String _prefWasProfileComplete = 'was_profile_complete';
   static const String _prefThemeMode = 'theme_mode';
   static const String _prefDeliveryRadiusKm = 'delivery_radius_km';
   // Mirror of the business-defined radius policy (from the Driver DocType), kept
@@ -153,6 +154,7 @@ class AppController extends ChangeNotifier {
   bool _profileCompleted = false;
   bool _kycCompleted = false;
   bool _licenseRequiresReupload = false;
+  bool _wasProfileComplete = false;
   String? _sessionToken;
   String _tokenType = 'Bearer';
   String? _refreshToken;
@@ -607,7 +609,23 @@ class AppController extends ChangeNotifier {
       totalCount: totalCount,
     );
     _cachedProfileCompletenessKey = key;
+    if (percentage < 1.0 && _wasProfileComplete) {
+      _wasProfileComplete = false;
+      _writePref((prefs) => prefs.setBool(_prefWasProfileComplete, false));
+    }
     return _cachedProfileCompleteness!;
+  }
+
+  /// True exactly once per completion event: profile has just reached 100%
+  /// and that hasn't been acknowledged yet via [markProfileCompletionAcknowledged].
+  bool get justCompletedProfile =>
+      profileCompleteness.percentage >= 1.0 && !_wasProfileComplete;
+
+  void markProfileCompletionAcknowledged() {
+    if (_wasProfileComplete) return;
+    _wasProfileComplete = true;
+    _writePref((prefs) => prefs.setBool(_prefWasProfileComplete, true));
+    notifyListeners();
   }
 
   Future<void> bootstrap() async {
@@ -640,6 +658,7 @@ class AppController extends ChangeNotifier {
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
+    _wasProfileComplete = prefs.getBool(_prefWasProfileComplete) ?? false;
     _existingLicenseNo = _nullIfBlank(prefs.getString(_prefKycLicenseNo));
     _existingAadharNo = _nullIfBlank(prefs.getString(_prefKycAadharNo));
     _existingPanNo = _nullIfBlank(prefs.getString(_prefKycPanNo));
@@ -816,6 +835,7 @@ class AppController extends ChangeNotifier {
           _profile = null;
           _profileCompleted = false;
           _kycCompleted = false;
+          _wasProfileComplete = false;
           await SecureTokenStorage.deleteAll();
         }
       } else {
@@ -1863,6 +1883,7 @@ class AppController extends ChangeNotifier {
     _profileDetailsLoading = false;
     _profileCompleted = false;
     _kycCompleted = false;
+    _wasProfileComplete = false;
     _currentLatitude = null;
     _currentLongitude = null;
     _currentLocationLabel = null;
@@ -1928,6 +1949,7 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefPermBackground),
       prefs.remove(_prefPermNotification),
       prefs.remove(_prefLicenseRequiresReupload),
+      prefs.remove(_prefWasProfileComplete),
       // Per-driver prefs (avg duration, delivered count) are intentionally kept on logout.
       // They are keyed by driver name so other users can't see them,
       // and the same user logging back in the same day needs them intact.
