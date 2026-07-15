@@ -5,6 +5,7 @@ import 'package:html/parser.dart' show parse;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart' show LatLng;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/navigation/app_routes.dart';
@@ -13,6 +14,7 @@ import '../../../core/state/providers.dart';
 import 'trip_stage_timeline_widget.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
+import '../../../core/services/trip_route_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
@@ -26,6 +28,8 @@ import 'cod_handover_sheet.dart';
 import 'delivery_proof_sheet.dart';
 import 'failed_delivery_bottom_sheet.dart';
 
+import '../../../core/utils/geo_distance.dart';
+import 'trip_overview_map.dart';
 import 'trip_stop_map_screen.dart';
 
 class ExternalDeliveryTripDetailsScreen extends ConsumerStatefulWidget {
@@ -49,11 +53,27 @@ class _ExternalDeliveryTripDetailsScreenState
     'Failed',
     'Cancelled',
   ];
+  static const String _skipForNowValue = '__skip_for_now__';
   final Set<String> _updatingStops = <String>{};
 
   // ── Pickup flow State ──────────────────────────────────────────────────────
   final Map<String, PickupJob> _pickupJobDetails = {};
   bool _fetchingPickupDetails = false;
+  // ───────────────────────────────────────────────────────────────────────────
+
+  // ── Nearest-stop sequencing state ───────────────────────────────────────────
+  // Resolved coordinates for pending stops, keyed by 'ed:<externalDelivery>' or
+  // 'pj:<pickupJob>'. Best-effort — a stop with no entry here is excluded from
+  // nearest-neighbor sorting and stays appended at the end in server order.
+  final Map<String, (double, double)> _stopCoords = {};
+  // Pure algorithm output — recalculated on load and after every
+  // delivered/failed/skip event, never on a live GPS tick.
+  List<String> _suggestedOrder = <String>[];
+  // What's actually rendered/drag-reorderable. Mirrors _suggestedOrder until the
+  // driver manually reorders, after which it only drops completed/vanished
+  // stops and appends new ones, per the "manual order sticks" rule.
+  List<String> _displayOrder = <String>[];
+  bool _manualOrderActive = false;
   // ───────────────────────────────────────────────────────────────────────────
 
   @override
@@ -76,10 +96,21 @@ class _ExternalDeliveryTripDetailsScreenState
     super.dispose();
   }
 
+  /// Loads the trip, then resolves pending-stop coordinates and (re)computes
+  /// the nearest-first sequence. [sequenceFrom], when provided, is used as the
+  /// recalculation reference point instead of the driver's live GPS — used
+  /// right after a stop is marked delivered/failed/skipped, per the "reference
+  /// the just-completed stop's own location, not a live GPS ping" rule.
+  Future<ExternalDeliveryTrip> _loadTrip({(double, double)? sequenceFrom}) async {
+    final ExternalDeliveryTrip trip = await _fetchTrip();
+    await _resolveStopSequencing(trip, referenceOverride: sequenceFrom);
+    return trip;
+  }
+
   /// Cache-aware trip fetch. Online → fetch + cache; Offline → cache only;
   /// Network error mid-call → flip connectivity flag and serve cache. Only
   /// throws when both network and cache fail.
-  Future<ExternalDeliveryTrip> _loadTrip() async {
+  Future<ExternalDeliveryTrip> _fetchTrip() async {
     if (!ConnectivityService().isConnected) {
       final cached = OfflineTripManager().getCachedTrip(widget.tripName);
       if (cached != null) return cached;
@@ -133,6 +164,138 @@ class _ExternalDeliveryTripDetailsScreenState
       }
     } catch (_) {
       if (mounted) setState(() => _fetchingPickupDetails = false);
+    }
+  }
+
+  static const Set<String> _terminalStopStatuses = <String>{
+    'delivered',
+    'returned',
+    'failed',
+    'cancelled',
+    'received at store',
+  };
+
+  bool _isTerminalStop(dynamic stop) {
+    final String status = stop is ExternalDeliveryTripStop
+        ? stop.status
+        : (stop as PickupTripStop).status;
+    return _terminalStopStatuses.contains(status.trim().toLowerCase());
+  }
+
+  (double, double)? _coordsFor(dynamic stop) {
+    if (stop is ExternalDeliveryTripStop) {
+      return _stopCoords['ed:${stop.externalDelivery}'];
+    } else if (stop is PickupTripStop) {
+      return _stopCoords['pj:${stop.pickupJob}'];
+    }
+    return null;
+  }
+
+  /// Resolves coordinates for pending stops (joining delivery stops to their
+  /// [ExternalDelivery] record and pickup stops to their [PickupJob] record)
+  /// and recomputes [_suggestedOrder]/[_displayOrder]. Best-effort: a network
+  /// failure here never breaks the trip screen — unresolved stops simply stay
+  /// in their original server order at the end of the list.
+  Future<void> _resolveStopSequencing(
+    ExternalDeliveryTrip trip, {
+    (double, double)? referenceOverride,
+  }) async {
+    final List<ExternalDeliveryTripStop> pendingDeliveryStops = trip.stops
+        .where((s) => !_isTerminalStop(s))
+        .toList();
+    final List<PickupTripStop> pendingPickupStops = trip.pickupStops
+        .where((s) => !_isTerminalStop(s))
+        .toList();
+
+    final List<String> missingDeliveryNames = pendingDeliveryStops
+        .map((s) => s.externalDelivery)
+        .where((n) => n.isNotEmpty)
+        .toSet()
+        .where((n) => !_stopCoords.containsKey('ed:$n'))
+        .toList();
+    if (missingDeliveryNames.isNotEmpty) {
+      try {
+        final Map<String, ExternalDelivery> resolved =
+            await ExternalDeliveryRepository().fetchDeliveriesByNames(
+          missingDeliveryNames,
+        );
+        for (final MapEntry<String, ExternalDelivery> entry
+            in resolved.entries) {
+          final double? lat = entry.value.latitude;
+          final double? lng = entry.value.longitude;
+          if (lat != null && lng != null) {
+            _stopCoords['ed:${entry.key}'] = (lat, lng);
+          }
+        }
+      } catch (_) {
+        // Best-effort — those stops just stay unsorted at the end.
+      }
+    }
+
+    final List<String> missingPickupNames = pendingPickupStops
+        .map((s) => s.pickupJob)
+        .where((n) => n.isNotEmpty)
+        .toSet()
+        .where((n) => !_stopCoords.containsKey('pj:$n'))
+        .toList();
+    if (missingPickupNames.isNotEmpty) {
+      final PickupJobRepository repo = PickupJobRepository();
+      final List<PickupJob?> results = await Future.wait(
+        missingPickupNames.map((String n) async {
+          try {
+            return await repo.fetchJob(n);
+          } catch (_) {
+            return null;
+          }
+        }),
+      );
+      for (final PickupJob job in results.whereType<PickupJob>()) {
+        final double? lat = job.pickupLatitude;
+        final double? lng = job.pickupLongitude;
+        if (lat != null && lng != null) {
+          _stopCoords['pj:${job.name}'] = (lat, lng);
+        }
+      }
+    }
+
+    final List<String> pendingKeys = <String>[
+      for (final ExternalDeliveryTripStop s in pendingDeliveryStops) _stopKey(s),
+      for (final PickupTripStop s in pendingPickupStops) _stopKey(s),
+    ];
+    final Map<String, String> coordKeyOf = <String, String>{
+      for (final ExternalDeliveryTripStop s in pendingDeliveryStops)
+        _stopKey(s): 'ed:${s.externalDelivery}',
+      for (final PickupTripStop s in pendingPickupStops)
+        _stopKey(s): 'pj:${s.pickupJob}',
+    };
+
+    final double? fromLat =
+        referenceOverride?.$1 ?? ref.read(appControllerProvider).currentLatitude;
+    final double? fromLng =
+        referenceOverride?.$2 ?? ref.read(appControllerProvider).currentLongitude;
+
+    if (fromLat != null && fromLng != null) {
+      _suggestedOrder = nearestNeighborOrder<String>(
+        fromLat,
+        fromLng,
+        pendingKeys,
+        coordsOf: (String key) => _stopCoords[coordKeyOf[key]],
+      );
+    } else {
+      _suggestedOrder = pendingKeys;
+    }
+
+    if (!_manualOrderActive) {
+      _displayOrder = List<String>.from(_suggestedOrder);
+    } else {
+      final Set<String> pendingSet = pendingKeys.toSet();
+      final List<String> kept = _displayOrder
+          .where((String k) => pendingSet.contains(k))
+          .toList();
+      final List<String> newOnes = pendingKeys
+          .where((String k) => !kept.contains(k))
+          .toList();
+      _displayOrder = <String>[...kept, ...newOnes];
     }
   }
 
@@ -947,21 +1110,71 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _stopsTab(ExternalDeliveryTrip trip) {
-    // Combine all stops (delivery and pickup) into a single ordered list
     final List<dynamic> allStops = [...trip.stops, ...trip.pickupStops];
+    final Map<String, dynamic> stopByKey = {
+      for (final dynamic s in allStops) _stopKey(s): s,
+    };
 
-    // Sort by stop number
-    allStops.sort((a, b) {
-      final int stopA = (a is ExternalDeliveryTripStop)
-          ? a.stop
-          : (a as PickupTripStop).stop;
-      final int stopB = (b is ExternalDeliveryTripStop)
-          ? b.stop
-          : (b as PickupTripStop).stop;
-      return stopA.compareTo(stopB);
-    });
+    // Pending stops render in nearest-first (or manually reordered) sequence;
+    // completed/failed/etc. stops move to a collapsed section below.
+    final List<dynamic> pendingOrdered = [
+      for (final String key in _displayOrder)
+        if (stopByKey.containsKey(key)) stopByKey[key]!,
+    ];
+    final List<dynamic> completed = allStops.where(_isTerminalStop).toList()
+      ..sort((a, b) {
+        final int stopA = (a is ExternalDeliveryTripStop)
+            ? a.stop
+            : (a as PickupTripStop).stop;
+        final int stopB = (b is ExternalDeliveryTripStop)
+            ? b.stop
+            : (b as PickupTripStop).stop;
+        return stopA.compareTo(stopB);
+      });
 
     final ColorScheme scheme = Theme.of(context).colorScheme;
+
+    final List<OverviewMapStop> mapStops = [];
+    for (int i = 0; i < pendingOrdered.length; i++) {
+      final (double, double)? coords = _coordsFor(pendingOrdered[i]);
+      if (coords != null) {
+        mapStops.add(
+          OverviewMapStop(
+            id: _stopKey(pendingOrdered[i]),
+            sequenceNumber: i + 1,
+            lat: coords.$1,
+            lng: coords.$2,
+            status: i == 0 ? StopMapStatus.active : StopMapStatus.pending,
+          ),
+        );
+      }
+    }
+    for (final dynamic stop in completed) {
+      final (double, double)? coords = _coordsFor(stop);
+      if (coords != null) {
+        mapStops.add(
+          OverviewMapStop(
+            id: _stopKey(stop),
+            sequenceNumber: 0,
+            lat: coords.$1,
+            lng: coords.$2,
+            status: StopMapStatus.completed,
+          ),
+        );
+      }
+    }
+
+    double? nextStopDistanceMeters;
+    if (pendingOrdered.isNotEmpty) {
+      final app = ref.watch(appControllerProvider);
+      final (double, double)? coords = _coordsFor(pendingOrdered.first);
+      final double? driverLat = app.currentLatitude;
+      final double? driverLng = app.currentLongitude;
+      if (coords != null && driverLat != null && driverLng != null) {
+        nextStopDistanceMeters =
+            haversineMeters(driverLat, driverLng, coords.$1, coords.$2);
+      }
+    }
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
@@ -972,6 +1185,47 @@ class _ExternalDeliveryTripDetailsScreenState
             _returnTripBanner(trip),
             const SizedBox(height: 10),
           ],
+          if (mapStops.isNotEmpty) ...[
+            _overviewMapButton(mapStops),
+            const SizedBox(height: 10),
+          ],
+          if (_manualOrderActive && pendingOrdered.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: context.textTertiary,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Manual stop order active',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.textTertiary,
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _manualOrderActive = false;
+                      _displayOrder = List<String>.from(_suggestedOrder);
+                    }),
+                    child: Text(
+                      'Reset to suggested',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: context.scheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (allStops.isEmpty)
             FrostCard(
               child: Text(
@@ -981,42 +1235,333 @@ class _ExternalDeliveryTripDetailsScreenState
                 ),
               ),
             )
-          else
-            ...allStops.map((stop) {
-              if (stop is ExternalDeliveryTripStop) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: FrostCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _stopHeader(stop),
-                        const SizedBox(height: 12),
-                        _stopInfoCard(stop),
-                        if (_isStopEditable(
-                          tripStatus: trip.status,
-                          stopStatus: stop.status,
-                        )) ...[
-                          const SizedBox(height: 12),
-                          const Divider(height: 1),
-                          const SizedBox(height: 10),
-                          _stopActionButtons(trip, stop),
-                        ],
+          else ...[
+            if (pendingOrdered.isNotEmpty)
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                buildDefaultDragHandles: false,
+                itemCount: pendingOrdered.length,
+                onReorderItem: (int oldIndex, int newIndex) {
+                  setState(() {
+                    final String moved = _displayOrder.removeAt(oldIndex);
+                    _displayOrder.insert(newIndex, moved);
+                    _manualOrderActive = true;
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final dynamic stop = pendingOrdered[index];
+                  final String key = _stopKey(stop);
+                  final bool isNext = index == 0;
+                  final bool isSuggestedNext = _suggestedOrder.isNotEmpty &&
+                      _suggestedOrder.first == key;
+
+                  final Widget card = stop is ExternalDeliveryTripStop
+                      ? Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: FrostCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _stopHeader(stop),
+                                const SizedBox(height: 12),
+                                _stopInfoCard(stop),
+                                if (_isStopEditable(
+                                  tripStatus: trip.status,
+                                  stopStatus: stop.status,
+                                )) ...[
+                                  const SizedBox(height: 12),
+                                  const Divider(height: 1),
+                                  const SizedBox(height: 10),
+                                  _stopActionButtons(trip, stop),
+                                ],
+                              ],
+                            ),
+                          ),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _pickupStopCard(trip, stop as PickupTripStop),
+                        );
+
+                  final Widget row = Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ReorderableDragStartListener(
+                        index: index,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 18, right: 4),
+                          child: Icon(
+                            Icons.drag_indicator_rounded,
+                            size: 18,
+                            color: context.iconMuted,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (isNext)
+                              _nearestStopBanner(
+                                distanceMeters: nextStopDistanceMeters,
+                              )
+                            else if (isSuggestedNext)
+                              _suggestedPill(),
+                            card,
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+
+                  if (!isNext) return KeyedSubtree(key: ValueKey(key), child: row);
+
+                  return Container(
+                    key: ValueKey(key),
+                    margin: const EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      color: context.success.withValues(alpha: 0.05),
+                      border: Border.all(
+                        color: context.success.withValues(alpha: 0.28),
+                        width: 1.4,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: context.success.withValues(alpha: 0.10),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
                       ],
                     ),
-                  ),
-                );
-              } else if (stop is PickupTripStop) {
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _pickupStopCard(trip, stop),
-                );
-              }
-              return const SizedBox.shrink();
-            }),
+                    child: row,
+                  );
+                },
+              ),
+            if (completed.isNotEmpty) _completedStopsSection(trip, completed),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _overviewMapButton(List<OverviewMapStop> mapStops) {
+    final int completedCount = mapStops
+        .where((OverviewMapStop s) => s.status == StopMapStatus.completed)
+        .length;
+    return GestureDetector(
+      onTap: () => _openOverviewMap(mapStops),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: context.scheme.primary.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: context.scheme.primary.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: context.scheme.primary.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.map_rounded,
+                size: 18,
+                color: context.scheme.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'View trip map',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      color: context.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$completedCount of ${mapStops.length} stops completed',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color: context.scheme.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openOverviewMap(List<OverviewMapStop> mapStops) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _TripRouteMapScreen(mapStops: mapStops),
+      ),
+    );
+  }
+
+  String _formatDistance(double meters) {
+    if (meters < 1000) return '${meters.round()} m away';
+    return '${(meters / 1000).toStringAsFixed(1)} km away';
+  }
+
+  Widget _nearestStopBanner({required double? distanceMeters}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: context.success,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: context.success.withValues(alpha: 0.35),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.navigation_rounded,
+              size: 13,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Nearest stop',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: context.success,
+              letterSpacing: 0.2,
+            ),
+          ),
+          if (distanceMeters != null) ...[
+            const SizedBox(width: 6),
+            Container(
+              width: 3,
+              height: 3,
+              decoration: BoxDecoration(
+                color: context.textTertiary,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              _formatDistance(distanceMeters),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: context.textSecondary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _suggestedPill() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6, left: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.auto_awesome_rounded, size: 12, color: context.textTertiary),
+          const SizedBox(width: 4),
+          Text(
+            'Suggested next',
+            style: TextStyle(
+              fontSize: 11,
+              color: context.textTertiary,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _completedStopsSection(
+    ExternalDeliveryTrip trip,
+    List<dynamic> completed,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      decoration: BoxDecoration(
+        color: context.surfaceMuted,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+          leading: Icon(
+            Icons.check_circle_outline,
+            size: 18,
+            color: context.success,
+          ),
+          title: Text(
+            'Completed (${completed.length})',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: context.textSecondary,
+            ),
+          ),
+          children: [
+            for (final dynamic stop in completed)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                child: stop is ExternalDeliveryTripStop
+                    ? FrostCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _stopHeader(stop),
+                            const SizedBox(height: 12),
+                            _stopInfoCard(stop),
+                          ],
+                        ),
+                      )
+                    : _pickupStopCard(trip, stop as PickupTripStop),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _skipForNow(dynamic stop) {
+    final String key = _stopKey(stop);
+    setState(() {
+      _displayOrder.remove(key);
+      _displayOrder.add(key);
+      _manualOrderActive = true;
+    });
+    showInfoSnack(context, 'Moved to the back of the queue');
   }
 
   Widget _pickupStopCard(ExternalDeliveryTrip trip, PickupTripStop ps) {
@@ -1101,10 +1646,16 @@ class _ExternalDeliveryTripDetailsScreenState
               GestureDetector(
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => TripStopMapScreen(
-                      address: cleanPickupAddress,
-                      stopNumber: ps.stop,
-                    ),
+                    builder: (_) {
+                      final (double, double)? coords = _coordsFor(ps);
+                      return TripStopMapScreen(
+                        address: cleanPickupAddress,
+                        stopNumber: ps.stop,
+                        knownLocation: coords == null
+                            ? null
+                            : LatLng(coords.$1, coords.$2),
+                      );
+                    },
                   ),
                 ),
                 child: Container(
@@ -1401,8 +1952,9 @@ class _ExternalDeliveryTripDetailsScreenState
 
       if (!mounted) return;
       showInfoSnack(context, 'Pickup status updated to $targetStatus');
+      final (double, double)? sequenceFrom = _coordsFor(ps);
       setState(() {
-        _future = _loadTrip();
+        _future = _loadTrip(sequenceFrom: sequenceFrom);
       });
     } catch (e) {
       if (!mounted) return;
@@ -1500,8 +2052,9 @@ class _ExternalDeliveryTripDetailsScreenState
       );
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
+      final (double, double)? sequenceFrom = _coordsFor(stop);
       setState(() {
-        _future = _loadTrip();
+        _future = _loadTrip(sequenceFrom: sequenceFrom);
       });
     } catch (e) {
       if (!mounted) return;
@@ -1644,8 +2197,9 @@ class _ExternalDeliveryTripDetailsScreenState
       );
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
+      final (double, double)? sequenceFrom = _coordsFor(stop);
       setState(() {
-        _future = _loadTrip();
+        _future = _loadTrip(sequenceFrom: sequenceFrom);
       });
     } catch (e) {
       if (!mounted) return;
@@ -1706,8 +2260,9 @@ class _ExternalDeliveryTripDetailsScreenState
           'Marked Failed offline. Photo upload and return trip will need '
           'to be done when back online.',
         );
+        final (double, double)? sequenceFrom = _coordsFor(stop);
         setState(() {
-          _future = _loadTrip();
+          _future = _loadTrip(sequenceFrom: sequenceFrom);
         });
       } catch (e) {
         if (!mounted) return;
@@ -1768,8 +2323,11 @@ class _ExternalDeliveryTripDetailsScreenState
       showInfoSnack(context, processResult.message);
       // Defer setState past the Navigator.pop rebuild to avoid calling it
       // during the build phase triggered by the dialog dismissal.
+      final (double, double)? sequenceFrom = _coordsFor(stop);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() { _future = _loadTrip(); });
+        if (mounted) {
+          setState(() { _future = _loadTrip(sequenceFrom: sequenceFrom); });
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -1957,10 +2515,16 @@ class _ExternalDeliveryTripDetailsScreenState
           GestureDetector(
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => TripStopMapScreen(
-                  address: cleanAddress,
-                  stopNumber: stop.stop,
-                ),
+                builder: (_) {
+                  final (double, double)? coords = _coordsFor(stop);
+                  return TripStopMapScreen(
+                    address: cleanAddress,
+                    stopNumber: stop.stop,
+                    knownLocation: coords == null
+                        ? null
+                        : LatLng(coords.$1, coords.$2),
+                  );
+                },
               ),
             ),
             child: Container(
@@ -2108,11 +2672,23 @@ class _ExternalDeliveryTripDetailsScreenState
         ),
         const SizedBox(width: 8),
         PopupMenuButton<String>(
-          onSelected: (status) => _updateStopStatus(stop, status),
+          onSelected: (status) {
+            if (status == _skipForNowValue) {
+              _skipForNow(stop);
+            } else {
+              _updateStopStatus(stop, status);
+            }
+          },
           itemBuilder: (context) {
-            return menuOptions
-                .map((s) => PopupMenuItem<String>(value: s, child: Text(s)))
-                .toList();
+            return [
+              ...menuOptions.map(
+                (s) => PopupMenuItem<String>(value: s, child: Text(s)),
+              ),
+              const PopupMenuItem<String>(
+                value: _skipForNowValue,
+                child: Text('Skip for now'),
+              ),
+            ];
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -2169,5 +2745,95 @@ class _ExternalDeliveryTripDetailsScreenState
   Future<void> _launchCall(String phone) async {
     final uri = Uri(scheme: 'tel', path: phone);
     if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+}
+
+/// Full-screen route coordination map. Opens immediately with a straight-line
+/// fallback route (so the button never feels laggy), then upgrades to a real
+/// road-following polyline once the best-effort OSRM fetch resolves.
+class _TripRouteMapScreen extends ConsumerStatefulWidget {
+  const _TripRouteMapScreen({required this.mapStops});
+
+  final List<OverviewMapStop> mapStops;
+
+  @override
+  ConsumerState<_TripRouteMapScreen> createState() =>
+      _TripRouteMapScreenState();
+}
+
+class _TripRouteMapScreenState extends ConsumerState<_TripRouteMapScreen> {
+  List<LatLng>? _routePoints;
+  bool _routeRequested = false;
+
+  Future<void> _fetchRoute(double driverLat, double driverLng) async {
+    final List<LatLng> pendingPoints = [
+      for (final OverviewMapStop s in widget.mapStops)
+        if (s.status != StopMapStatus.completed) LatLng(s.lat, s.lng),
+    ];
+    if (pendingPoints.isEmpty) return;
+    final List<LatLng> result = await TripRouteService.fetchRoute(
+          [LatLng(driverLat, driverLng), ...pendingPoints],
+        ) ??
+        <LatLng>[];
+    if (mounted && result.isNotEmpty) {
+      setState(() => _routePoints = result);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = ref.watch(appControllerProvider);
+    final double? driverLat = app.currentLatitude;
+    final double? driverLng = app.currentLongitude;
+
+    if (!_routeRequested && driverLat != null && driverLng != null) {
+      _routeRequested = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _fetchRoute(driverLat, driverLng),
+      );
+    }
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: TripOverviewMap(
+              stops: widget.mapStops,
+              driverLat: driverLat,
+              driverLng: driverLng,
+              routePoints: _routePoints,
+              height: null,
+            ),
+          ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 12,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: context.cardColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.arrow_back_rounded,
+                  color: context.textPrimary,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
