@@ -784,16 +784,69 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     if (orders.isEmpty) {
       return _placeholder(
         context,
-        Row(
-          children: [
-            Expanded(child: Text(app.t('no_active_order'))),
-            TextButton(
-              onPressed: () =>
-                  Navigator.of(context).pushNamed(AppRoutes.orderListing),
-              child: Text(app.t('browse_nearby')),
+        Material(
+          color: const Color(0xFF1F4FB6),
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () =>
+                Navigator.of(context).pushNamed(AppRoutes.orderListing),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.explore_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          app.t('browse_nearby'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          app.t('no_active_order'),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
+        heading: app.t('available_orders'),
       );
     }
 
@@ -1469,7 +1522,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
-  Widget _placeholder(BuildContext context, Widget body) {
+  Widget _placeholder(BuildContext context, Widget body, {String? heading}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1477,7 +1530,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
-            widget.app.t('active_order'),
+            heading ?? widget.app.t('active_order'),
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,

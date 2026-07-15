@@ -844,7 +844,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
             _divider(),
             _tile(
               icon: Icons.list_alt_rounded,
-              label: 'Available Orders',
+              label: 'New Orders',
               route: AppRoutes.orderListing,
               color: const Color(0xFF0891B2),
             ),

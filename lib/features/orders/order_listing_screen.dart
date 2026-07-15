@@ -17,20 +17,6 @@ import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/model/external_delivery_detail.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 
-// ── Paged list item types ─────────────────────────────────────────────────────
-
-sealed class _ListItem {}
-
-class _HeaderItem extends _ListItem {
-  _HeaderItem(this.storeName);
-  final String storeName;
-}
-
-class _OrderItem extends _ListItem {
-  _OrderItem(this.order);
-  final DeliveryOrder order;
-}
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 class OrderListingScreen extends StatefulWidget {
@@ -45,7 +31,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   static const Duration _searchDebounce = Duration(milliseconds: 450);
 
   late final ExternalDeliveryRepository _repository;
-  late final PagingController<int, _ListItem> _pagingController;
+  late final PagingController<int, DeliveryOrder> _pagingController;
   final TextEditingController _searchController = TextEditingController();
   AppController? _app;
 
@@ -55,12 +41,10 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   bool _searchLoading = false;
   String? _searchError;
   Timer? _debounce;
+  bool _showSearchBar = false;
 
   // Store filter state
   String? _selectedStore;
-
-  // Grouping tracker — reset when a new page-0 fetch begins
-  String? _lastGroupStore;
 
   // Track which search-result card is being opened
   String? _openingOrderId;
@@ -84,7 +68,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   void initState() {
     super.initState();
     _repository = ExternalDeliveryRepository();
-    _pagingController = PagingController<int, _ListItem>(firstPageKey: 0)
+    _pagingController = PagingController<int, DeliveryOrder>(firstPageKey: 0)
       ..addPageRequestListener(_fetchPage);
     _searchController.addListener(_onSearchChanged);
   }
@@ -113,7 +97,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     if (radius != _lastRadiusKm) {
       _lastRadiusKm = radius;
       _hiddenByRadiusCount = 0;
-      _lastGroupStore = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _pagingController.refresh();
       });
@@ -131,7 +114,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     final bool ok = await app.ensureCurrentLocation();
     if (!mounted || !ok) return;
     _hiddenByRadiusCount = 0;
-    _lastGroupStore = null;
     _pagingController.refresh();
   }
 
@@ -265,7 +247,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                                 Navigator.of(ctx).pop();
                                 if (_selectedStore != null) {
                                   setState(() => _selectedStore = null);
-                                  _lastGroupStore = null;
                                   _pagingController.refresh();
                                 }
                               },
@@ -303,7 +284,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                               Navigator.of(ctx).pop();
                               if (_selectedStore != store) {
                                 setState(() => _selectedStore = store);
-                                _lastGroupStore = null;
                                 _pagingController.refresh();
                               }
                             },
@@ -330,9 +310,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       return;
     }
 
-    // Reset grouping tracker at the start of each new list
-    if (pageKey == 0) _lastGroupStore = null;
-
     try {
       final fetched = await _fetchOrdersEnriched(app, pageKey);
       if (!mounted) return;
@@ -342,20 +319,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       // RAW batch size so the filter never short-circuits paging.
       final orders = _applyRadiusFilter(app, fetched);
 
-      final items = <_ListItem>[];
-      for (final order in orders) {
-        if (order.storeName != _lastGroupStore) {
-          items.add(_HeaderItem(order.storeName));
-          _lastGroupStore = order.storeName;
-        }
-        items.add(_OrderItem(order));
-      }
-
       final isLast = fetched.length < _pageSize;
       if (isLast) {
-        _pagingController.appendLastPage(items);
+        _pagingController.appendLastPage(orders);
       } else {
-        _pagingController.appendPage(items, pageKey + fetched.length);
+        _pagingController.appendPage(orders, pageKey + fetched.length);
       }
       // Update the "N hidden" banner with the running tally.
       if (mounted) setState(() {});
@@ -379,7 +347,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       final details = await _repository.fetchPageEnriched(
         limitStart: pageKey,
         limitPageLength: _pageSize,
-        orderBy: 'store_name asc, modified desc',
+        orderBy: 'modified desc',
         filters: <List<dynamic>>[
           <dynamic>['External Delivery', 'status', '=', 'Pending'],
           ...storeFilter,
@@ -395,7 +363,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       limitStart: pageKey,
       limitPageLength: _pageSize,
       storeName: _selectedStore,
-      orderBy: 'store_name asc, modified desc',
+      orderBy: 'modified desc',
       filters: <List<dynamic>>[
         <dynamic>['External Delivery', 'status', '=', 'Pending'],
       ],
@@ -631,7 +599,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       if (!mounted) return;
 
       _exitSelectionMode();
-      _lastGroupStore = null;
       _pagingController.refresh();
       AppToast.show(context, 'Trip $tripName created (${orders.length} orders)');
       Navigator.of(context).pushNamed(AppRoutes.externalDeliveryTripList);
@@ -783,27 +750,43 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       child: Stack(
         children: [
       AppShell(
-        title: 'Available Orders',
+        title: _app?.t('available_orders') ?? 'New Orders',
         subtitle: _selectionMode
             ? '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected'
             : (_selectedStore ?? 'All Stores'),
         scrollable: false,
         actions: [
-          if (!_selectionMode)
+          if (!_selectionMode) ...[
+            IconButton(
+              icon: Icon(
+                _showSearchBar ? Icons.search_off_rounded : Icons.search_rounded,
+                color: AppTheme.nightBlue,
+              ),
+              tooltip: 'Search orders',
+              onPressed: () {
+                if (_showSearchBar) _clearSearch();
+                setState(() => _showSearchBar = !_showSearchBar);
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.store_rounded, color: AppTheme.nightBlue),
               tooltip: 'Filter by store',
               onPressed: _showStorePicker,
             ),
+          ],
         ],
         child: Column(
           children: [
-          // Search bar
+          // Search bar — collapsed by default, revealed via the header icon so
+          // it doesn't compete with the order list for a first-time driver's
+          // attention.
+          if (_showSearchBar)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: KycSearchInput(
               controller: _searchController,
               hint: 'Search by Order ID, Store or Customer…',
+              autofocus: true,
             ),
           ),
 
@@ -894,7 +877,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
                 ? _buildSearchView()
                 : RefreshIndicator(
                     onRefresh: () async {
-                      _lastGroupStore = null;
                       _pagingController.refresh();
                     },
                     color: Colors.orange,
@@ -958,7 +940,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   // ── Normal paginated list ──────────────────────────────────────────────────
 
   Widget _buildPagedList() {
-    return PagedListView<int, _ListItem>(
+    return PagedListView<int, DeliveryOrder>(
       pagingController: _pagingController,
       physics: const BouncingScrollPhysics(
         parent: AlwaysScrollableScrollPhysics(),
@@ -967,7 +949,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         0, 4, 0,
         _selectionMode ? MediaQuery.of(context).padding.bottom + 80 : 20,
       ),
-      builderDelegate: PagedChildBuilderDelegate<_ListItem>(
+      builderDelegate: PagedChildBuilderDelegate<DeliveryOrder>(
         firstPageProgressIndicatorBuilder: (_) =>
             const Center(child: CircularProgressIndicator()),
         newPageProgressIndicatorBuilder: (_) => const Padding(
@@ -980,11 +962,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             _ErrorState(onRetry: _pagingController.retryLastFailedRequest),
         noItemsFoundIndicatorBuilder: (_) =>
             _EmptyState(storeName: _selectedStore),
-        itemBuilder: (context, item, index) {
-          if (item is _HeaderItem) {
-            return _StoreHeaderWidget(storeName: item.storeName);
-          }
-          final order = (item as _OrderItem).order;
+        itemBuilder: (context, order, index) {
           final bool isSelected = _selectedOrderIds.contains(order.orderId);
           return _FullOrderCard(
             order: order,
@@ -1035,56 +1013,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
           onTap: () => _openSearchResult(detail),
         );
       },
-    );
-  }
-}
-
-// ── Store section header ──────────────────────────────────────────────────────
-
-class _StoreHeaderWidget extends StatelessWidget {
-  const _StoreHeaderWidget({required this.storeName});
-
-  final String storeName;
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 12, 2, 6),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: isDark
-                  ? const Color(0xFF1A2C4F)
-                  : const Color(0xFFE5EEFB),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(
-              Icons.store_rounded,
-              size: 15,
-              color: Color(0xFF2D6CDF),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              storeName,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: isDark
-                    ? const Color(0xFFF2F4F7)
-                    : const Color(0xFF101828),
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

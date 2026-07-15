@@ -22,6 +22,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   DeliveryOrder? _currentOrder;
   ExternalDeliveryDetail? _detail;
   bool _busy = false;
+  String? _acceptError;
   bool _loadingDetail = false;
   bool _customerExpanded = true;
   bool _storeExpanded = true;
@@ -419,6 +420,19 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 ],
               ),
             ),
+            if (_acceptError != null)
+              _AcceptErrorBanner(
+                message: _acceptError!,
+                isDark: _isDark(context),
+                onDismiss: () => setState(() => _acceptError = null),
+                onBrowseMore: () {
+                  setState(() => _acceptError = null);
+                  Navigator.of(context).pushNamedAndRemoveUntil(
+                    AppRoutes.orderListing,
+                    (route) => false,
+                  );
+                },
+              ),
             _BottomActions(
               isPending: isPending,
               showNavigate: showNavigate,
@@ -604,14 +618,17 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       );
       return;
     }
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _acceptError = null;
+    });
     final error = await app.acceptOrder(order.orderId);
     if (!context.mounted) {
       return;
     }
     setState(() => _busy = false);
     if (error != null) {
-      AppToast.show(context, error);
+      setState(() => _acceptError = error);
       return;
     }
     setState(() {
@@ -970,6 +987,78 @@ List<Widget> _withRowDividers(List<Widget> rows, Color color) {
     }
   }
   return result;
+}
+
+class _AcceptErrorBanner extends StatelessWidget {
+  const _AcceptErrorBanner({
+    required this.message,
+    required this.isDark,
+    required this.onDismiss,
+    required this.onBrowseMore,
+  });
+
+  final String message;
+  final bool isDark;
+  final VoidCallback onDismiss;
+  final VoidCallback onBrowseMore;
+
+  @override
+  Widget build(BuildContext context) {
+    const Color accent = Color(0xFFB42318);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? accent.withValues(alpha: 0.16)
+            : const Color(0xFFFEF3F2),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline_rounded, color: accent, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  message,
+                  style: const TextStyle(
+                    color: accent,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                GestureDetector(
+                  onTap: onBrowseMore,
+                  child: const Text(
+                    'Browse more orders',
+                    style: TextStyle(
+                      color: accent,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, color: accent, size: 18),
+            onPressed: onDismiss,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            splashRadius: 16,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _IconAction extends StatelessWidget {
