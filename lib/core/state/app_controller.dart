@@ -1512,6 +1512,10 @@ class AppController extends ChangeNotifier {
       if (status == 'not_found') {
         _registrationToken = responseData['registration_token']?.toString();
         _pendingRegistrationMobile = mobile.trim();
+        // This path returns before _persistSession, so nothing else resets the
+        // previous session's KYC identity. Without this, a new user registering
+        // on a reused device sees the prior driver's details on the KYC form.
+        _clearKycIdentity();
         notifyListeners();
         return 'ACCOUNT_NOT_FOUND';
       }
@@ -1864,6 +1868,7 @@ class AppController extends ChangeNotifier {
     _profileDetailsLoading = false;
     _profileCompleted = false;
     _kycCompleted = false;
+    _clearKycIdentity();
     _currentLatitude = null;
     _currentLongitude = null;
     _currentLocationLabel = null;
@@ -1911,6 +1916,14 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefCurrentLocationLabel),
       prefs.remove(_prefProfileCompleted),
       prefs.remove(_prefKycCompleted),
+      // KYC identity is per-user PII and pre-fills the KYC form. Left behind,
+      // bootstrap() reads it back and shows it to whoever logs in next.
+      prefs.remove(_prefKycLicenseNo),
+      prefs.remove(_prefKycAadharNo),
+      prefs.remove(_prefKycPanNo),
+      prefs.remove(_prefKycLicenseUrl),
+      prefs.remove(_prefKycAadharUrl),
+      prefs.remove(_prefKycPanUrl),
       prefs.remove(_prefProfileImagePath),
       prefs.remove(_prefServerProfileImageUrl),
       prefs.remove(_prefDriverName),
@@ -2011,6 +2024,22 @@ class AppController extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Blank the KYC identity fields held in memory.
+  ///
+  /// These pre-fill the KYC form, so they are per-user PII: anything left here
+  /// when the session identity changes surfaces on the next user's KYC page.
+  /// Callers are responsible for clearing the matching prefs and notifying.
+  void _clearKycIdentity() {
+    _existingLicenseNo = null;
+    _existingAadharNo = null;
+    _existingPanNo = null;
+    _existingLicenseUrl = null;
+    _existingAadharUrl = null;
+    _existingPanUrl = null;
+    _existingIssuingDate = null;
+    _existingExpiryDate = null;
   }
 
   /// Submit KYC to create or update the Driver record on ERPNext.
@@ -4956,7 +4985,6 @@ class AppController extends ChangeNotifier {
           );
         }
       }
-      driverName ??= await _findDefaultDriverName();
 
       if (driverName != null) {
         driverDoc = await _fetchResourceDoc('Driver', driverName);
@@ -4983,6 +5011,11 @@ class AppController extends ChangeNotifier {
         _existingExpiryDate = _nullIfBlank(
           driverDoc?['expiry_date']?.toString(),
         );
+      } else {
+        // No Driver record maps to this user (a new signup, before KYC is
+        // submitted). These fields pre-fill the KYC form, so they must be
+        // blank rather than left holding a previous session's values.
+        _clearKycIdentity();
       }
       if (employeeName != null) {
         employeeDoc = await _fetchResourceDoc('Employee', employeeName);
@@ -5160,25 +5193,6 @@ class AppController extends ChangeNotifier {
       }
     }
     return null;
-  }
-
-  Future<String?> _findDefaultDriverName() async {
-    final String configured = ApiConstants.defaultExternalDeliveryDriver.trim();
-    if (configured.isNotEmpty) {
-      final Map<String, dynamic>? configuredDoc = await _fetchResourceDoc(
-        'Driver',
-        configured,
-      );
-      if (configuredDoc != null) {
-        return configured;
-      }
-    }
-
-    return _findResourceName(
-      doctype: 'Driver',
-      filters: const <List<String>>[],
-      fields: const <String>['name'],
-    );
   }
 
   Future<String?> _findResourceName({
