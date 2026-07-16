@@ -94,12 +94,6 @@ class AppController extends ChangeNotifier {
   static const String _prefLicenseRequiresReupload =
       'license_requires_reupload';
   static const String _prefThemeMode = 'theme_mode';
-  static const String _prefDeliveryRadiusKm = 'delivery_radius_km';
-  // Mirror of the business-defined radius policy (from the Driver DocType), kept
-  // in prefs so the policy survives an offline cold start.
-  static const String _prefDeliveryRadiusEnabled = 'delivery_radius_enabled';
-  static const String _prefDeliveryRadiusDefaultKm = 'delivery_radius_default_km';
-  static const String _prefDeliveryRadiusMaxKm = 'delivery_radius_max_km';
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
   static const String _prefActiveOrderId = 'active_order_id';
@@ -209,15 +203,6 @@ class AppController extends ChangeNotifier {
   String _liveCoordinates = '28.6139, 77.2090';
   double? _currentLatitude;
   double? _currentLongitude;
-  // Partner's self-selected delivery radius in km. null means "no limit" —
-  // every order is shown regardless of distance.
-  double? _deliveryRadiusKm;
-  // Business-defined radius policy, sourced from the logged-in Driver doc.
-  // `_deliveryRadiusFeatureEnabled` gates whether the radius limit is offered at
-  // all; the default/max drive the Settings slider's initial value and ceiling.
-  bool _deliveryRadiusFeatureEnabled = false;
-  double? _businessDefaultRadiusKm;
-  double? _businessMaxRadiusKm;
   String? _currentLocationLabel;
   String? _selectedStoreName;
   String? _profileImagePath;
@@ -383,10 +368,6 @@ class AppController extends ChangeNotifier {
   String get liveCoordinates => _liveCoordinates;
   double? get currentLatitude => _currentLatitude;
   double? get currentLongitude => _currentLongitude;
-  double? get deliveryRadiusKm => _deliveryRadiusKm;
-  bool get deliveryRadiusFeatureEnabled => _deliveryRadiusFeatureEnabled;
-  double? get businessDefaultRadiusKm => _businessDefaultRadiusKm;
-  double? get businessMaxRadiusKm => _businessMaxRadiusKm;
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
@@ -746,13 +727,6 @@ class AppController extends ChangeNotifier {
     await PartnerWidgetManager.initialize();
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
     _currentLongitude = prefs.getDouble(_prefCurrentLng);
-    _deliveryRadiusKm = prefs.getDouble(_prefDeliveryRadiusKm);
-    // Restore the business policy from its prefs mirror so the Settings slider
-    // has sane bounds before the Driver doc is (re)fetched — important offline.
-    _deliveryRadiusFeatureEnabled =
-        prefs.getBool(_prefDeliveryRadiusEnabled) ?? false;
-    _businessDefaultRadiusKm = prefs.getDouble(_prefDeliveryRadiusDefaultKm);
-    _businessMaxRadiusKm = prefs.getDouble(_prefDeliveryRadiusMaxKm);
     _currentLocationLabel = _nullIfBlank(
       prefs.getString(_prefCurrentLocationLabel),
     );
@@ -938,60 +912,6 @@ class AppController extends ChangeNotifier {
       return prefs.setInt(_prefThemeMode, mode.index);
     });
     notifyListeners();
-  }
-
-  /// Sets the partner's delivery radius in km. Pass null (or a non-positive
-  /// value) to mean "no limit" — the stored pref is removed so it loads back as
-  /// null on next launch. The value is capped at the business-defined
-  /// [businessMaxRadiusKm] so a partner can never exceed the configured ceiling.
-  void setDeliveryRadiusKm(double? km) {
-    double? normalized = (km == null || km <= 0) ? null : km;
-    final double? max = _businessMaxRadiusKm;
-    if (normalized != null && max != null && max > 0 && normalized > max) {
-      normalized = max;
-    }
-    _deliveryRadiusKm = normalized;
-    _writePref((SharedPreferences prefs) {
-      return normalized == null
-          ? prefs.remove(_prefDeliveryRadiusKm)
-          : prefs.setDouble(_prefDeliveryRadiusKm, normalized);
-    });
-    notifyListeners();
-  }
-
-  /// Whether [order]'s delivery location falls within the partner's chosen
-  /// radius. Fails open: returns true when no radius is set or when the
-  /// partner's current location is unknown, so a GPS hiccup never empties the
-  /// work list.
-  bool isWithinDeliveryRadius(DeliveryOrder order) {
-    final double? radius = _deliveryRadiusKm;
-    if (radius == null) return true;
-    final double? lat = _currentLatitude;
-    final double? lng = _currentLongitude;
-    if (lat == null || lng == null) return true;
-    return order.distanceKm <= radius;
-  }
-
-  /// Distance in km from the partner's current location to [lat]/[lng], or null
-  /// when the partner's location is unknown.
-  double? distanceFromPartnerKm(double lat, double lng) {
-    final double? plat = _currentLatitude;
-    final double? plng = _currentLongitude;
-    if (plat == null || plng == null) return null;
-    return _calculateDistance(plat, plng, lat, lng);
-  }
-
-  /// Radius check for a raw delivery coordinate. Used by the listing screen,
-  /// which works with order summaries rather than [DeliveryOrder]. Fails open
-  /// (returns true) when no radius is set, the coordinate is missing, or the
-  /// partner's location is unknown — so nothing is wrongly hidden.
-  bool isWithinDeliveryRadiusAt(double? lat, double? lng) {
-    final double? radius = _deliveryRadiusKm;
-    if (radius == null) return true;
-    if (lat == null || lng == null) return true;
-    final double? distance = distanceFromPartnerKm(lat, lng);
-    if (distance == null) return true;
-    return distance <= radius;
   }
 
   void setBackgroundColor(Color color) {
@@ -1867,12 +1787,6 @@ class AppController extends ChangeNotifier {
     _currentLatitude = null;
     _currentLongitude = null;
     _currentLocationLabel = null;
-    // Reset the delivery-radius selection and business policy so the next login
-    // starts from that driver's business default rather than a stale value.
-    _deliveryRadiusKm = null;
-    _deliveryRadiusFeatureEnabled = false;
-    _businessDefaultRadiusKm = null;
-    _businessMaxRadiusKm = null;
     _driverName = null;
     _vehicle = null;
     _submittedVehicleRaw = null;
@@ -4831,74 +4745,6 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reads the business-defined delivery-radius policy off the Driver doc
-  /// (`custom_delivery_radius_enabled`, `custom_default_delivery_radius_km`,
-  /// `custom_maximum_delivery_radius_km`), mirrors it to prefs for offline use, and
-  /// reconciles the partner's own saved selection with it: clearing it when the
-  /// business disables the limit, or clamping it down to a lowered cap.
-  void _applyDeliveryRadiusPolicy(Map<String, dynamic> driverDoc) {
-    final dynamic enabledRaw = driverDoc['custom_delivery_radius_enabled'];
-    _deliveryRadiusFeatureEnabled = enabledRaw == 1 ||
-        enabledRaw == true ||
-        enabledRaw?.toString() == '1';
-    _businessDefaultRadiusKm = _positiveOrNull(
-      driverDoc['custom_default_delivery_radius_km'],
-    );
-    _businessMaxRadiusKm = _positiveOrNull(
-      driverDoc['custom_maximum_delivery_radius_km'],
-    );
-
-    // Mirror the policy so an offline cold start still has sane slider bounds.
-    final bool enabled = _deliveryRadiusFeatureEnabled;
-    final double? defaultKm = _businessDefaultRadiusKm;
-    final double? maxKm = _businessMaxRadiusKm;
-    _writePref((SharedPreferences prefs) async {
-      await prefs.setBool(_prefDeliveryRadiusEnabled, enabled);
-      if (defaultKm != null) {
-        await prefs.setDouble(_prefDeliveryRadiusDefaultKm, defaultKm);
-      } else {
-        await prefs.remove(_prefDeliveryRadiusDefaultKm);
-      }
-      if (maxKm != null) {
-        await prefs.setDouble(_prefDeliveryRadiusMaxKm, maxKm);
-      } else {
-        await prefs.remove(_prefDeliveryRadiusMaxKm);
-      }
-      return true;
-    });
-
-    // Business turned the feature off → drop any local restriction so the
-    // partner sees every order again.
-    if (!_deliveryRadiusFeatureEnabled) {
-      if (_deliveryRadiusKm != null) {
-        setDeliveryRadiusKm(null);
-      }
-      return;
-    }
-    // Apply the business default whenever there is no saved selection. Logout
-    // clears the saved value, so this path runs on the next login and resets
-    // the radius to custom_default_delivery_radius_km. setDeliveryRadiusKm caps
-    // it at custom_maximum_delivery_radius_km. A mid-session selection survives app
-    // restarts because it is non-null here and only gets clamped to the cap.
-    if (_deliveryRadiusKm == null) {
-      if (defaultKm != null) {
-        setDeliveryRadiusKm(defaultKm);
-      }
-    } else if (maxKm != null && _deliveryRadiusKm! > maxKm) {
-      setDeliveryRadiusKm(maxKm);
-    }
-  }
-
-  /// Parses a Frappe Float to a positive double, returning null for missing,
-  /// unparseable, or non-positive values (treated as "not configured").
-  double? _positiveOrNull(dynamic raw) {
-    final double? value = (raw is num)
-        ? raw.toDouble()
-        : double.tryParse(raw?.toString() ?? '');
-    if (value == null || value <= 0) return null;
-    return value;
-  }
-
   Future<void> fetchLoggedInEmployeeDriverProfile({
     bool forceRefresh = false,
   }) async {
@@ -4995,7 +4841,6 @@ class AppController extends ChangeNotifier {
       );
 
       if (driverDoc != null) {
-        _applyDeliveryRadiusPolicy(driverDoc);
         _checkLicenseStatus(driverDoc);
         _applyRatingFromDriverDoc(driverDoc);
         final dynamic onlineRaw = driverDoc['custom_custom_is_online'];

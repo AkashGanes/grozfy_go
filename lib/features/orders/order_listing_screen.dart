@@ -73,14 +73,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   final List<DeliveryOrder> _selectedOrders = [];
   bool _creatingBatchTrip = false;
 
-  // Delivery-radius filter state. The business policy (enabled/default/max)
-  // lives on the Driver doc and the partner's selection in AppController; this
-  // screen just applies it. _hiddenByRadiusCount tallies orders hidden across
-  // loaded pages for the banner; _lastRadiusKm detects Settings-slider changes.
-  int _hiddenByRadiusCount = 0;
-  double? _lastRadiusKm;
-  bool _radiusInitDone = false;
-
   // Tracks the driver's availability so we can reload the list when it flips.
   // Offline drivers must not see the available/Pending order pool.
   bool? _lastOnline;
@@ -99,7 +91,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     super.didChangeDependencies();
     _app = AppScope.of(context);
     _syncOnlineState();
-    _syncDeliveryRadius();
   }
 
   /// Reloads the list when the driver's availability flips. AppScope is an
@@ -110,74 +101,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     final bool online = _app?.isOnline ?? false;
     if (_lastOnline != null && online != _lastOnline) {
       _lastGroupStore = null;
-      _hiddenByRadiusCount = 0;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _pagingController.refresh();
       });
     }
     _lastOnline = online;
-  }
-
-  /// Reacts to delivery-radius changes (the Settings slider). On first run it
-  /// seeds the partner's GPS location for the filter; on later changes it
-  /// refreshes the list so the radius re-applies. AppScope is an
-  /// InheritedNotifier, so this fires whenever AppController notifies.
-  void _syncDeliveryRadius() {
-    final app = _app;
-    if (app == null) return;
-    final double? radius = app.deliveryRadiusKm;
-    if (!_radiusInitDone) {
-      _radiusInitDone = true;
-      _lastRadiusKm = radius;
-      _ensureLocationForRadius();
-      return;
-    }
-    if (radius != _lastRadiusKm) {
-      _lastRadiusKm = radius;
-      _hiddenByRadiusCount = 0;
-      _lastGroupStore = null;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _pagingController.refresh();
-      });
-    }
-  }
-
-  /// When the delivery-radius filter is active but the partner's location isn't
-  /// known yet, fetch a one-shot GPS fix and refresh so the loaded page
-  /// re-filters against a real origin. Fails open (leaves the list unfiltered)
-  /// when location can't be obtained — e.g. permission denied.
-  Future<void> _ensureLocationForRadius() async {
-    final app = _app;
-    if (app == null || app.deliveryRadiusKm == null) return;
-    if (app.currentLatitude != null && app.currentLongitude != null) return;
-    final bool ok = await app.ensureCurrentLocation();
-    if (!mounted || !ok) return;
-    _hiddenByRadiusCount = 0;
-    _lastGroupStore = null;
-    _pagingController.refresh();
-  }
-
-  /// Keeps only the orders within the partner's delivery radius, tallying the
-  /// hidden count for the banner. Fails open: orders without coordinates
-  /// (lat/lng both 0) — or when the partner location/radius is unknown — are
-  /// kept, so a data/GPS gap never empties the work list.
-  List<DeliveryOrder> _applyRadiusFilter(
-    AppController app,
-    List<DeliveryOrder> orders,
-  ) {
-    if (app.deliveryRadiusKm == null) return orders;
-    final visible = <DeliveryOrder>[];
-    for (final order in orders) {
-      final bool hasCoords = order.latitude != 0 || order.longitude != 0;
-      final bool keep = !hasCoords ||
-          app.isWithinDeliveryRadiusAt(order.latitude, order.longitude);
-      if (keep) {
-        visible.add(order);
-      } else {
-        _hiddenByRadiusCount++;
-      }
-    }
-    return visible;
   }
 
   @override
@@ -365,13 +293,8 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     }
 
     try {
-      final fetched = await _fetchOrdersEnriched(app, pageKey);
+      final orders = await _fetchOrdersEnriched(app, pageKey);
       if (!mounted) return;
-
-      if (pageKey == 0) _hiddenByRadiusCount = 0;
-      // Filter by delivery radius for display; pagination still advances on the
-      // RAW batch size so the filter never short-circuits paging.
-      final orders = _applyRadiusFilter(app, fetched);
 
       final items = <_ListItem>[];
       for (final order in orders) {
@@ -382,14 +305,12 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         items.add(_OrderItem(order));
       }
 
-      final isLast = fetched.length < _pageSize;
+      final isLast = orders.length < _pageSize;
       if (isLast) {
         _pagingController.appendLastPage(items);
       } else {
-        _pagingController.appendPage(items, pageKey + fetched.length);
+        _pagingController.appendPage(items, pageKey + orders.length);
       }
-      // Update the "N hidden" banner with the running tally.
-      if (mounted) setState(() {});
     } catch (e, st) {
       debugPrint('[OrderListing] _fetchPage error: $e');
       debugPrint('[OrderListing] stacktrace: $st');
@@ -937,9 +858,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
               ),
             ),
 
-          // Delivery-radius "N hidden" banner (only in browse mode).
-          if (!searching) _buildRadiusHint(),
-
           // List area
           Expanded(
             child: searching
@@ -965,43 +883,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
           bottom: 0,
           child: _buildSelectionBar(),
         ),
-        ],
-      ),
-    );
-  }
-
-  /// Banner shown when the delivery-radius filter is hiding orders, so the list
-  /// never looks silently truncated.
-  Widget _buildRadiusHint() {
-    final double? radiusKm = _app?.deliveryRadiusKm;
-    if (radiusKm == null || _hiddenByRadiusCount <= 0) {
-      return const SizedBox.shrink();
-    }
-    final String radiusLabel = radiusKm == radiusKm.roundToDouble()
-        ? radiusKm.toStringAsFixed(0)
-        : radiusKm.toStringAsFixed(1);
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: context.scheme.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: context.scheme.primary.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.my_location_rounded,
-              size: 18, color: context.scheme.primary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              '$_hiddenByRadiusCount order'
-              '${_hiddenByRadiusCount == 1 ? '' : 's'} hidden by your '
-              '$radiusLabel km radius',
-              style: TextStyle(fontSize: 13, color: context.textPrimary),
-            ),
-          ),
         ],
       ),
     );
