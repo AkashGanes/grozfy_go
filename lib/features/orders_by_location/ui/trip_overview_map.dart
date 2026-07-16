@@ -110,7 +110,7 @@ class _TripOverviewMapState extends State<TripOverviewMap> {
       case StopMapStatus.active:
         return context.success;
       case StopMapStatus.pending:
-        return AppTheme.mango;
+        return Colors.white;
       case StopMapStatus.completed:
         return context.textDisabled;
     }
@@ -255,14 +255,20 @@ class _StopPin extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isActive = status == StopMapStatus.active;
+    final bool isRemaining = status == StopMapStatus.pending;
+    final Color contentColor = isRemaining ? Colors.grey.shade700 : Colors.white;
     return Container(
       decoration: BoxDecoration(
         color: color,
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: isActive ? 2.5 : 2),
+        border: Border.all(
+          color: isRemaining ? Colors.grey.shade400 : Colors.white,
+          width: isActive ? 2.5 : 2,
+        ),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.35),
+            color: (isRemaining ? Colors.black : color)
+                .withValues(alpha: isRemaining ? 0.15 : 0.35),
             blurRadius: isActive ? 10 : 8,
             spreadRadius: isActive ? 2 : 1,
           ),
@@ -274,7 +280,7 @@ class _StopPin extends StatelessWidget {
           : Text(
               '$number',
               style: TextStyle(
-                color: Colors.white,
+                color: contentColor,
                 fontWeight: FontWeight.w700,
                 fontSize: isActive ? 14 : 13,
               ),
@@ -307,9 +313,11 @@ class _MapLegend extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _legendRow(context, pinColor(StopMapStatus.active), 'Active'),
+          _legendRow(context, AppTheme.oceanBlue, 'You'),
           const SizedBox(height: 4),
-          _legendRow(context, pinColor(StopMapStatus.pending), 'Pending'),
+          _legendRow(context, pinColor(StopMapStatus.active), 'Next stop'),
+          const SizedBox(height: 4),
+          _legendRow(context, pinColor(StopMapStatus.pending), 'Remaining'),
           const SizedBox(height: 4),
           _legendRow(context, pinColor(StopMapStatus.completed), 'Completed'),
         ],
@@ -324,7 +332,11 @@ class _MapLegend extends StatelessWidget {
         Container(
           width: 8,
           height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.grey.shade400, width: 0.75),
+          ),
         ),
         const SizedBox(width: 6),
         Text(

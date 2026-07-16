@@ -21,6 +21,7 @@ import '../../../core/widgets/app_shell.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
+import '../../orders/delivery_tracking_screen.dart';
 import '../../pickup_jobs/model/pickup_job.dart';
 import '../../pickup_jobs/repository/pickup_job_repository.dart';
 import 'cod_collection_sheet.dart';
@@ -29,6 +30,7 @@ import 'delivery_proof_sheet.dart';
 import 'failed_delivery_bottom_sheet.dart';
 
 import '../../../core/utils/geo_distance.dart';
+import '../../../core/utils/maps_launcher.dart';
 import 'trip_overview_map.dart';
 import 'trip_stop_map_screen.dart';
 
@@ -330,6 +332,7 @@ class _ExternalDeliveryTripDetailsScreenState
       title: 'External Delivery Trip',
       subtitle: widget.tripName,
       scrollable: false,
+      actions: [_routeMapButton()],
       child: FutureBuilder<ExternalDeliveryTrip>(
         future: _future,
         builder: (context, snapshot) {
@@ -1109,18 +1112,25 @@ class _ExternalDeliveryTripDetailsScreenState
     }
   }
 
-  Widget _stopsTab(ExternalDeliveryTrip trip) {
+  /// Nearest-first (or manually reordered) pending stops, rebuilt from
+  /// [_displayOrder] on every call so it always reflects the latest reload.
+  List<dynamic> _pendingOrderedStops(ExternalDeliveryTrip trip) {
     final List<dynamic> allStops = [...trip.stops, ...trip.pickupStops];
     final Map<String, dynamic> stopByKey = {
       for (final dynamic s in allStops) _stopKey(s): s,
     };
-
-    // Pending stops render in nearest-first (or manually reordered) sequence;
-    // completed/failed/etc. stops move to a collapsed section below.
-    final List<dynamic> pendingOrdered = [
+    return [
       for (final String key in _displayOrder)
         if (stopByKey.containsKey(key)) stopByKey[key]!,
     ];
+  }
+
+  Widget _stopsTab(ExternalDeliveryTrip trip) {
+    final List<dynamic> allStops = [...trip.stops, ...trip.pickupStops];
+
+    // Pending stops render in nearest-first (or manually reordered) sequence;
+    // completed/failed/etc. stops move to a collapsed section below.
+    final List<dynamic> pendingOrdered = _pendingOrderedStops(trip);
     final List<dynamic> completed = allStops.where(_isTerminalStop).toList()
       ..sort((a, b) {
         final int stopA = (a is ExternalDeliveryTripStop)
@@ -1133,36 +1143,6 @@ class _ExternalDeliveryTripDetailsScreenState
       });
 
     final ColorScheme scheme = Theme.of(context).colorScheme;
-
-    final List<OverviewMapStop> mapStops = [];
-    for (int i = 0; i < pendingOrdered.length; i++) {
-      final (double, double)? coords = _coordsFor(pendingOrdered[i]);
-      if (coords != null) {
-        mapStops.add(
-          OverviewMapStop(
-            id: _stopKey(pendingOrdered[i]),
-            sequenceNumber: i + 1,
-            lat: coords.$1,
-            lng: coords.$2,
-            status: i == 0 ? StopMapStatus.active : StopMapStatus.pending,
-          ),
-        );
-      }
-    }
-    for (final dynamic stop in completed) {
-      final (double, double)? coords = _coordsFor(stop);
-      if (coords != null) {
-        mapStops.add(
-          OverviewMapStop(
-            id: _stopKey(stop),
-            sequenceNumber: 0,
-            lat: coords.$1,
-            lng: coords.$2,
-            status: StopMapStatus.completed,
-          ),
-        );
-      }
-    }
 
     double? nextStopDistanceMeters;
     if (pendingOrdered.isNotEmpty) {
@@ -1183,10 +1163,6 @@ class _ExternalDeliveryTripDetailsScreenState
         children: [
           if (trip.isReturnTrip) ...[
             _returnTripBanner(trip),
-            const SizedBox(height: 10),
-          ],
-          if (mapStops.isNotEmpty) ...[
-            _overviewMapButton(mapStops),
             const SizedBox(height: 10),
           ],
           if (_manualOrderActive && pendingOrdered.isNotEmpty)
@@ -1252,19 +1228,24 @@ class _ExternalDeliveryTripDetailsScreenState
                 itemBuilder: (context, index) {
                   final dynamic stop = pendingOrdered[index];
                   final String key = _stopKey(stop);
+                  final bool hasMultipleStops = pendingOrdered.length > 1;
                   final bool isNext = index == 0;
-                  final bool isSuggestedNext = _suggestedOrder.isNotEmpty &&
+                  final bool highlightAsNext = isNext && hasMultipleStops;
+                  final bool isSuggestedNext = hasMultipleStops &&
+                      _suggestedOrder.isNotEmpty &&
                       _suggestedOrder.first == key;
 
-                  final Widget card = stop is ExternalDeliveryTripStop
+                  final Widget innerCard = stop is ExternalDeliveryTripStop
                       ? Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: FrostCard(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _stopHeader(stop),
-                                const SizedBox(height: 12),
+                                if (isNext) ...[
+                                  _stopHeader(stop),
+                                  const SizedBox(height: 12),
+                                ],
                                 _stopInfoCard(stop),
                                 if (_isStopEditable(
                                   tripStatus: trip.status,
@@ -1284,6 +1265,10 @@ class _ExternalDeliveryTripDetailsScreenState
                           child: _pickupStopCard(trip, stop as PickupTripStop),
                         );
 
+                  final Widget card = (!isNext && hasMultipleStops)
+                      ? _collapsibleStopCard(stop, innerCard)
+                      : innerCard;
+
                   final Widget row = Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1302,7 +1287,7 @@ class _ExternalDeliveryTripDetailsScreenState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (isNext)
+                            if (highlightAsNext)
                               _nearestStopBanner(
                                 distanceMeters: nextStopDistanceMeters,
                               )
@@ -1315,26 +1300,21 @@ class _ExternalDeliveryTripDetailsScreenState
                     ],
                   );
 
-                  if (!isNext) return KeyedSubtree(key: ValueKey(key), child: row);
+                  if (!highlightAsNext) {
+                    return KeyedSubtree(key: ValueKey(key), child: row);
+                  }
 
                   return Container(
                     key: ValueKey(key),
                     margin: const EdgeInsets.only(bottom: 4),
-                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
+                    padding: const EdgeInsets.only(left: 12),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      color: context.success.withValues(alpha: 0.05),
-                      border: Border.all(
-                        color: context.success.withValues(alpha: 0.28),
-                        width: 1.4,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: context.success.withValues(alpha: 0.10),
-                          blurRadius: 18,
-                          offset: const Offset(0, 8),
+                      border: Border(
+                        left: BorderSide(
+                          color: context.scheme.primary,
+                          width: 3,
                         ),
-                      ],
+                      ),
                     ),
                     child: row,
                   );
@@ -1347,71 +1327,94 @@ class _ExternalDeliveryTripDetailsScreenState
     );
   }
 
-  Widget _overviewMapButton(List<OverviewMapStop> mapStops) {
-    final int completedCount = mapStops
-        .where((OverviewMapStop s) => s.status == StopMapStatus.completed)
-        .length;
-    return GestureDetector(
-      onTap: () => _openOverviewMap(mapStops),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: context.scheme.primary.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: context.scheme.primary.withValues(alpha: 0.2),
+  /// Builds the pin list for the Route Coordination Map: the nearest pending
+  /// stop is marked active (highlighted as the next delivery), the rest of
+  /// the pending stops are plain "remaining" pins, and terminal stops are
+  /// included dimmed so the full trip route stays visible.
+  List<OverviewMapStop> _buildMapStops(ExternalDeliveryTrip trip) {
+    final List<dynamic> allStops = [...trip.stops, ...trip.pickupStops];
+    final List<dynamic> pendingOrdered = _pendingOrderedStops(trip);
+    final List<dynamic> completed = allStops.where(_isTerminalStop).toList();
+
+    final List<OverviewMapStop> mapStops = [];
+    for (int i = 0; i < pendingOrdered.length; i++) {
+      final (double, double)? coords = _coordsFor(pendingOrdered[i]);
+      if (coords != null) {
+        mapStops.add(
+          OverviewMapStop(
+            id: _stopKey(pendingOrdered[i]),
+            sequenceNumber: i + 1,
+            lat: coords.$1,
+            lng: coords.$2,
+            status: i == 0 ? StopMapStatus.active : StopMapStatus.pending,
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: context.scheme.primary.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
+        );
+      }
+    }
+    for (final dynamic stop in completed) {
+      final (double, double)? coords = _coordsFor(stop);
+      if (coords != null) {
+        mapStops.add(
+          OverviewMapStop(
+            id: _stopKey(stop),
+            sequenceNumber: 0,
+            lat: coords.$1,
+            lng: coords.$2,
+            status: StopMapStatus.completed,
+          ),
+        );
+      }
+    }
+    return mapStops;
+  }
+
+  /// Header action that opens the Route Coordination Map — a soft
+  /// highlighted circle with a gentle breathing pulse so it reads as a live,
+  /// tappable action rather than a plain static icon.
+  Widget _routeMapButton() {
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: Tooltip(
+        message: 'Route map',
+        child: GestureDetector(
+          onTap: _openRouteCoordinationMap,
+          child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: context.success.withValues(alpha: 0.16),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.alt_route_rounded,
+                  color: context.success,
+                  size: 22,
+                ),
+              )
+              .animate(onPlay: (controller) => controller.repeat(reverse: true))
+              .scale(
+                begin: const Offset(1, 1),
+                end: const Offset(1.08, 1.08),
+                duration: 900.ms,
+                curve: Curves.easeInOut,
               ),
-              child: Icon(
-                Icons.map_rounded,
-                size: 18,
-                color: context.scheme.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'View trip map',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: context.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$completedCount of ${mapStops.length} stops completed',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: context.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 20,
-              color: context.scheme.primary,
-            ),
-          ],
         ),
       ),
     );
   }
 
-  void _openOverviewMap(List<OverviewMapStop> mapStops) {
+  Future<void> _openRouteCoordinationMap() async {
+    final ExternalDeliveryTrip trip;
+    try {
+      trip = await _future;
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    final List<OverviewMapStop> mapStops = _buildMapStops(trip);
+    if (mapStops.isEmpty) {
+      showInfoSnack(context, 'No stop locations available for the route map.');
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => _TripRouteMapScreen(mapStops: mapStops),
@@ -1425,27 +1428,37 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   Widget _nearestStopBanner({required double? distanceMeters}) {
+    final Color accent = context.success;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 8, left: 2),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: context.success,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: context.success.withValues(alpha: 0.35),
-                  blurRadius: 8,
-                  spreadRadius: 1,
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                      decoration: BoxDecoration(
+                        color: accent,
+                        shape: BoxShape.circle,
+                      ),
+                    )
+                    .animate(onPlay: (controller) => controller.repeat())
+                    .scale(
+                      begin: const Offset(0.4, 0.4),
+                      end: const Offset(2.4, 2.4),
+                      duration: 1400.ms,
+                      curve: Curves.easeOut,
+                    )
+                    .fadeOut(begin: 0.55, duration: 1400.ms),
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
                 ),
               ],
-            ),
-            child: const Icon(
-              Icons.navigation_rounded,
-              size: 13,
-              color: Colors.white,
             ),
           ),
           const SizedBox(width: 8),
@@ -1454,7 +1467,7 @@ class _ExternalDeliveryTripDetailsScreenState
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: context.success,
+              color: accent,
               letterSpacing: 0.2,
             ),
           ),
@@ -1500,6 +1513,99 @@ class _ExternalDeliveryTripDetailsScreenState
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _collapsibleStopCard(dynamic stop, Widget child) {
+    final int stopNumber;
+    final String status;
+    final String address;
+    final IconData icon;
+    if (stop is ExternalDeliveryTripStop) {
+      stopNumber = stop.stop;
+      status = stop.status;
+      address = _parseHtml(stop.address);
+      icon = Icons.location_on_outlined;
+    } else {
+      final ps = stop as PickupTripStop;
+      stopNumber = ps.stop;
+      status = ps.status;
+      address = _parseHtml(ps.pickupAddress);
+      icon = Icons.inventory_2_outlined;
+    }
+
+    final String statusNorm = status.trim().toLowerCase();
+    final Color statusColor;
+    if (statusNorm == 'delivered' ||
+        statusNorm == 'returned' ||
+        statusNorm == 'received at store') {
+      statusColor = context.success;
+    } else if (statusNorm == 'failed') {
+      statusColor = context.danger;
+    } else if (statusNorm == 'out for delivery' || statusNorm == 'picked up') {
+      statusColor = context.scheme.primary;
+    } else if (statusNorm == 'cancelled') {
+      statusColor = context.textDisabled;
+    } else {
+      statusColor = context.textTertiary;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: context.surfaceMuted,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14),
+          childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          leading: Icon(icon, size: 18, color: context.scheme.primary),
+          title: Text(
+            'Stop $stopNumber',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              color: context.textPrimary,
+            ),
+          ),
+          subtitle: Row(
+            children: [
+              if (address.isNotEmpty)
+                Expanded(
+                  child: Text(
+                    address,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: context.textSecondary),
+                  ),
+                ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 3,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.3)),
+                ),
+                child: Text(
+                  status.isEmpty ? 'Pending' : status,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          children: [child],
+        ),
       ),
     );
   }
@@ -1643,51 +1749,11 @@ class _ExternalDeliveryTripDetailsScreenState
             _stopInfoRow(Icons.my_location_outlined, cleanPickupAddress),
             const SizedBox(height: 8),
             if (!isTerminal) ...[
-              GestureDetector(
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) {
-                      final (double, double)? coords = _coordsFor(ps);
-                      return TripStopMapScreen(
-                        address: cleanPickupAddress,
-                        stopNumber: ps.stop,
-                        knownLocation: coords == null
-                            ? null
-                            : LatLng(coords.$1, coords.$2),
-                      );
-                    },
-                  ),
-                ),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  decoration: BoxDecoration(
-                    color: context.scheme.primary.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: context.scheme.primary.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.navigation_rounded,
-                        size: 15,
-                        color: context.scheme.primary,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Navigate to Pickup',
-                        style: TextStyle(
-                          color: context.scheme.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              _stopNavigationButtons(
+                address: cleanPickupAddress,
+                stopNumber: ps.stop,
+                coords: _coordsFor(ps),
+                onOpenInApp: () => _openInAppNavigationFor(ps),
               ),
               const SizedBox(height: 8),
             ],
@@ -1951,11 +2017,14 @@ class _ExternalDeliveryTripDetailsScreenState
       }
 
       if (!mounted) return;
-      showInfoSnack(context, 'Pickup status updated to $targetStatus');
       final (double, double)? sequenceFrom = _coordsFor(ps);
+      final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
+        sequenceFrom: sequenceFrom,
+      );
       setState(() {
-        _future = _loadTrip(sequenceFrom: sequenceFrom);
+        _future = newFuture;
       });
+      _notifyStopCompleted('Pickup status updated to $targetStatus', newFuture);
     } catch (e) {
       if (!mounted) return;
       showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
@@ -2189,18 +2258,19 @@ class _ExternalDeliveryTripDetailsScreenState
       );
       if (!mounted) return;
       final isConnected = ConnectivityService().isConnected;
-      showInfoSnack(
-        context,
-        isConnected
-            ? 'Stop status updated to Delivered'
-            : 'Saved offline. Will sync when reconnected.',
-      );
+      final String completionMessage = isConnected
+          ? 'Stop status updated to Delivered'
+          : 'Saved offline. Will sync when reconnected.';
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
       final (double, double)? sequenceFrom = _coordsFor(stop);
+      final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
+        sequenceFrom: sequenceFrom,
+      );
       setState(() {
-        _future = _loadTrip(sequenceFrom: sequenceFrom);
+        _future = newFuture;
       });
+      _notifyStopCompleted(completionMessage, newFuture);
     } catch (e) {
       if (!mounted) return;
       showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
@@ -2255,15 +2325,18 @@ class _ExternalDeliveryTripDetailsScreenState
           stopRef: stopName.isEmpty ? null : stopName,
         );
         if (!mounted) return;
-        showInfoSnack(
-          context,
+        final (double, double)? sequenceFrom = _coordsFor(stop);
+        final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
+          sequenceFrom: sequenceFrom,
+        );
+        setState(() {
+          _future = newFuture;
+        });
+        _notifyStopCompleted(
           'Marked Failed offline. Photo upload and return trip will need '
           'to be done when back online.',
+          newFuture,
         );
-        final (double, double)? sequenceFrom = _coordsFor(stop);
-        setState(() {
-          _future = _loadTrip(sequenceFrom: sequenceFrom);
-        });
       } catch (e) {
         if (!mounted) return;
         showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
@@ -2320,13 +2393,16 @@ class _ExternalDeliveryTripDetailsScreenState
             ? null
             : (stop.rawFields['name'] ?? '').toString().trim(),
       );
-      showInfoSnack(context, processResult.message);
       // Defer setState past the Navigator.pop rebuild to avoid calling it
       // during the build phase triggered by the dialog dismissal.
       final (double, double)? sequenceFrom = _coordsFor(stop);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          setState(() { _future = _loadTrip(sequenceFrom: sequenceFrom); });
+          final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
+            sequenceFrom: sequenceFrom,
+          );
+          setState(() { _future = newFuture; });
+          _notifyStopCompleted(processResult.message, newFuture);
         }
       });
     } catch (e) {
@@ -2512,51 +2588,11 @@ class _ExternalDeliveryTripDetailsScreenState
           const SizedBox(height: 6),
         ],
         if (cleanAddress.isNotEmpty && !isTerminal) ...[
-          GestureDetector(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) {
-                  final (double, double)? coords = _coordsFor(stop);
-                  return TripStopMapScreen(
-                    address: cleanAddress,
-                    stopNumber: stop.stop,
-                    knownLocation: coords == null
-                        ? null
-                        : LatLng(coords.$1, coords.$2),
-                  );
-                },
-              ),
-            ),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 9),
-              decoration: BoxDecoration(
-                color: context.scheme.primary.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: context.scheme.primary.withValues(alpha: 0.2),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.navigation_rounded,
-                    size: 15,
-                    color: context.scheme.primary,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Navigate',
-                    style: TextStyle(
-                      color: context.scheme.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          _stopNavigationButtons(
+            address: cleanAddress,
+            stopNumber: stop.stop,
+            coords: _coordsFor(stop),
+            onOpenInApp: () => _openInAppNavigationFor(stop),
           ),
           const SizedBox(height: 6),
         ],
@@ -2739,6 +2775,127 @@ class _ExternalDeliveryTripDetailsScreenState
           ],
         ),
       ),
+    );
+  }
+
+  /// Pushes the in-app navigation screen for [stop] — the live-tracking
+  /// `DeliveryTrackingScreen` for delivery stops, or the simpler
+  /// `TripStopMapScreen` for pickup stops (which has no delivery-specific
+  /// Mark Failed/Confirm Delivery actions to wire up).
+  void _openInAppNavigationFor(dynamic stop) {
+    final (double, double)? coords = _coordsFor(stop);
+    if (stop is ExternalDeliveryTripStop) {
+      final String cleanAddress = _parseHtml(stop.address);
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => DeliveryTrackingScreen(
+            deliveryName: stop.externalDelivery,
+            customerName: stop.customer,
+            contactNumber: stop.mobile,
+            dropAddress: cleanAddress,
+            dropLat: coords?.$1,
+            dropLng: coords?.$2,
+          ),
+        ),
+      );
+    } else {
+      final PickupTripStop ps = stop as PickupTripStop;
+      final String cleanPickupAddress = _parseHtml(ps.pickupAddress);
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TripStopMapScreen(
+            address: cleanPickupAddress,
+            stopNumber: ps.stop,
+            knownLocation: coords == null ? null : LatLng(coords.$1, coords.$2),
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Shows a single completion notification, folding in a one-tap "Navigate"
+  /// action to whatever pending stop is now nearest — so the driver never
+  /// has to hunt through the list for it after finishing the current one.
+  Future<void> _notifyStopCompleted(
+    String completionMessage,
+    Future<ExternalDeliveryTrip> tripFuture,
+  ) async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+
+    dynamic next;
+    try {
+      final ExternalDeliveryTrip trip = await tripFuture;
+      final List<dynamic> pendingOrdered = _pendingOrderedStops(trip);
+      next = pendingOrdered.isEmpty ? null : pendingOrdered.first;
+    } catch (_) {
+      next = null;
+    }
+    if (!mounted) return;
+
+    if (next == null) {
+      showInfoSnack(context, completionMessage);
+      return;
+    }
+
+    final int stopNumber = next is ExternalDeliveryTripStop
+        ? next.stop
+        : (next as PickupTripStop).stop;
+    final (double, double)? coords = _coordsFor(next);
+    double? distanceMeters;
+    final app = ref.read(appControllerProvider);
+    final double? driverLat = app.currentLatitude;
+    final double? driverLng = app.currentLongitude;
+    if (coords != null && driverLat != null && driverLng != null) {
+      distanceMeters = haversineMeters(driverLat, driverLng, coords.$1, coords.$2);
+    }
+    final String distanceLabel =
+        distanceMeters != null ? ' · ${_formatDistance(distanceMeters)}' : '';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$completionMessage  →  Next: Stop $stopNumber$distanceLabel'),
+        action: SnackBarAction(
+          label: 'Navigate',
+          onPressed: () => _openInAppNavigationFor(next),
+        ),
+        duration: const Duration(seconds: 5),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _stopNavigationButtons({
+    required String address,
+    required int? stopNumber,
+    required (double, double)? coords,
+    required VoidCallback onOpenInApp,
+  }) {
+    return Row(
+      children: [
+        Expanded(
+          child: _actionButton(
+            label: 'In-App',
+            icon: Icons.navigation_rounded,
+            color: context.scheme.primary,
+            onTap: onOpenInApp,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _actionButton(
+            label: 'Google Maps',
+            icon: Icons.map_outlined,
+            color: context.textSecondary,
+            onTap: () => launchGoogleMapsNavigation(
+              context,
+              lat: coords?.$1,
+              lng: coords?.$2,
+              address: coords == null ? address : null,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
