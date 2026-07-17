@@ -6,6 +6,7 @@ import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
+import '../delivery_radius/ui/delivery_radius_card.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -27,6 +28,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           _buildThemeCustomizationSection(context, controller),
+          const SizedBox(height: 16),
+          const DeliveryRadiusCard(),
           const SizedBox(height: 16),
           _buildLanguageCustomizationSection(context, controller),
           const SizedBox(height: 16),

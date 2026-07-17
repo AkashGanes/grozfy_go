@@ -55,4 +55,17 @@ class ApiConstants {
 
   static const String submitBankTransfer =
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.cod_settlement.submit_bank_transfer';
+
+  // ---------------------------------------------------------------------------
+  // Delivery Radius endpoints
+  // ---------------------------------------------------------------------------
+
+  // GET: returns {delivery_radius_enabled, minimum_radius_km, default_radius_km,
+  // maximum_radius_km, selected_radius_km} for the logged-in driver.
+  static const String getDeliveryRadiusSettings =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.delivery_radius.get_delivery_radius';
+
+  // POST: {selected_radius_km} → persists the driver's chosen radius.
+  static const String updateDeliveryRadius =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.delivery_radius.update_delivery_radius';
 }

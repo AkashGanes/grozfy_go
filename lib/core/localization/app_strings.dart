@@ -158,6 +158,16 @@ class AppStrings {
           'Are you sure you want to reset all theme settings to their defaults?',
       'reset': 'Reset',
       'reset_success': 'Theme reset to defaults',
+      // delivery radius
+      'delivery_radius': 'Delivery Radius',
+      'delivery_radius_subtitle': 'Only receive orders within this distance',
+      'delivery_radius_updated': 'Delivery radius updated',
+      // generic errors
+      'error_network': 'No internet connection. Please check your network.',
+      'error_timeout': 'Request timed out. Please try again.',
+      'error_unauthorized': 'Session expired. Please log in again.',
+      'error_invalid_response': 'Received an invalid response from the server.',
+      'error_generic': 'Something went wrong. Please try again.',
       // navigation screen
       'navigation': 'Navigation',
       'route_summary': 'Route summary',
