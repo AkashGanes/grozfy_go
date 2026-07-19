@@ -75,3 +75,46 @@ Future<void> launchGoogleMapsNavigation(
     AppToast.show(context, 'Could not open maps');
   }
 }
+
+/// Launches a single Google Maps session covering every stop in [stops] (in
+/// the given order) as one multi-stop driving route — the last entry becomes
+/// the route's `destination`, everything before it becomes `waypoints`.
+/// Google Maps then handles stop-to-stop progression natively as the driver
+/// arrives at each waypoint, so the app only needs to call this once per
+/// distinct route (typically: once on trip open, and again whenever the set
+/// of remaining stops changes after a completion) instead of relaunching to
+/// a single destination per stop.
+///
+/// Unlike [launchGoogleMapsNavigation], this always goes through the web
+/// "dir" URL (`google.com/maps/dir/...`) rather than platform-specific
+/// intent schemes: the native `google.navigation:`/`comgooglemaps://`
+/// schemes are single-destination only and don't support `waypoints`. The
+/// web URL is intercepted by the installed Google Maps app on both Android
+/// and iOS (via app-link association) when available, and otherwise opens
+/// in a browser — the same universal-fallback behavior
+/// [launchGoogleMapsNavigation] already relies on for its own web fallback.
+Future<void> launchGoogleMapsMultiStopNavigation(
+  BuildContext context, {
+  required List<(double, double)> stops,
+}) async {
+  if (stops.isEmpty) return;
+
+  final (double, double) destination = stops.last;
+  final List<(double, double)> waypointStops = stops.length > 1
+      ? stops.sublist(0, stops.length - 1)
+      : const [];
+
+  final Uri uri = Uri.parse(
+    'https://www.google.com/maps/dir/?api=1'
+    '&destination=${destination.$1},${destination.$2}'
+    '${waypointStops.isEmpty ? '' : '&waypoints=${waypointStops.map((c) => '${c.$1},${c.$2}').join('|')}'}'
+    '&travelmode=driving',
+  );
+  try {
+    if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+  } catch (_) {}
+
+  if (context.mounted) {
+    AppToast.show(context, 'Could not open maps');
+  }
+}

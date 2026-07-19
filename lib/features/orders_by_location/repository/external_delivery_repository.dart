@@ -1757,6 +1757,11 @@ class ExternalDeliveryRepository {
     return code.isEmpty ? 'en' : code;
   }
 
+  /// Public entry point for marking [trip] fully Completed. Reused by the
+  /// return-to-store flow (via [_completeTrip] below) and by the trip-details
+  /// screen's auto-completion once every stop has reached a terminal status.
+  Future<void> completeTrip(ExternalDeliveryTrip trip) => _completeTrip(trip);
+
   Future<void> _completeTrip(ExternalDeliveryTrip trip) async {
     _logApi('mark_returned_to_store trip', 'trip=${trip.name}');
     await _setDocValue(

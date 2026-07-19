@@ -14,7 +14,6 @@ import '../../../core/state/providers.dart';
 import 'trip_stage_timeline_widget.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
-import '../../../core/services/trip_route_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
@@ -31,7 +30,8 @@ import 'failed_delivery_bottom_sheet.dart';
 
 import '../../../core/utils/geo_distance.dart';
 import '../../../core/utils/maps_launcher.dart';
-import 'trip_overview_map.dart';
+import '../model/stop_progress_status.dart' as stop_progress;
+import '../providers/trip_controller.dart';
 import 'trip_stop_map_screen.dart';
 
 class ExternalDeliveryTripDetailsScreen extends ConsumerStatefulWidget {
@@ -56,27 +56,20 @@ class _ExternalDeliveryTripDetailsScreenState
     'Cancelled',
   ];
   static const String _skipForNowValue = '__skip_for_now__';
-  final Set<String> _updatingStops = <String>{};
 
   // ── Pickup flow State ──────────────────────────────────────────────────────
   final Map<String, PickupJob> _pickupJobDetails = {};
   bool _fetchingPickupDetails = false;
   // ───────────────────────────────────────────────────────────────────────────
 
-  // ── Nearest-stop sequencing state ───────────────────────────────────────────
-  // Resolved coordinates for pending stops, keyed by 'ed:<externalDelivery>' or
-  // 'pj:<pickupJob>'. Best-effort — a stop with no entry here is excluded from
-  // nearest-neighbor sorting and stays appended at the end in server order.
-  final Map<String, (double, double)> _stopCoords = {};
-  // Pure algorithm output — recalculated on load and after every
-  // delivered/failed/skip event, never on a live GPS tick.
-  List<String> _suggestedOrder = <String>[];
-  // What's actually rendered/drag-reorderable. Mirrors _suggestedOrder until the
-  // driver manually reorders, after which it only drops completed/vanished
-  // stops and appends new ones, per the "manual order sticks" rule.
-  List<String> _displayOrder = <String>[];
-  bool _manualOrderActive = false;
-  // ───────────────────────────────────────────────────────────────────────────
+  // Nearest-stop sequencing state (coords, suggested/display order, manual
+  // override, in-flight action guards, ETA cache, auto-navigate/trip-complete
+  // triggers) all live in TripController now — it's the single source of
+  // truth, shared/testable independent of this widget. `_controller` is a
+  // read-only accessor (safe from any method, including callbacks);
+  // `build()` establishes the rebuild subscription via a single `ref.watch`.
+  TripController get _controller =>
+      ref.read(tripControllerProvider(widget.tripName).notifier);
 
   @override
   void initState() {
@@ -105,7 +98,7 @@ class _ExternalDeliveryTripDetailsScreenState
   /// the just-completed stop's own location, not a live GPS ping" rule.
   Future<ExternalDeliveryTrip> _loadTrip({(double, double)? sequenceFrom}) async {
     final ExternalDeliveryTrip trip = await _fetchTrip();
-    await _resolveStopSequencing(trip, referenceOverride: sequenceFrom);
+    await _controller.resolveSequencing(trip, referenceOverride: sequenceFrom);
     return trip;
   }
 
@@ -169,137 +162,13 @@ class _ExternalDeliveryTripDetailsScreenState
     }
   }
 
-  static const Set<String> _terminalStopStatuses = <String>{
-    'delivered',
-    'returned',
-    'failed',
-    'cancelled',
-    'received at store',
-  };
+  // Terminal-status check, coordinate lookup, and stop-key derivation now
+  // live on TripController (single source of truth) — these stay as thin
+  // delegators so the ~30 existing call sites throughout this file need no
+  // further changes.
+  bool _isTerminalStop(dynamic stop) => stop_progress.isTerminalStop(stop);
 
-  bool _isTerminalStop(dynamic stop) {
-    final String status = stop is ExternalDeliveryTripStop
-        ? stop.status
-        : (stop as PickupTripStop).status;
-    return _terminalStopStatuses.contains(status.trim().toLowerCase());
-  }
-
-  (double, double)? _coordsFor(dynamic stop) {
-    if (stop is ExternalDeliveryTripStop) {
-      return _stopCoords['ed:${stop.externalDelivery}'];
-    } else if (stop is PickupTripStop) {
-      return _stopCoords['pj:${stop.pickupJob}'];
-    }
-    return null;
-  }
-
-  /// Resolves coordinates for pending stops (joining delivery stops to their
-  /// [ExternalDelivery] record and pickup stops to their [PickupJob] record)
-  /// and recomputes [_suggestedOrder]/[_displayOrder]. Best-effort: a network
-  /// failure here never breaks the trip screen — unresolved stops simply stay
-  /// in their original server order at the end of the list.
-  Future<void> _resolveStopSequencing(
-    ExternalDeliveryTrip trip, {
-    (double, double)? referenceOverride,
-  }) async {
-    final List<ExternalDeliveryTripStop> pendingDeliveryStops = trip.stops
-        .where((s) => !_isTerminalStop(s))
-        .toList();
-    final List<PickupTripStop> pendingPickupStops = trip.pickupStops
-        .where((s) => !_isTerminalStop(s))
-        .toList();
-
-    final List<String> missingDeliveryNames = pendingDeliveryStops
-        .map((s) => s.externalDelivery)
-        .where((n) => n.isNotEmpty)
-        .toSet()
-        .where((n) => !_stopCoords.containsKey('ed:$n'))
-        .toList();
-    if (missingDeliveryNames.isNotEmpty) {
-      try {
-        final Map<String, ExternalDelivery> resolved =
-            await ExternalDeliveryRepository().fetchDeliveriesByNames(
-          missingDeliveryNames,
-        );
-        for (final MapEntry<String, ExternalDelivery> entry
-            in resolved.entries) {
-          final double? lat = entry.value.latitude;
-          final double? lng = entry.value.longitude;
-          if (lat != null && lng != null) {
-            _stopCoords['ed:${entry.key}'] = (lat, lng);
-          }
-        }
-      } catch (_) {
-        // Best-effort — those stops just stay unsorted at the end.
-      }
-    }
-
-    final List<String> missingPickupNames = pendingPickupStops
-        .map((s) => s.pickupJob)
-        .where((n) => n.isNotEmpty)
-        .toSet()
-        .where((n) => !_stopCoords.containsKey('pj:$n'))
-        .toList();
-    if (missingPickupNames.isNotEmpty) {
-      final PickupJobRepository repo = PickupJobRepository();
-      final List<PickupJob?> results = await Future.wait(
-        missingPickupNames.map((String n) async {
-          try {
-            return await repo.fetchJob(n);
-          } catch (_) {
-            return null;
-          }
-        }),
-      );
-      for (final PickupJob job in results.whereType<PickupJob>()) {
-        final double? lat = job.pickupLatitude;
-        final double? lng = job.pickupLongitude;
-        if (lat != null && lng != null) {
-          _stopCoords['pj:${job.name}'] = (lat, lng);
-        }
-      }
-    }
-
-    final List<String> pendingKeys = <String>[
-      for (final ExternalDeliveryTripStop s in pendingDeliveryStops) _stopKey(s),
-      for (final PickupTripStop s in pendingPickupStops) _stopKey(s),
-    ];
-    final Map<String, String> coordKeyOf = <String, String>{
-      for (final ExternalDeliveryTripStop s in pendingDeliveryStops)
-        _stopKey(s): 'ed:${s.externalDelivery}',
-      for (final PickupTripStop s in pendingPickupStops)
-        _stopKey(s): 'pj:${s.pickupJob}',
-    };
-
-    final double? fromLat =
-        referenceOverride?.$1 ?? ref.read(appControllerProvider).currentLatitude;
-    final double? fromLng =
-        referenceOverride?.$2 ?? ref.read(appControllerProvider).currentLongitude;
-
-    if (fromLat != null && fromLng != null) {
-      _suggestedOrder = nearestNeighborOrder<String>(
-        fromLat,
-        fromLng,
-        pendingKeys,
-        coordsOf: (String key) => _stopCoords[coordKeyOf[key]],
-      );
-    } else {
-      _suggestedOrder = pendingKeys;
-    }
-
-    if (!_manualOrderActive) {
-      _displayOrder = List<String>.from(_suggestedOrder);
-    } else {
-      final Set<String> pendingSet = pendingKeys.toSet();
-      final List<String> kept = _displayOrder
-          .where((String k) => pendingSet.contains(k))
-          .toList();
-      final List<String> newOnes = pendingKeys
-          .where((String k) => !kept.contains(k))
-          .toList();
-      _displayOrder = <String>[...kept, ...newOnes];
-    }
-  }
+  (double, double)? _coordsFor(dynamic stop) => _controller.coordsFor(stop);
 
   bool _isNetworkError(Object e) {
     final s = e.toString().toLowerCase();
@@ -328,11 +197,36 @@ class _ExternalDeliveryTripDetailsScreenState
   @override
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
+
+    // Subscribes this widget to TripController's state (sequencing, guards,
+    // ETA cache, etc.) so it rebuilds whenever the controller's state
+    // changes — the actual reads throughout this file go through `_controller`
+    // (a `ref.read`-backed accessor), relying on this single watch call for
+    // the rebuild subscription.
+    ref.watch(tripControllerProvider(widget.tripName));
+
+    // Reactive trigger for the one side effect that needs a BuildContext
+    // (showing the trip-completed dialog) and so can't live inside
+    // TripController itself. Google Maps navigation is no longer
+    // auto-launched — the driver taps the "Navigate" button explicitly (see
+    // _navigateButton/_navigateAllPendingStops) so they see the stop list
+    // first instead of being sent straight to Maps on screen entry.
+    ref.listen<TripControllerState>(
+      tripControllerProvider(widget.tripName),
+      (previous, next) {
+        final ExternalDeliveryTrip? justCompleted = next.justCompletedTrip;
+        if (justCompleted != null &&
+            justCompleted != previous?.justCompletedTrip) {
+          unawaited(_showTripCompletedDialog(justCompleted));
+        }
+      },
+    );
+
     return AppShell(
       title: 'External Delivery Trip',
       subtitle: widget.tripName,
       scrollable: false,
-      actions: [_routeMapButton()],
+      actions: [_navigateButton()],
       child: FutureBuilder<ExternalDeliveryTrip>(
         future: _future,
         builder: (context, snapshot) {
@@ -1112,18 +1006,10 @@ class _ExternalDeliveryTripDetailsScreenState
     }
   }
 
-  /// Nearest-first (or manually reordered) pending stops, rebuilt from
-  /// [_displayOrder] on every call so it always reflects the latest reload.
-  List<dynamic> _pendingOrderedStops(ExternalDeliveryTrip trip) {
-    final List<dynamic> allStops = [...trip.stops, ...trip.pickupStops];
-    final Map<String, dynamic> stopByKey = {
-      for (final dynamic s in allStops) _stopKey(s): s,
-    };
-    return [
-      for (final String key in _displayOrder)
-        if (stopByKey.containsKey(key)) stopByKey[key]!,
-    ];
-  }
+  /// Nearest-first (or manually reordered) pending stops. Delegates to
+  /// TripController, the single source of truth for display order.
+  List<dynamic> _pendingOrderedStops(ExternalDeliveryTrip trip) =>
+      _controller.pendingOrderedStops(trip);
 
   Widget _stopsTab(ExternalDeliveryTrip trip) {
     final List<dynamic> allStops = [...trip.stops, ...trip.pickupStops];
@@ -1145,6 +1031,7 @@ class _ExternalDeliveryTripDetailsScreenState
     final ColorScheme scheme = Theme.of(context).colorScheme;
 
     double? nextStopDistanceMeters;
+    String? nextStopEtaLabel;
     if (pendingOrdered.isNotEmpty) {
       final app = ref.watch(appControllerProvider);
       final (double, double)? coords = _coordsFor(pendingOrdered.first);
@@ -1153,6 +1040,13 @@ class _ExternalDeliveryTripDetailsScreenState
       if (coords != null && driverLat != null && driverLng != null) {
         nextStopDistanceMeters =
             haversineMeters(driverLat, driverLng, coords.$1, coords.$2);
+        nextStopEtaLabel = _etaLabelFor(
+          _stopKey(pendingOrdered.first),
+          driverLat,
+          driverLng,
+          coords.$1,
+          coords.$2,
+        );
       }
     }
 
@@ -1165,7 +1059,7 @@ class _ExternalDeliveryTripDetailsScreenState
             _returnTripBanner(trip),
             const SizedBox(height: 10),
           ],
-          if (_manualOrderActive && pendingOrdered.isNotEmpty)
+          if (_controller.value.manualOrderActive && pendingOrdered.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
@@ -1186,10 +1080,7 @@ class _ExternalDeliveryTripDetailsScreenState
                     ),
                   ),
                   GestureDetector(
-                    onTap: () => setState(() {
-                      _manualOrderActive = false;
-                      _displayOrder = List<String>.from(_suggestedOrder);
-                    }),
+                    onTap: () => _controller.resetToSuggested(),
                     child: Text(
                       'Reset to suggested',
                       style: TextStyle(
@@ -1219,11 +1110,7 @@ class _ExternalDeliveryTripDetailsScreenState
                 buildDefaultDragHandles: false,
                 itemCount: pendingOrdered.length,
                 onReorderItem: (int oldIndex, int newIndex) {
-                  setState(() {
-                    final String moved = _displayOrder.removeAt(oldIndex);
-                    _displayOrder.insert(newIndex, moved);
-                    _manualOrderActive = true;
-                  });
+                  _controller.reorder(oldIndex, newIndex);
                 },
                 itemBuilder: (context, index) {
                   final dynamic stop = pendingOrdered[index];
@@ -1231,9 +1118,10 @@ class _ExternalDeliveryTripDetailsScreenState
                   final bool hasMultipleStops = pendingOrdered.length > 1;
                   final bool isNext = index == 0;
                   final bool highlightAsNext = isNext && hasMultipleStops;
+                  final List<String> suggestedOrder = _controller.value.suggestedOrder;
                   final bool isSuggestedNext = hasMultipleStops &&
-                      _suggestedOrder.isNotEmpty &&
-                      _suggestedOrder.first == key;
+                      suggestedOrder.isNotEmpty &&
+                      suggestedOrder.first == key;
 
                   final Widget innerCard = stop is ExternalDeliveryTripStop
                       ? Padding(
@@ -1290,6 +1178,9 @@ class _ExternalDeliveryTripDetailsScreenState
                             if (highlightAsNext)
                               _nearestStopBanner(
                                 distanceMeters: nextStopDistanceMeters,
+                                stopIndex: 1,
+                                totalPending: pendingOrdered.length,
+                                etaLabel: nextStopEtaLabel,
                               )
                             else if (isSuggestedNext)
                               _suggestedPill(),
@@ -1327,82 +1218,36 @@ class _ExternalDeliveryTripDetailsScreenState
     );
   }
 
-  /// Builds the pin list for the Route Coordination Map: the nearest pending
-  /// stop is marked active (highlighted as the next delivery), the rest of
-  /// the pending stops are plain "remaining" pins, and terminal stops are
-  /// included dimmed so the full trip route stays visible.
-  List<OverviewMapStop> _buildMapStops(ExternalDeliveryTrip trip) {
-    final List<dynamic> allStops = [...trip.stops, ...trip.pickupStops];
-    final List<dynamic> pendingOrdered = _pendingOrderedStops(trip);
-    final List<dynamic> completed = allStops.where(_isTerminalStop).toList();
-
-    final List<OverviewMapStop> mapStops = [];
-    for (int i = 0; i < pendingOrdered.length; i++) {
-      final (double, double)? coords = _coordsFor(pendingOrdered[i]);
-      if (coords != null) {
-        mapStops.add(
-          OverviewMapStop(
-            id: _stopKey(pendingOrdered[i]),
-            sequenceNumber: i + 1,
-            lat: coords.$1,
-            lng: coords.$2,
-            status: i == 0 ? StopMapStatus.active : StopMapStatus.pending,
-          ),
-        );
-      }
-    }
-    for (final dynamic stop in completed) {
-      final (double, double)? coords = _coordsFor(stop);
-      if (coords != null) {
-        mapStops.add(
-          OverviewMapStop(
-            id: _stopKey(stop),
-            sequenceNumber: 0,
-            lat: coords.$1,
-            lng: coords.$2,
-            status: StopMapStatus.completed,
-          ),
-        );
-      }
-    }
-    return mapStops;
-  }
-
-  /// Header action that opens the Route Coordination Map — a soft
-  /// highlighted circle with a gentle breathing pulse so it reads as a live,
-  /// tappable action rather than a plain static icon.
-  Widget _routeMapButton() {
+  /// Header action that launches ONE Google Maps session covering every
+  /// currently-pending stop as a multi-stop driving route (destination =
+  /// last pending stop, waypoints = the rest, in nearest-first/manual
+  /// order). Explicit tap only — the app no longer auto-launches Google
+  /// Maps on screen entry/resume, so the driver sees the stop list first.
+  Widget _navigateButton() {
     return Padding(
       padding: const EdgeInsets.only(right: 4),
       child: Tooltip(
-        message: 'Route map',
+        message: 'Navigate',
         child: GestureDetector(
-          onTap: _openRouteCoordinationMap,
+          onTap: _navigateAllPendingStops,
           child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: context.success.withValues(alpha: 0.16),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.alt_route_rounded,
-                  color: context.success,
-                  size: 22,
-                ),
-              )
-              .animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scale(
-                begin: const Offset(1, 1),
-                end: const Offset(1.08, 1.08),
-                duration: 900.ms,
-                curve: Curves.easeInOut,
-              ),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: context.scheme.primary.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.navigation_rounded,
+              color: context.scheme.primary,
+              size: 22,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _openRouteCoordinationMap() async {
+  Future<void> _navigateAllPendingStops() async {
     final ExternalDeliveryTrip trip;
     try {
       trip = await _future;
@@ -1410,29 +1255,52 @@ class _ExternalDeliveryTripDetailsScreenState
       return;
     }
     if (!mounted) return;
-    final List<OverviewMapStop> mapStops = _buildMapStops(trip);
-    if (mapStops.isEmpty) {
-      showInfoSnack(context, 'No stop locations available for the route map.');
+    final List<dynamic> pendingOrdered = _pendingOrderedStops(trip);
+    final List<(double, double)> routeCoords = [
+      for (final dynamic stop in pendingOrdered)
+        if (_coordsFor(stop) != null) _coordsFor(stop)!,
+    ];
+    if (routeCoords.isEmpty) {
+      showInfoSnack(context, 'No stop locations available to navigate.');
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _TripRouteMapScreen(mapStops: mapStops),
-      ),
-    );
+    launchGoogleMapsMultiStopNavigation(context, stops: routeCoords);
   }
 
-  String _formatDistance(double meters) {
-    if (meters < 1000) return '${meters.round()} m away';
-    return '${(meters / 1000).toStringAsFixed(1)} km away';
-  }
+  String _formatDistance(double meters) => TripController.formatDistance(meters);
 
-  Widget _nearestStopBanner({required double? distanceMeters}) {
+  /// Best-effort ETA label for the stop at [stopKey]/[destLat]/[destLng] from
+  /// the driver's current position. Delegates to TripController, which owns
+  /// the cache/in-flight-dedupe state.
+  String? _etaLabelFor(
+    String stopKey,
+    double driverLat,
+    double driverLng,
+    double destLat,
+    double destLng,
+  ) =>
+      _controller.etaLabelFor(stopKey, driverLat, driverLng, destLat, destLng);
+
+  /// Checks whether the driver is within the configured delivery radius of
+  /// [stop], for gating "Mark Delivered". Delegates to TripController, which
+  /// reuses `AppController`'s existing radius check as-is (read-only).
+  (bool ok, String? blockMessage) _checkDeliveryRadiusFor(dynamic stop) =>
+      _controller.checkDeliveryRadius(stop);
+
+  Widget _nearestStopBanner({
+    required double? distanceMeters,
+    int? stopIndex,
+    int? totalPending,
+    String? etaLabel,
+  }) {
     final Color accent = context.success;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8, left: 2),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            children: [
           SizedBox(
             width: 14,
             height: 14,
@@ -1491,6 +1359,48 @@ class _ExternalDeliveryTripDetailsScreenState
               ),
             ),
           ],
+            ],
+          ),
+          if ((stopIndex != null && totalPending != null) || etaLabel != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, left: 22),
+              child: Row(
+                children: [
+                  if (stopIndex != null && totalPending != null)
+                    Text(
+                      'Stop $stopIndex of $totalPending',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: context.textTertiary,
+                      ),
+                    ),
+                  if (stopIndex != null &&
+                      totalPending != null &&
+                      etaLabel != null) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 3,
+                      height: 3,
+                      decoration: BoxDecoration(
+                        color: context.textTertiary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  if (etaLabel != null)
+                    Text(
+                      'ETA $etaLabel',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: context.textTertiary,
+                      ),
+                    ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -1661,12 +1571,7 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   void _skipForNow(dynamic stop) {
-    final String key = _stopKey(stop);
-    setState(() {
-      _displayOrder.remove(key);
-      _displayOrder.add(key);
-      _manualOrderActive = true;
-    });
+    _controller.skipForNow(stop);
     showInfoSnack(context, 'Moved to the back of the queue');
   }
 
@@ -1937,7 +1842,7 @@ class _ExternalDeliveryTripDetailsScreenState
   ) {
     final statusNorm = ps.status.trim().toLowerCase();
     final stopKey = '${ps.pickupJob}-${ps.stop}';
-    final isUpdating = _updatingStops.contains(stopKey);
+    final isUpdating = _controller.isUpdating(stopKey);
 
     if (isUpdating) {
       return Center(
@@ -1996,25 +1901,10 @@ class _ExternalDeliveryTripDetailsScreenState
     String targetStatus,
   ) async {
     final stopKey = '${ps.pickupJob}-${ps.stop}';
-    setState(() => _updatingStops.add(stopKey));
+    _controller.beginAction(stopKey);
 
     try {
-      final repo = PickupJobRepository();
-      if (targetStatus == 'Picked Up') {
-        await repo.markPickedUp(ps.pickupJob);
-      } else if (targetStatus == 'Received at Store') {
-        await repo.updatePickupTripStopCompleted(
-          tripName: widget.tripName,
-          pickupJobName: ps.pickupJob,
-        );
-      } else if (targetStatus == 'Failed') {
-        await ExternalDeliveryRepository().setStopStatusRaw(
-          stopDocType: 'External Delivery Trip Pickup Stop',
-          stopName: (ps.rawFields['name'] ?? '').toString(),
-          parentTripName: widget.tripName,
-          newStatus: 'Failed',
-        );
-      }
+      await _controller.updatePickupStatusCommit(ps, targetStatus);
 
       if (!mounted) return;
       final (double, double)? sequenceFrom = _coordsFor(ps);
@@ -2029,7 +1919,7 @@ class _ExternalDeliveryTripDetailsScreenState
       if (!mounted) return;
       showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (mounted) setState(() => _updatingStops.remove(stopKey));
+      if (mounted) _controller.endAction(stopKey);
     }
   }
 
@@ -2096,29 +1986,15 @@ class _ExternalDeliveryTripDetailsScreenState
     }
 
     final stopKey = _stopKey(stop);
-    setState(() => _updatingStops.add(stopKey));
+    _controller.beginAction(stopKey);
     try {
-      final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
-      final stopName = (stop.rawFields['name'] ?? '').toString().trim();
-      final parentTripName = (stop.rawFields['parent'] ?? '').toString().trim();
       // Always go through the offline-aware path: it queues + flushes
       // when online, and queues + updates the local cache when offline.
       // The user gets immediate visual feedback either way.
-      await OfflineTripManager().updateStopStatusOffline(
-        stopDocType: stopDocType,
-        stopName: stopName,
-        parentTripName: parentTripName,
-        orderName: stop.externalDelivery.trim(),
-        newStatus: newStatus,
-      );
+      final String message =
+          await _controller.updateGenericStopStatusCommit(stop, newStatus);
       if (!mounted) return;
-      final isConnected = ConnectivityService().isConnected;
-      showInfoSnack(
-        context,
-        isConnected
-            ? 'Stop status updated to $newStatus'
-            : 'Saved offline. Will sync when reconnected.',
-      );
+      showInfoSnack(context, message);
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
       final (double, double)? sequenceFrom = _coordsFor(stop);
@@ -2129,9 +2005,7 @@ class _ExternalDeliveryTripDetailsScreenState
       if (!mounted) return;
       showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (mounted) {
-        setState(() => _updatingStops.remove(stopKey));
-      }
+      if (mounted) _controller.endAction(stopKey);
     }
   }
 
@@ -2149,181 +2023,106 @@ class _ExternalDeliveryTripDetailsScreenState
         );
   }
 
+  /// Guarded end-to-end from the very first line — the in-flight guard is
+  /// taken before the radius check or any sheet opens (not just around the
+  /// final network call), closing a narrow double-tap race window that
+  /// existed pre-refactor (see TripController.beginAction docs).
   Future<void> _handleDeliveredStop(ExternalDeliveryTripStop stop) async {
-    final orderName = stop.externalDelivery.trim();
-
-    // Fetch order detail first to determine payment mode
-    ExternalDeliveryDetail? detail;
-    try {
-      detail = await ExternalDeliveryRepository().fetchDetail(
-        orderName,
-        resolveAddress: false,
-      );
-    } catch (_) {}
-    if (!mounted) return;
-
-    final double codAmount = detail?.codAmountToCollect ?? 0;
-    final bool isCod = detail != null && detail.isCod && codAmount > 0;
-
-    // Capture proof photo for both online and COD
-    final photoPath = await showDeliveryProofSheet(context);
-    if (!mounted) return;
-    if (photoPath != null && orderName.isNotEmpty) {
-      await ExternalDeliveryRepository().uploadProofPhoto(
-        orderName: orderName,
-        filePath: photoPath,
-      );
-    }
-    if (!mounted) return;
-
-    if (isCod) {
-      // COD order: collect payment after proof
-      final codResult = await showCodCollectionSheet(
-        context,
-        amountToCollect: codAmount,
-      );
-      if (!mounted) return;
-      if (codResult == null) return;
-      if (codResult.mode == 'Not Collected') {
-        // Cash wasn't collected — ask whether to deliver anyway or fail the stop.
-        final shouldFail = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Cash not collected'),
-            content: const Text(
-              'The customer did not pay. What would you like to do with this stop?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Deliver anyway'),
-              ),
-              TextButton(
-                style: TextButton.styleFrom(foregroundColor: context.danger),
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('Mark Failed'),
-              ),
-            ],
-          ),
-        );
-        if (!mounted) return;
-        if (shouldFail == null) return;
-        if (shouldFail) {
-          await _handleFailedDelivery(stop);
-          return;
-        }
-        // Deliver anyway — fall through without calling markDeliveredWithCod.
-      } else {
-        try {
-          await ExternalDeliveryRepository().markDeliveredWithCod(
-            orderName,
-            codCollectionMode: codResult.mode,
-            codUpiReference: codResult.upiRef,
-          );
-        } catch (e) {
-          if (mounted) showInfoSnack(context, 'COD save failed — continuing');
-        }
-        if (!mounted) return;
-      }
-    }
-
     final stopKey = _stopKey(stop);
-    setState(() => _updatingStops.add(stopKey));
+    _controller.beginAction(stopKey);
     try {
-      final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
-      final stopName = (stop.rawFields['name'] ?? '').toString().trim();
-      final parentTripName = (stop.rawFields['parent'] ?? '').toString().trim();
-
-      // COD + online: the async-queue flush (conflict check + PUT) can exceed
-      // the 800ms reload window, causing the stop to reappear as editable.
-      // Use the direct awaited path instead when we know we have connectivity.
-      if (isCod && ConnectivityService().isConnected) {
-        await ExternalDeliveryRepository().updateTripStopStatus(
-          stop: stop,
-          newStatus: 'Delivered',
-        );
-      } else {
-        await OfflineTripManager().updateStopStatusOffline(
-          stopDocType: stopDocType,
-          stopName: stopName,
-          parentTripName: parentTripName,
-          orderName: stop.externalDelivery.trim(),
-          newStatus: 'Delivered',
-        );
+      final (bool withinRadius, String? blockMessage) =
+          _checkDeliveryRadiusFor(stop);
+      if (!withinRadius) {
+        if (mounted) showInfoSnack(context, blockMessage!);
+        return;
       }
-      _writeTimingEvent(
-        eventType: TimingEventType.stopDelivered,
-        tripRef: parentTripName.isEmpty ? null : parentTripName,
-        stopRef: stopName.isEmpty ? null : stopName,
-      );
-      if (!mounted) return;
-      final isConnected = ConnectivityService().isConnected;
-      final String completionMessage = isConnected
-          ? 'Stop status updated to Delivered'
-          : 'Saved offline. Will sync when reconnected.';
-      await Future.delayed(const Duration(milliseconds: 800));
-      if (!mounted) return;
-      final (double, double)? sequenceFrom = _coordsFor(stop);
-      final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
-        sequenceFrom: sequenceFrom,
-      );
-      setState(() {
-        _future = newFuture;
-      });
-      _notifyStopCompleted(completionMessage, newFuture);
-    } catch (e) {
-      if (!mounted) return;
-      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _updatingStops.remove(stopKey));
-    }
-  }
 
-  Future<void> _handleFailedDelivery(ExternalDeliveryTripStop stop) async {
-    bool isCodStop = false;
-    try {
-      final d = await ExternalDeliveryRepository().fetchDetail(
-        stop.externalDelivery.trim(),
-        resolveAddress: false,
-      );
-      isCodStop = d.isCod;
-    } catch (_) {}
-    if (!mounted) return;
+      final orderName = stop.externalDelivery.trim();
 
-    final result = await showFailedDeliverySheet(context, isCod: isCodStop);
-    if (result == null || !mounted) return;
-
-    final orderName = stop.externalDelivery.trim();
-    final stopKey = _stopKey(stop);
-    final fullReason = result.notes.isEmpty
-        ? result.reason
-        : '${result.reason} — ${result.notes}';
-
-    // The full failed-delivery flow uploads a photo, mutates the order,
-    // and (optionally) creates a server-side return trip. None of that
-    // can run offline. If we're offline, fall back to a queued stop
-    // status update so the driver can still mark Failed locally; the
-    // photo + return-trip steps will need to be redone online.
-    if (!ConnectivityService().isConnected) {
-      setState(() => _updatingStops.add(stopKey));
+      // Fetch order detail first to determine payment mode
+      ExternalDeliveryDetail? detail;
       try {
-        final stopDocType = (stop.rawFields['doctype'] ?? '').toString().trim();
-        final stopName = (stop.rawFields['name'] ?? '').toString().trim();
-        final parentTripName = (stop.rawFields['parent'] ?? '')
-            .toString()
-            .trim();
-        await OfflineTripManager().updateStopStatusOffline(
-          stopDocType: stopDocType,
-          stopName: stopName,
-          parentTripName: parentTripName,
+        detail = await ExternalDeliveryRepository().fetchDetail(
+          orderName,
+          resolveAddress: false,
+        );
+      } catch (_) {}
+      if (!mounted) return;
+
+      final double codAmount = detail?.codAmountToCollect ?? 0;
+      final bool isCod = detail != null && detail.isCod && codAmount > 0;
+
+      // Capture proof photo for both online and COD
+      final photoPath = await showDeliveryProofSheet(context);
+      if (!mounted) return;
+      if (photoPath != null && orderName.isNotEmpty) {
+        await ExternalDeliveryRepository().uploadProofPhoto(
           orderName: orderName,
-          newStatus: 'Failed',
+          filePath: photoPath,
         );
-        _writeTimingEvent(
-          eventType: TimingEventType.stopFailed,
-          tripRef: parentTripName.isEmpty ? null : parentTripName,
-          stopRef: stopName.isEmpty ? null : stopName,
+      }
+      if (!mounted) return;
+
+      if (isCod) {
+        // COD order: collect payment after proof
+        final codResult = await showCodCollectionSheet(
+          context,
+          amountToCollect: codAmount,
         );
+        if (!mounted) return;
+        if (codResult == null) return;
+        if (codResult.mode == 'Not Collected') {
+          // Cash wasn't collected — ask whether to deliver anyway or fail the stop.
+          final shouldFail = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Cash not collected'),
+              content: const Text(
+                'The customer did not pay. What would you like to do with this stop?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: const Text('Deliver anyway'),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(foregroundColor: context.danger),
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  child: const Text('Mark Failed'),
+                ),
+              ],
+            ),
+          );
+          if (!mounted) return;
+          if (shouldFail == null) return;
+          if (shouldFail) {
+            await _handleFailedDelivery(stop);
+            return;
+          }
+          // Deliver anyway — fall through without calling markDeliveredWithCod.
+        } else {
+          try {
+            await ExternalDeliveryRepository().markDeliveredWithCod(
+              orderName,
+              codCollectionMode: codResult.mode,
+              codUpiReference: codResult.upiRef,
+            );
+          } catch (e) {
+            if (mounted) showInfoSnack(context, 'COD save failed — continuing');
+          }
+          if (!mounted) return;
+        }
+      }
+
+      try {
+        await _controller.markDeliveredCommit(stop, isCod: isCod);
+        if (!mounted) return;
+        final isConnected = ConnectivityService().isConnected;
+        final String completionMessage = isConnected
+            ? 'Stop status updated to Delivered'
+            : 'Saved offline. Will sync when reconnected.';
+        await Future.delayed(const Duration(milliseconds: 800));
         if (!mounted) return;
         final (double, double)? sequenceFrom = _coordsFor(stop);
         final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
@@ -2332,87 +2131,122 @@ class _ExternalDeliveryTripDetailsScreenState
         setState(() {
           _future = newFuture;
         });
-        _notifyStopCompleted(
-          'Marked Failed offline. Photo upload and return trip will need '
-          'to be done when back online.',
-          newFuture,
-        );
+        _notifyStopCompleted(completionMessage, newFuture);
       } catch (e) {
         if (!mounted) return;
         showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
-      } finally {
-        if (mounted) setState(() => _updatingStops.remove(stopKey));
       }
-      return;
+    } finally {
+      if (mounted) _controller.endAction(stopKey);
     }
+  }
 
-    setState(() => _updatingStops.add(stopKey));
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          content: Row(
-            children: [
-              const CircularProgressIndicator(strokeWidth: 2),
-              const SizedBox(width: 20),
-              Text(
-                'Marking delivery as failed...',
-                style: TextStyle(
-                  color: Theme.of(ctx).colorScheme.onSurface,
-                  fontSize: 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  /// Guarded end-to-end from the very first line — see
+  /// TripController.beginAction docs for why (mirrors _handleDeliveredStop).
+  Future<void> _handleFailedDelivery(ExternalDeliveryTripStop stop) async {
+    final stopKey = _stopKey(stop);
+    _controller.beginAction(stopKey);
     try {
-      final processResult = await ExternalDeliveryRepository()
-          .processFailedDeliveryReturn(
-            stop: stop,
-            orderName: orderName,
-            reason: fullReason,
-            reasonCode: result.reasonCode,
-            photoPath: result.photoPath,
-            shouldCreateReturnTrip: false,
-          );
+      bool isCodStop = false;
+      try {
+        final d = await ExternalDeliveryRepository().fetchDetail(
+          stop.externalDelivery.trim(),
+          resolveAddress: false,
+        );
+        isCodStop = d.isCod;
+      } catch (_) {}
       if (!mounted) return;
-      Navigator.of(context).pop(); // dismiss loading dialog
-      _writeTimingEvent(
-        eventType: TimingEventType.stopFailed,
-        tripRef: (stop.rawFields['parent'] ?? '').toString().trim().isEmpty
-            ? null
-            : (stop.rawFields['parent'] ?? '').toString().trim(),
-        stopRef: (stop.rawFields['name'] ?? '').toString().trim().isEmpty
-            ? null
-            : (stop.rawFields['name'] ?? '').toString().trim(),
-      );
-      // Defer setState past the Navigator.pop rebuild to avoid calling it
-      // during the build phase triggered by the dialog dismissal.
-      final (double, double)? sequenceFrom = _coordsFor(stop);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
+
+      final result = await showFailedDeliverySheet(context, isCod: isCodStop);
+      if (result == null || !mounted) return;
+
+      final orderName = stop.externalDelivery.trim();
+      final fullReason = result.notes.isEmpty
+          ? result.reason
+          : '${result.reason} — ${result.notes}';
+
+      // The full failed-delivery flow uploads a photo, mutates the order,
+      // and (optionally) creates a server-side return trip. None of that
+      // can run offline. If we're offline, fall back to a queued stop
+      // status update so the driver can still mark Failed locally; the
+      // photo + return-trip steps will need to be redone online.
+      if (!ConnectivityService().isConnected) {
+        try {
+          await _controller.markFailedOfflineCommit(stop);
+          if (!mounted) return;
+          final (double, double)? sequenceFrom = _coordsFor(stop);
           final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
             sequenceFrom: sequenceFrom,
           );
-          setState(() { _future = newFuture; });
-          _notifyStopCompleted(processResult.message, newFuture);
+          setState(() {
+            _future = newFuture;
+          });
+          _notifyStopCompleted(
+            'Marked Failed offline. Photo upload and return trip will need '
+            'to be done when back online.',
+            newFuture,
+          );
+        } catch (e) {
+          if (!mounted) return;
+          showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
         }
-      });
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop(); // dismiss loading dialog
-      showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) {
-        setState(() => _updatingStops.remove(stopKey));
+        return;
       }
+
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => PopScope(
+          canPop: false,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            content: Row(
+              children: [
+                const CircularProgressIndicator(strokeWidth: 2),
+                const SizedBox(width: 20),
+                Text(
+                  'Marking delivery as failed...',
+                  style: TextStyle(
+                    color: Theme.of(ctx).colorScheme.onSurface,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      try {
+        final processResult = await _controller.markFailedOnlineCommit(
+          stop,
+          orderName: orderName,
+          fullReason: fullReason,
+          reasonCode: result.reasonCode,
+          photoPath: result.photoPath,
+        );
+        if (!mounted) return;
+        Navigator.of(context).pop(); // dismiss loading dialog
+        // Defer setState past the Navigator.pop rebuild to avoid calling it
+        // during the build phase triggered by the dialog dismissal.
+        final (double, double)? sequenceFrom = _coordsFor(stop);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
+              sequenceFrom: sequenceFrom,
+            );
+            setState(() { _future = newFuture; });
+            _notifyStopCompleted(processResult.message, newFuture);
+          }
+        });
+      } catch (e) {
+        if (!mounted) return;
+        Navigator.of(context).pop(); // dismiss loading dialog
+        showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) _controller.endAction(stopKey);
     }
   }
 
@@ -2657,7 +2491,7 @@ class _ExternalDeliveryTripDetailsScreenState
     ExternalDeliveryTripStop stop,
   ) {
     final stopKey = _stopKey(stop);
-    final isUpdating = _updatingStops.contains(stopKey);
+    final isUpdating = _controller.isUpdating(stopKey);
 
     if (isUpdating) {
       return Center(
@@ -2813,6 +2647,33 @@ class _ExternalDeliveryTripDetailsScreenState
     }
   }
 
+  /// Reacts to TripController.state.justCompletedTrip, set by
+  /// TripController.maybeAutoCompleteTrip on success. Reloads the trip and
+  /// shows the same "Trip completed" dialog as the original
+  /// `_maybeAutoCompleteTrip` did inline.
+  Future<void> _showTripCompletedDialog(ExternalDeliveryTrip trip) async {
+    if (!mounted) return;
+    setState(() {
+      _future = _loadTrip();
+    });
+    if (!mounted) return;
+    final int totalStops = trip.stops.length + trip.pickupStops.length;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Trip completed'),
+        content: Text('All $totalStops stops completed. Nice work!'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+    _controller.acknowledgeTripCompleted();
+  }
+
   /// Shows a single completion notification, folding in a one-tap "Navigate"
   /// action to whatever pending stop is now nearest — so the driver never
   /// has to hunt through the list for it after finishing the current one.
@@ -2824,8 +2685,10 @@ class _ExternalDeliveryTripDetailsScreenState
     ScaffoldMessenger.of(context).clearSnackBars();
 
     dynamic next;
+    ExternalDeliveryTrip? loadedTrip;
     try {
       final ExternalDeliveryTrip trip = await tripFuture;
+      loadedTrip = trip;
       final List<dynamic> pendingOrdered = _pendingOrderedStops(trip);
       next = pendingOrdered.isEmpty ? null : pendingOrdered.first;
     } catch (_) {
@@ -2835,6 +2698,9 @@ class _ExternalDeliveryTripDetailsScreenState
 
     if (next == null) {
       showInfoSnack(context, completionMessage);
+      if (loadedTrip != null) {
+        unawaited(_controller.maybeAutoCompleteTrip(loadedTrip));
+      }
       return;
     }
 
@@ -2902,95 +2768,5 @@ class _ExternalDeliveryTripDetailsScreenState
   Future<void> _launchCall(String phone) async {
     final uri = Uri(scheme: 'tel', path: phone);
     if (await canLaunchUrl(uri)) await launchUrl(uri);
-  }
-}
-
-/// Full-screen route coordination map. Opens immediately with a straight-line
-/// fallback route (so the button never feels laggy), then upgrades to a real
-/// road-following polyline once the best-effort OSRM fetch resolves.
-class _TripRouteMapScreen extends ConsumerStatefulWidget {
-  const _TripRouteMapScreen({required this.mapStops});
-
-  final List<OverviewMapStop> mapStops;
-
-  @override
-  ConsumerState<_TripRouteMapScreen> createState() =>
-      _TripRouteMapScreenState();
-}
-
-class _TripRouteMapScreenState extends ConsumerState<_TripRouteMapScreen> {
-  List<LatLng>? _routePoints;
-  bool _routeRequested = false;
-
-  Future<void> _fetchRoute(double driverLat, double driverLng) async {
-    final List<LatLng> pendingPoints = [
-      for (final OverviewMapStop s in widget.mapStops)
-        if (s.status != StopMapStatus.completed) LatLng(s.lat, s.lng),
-    ];
-    if (pendingPoints.isEmpty) return;
-    final List<LatLng> result = await TripRouteService.fetchRoute(
-          [LatLng(driverLat, driverLng), ...pendingPoints],
-        ) ??
-        <LatLng>[];
-    if (mounted && result.isNotEmpty) {
-      setState(() => _routePoints = result);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = ref.watch(appControllerProvider);
-    final double? driverLat = app.currentLatitude;
-    final double? driverLng = app.currentLongitude;
-
-    if (!_routeRequested && driverLat != null && driverLng != null) {
-      _routeRequested = true;
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _fetchRoute(driverLat, driverLng),
-      );
-    }
-
-    return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: TripOverviewMap(
-              stops: widget.mapStops,
-              driverLat: driverLat,
-              driverLng: driverLng,
-              routePoints: _routePoints,
-              height: null,
-            ),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            left: 12,
-            child: GestureDetector(
-              onTap: () => Navigator.of(context).pop(),
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: context.cardColor,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  Icons.arrow_back_rounded,
-                  color: context.textPrimary,
-                  size: 20,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

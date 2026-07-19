@@ -17,6 +17,17 @@ double haversineMeters(double lat1, double lng1, double lat2, double lng2) {
 
 double _degToRad(double deg) => deg * (math.pi / 180);
 
+/// True when ([lat], [lng]) fall within valid Earth coordinate ranges
+/// (latitude ±90, longitude ±180) and aren't the common "unset" sentinel
+/// (0, 0) — guards against corrupt/placeholder backend data (e.g. a stray
+/// amount or count field mistakenly stored in a latitude/longitude column)
+/// being treated as a real location for sequencing or navigation.
+bool isValidLatLng(double lat, double lng) {
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+  if (lat == 0 && lng == 0) return false;
+  return true;
+}
+
 /// Greedy nearest-neighbor chain: starting from `(fromLat, fromLng)`, repeatedly
 /// picks the closest remaining item (by [coordsOf]), then continues from that
 /// item's own coordinates. Items with no resolvable coordinates are excluded
