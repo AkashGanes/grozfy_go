@@ -92,13 +92,10 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   /// Loads the trip, then resolves pending-stop coordinates and (re)computes
-  /// the nearest-first sequence. [sequenceFrom], when provided, is used as the
-  /// recalculation reference point instead of the driver's live GPS — used
-  /// right after a stop is marked delivered/failed/skipped, per the "reference
-  /// the just-completed stop's own location, not a live GPS ping" rule.
-  Future<ExternalDeliveryTrip> _loadTrip({(double, double)? sequenceFrom}) async {
+  /// the nearest-first sequence from the driver's current live GPS location.
+  Future<ExternalDeliveryTrip> _loadTrip() async {
     final ExternalDeliveryTrip trip = await _fetchTrip();
-    await _controller.resolveSequencing(trip, referenceOverride: sequenceFrom);
+    await _controller.resolveSequencing(trip);
     return trip;
   }
 
@@ -1907,10 +1904,7 @@ class _ExternalDeliveryTripDetailsScreenState
       await _controller.updatePickupStatusCommit(ps, targetStatus);
 
       if (!mounted) return;
-      final (double, double)? sequenceFrom = _coordsFor(ps);
-      final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
-        sequenceFrom: sequenceFrom,
-      );
+      final Future<ExternalDeliveryTrip> newFuture = _loadTrip();
       setState(() {
         _future = newFuture;
       });
@@ -1997,9 +1991,8 @@ class _ExternalDeliveryTripDetailsScreenState
       showInfoSnack(context, message);
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted) return;
-      final (double, double)? sequenceFrom = _coordsFor(stop);
       setState(() {
-        _future = _loadTrip(sequenceFrom: sequenceFrom);
+        _future = _loadTrip();
       });
     } catch (e) {
       if (!mounted) return;
@@ -2124,10 +2117,7 @@ class _ExternalDeliveryTripDetailsScreenState
             : 'Saved offline. Will sync when reconnected.';
         await Future.delayed(const Duration(milliseconds: 800));
         if (!mounted) return;
-        final (double, double)? sequenceFrom = _coordsFor(stop);
-        final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
-          sequenceFrom: sequenceFrom,
-        );
+        final Future<ExternalDeliveryTrip> newFuture = _loadTrip();
         setState(() {
           _future = newFuture;
         });
@@ -2174,10 +2164,7 @@ class _ExternalDeliveryTripDetailsScreenState
         try {
           await _controller.markFailedOfflineCommit(stop);
           if (!mounted) return;
-          final (double, double)? sequenceFrom = _coordsFor(stop);
-          final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
-            sequenceFrom: sequenceFrom,
-          );
+          final Future<ExternalDeliveryTrip> newFuture = _loadTrip();
           setState(() {
             _future = newFuture;
           });
@@ -2230,12 +2217,9 @@ class _ExternalDeliveryTripDetailsScreenState
         Navigator.of(context).pop(); // dismiss loading dialog
         // Defer setState past the Navigator.pop rebuild to avoid calling it
         // during the build phase triggered by the dialog dismissal.
-        final (double, double)? sequenceFrom = _coordsFor(stop);
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            final Future<ExternalDeliveryTrip> newFuture = _loadTrip(
-              sequenceFrom: sequenceFrom,
-            );
+            final Future<ExternalDeliveryTrip> newFuture = _loadTrip();
             setState(() { _future = newFuture; });
             _notifyStopCompleted(processResult.message, newFuture);
           }
@@ -2723,7 +2707,7 @@ class _ExternalDeliveryTripDetailsScreenState
         content: Text('$completionMessage  →  Next: Stop $stopNumber$distanceLabel'),
         action: SnackBarAction(
           label: 'Navigate',
-          onPressed: () => _openInAppNavigationFor(next),
+          onPressed: _navigateAllPendingStops,
         ),
         duration: const Duration(seconds: 5),
         behavior: SnackBarBehavior.floating,

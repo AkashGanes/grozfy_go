@@ -176,13 +176,11 @@ class TripController extends StateNotifier<TripControllerState> {
   // ── Sequencing ───────────────────────────────────────────────────────────
 
   /// Resolves coordinates for pending stops and recomputes
-  /// [TripControllerState.suggestedOrder]/[TripControllerState.displayOrder].
-  /// Best-effort: a network failure here never breaks the trip screen —
-  /// unresolved stops simply stay in server order at the end of the list.
-  Future<void> resolveSequencing(
-    ExternalDeliveryTrip trip, {
-    (double, double)? referenceOverride,
-  }) async {
+  /// [TripControllerState.suggestedOrder]/[TripControllerState.displayOrder],
+  /// always from the driver's current live GPS location. Best-effort: a
+  /// network failure here never breaks the trip screen — unresolved stops
+  /// simply stay in server order at the end of the list.
+  Future<void> resolveSequencing(ExternalDeliveryTrip trip) async {
     final List<ExternalDeliveryTripStop> pendingDeliveryStops =
         trip.stops.where((s) => !isTerminalStop(s)).toList();
     final List<PickupTripStop> pendingPickupStops =
@@ -251,10 +249,8 @@ class TripController extends StateNotifier<TripControllerState> {
         stopKey(s): 'pj:${s.pickupJob}',
     };
 
-    final double? fromLat = referenceOverride?.$1 ??
-        _ref.read(appControllerProvider).currentLatitude;
-    final double? fromLng = referenceOverride?.$2 ??
-        _ref.read(appControllerProvider).currentLongitude;
+    final double? fromLat = _ref.read(appControllerProvider).currentLatitude;
+    final double? fromLng = _ref.read(appControllerProvider).currentLongitude;
 
     final List<String> suggested = TripSequencingService.suggestOrder(
       fromLat: fromLat,
