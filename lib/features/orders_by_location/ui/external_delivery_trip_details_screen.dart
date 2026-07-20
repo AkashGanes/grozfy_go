@@ -17,6 +17,7 @@ import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../../../core/widgets/status_confirm_sheet.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
@@ -27,6 +28,7 @@ import 'cod_collection_sheet.dart';
 import 'cod_handover_sheet.dart';
 import 'delivery_proof_sheet.dart';
 import 'failed_delivery_bottom_sheet.dart';
+import '../../pickup_jobs/ui/failed_pickup_bottom_sheet.dart';
 
 import '../../../core/utils/geo_distance.dart';
 import '../../../core/utils/maps_launcher.dart';
@@ -1579,6 +1581,7 @@ class _ExternalDeliveryTripDetailsScreenState
       case 'received at store':
         statusColor = context.success;
       case 'picked up':
+      case 'en route':
         statusColor = context.scheme.primary;
       case 'failed':
         statusColor = context.danger;
@@ -1857,58 +1860,203 @@ class _ExternalDeliveryTripDetailsScreenState
       );
     }
 
-    if (statusNorm == 'picked up') {
+    // Same staged status flow as the single pickup-job screen
+    // (PickupJobDetailScreen._actionArea): Pending → En Route → Picked Up →
+    // Received at Store, each confirmed via the shared StatusConfirmSheet,
+    // with "Mark Failed" offered alongside the primary action at every
+    // non-terminal stage (mirroring `_primaryActionButton`+`_failedActionButton`
+    // pairing there).
+    Widget primaryButton({
+      required String label,
+      required IconData icon,
+      required VoidCallback onTap,
+    }) {
       return SizedBox(
-        width: double.infinity,
-        child: _actionButton(
-          label: 'Mark Received at Store',
-          icon: Icons.store_outlined,
-          color: context.success,
-          onTap: () => _handlePickupAction(ps, 'Received at Store'),
+        height: 48,
+        child: ElevatedButton.icon(
+          onPressed: onTap,
+          icon: Icon(icon, size: 18),
+          label: Text(
+            label,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: context.scheme.primary,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
         ),
       );
     }
 
-    // Default: Pending / Draft -> Picked Up or Failed
+    Widget failedButton() {
+      return SizedBox(
+        height: 48,
+        child: OutlinedButton.icon(
+          onPressed: () => _handlePickupFailed(ps),
+          icon: Icon(Icons.cancel_outlined, size: 18, color: context.danger),
+          label: Text(
+            'Mark Failed',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: context.danger,
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: context.danger,
+            side: BorderSide(color: context.danger),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (statusNorm == 'picked up') {
+      return Row(
+        children: [
+          Expanded(
+            child: primaryButton(
+              label: 'Received at Store',
+              icon: Icons.store_outlined,
+              onTap: () => _handlePickupReceivedAtStore(ps),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: failedButton()),
+        ],
+      );
+    }
+
+    if (statusNorm == 'en route') {
+      return Row(
+        children: [
+          Expanded(
+            child: primaryButton(
+              label: 'Mark Picked Up',
+              icon: Icons.inventory_2_outlined,
+              onTap: () => _handlePickupPickedUp(ps),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: failedButton()),
+        ],
+      );
+    }
+
+    // Default: Pending / Draft / blank -> Mark En Route or Failed
     return Row(
       children: [
         Expanded(
-          child: _actionButton(
-            label: 'Picked Up',
-            icon: Icons.check_box_outlined,
-            color: context.scheme.primary,
-            onTap: () => _handlePickupAction(ps, 'Picked Up'),
+          child: primaryButton(
+            label: 'Mark En Route',
+            icon: Icons.directions_car_rounded,
+            onTap: () => _handlePickupEnRoute(ps),
           ),
         ),
         const SizedBox(width: 8),
-        Expanded(
-          child: _actionButton(
-            label: 'Failed',
-            icon: Icons.close_rounded,
-            color: context.danger,
-            onTap: () => _handlePickupAction(ps, 'Failed'),
-          ),
-        ),
+        Expanded(child: failedButton()),
       ],
     );
   }
 
-  Future<void> _handlePickupAction(
+  String _pickupCustomerLabel(PickupTripStop ps) =>
+      ps.customerName.trim().isNotEmpty ? ps.customerName.trim() : 'the customer';
+
+  Future<void> _handlePickupEnRoute(PickupTripStop ps) async {
+    final confirmed = await showStatusConfirmSheet(
+      context,
+      title: 'Mark En Route?',
+      body:
+          "Confirm you're heading to pick up from ${_pickupCustomerLabel(ps)}.",
+      actionLabel: 'Confirm En Route',
+      icon: Icons.directions_car_rounded,
+      color: context.scheme.primary,
+    );
+    if (confirmed != true || !mounted) return;
+    await _runPickupCommit(
+      ps,
+      'En Route',
+      () => _controller.startPickupEnRouteCommit(ps),
+    );
+  }
+
+  Future<void> _handlePickupPickedUp(PickupTripStop ps) async {
+    final photoPath = await showDeliveryProofSheet(context);
+    if (!mounted) return;
+    final confirmed = await showStatusConfirmSheet(
+      context,
+      title: 'Items Picked Up?',
+      body:
+          "Confirm you've collected the items from ${_pickupCustomerLabel(ps)}.",
+      actionLabel: 'Confirm Picked Up',
+      icon: Icons.inventory_2_rounded,
+      color: const Color(0xFF6A1B9A),
+    );
+    if (confirmed != true || !mounted) return;
+    await _runPickupCommit(
+      ps,
+      'Picked Up',
+      () => _controller.markPickupPickedUpCommit(ps, proofPhotoPath: photoPath),
+    );
+  }
+
+  Future<void> _handlePickupReceivedAtStore(PickupTripStop ps) async {
+    final confirmed = await showStatusConfirmSheet(
+      context,
+      title: 'Drop at Store?',
+      body:
+          'Confirm you have dropped the items for ${_pickupCustomerLabel(ps)} at the store dock.',
+      actionLabel: 'Confirm Drop',
+      icon: Icons.store_rounded,
+      color: context.success,
+    );
+    if (confirmed != true || !mounted) return;
+    await _runPickupCommit(
+      ps,
+      'Received at Store',
+      () => _controller.markPickupReceivedAtStoreCommit(ps),
+    );
+  }
+
+  Future<void> _handlePickupFailed(PickupTripStop ps) async {
+    final result = await showFailedPickupSheet(context);
+    if (result == null || !mounted) return;
+    await _runPickupCommit(
+      ps,
+      'Failed',
+      () => _controller.markPickupFailedCommit(
+        ps,
+        reasonCode: result.reasonCode,
+        notes: result.notes,
+        photoPath: result.photoPath,
+      ),
+    );
+  }
+
+  Future<void> _runPickupCommit(
     PickupTripStop ps,
-    String targetStatus,
+    String targetStatusLabel,
+    Future<void> Function() commit,
   ) async {
     final stopKey = '${ps.pickupJob}-${ps.stop}';
     _controller.beginAction(stopKey);
-
     try {
-      await _controller.updatePickupStatusCommit(ps, targetStatus);
-
+      await commit();
       if (!mounted) return;
       final Future<ExternalDeliveryTrip> newFuture = _loadTrip();
       setState(() {
         _future = newFuture;
       });
-      _notifyStopCompleted('Pickup status updated to $targetStatus', newFuture);
+      _notifyStopCompleted(
+        'Pickup status updated to $targetStatusLabel',
+        newFuture,
+      );
     } catch (e) {
       if (!mounted) return;
       showInfoSnack(context, e.toString().replaceFirst('Exception: ', ''));

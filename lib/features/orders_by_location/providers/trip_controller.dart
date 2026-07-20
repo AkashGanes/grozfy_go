@@ -398,10 +398,14 @@ class TripController extends StateNotifier<TripControllerState> {
     final String parentTripName =
         (stop.rawFields['parent'] ?? '').toString().trim();
 
-    // COD + online: the async-queue flush (conflict check + PUT) can exceed
-    // the 800ms reload window, causing the stop to reappear as editable.
-    // Use the direct awaited path instead when we know we have connectivity.
-    if (isCod && ConnectivityService().isConnected) {
+    // Online: the async-queue flush (conflict check + PUT) can exceed the
+    // 800ms reload window, causing the reload to still see the stop as
+    // pending — it then reappears as "next" (wrong address in the
+    // navigate/next-stop UI) until a later reload catches up. Use the
+    // direct awaited path whenever we have connectivity, regardless of
+    // COD — this used to be COD-only, but the race applies equally to a
+    // plain delivery.
+    if (ConnectivityService().isConnected) {
       await ExternalDeliveryRepository()
           .updateTripStopStatus(stop: stop, newStatus: 'Delivered');
     } else {
@@ -465,26 +469,57 @@ class TripController extends StateNotifier<TripControllerState> {
     return processResult;
   }
 
-  Future<void> updatePickupStatusCommit(
-    PickupTripStop ps,
-    String targetStatus,
-  ) async {
-    final PickupJobRepository repo = PickupJobRepository();
-    if (targetStatus == 'Picked Up') {
-      await repo.markPickedUp(ps.pickupJob);
-    } else if (targetStatus == 'Received at Store') {
-      await repo.updatePickupTripStopCompleted(
-        tripName: _tripName,
-        pickupJobName: ps.pickupJob,
-      );
-    } else if (targetStatus == 'Failed') {
-      await ExternalDeliveryRepository().setStopStatusRaw(
-        stopDocType: 'External Delivery Trip Pickup Stop',
-        stopName: (ps.rawFields['name'] ?? '').toString(),
-        parentTripName: _tripName,
-        newStatus: 'Failed',
-      );
-    }
+  /// Pending/blank → En Route. Mirrors the single pickup-job screen's
+  /// "Mark En Route" action (`PickupJobDetailScreen._handleMarkEnRoute`) —
+  /// writes `External Delivery Trip Pickup Stop.status='En Route'`; the
+  /// parent `Pickup Job` doc's status flip to `Scheduled` is a server-side
+  /// side effect, not a second client write.
+  Future<void> startPickupEnRouteCommit(PickupTripStop ps) async {
+    await PickupJobRepository().markPickupEnRoute(
+      pickupJobName: ps.pickupJob,
+      tripName: _tripName,
+    );
+  }
+
+  /// En Route → Picked Up. Mirrors `PickupJobDetailScreen._handleMarkPickedUp`.
+  Future<void> markPickupPickedUpCommit(
+    PickupTripStop ps, {
+    String? proofPhotoPath,
+  }) async {
+    await PickupJobRepository().markPickedUp(
+      ps.pickupJob,
+      proofPhotoPath: proofPhotoPath,
+    );
+  }
+
+  /// Picked Up → Received at Store. Mirrors
+  /// `PickupJobDetailScreen._handleDropAtStore` — completes the Pickup Job
+  /// doc first, then flips the trip-stop row status.
+  Future<void> markPickupReceivedAtStoreCommit(PickupTripStop ps) async {
+    await PickupJobRepository().confirmCompleted(ps.pickupJob);
+    await PickupJobRepository().updatePickupTripStopCompleted(
+      tripName: _tripName,
+      pickupJobName: ps.pickupJob,
+    );
+  }
+
+  /// Mirrors `PickupJobDetailScreen._handleMarkFailed` — writes both the
+  /// `Pickup Job` doc (status/reason/notes/photo) and, best-effort, the
+  /// trip-stop row, via the richer `markPickupFailed` (unlike the old
+  /// single-field `setStopStatusRaw` this replaces).
+  Future<void> markPickupFailedCommit(
+    PickupTripStop ps, {
+    required String reasonCode,
+    String notes = '',
+    String? photoPath,
+  }) async {
+    await PickupJobRepository().markPickupFailed(
+      ps.pickupJob,
+      reasonCode: reasonCode,
+      notes: notes,
+      proofPhotoPath: photoPath,
+      tripName: _tripName,
+    );
   }
 
   /// Port of `_updateStopStatus`'s generic (non-Delivered/Failed) path.
