@@ -1229,16 +1229,56 @@ class _ExternalDeliveryTripDetailsScreenState
         message: 'Navigate',
         child: GestureDetector(
           onTap: _navigateAllPendingStops,
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: context.scheme.primary.withValues(alpha: 0.16),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.navigation_rounded,
-              color: context.scheme.primary,
-              size: 22,
+          child: SizedBox(
+            width: 42,
+            height: 42,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Radar-style "live" ping — repeatedly expands + fades out
+                // from behind the icon to read as an active/always-on action,
+                // not just a static button.
+                Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: context.scheme.primary,
+                          width: 1.5,
+                        ),
+                      ),
+                    )
+                    .animate(onPlay: (controller) => controller.repeat())
+                    .scale(
+                      begin: const Offset(0.55, 0.55),
+                      end: const Offset(1.35, 1.35),
+                      duration: 1400.ms,
+                      curve: Curves.easeOut,
+                    )
+                    .fadeOut(duration: 1400.ms, curve: Curves.easeOut),
+                Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: context.scheme.primary.withValues(alpha: 0.16),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.navigation_rounded,
+                        color: context.scheme.primary,
+                        size: 22,
+                      ),
+                    )
+                    .animate(
+                      onPlay: (controller) => controller.repeat(reverse: true),
+                    )
+                    .scale(
+                      begin: const Offset(1, 1),
+                      end: const Offset(1.08, 1.08),
+                      duration: 900.ms,
+                      curve: Curves.easeInOut,
+                    ),
+              ],
             ),
           ),
         ),
