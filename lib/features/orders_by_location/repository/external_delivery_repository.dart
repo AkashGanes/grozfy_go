@@ -313,6 +313,27 @@ class ExternalDeliveryRepository {
     return result;
   }
 
+  /// Batch-fetches [ExternalDelivery] records by name, so a trip's stops can
+  /// be joined to their delivery coordinates (latitude/longitude) in a single
+  /// call instead of one request per stop. Reuses [fetchPage]'s existing
+  /// geo-fields-with-fallback behavior, so a delivery missing lat/lng is
+  /// simply absent those fields rather than failing the whole batch.
+  Future<Map<String, ExternalDelivery>> fetchDeliveriesByNames(
+    List<String> names,
+  ) async {
+    if (names.isEmpty) return <String, ExternalDelivery>{};
+    final List<ExternalDelivery> rows = await fetchPage(
+      limitStart: 0,
+      limitPageLength: names.length,
+      filters: <List<dynamic>>[
+        <dynamic>['External Delivery', 'name', 'in', names],
+      ],
+    );
+    return <String, ExternalDelivery>{
+      for (final ExternalDelivery d in rows) d.name: d,
+    };
+  }
+
   /// Fetches a full page of order details in a single HTTP call using the
   /// Frappe desk reportview endpoint. This endpoint is used by the Frappe UI
   /// itself and is not subject to the in_list_view field restriction that the
@@ -884,9 +905,15 @@ class ExternalDeliveryRepository {
       throw Exception('No orders provided for trip creation');
     }
 
+    // 'docstatus': 1 + status 'Scheduled' — same pattern as the working
+    // single-order path (createTripByOrderName) — so a multi-order batch
+    // trip is born Submitted instead of Draft. Frappe defaults docstatus
+    // to 0 on insert when omitted, which is what left these trips Draft
+    // (and invisible to fetchActiveOrdersForDriver's docstatus=1 filter).
     final createPayload = {
       'driver': await _getLoggedInDriver(),
-      'status': 'Draft',
+      'status': 'Scheduled',
+      'docstatus': 1,
       'trip_date': DateTime.now().toIso8601String().split('T').first,
       'stops': orders.map((o) => {'external_delivery': o.name}).toList(),
     };
@@ -1735,6 +1762,11 @@ class ExternalDeliveryRepository {
     final String code = (prefs.getString(_prefLanguageCode) ?? 'en').trim();
     return code.isEmpty ? 'en' : code;
   }
+
+  /// Public entry point for marking [trip] fully Completed. Reused by the
+  /// return-to-store flow (via [_completeTrip] below) and by the trip-details
+  /// screen's auto-completion once every stop has reached a terminal status.
+  Future<void> completeTrip(ExternalDeliveryTrip trip) => _completeTrip(trip);
 
   Future<void> _completeTrip(ExternalDeliveryTrip trip) async {
     _logApi('mark_returned_to_store trip', 'trip=${trip.name}');
