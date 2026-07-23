@@ -4011,18 +4011,22 @@ class AppController extends ChangeNotifier {
       drop: dropAddress,
       deliveryInstructions: '',
       paymentMode: detail.paymentMode ?? '',
-      distanceKm:
-          (_currentLatitude != null &&
-              _currentLongitude != null &&
-              orderLatitude != null &&
-              orderLongitude != null)
-          ? _calculateDistance(
-              _currentLatitude!,
-              _currentLongitude!,
-              orderLatitude,
-              orderLongitude,
-            )
-          : 0,
+      // Prefer the server-computed distance (from the radius-aware
+      // `list_available_deliveries` feed) when present; otherwise fall back to
+      // a client-side Haversine estimate from the driver's current location.
+      distanceKm: (detail.distanceKm != null && detail.distanceKm! > 0)
+          ? detail.distanceKm!
+          : (_currentLatitude != null &&
+                    _currentLongitude != null &&
+                    orderLatitude != null &&
+                    orderLongitude != null)
+              ? _calculateDistance(
+                  _currentLatitude!,
+                  _currentLongitude!,
+                  orderLatitude,
+                  orderLongitude,
+                )
+              : 0,
       estimatedEarnings: detail.grandTotal ?? totalAmount,
       assignmentStatus: status == OrderStatus.pending
           ? OrderAssignmentStatus.unassigned

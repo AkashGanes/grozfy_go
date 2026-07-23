@@ -68,4 +68,12 @@ class ApiConstants {
   // POST: {selected_radius_km} → persists the driver's chosen radius.
   static const String updateDeliveryRadius =
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.delivery_radius.update_delivery_radius';
+
+  // Radius-aware "Available Orders" feed. Server filters Pending deliveries by
+  // the driver's selected delivery radius and returns the full set in one call,
+  // each row carrying a server-computed `distance_km`. Replaces the generic
+  // `/api/resource/External Delivery` list (which is radius-blind) for that
+  // screen only.
+  static const String listAvailableDeliveries =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.delivery_radius.list_available_deliveries';
 }

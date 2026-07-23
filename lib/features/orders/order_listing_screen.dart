@@ -14,6 +14,7 @@ import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/offline_state_view.dart';
 import '../kyc/widgets/kyc_form_widgets.dart';
+import '../delivery_radius/repository/delivery_radius_repository.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/model/external_delivery_detail.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
@@ -42,11 +43,20 @@ class OrderListingScreen extends StatefulWidget {
 }
 
 class _OrderListingScreenState extends State<OrderListingScreen> {
-  static const int _pageSize = 8;
   static const Duration _searchDebounce = Duration(milliseconds: 450);
+  // Single-page size for the rollout fallback (used only when the radius-aware
+  // `list_available_deliveries` method isn't deployed yet).
+  static const int _fallbackPageLength = 200;
 
   late final ExternalDeliveryRepository _repository;
+  late final DeliveryRadiusRepository _radiusRepository;
   late final PagingController<int, _ListItem> _pagingController;
+
+  // Client-side delivery-radius filter (stopgap until the backend ships
+  // `list_available_deliveries`). Resolved once per list load; null means
+  // "don't filter" (feature off, bad bounds, or radius unavailable).
+  double? _radiusKm;
+  bool _radiusResolved = false;
   final TextEditingController _searchController = TextEditingController();
   AppController? _app;
 
@@ -81,6 +91,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   void initState() {
     super.initState();
     _repository = ExternalDeliveryRepository();
+    _radiusRepository = DeliveryRadiusRepository();
     _pagingController = PagingController<int, _ListItem>(firstPageKey: 0)
       ..addPageRequestListener(_fetchPage);
     _searchController.addListener(_onSearchChanged);
@@ -280,14 +291,25 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       return;
     }
 
-    // Reset grouping tracker at the start of each new list
-    if (pageKey == 0) _lastGroupStore = null;
+    // Reset grouping tracker + re-resolve the radius at the start of each new
+    // list, so a radius change in Settings takes effect on pull-to-refresh.
+    if (pageKey == 0) {
+      _lastGroupStore = null;
+      _radiusResolved = false;
+    }
 
     // Offline drivers must not receive new/available orders. Skip the fetch
     // entirely and show an empty list; the paged list's noItemsFound builder
     // renders an explicit "You are Offline" notice.
     if (!app.isOnline) {
       if (!mounted) return;
+      _pagingController.appendLastPage(<_ListItem>[]);
+      return;
+    }
+
+    // The radius-aware feed returns the full pool in one call, so there is only
+    // ever a single page. Any request beyond the first is empty.
+    if (pageKey != 0) {
       _pagingController.appendLastPage(<_ListItem>[]);
       return;
     }
@@ -305,12 +327,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         items.add(_OrderItem(order));
       }
 
-      final isLast = orders.length < _pageSize;
-      if (isLast) {
-        _pagingController.appendLastPage(items);
-      } else {
-        _pagingController.appendPage(items, pageKey + orders.length);
-      }
+      _pagingController.appendLastPage(items);
     } catch (e, st) {
       debugPrint('[OrderListing] _fetchPage error: $e');
       debugPrint('[OrderListing] stacktrace: $st');
@@ -319,9 +336,58 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     }
   }
 
+  /// Loads the available (Pending) order pool from the radius-aware
+  /// `list_available_deliveries` feed — the server filters by the driver's
+  /// delivery radius and returns the full set in one call, each row carrying a
+  /// server-computed `distance_km`. Pagination is a no-op here (the caller
+  /// requests only page 0); [pageKey] is retained for signature compatibility.
+  ///
+  /// Rollout safety: if the backend method isn't deployed yet, we fall back to
+  /// the generic Pending list so the screen keeps working (un-radius-filtered)
+  /// until the backend ships. Only a "method unavailable" error triggers the
+  /// fallback — genuine network/auth errors are rethrown so the list surfaces
+  /// its normal error/retry state.
   Future<List<DeliveryOrder>> _fetchOrdersEnriched(
     AppController app,
     int pageKey,
+  ) async {
+    try {
+      final summaries = await _repository.fetchAvailableDeliveries(
+        storeName: _selectedStore,
+        filters: <List<dynamic>>[
+          <dynamic>['External Delivery', 'status', '=', 'Pending'],
+        ],
+      );
+      return summaries
+          .map((s) => app.buildDeliveryOrderFromDetail(_summaryToDetail(s)))
+          .toList();
+    } catch (e) {
+      if (!_isMethodUnavailable(e)) rethrow;
+      debugPrint(
+        '[OrderListing] list_available_deliveries unavailable, falling back '
+        'to the generic Pending list: $e',
+      );
+      return _fetchOrdersGenericFallback(app);
+    }
+  }
+
+  /// True when [e] indicates the backend method simply isn't deployed (Frappe's
+  /// "no attribute" / "Failed to get method" or a 404), as opposed to a real
+  /// network/permission failure we should not paper over.
+  static bool _isMethodUnavailable(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('has no attribute') ||
+        s.contains('failed to get method') ||
+        s.contains('404');
+  }
+
+  /// Fallback path used only while `list_available_deliveries` is undeployed:
+  /// the pre-existing generic fetch (reportview first, summary list second),
+  /// pulled as a single large page to preserve the single-call model. The
+  /// server can't radius-filter here, so we apply the driver's delivery radius
+  /// client-side ([_filterByRadius]) to reproduce what the backend will do.
+  Future<List<DeliveryOrder>> _fetchOrdersGenericFallback(
+    AppController app,
   ) async {
     final storeFilter = _selectedStore != null && _selectedStore!.isNotEmpty
         ? [<dynamic>['External Delivery', 'store_name', '=', _selectedStore]]
@@ -329,32 +395,69 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
 
     try {
       final details = await _repository.fetchPageEnriched(
-        limitStart: pageKey,
-        limitPageLength: _pageSize,
+        limitStart: 0,
+        limitPageLength: _fallbackPageLength,
         orderBy: 'store_name asc, modified desc',
         filters: <List<dynamic>>[
           <dynamic>['External Delivery', 'status', '=', 'Pending'],
           ...storeFilter,
         ],
       );
-      return details.map((d) => app.buildDeliveryOrderFromDetail(d)).toList();
+      return _filterByRadius(
+        details.map((d) => app.buildDeliveryOrderFromDetail(d)).toList(),
+      );
     } catch (e) {
-      debugPrint('[OrderListing] reportview failed, using summary fallback: $e');
+      debugPrint('[OrderListing] reportview fallback failed, using summary: $e');
     }
 
-    // Fallback: single fetchPage call — no per-item detail fetches.
     final summaries = await _repository.fetchPage(
-      limitStart: pageKey,
-      limitPageLength: _pageSize,
+      limitStart: 0,
+      limitPageLength: _fallbackPageLength,
       storeName: _selectedStore,
       orderBy: 'store_name asc, modified desc',
       filters: <List<dynamic>>[
         <dynamic>['External Delivery', 'status', '=', 'Pending'],
       ],
     );
-    return summaries
-        .map((s) => app.buildDeliveryOrderFromDetail(_summaryToDetail(s)))
+    return _filterByRadius(
+      summaries
+          .map((s) => app.buildDeliveryOrderFromDetail(_summaryToDetail(s)))
+          .toList(),
+    );
+  }
+
+  /// Resolves the driver's effective delivery radius (km) once per list load.
+  /// Returns null — meaning "don't filter" — when the feature is off, bounds
+  /// are invalid, or the settings call fails (better to show everything than to
+  /// hide the whole pool on a transient error).
+  Future<double?> _effectiveRadiusKm() async {
+    if (_radiusResolved) return _radiusKm;
+    _radiusResolved = true;
+    try {
+      final s = await _radiusRepository.getSettings();
+      _radiusKm = (s.enabled && s.hasValidBounds) ? s.effectiveRadiusKm : null;
+    } catch (_) {
+      _radiusKm = null;
+    }
+    return _radiusKm;
+  }
+
+  /// Keeps only orders within the driver's delivery radius. Orders with an
+  /// unknown distance (0 — missing coordinates or no driver location yet) are
+  /// kept, so a missing GPS fix never blanks the list.
+  Future<List<DeliveryOrder>> _filterByRadius(
+    List<DeliveryOrder> orders,
+  ) async {
+    final radius = await _effectiveRadiusKm();
+    if (radius == null || radius <= 0) return orders;
+    final filtered = orders
+        .where((o) => o.distanceKm <= 0 || o.distanceKm <= radius)
         .toList();
+    debugPrint(
+      '[OrderListing] radius filter: ${orders.length} → ${filtered.length} '
+      'within ${radius}km',
+    );
+    return filtered;
   }
 
   static ExternalDeliveryDetail _summaryToDetail(ExternalDelivery s) {
@@ -369,6 +472,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       modified: s.modified,
       latitude: s.latitude,
       longitude: s.longitude,
+      distanceKm: s.distanceKm,
     );
   }
 
