@@ -16,6 +16,7 @@ class ExternalDelivery {
     this.deliveryNotes = '',
     this.latitude,
     this.longitude,
+    this.distanceKm,
   });
 
   final String name;
@@ -32,6 +33,10 @@ class ExternalDelivery {
   // fields (used for the delivery-radius filter); otherwise null.
   final double? latitude;
   final double? longitude;
+  // Server-computed straight-line distance (km) from the driver to this
+  // delivery. Only populated by the radius-aware `list_available_deliveries`
+  // feed; null for records from the generic list endpoint.
+  final double? distanceKm;
 
   factory ExternalDelivery.fromJson(Map<String, dynamic> m) {
     return ExternalDelivery(
@@ -50,6 +55,7 @@ class ExternalDelivery {
       deliveryNotes: (m['delivery_notes'] ?? '').toString(),
       latitude: (m['latitude'] as num?)?.toDouble(),
       longitude: (m['longitude'] as num?)?.toDouble(),
+      distanceKm: (m['distance_km'] as num?)?.toDouble(),
     );
   }
 

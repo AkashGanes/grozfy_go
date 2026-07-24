@@ -334,6 +334,81 @@ class ExternalDeliveryRepository {
     };
   }
 
+  /// Fetches the driver's **available** (Pending) deliveries filtered by their
+  /// configured delivery radius, via the custom `list_available_deliveries`
+  /// method. Unlike [fetchPage] — which hits the generic REST list and is
+  /// radius-blind — the server here filters by the driver's selected radius and
+  /// returns the *full* set in a single call, each row carrying a
+  /// server-computed `distance_km`.
+  ///
+  /// [storeName] and [filters] (the same status/date/customer Frappe clauses the
+  /// list screen already builds) are forwarded so those filters keep working
+  /// server-side. Expected response envelope, mirroring the other custom driver
+  /// endpoints (e.g. `list_pickup_pool`):
+  ///
+  /// ```json
+  /// { "message": [ { "name": ..., "store_name": ..., "distance_km": 1.8, ... } ] }
+  /// ```
+  Future<List<ExternalDelivery>> fetchAvailableDeliveries({
+    String? storeName,
+    List<List<dynamic>>? filters,
+  }) async {
+    final driver = await _getLoggedInDriver();
+    final params = <String, String>{'driver': driver};
+    if (storeName != null && storeName.isNotEmpty) {
+      params['store_name'] = storeName;
+    }
+    if (filters != null && filters.isNotEmpty) {
+      params['filters'] = jsonEncode(filters);
+    }
+
+    final uri = Uri.parse(
+      ApiConstants.listAvailableDeliveries,
+    ).replace(queryParameters: params);
+    _logApi('list_available_deliveries request', uri.toString());
+
+    final sw = Stopwatch()..start();
+    final resp = await _get(uri, headers: await _authHeaders());
+    final int networkMs = sw.elapsedMilliseconds;
+
+    if (resp.statusCode == 401) {
+      throw Exception('401: Invalid API credentials.');
+    }
+    if (resp.statusCode == 403) {
+      throw Exception('403: Access denied. Check API permissions.');
+    }
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final message = decoded['message'];
+    if (message is! List) return <ExternalDelivery>[];
+
+    final result = message
+        .whereType<Map<String, dynamic>>()
+        .map(ExternalDelivery.fromJson)
+        .toList();
+
+    // The list UI inserts a StoreHeader whenever store_name changes between
+    // consecutive rows, so rows must be grouped by store. A custom method's
+    // ordering isn't guaranteed, so enforce the same order the generic path used
+    // (store_name asc, then modified desc). distance_km is parsed onto the model
+    // but intentionally not used for ordering.
+    result.sort((a, b) {
+      final byStore = a.storeName.compareTo(b.storeName);
+      if (byStore != 0) return byStore;
+      return b.modified.compareTo(a.modified);
+    });
+
+    _logApi(
+      'list_available_deliveries timing',
+      'network=${networkMs}ms rows=${result.length} '
+          'storeFilter=${storeName ?? "ALL"}',
+    );
+    return result;
+  }
+
   /// Fetches a full page of order details in a single HTTP call using the
   /// Frappe desk reportview endpoint. This endpoint is used by the Frappe UI
   /// itself and is not subject to the in_list_view field restriction that the
