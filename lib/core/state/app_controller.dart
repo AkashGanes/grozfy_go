@@ -194,6 +194,8 @@ class AppController extends ChangeNotifier {
   List<String> _uomOptions = <String>[];
   List<String> _vehicleFuelOptions = <String>[];
   Set<String> _vehicleRequiredFields = <String>{};
+  List<String> _bankAccountTypeOptions = <String>[];
+  Set<String> _bankRequiredFields = <String>{};
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
@@ -369,6 +371,10 @@ class AppController extends ChangeNotifier {
       List<String>.unmodifiable(_vehicleFuelOptions);
   Set<String> get vehicleRequiredFields =>
       Set<String>.unmodifiable(_vehicleRequiredFields);
+  List<String> get bankAccountTypeOptions =>
+      List<String>.unmodifiable(_bankAccountTypeOptions);
+  Set<String> get bankRequiredFields =>
+      Set<String>.unmodifiable(_bankRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
   DateTime? get onlineSince => _onlineSince;
@@ -2328,6 +2334,38 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<void> fetchBankFormOptions() async {
+    try {
+      // Driver-accessible custom method. Replaces the Desk-only
+      // `/api/resource/DocType/Bank Account` meta read that populated the
+      // Account Type picker but returned AuthenticationError for drivers.
+      final Uri uri = Uri.parse(ApiConstants.bankFormOptions);
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+
+      final dynamic config = payload['message'];
+      if (config is! Map<String, dynamic>) {
+        return;
+      }
+
+      List<String> parseStringList(dynamic raw) {
+        if (raw is! List) {
+          return <String>[];
+        }
+        return raw
+            .map((dynamic value) => value?.toString().trim() ?? '')
+            .where((String value) => value.isNotEmpty)
+            .toList();
+      }
+
+      _bankAccountTypeOptions = parseStringList(config['account_type_options']);
+      _bankRequiredFields = parseStringList(config['required_fields']).toSet();
+      notifyListeners();
+    } catch (error) {
+      // Keep existing cached config; surface the failure for debugging.
+      debugPrint('[BankFormConfig] Failed to load bank form options: $error');
+    }
+  }
+
   Future<Map<String, dynamic>?> fetchVehicleByLicensePlate(
     String licensePlate,
   ) async {
@@ -2522,42 +2560,6 @@ class AppController extends ChangeNotifier {
       return values;
     } catch (_) {
       return <String>[];
-    }
-  }
-
-  Future<Map<String, String>> fetchBankAccountLinkDoctypes() async {
-    try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/DocType/Bank%20Account',
-      );
-      final Map<String, dynamic> payload = await _authorizedGet(uri);
-      final dynamic data = payload['data'];
-      if (data is! Map<String, dynamic>) {
-        return <String, String>{};
-      }
-      final dynamic fields = data['fields'];
-      if (fields is! List) {
-        return <String, String>{};
-      }
-
-      final Map<String, String> doctypesByField = <String, String>{};
-      for (final dynamic row in fields) {
-        if (row is! Map<String, dynamic>) {
-          continue;
-        }
-        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
-        final String? fieldtype = _nullIfBlank(row['fieldtype']?.toString());
-        final String? options = _nullIfBlank(row['options']?.toString());
-        if (fieldname == null || fieldtype == null || options == null) {
-          continue;
-        }
-        if (fieldtype == 'Link' || fieldtype == 'Dynamic Link') {
-          doctypesByField[fieldname] = options;
-        }
-      }
-      return doctypesByField;
-    } catch (_) {
-      return <String, String>{};
     }
   }
 
@@ -2916,42 +2918,29 @@ class AppController extends ChangeNotifier {
       body['last_integration_date'] = normalizedLastIntegrationDate;
     }
 
-    try {
-      Map<String, dynamic>? responsePayload;
-      final String? existingName = await _findResourceName(
-        doctype: 'Bank Account',
-        filters: <List<String>>[
-          <String>['Bank Account', 'account_name', '=', normalizedAccountName],
-        ],
-        fields: <String>['name'],
-      );
-      if (existingName != null) {
-        final Uri updateUri = Uri.parse(
-          '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account/${Uri.encodeComponent(existingName)}',
-        );
-        responsePayload = await authorizedPutJson(updateUri, body);
-      } else {
-        final Uri createUri = Uri.parse(
-          '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account',
-        );
-        responsePayload = await _authorizedPostJson(createUri, body);
-      }
+    final String? driver = _nullIfBlank(_driverName);
+    if (driver == null) {
+      return 'Driver not identified — please sign in again';
+    }
+    body['driver'] = driver;
 
-      final dynamic responseData = responsePayload['data'];
+    try {
+      // Driver-callable save. The backend upserts the Bank Account with
+      // elevated permissions (drivers can't write /api/resource/Bank Account),
+      // stamps party_type='Driver'/party server-side, and returns the full
+      // saved doc under `message`.
+      final Uri saveUri = Uri.parse(ApiConstants.saveBankAccount);
+      final Map<String, dynamic> responsePayload = await _authorizedPostJson(
+        saveUri,
+        body,
+      );
+
+      final dynamic responseData = responsePayload['message'];
       final Map<String, dynamic>? raw = responseData is Map<String, dynamic>
           ? responseData
           : null;
-      final String? bankName =
-          _nullIfBlank(raw?['name']?.toString()) ?? existingName;
-      if (bankName != null) {
-        final Map<String, dynamic>? fetched = await _fetchResourceDoc(
-          'Bank Account',
-          bankName,
-        );
-        _submittedBankRaw = fetched ?? raw;
-      } else {
-        _submittedBankRaw = raw;
-      }
+      final String? bankName = _nullIfBlank(raw?['name']?.toString());
+      _submittedBankRaw = raw;
 
       _bank = BankDetails(
         accountNumber: normalizedBankAccountNo ?? normalizedAccountName,

@@ -94,4 +94,22 @@ class ApiConstants {
   // POST/PUT that returned AuthenticationError for non-desk partner drivers.
   static const String saveVehicle =
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.vehicle.save_vehicle';
+
+  // ---------------------------------------------------------------------------
+  // Bank Account endpoints
+  // ---------------------------------------------------------------------------
+
+  // GET → {message: {account_type_options: [...], required_fields: [...]}}.
+  // Driver-accessible source for the KYC bank form; replaces the Desk-only
+  // `/api/resource/DocType/Bank Account` meta read used to populate the
+  // Account Type picker.
+  static const String bankFormOptions =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.bank.bank_form_options';
+
+  // POST: {driver, account_name, bank, ...} → upserts the driver's Bank Account
+  // with elevated permissions (stamps party_type='Driver'/party server-side) and
+  // returns the full saved doc under `message`. Driver-callable replacement for
+  // the `/api/resource/Bank Account` POST/PUT that returned AuthenticationError.
+  static const String saveBankAccount =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.bank.save_bank_account';
 }
