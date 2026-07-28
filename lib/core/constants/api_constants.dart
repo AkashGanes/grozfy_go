@@ -76,4 +76,22 @@ class ApiConstants {
   // screen only.
   static const String listAvailableDeliveries =
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.delivery_radius.list_available_deliveries';
+
+  // ---------------------------------------------------------------------------
+  // Vehicle endpoints
+  // ---------------------------------------------------------------------------
+
+  // GET → {message: {fuel_type_options: [...], required_fields: [...]}}.
+  // Driver-accessible source for the KYC vehicle form config; replaces the
+  // Desk-only `/api/resource/DocType/Vehicle` meta read that returned
+  // AuthenticationError for non-desk partner drivers.
+  static const String vehicleFormOptions =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.vehicle.vehicle_form_options';
+
+  // POST: {driver, license_plate, make, model, ...} → upserts the driver's
+  // Vehicle with elevated permissions and returns the full saved doc under
+  // `message`. Driver-callable replacement for the `/api/resource/Vehicle`
+  // POST/PUT that returned AuthenticationError for non-desk partner drivers.
+  static const String saveVehicle =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.vehicle.save_vehicle';
 }

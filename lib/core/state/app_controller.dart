@@ -2288,52 +2288,43 @@ class AppController extends ChangeNotifier {
 
   Future<void> fetchVehicleFormConfig() async {
     try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/DocType/Vehicle',
-      );
+      // Driver-accessible custom method. Replaces the Desk-only
+      // `/api/resource/DocType/Vehicle` meta read, which returned
+      // AuthenticationError for non-desk partner drivers.
+      final Uri uri = Uri.parse(ApiConstants.vehicleFormOptions);
       final Map<String, dynamic> payload = await _authorizedGet(uri);
-      final dynamic data = payload['data'];
-      if (data is! Map<String, dynamic>) {
-        return;
-      }
-      final dynamic fields = data['fields'];
-      if (fields is! List) {
+
+      // Config is returned under the standard Frappe `message` envelope.
+      final dynamic config = payload['message'];
+      if (config is! Map<String, dynamic>) {
         return;
       }
 
-      final Set<String> requiredFields = <String>{};
-      List<String> fuelOptions = <String>[];
-      for (final dynamic row in fields) {
-        if (row is! Map<String, dynamic>) {
-          continue;
+      List<String> parseStringList(dynamic raw) {
+        if (raw is! List) {
+          return <String>[];
         }
-        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
-        if (fieldname == null) {
-          continue;
-        }
-        final int reqd = int.tryParse(row['reqd']?.toString() ?? '0') ?? 0;
-        final int readOnly =
-            int.tryParse(row['read_only']?.toString() ?? '0') ?? 0;
-        if (reqd == 1 && readOnly == 0) {
-          requiredFields.add(fieldname);
-        }
-
-        if (fieldname == 'fuel_type') {
-          final String? rawOptions = _nullIfBlank(row['options']?.toString());
-          if (rawOptions != null) {
-            fuelOptions = rawOptions
-                .split('\n')
-                .map((value) => value.trim())
-                .where((value) => value.isNotEmpty)
-                .toList();
-          }
-        }
+        return raw
+            .map((dynamic value) => value?.toString().trim() ?? '')
+            .where((String value) => value.isNotEmpty)
+            .toList();
       }
+
+      final List<String> fuelOptions = parseStringList(
+        config['fuel_type_options'],
+      );
+      final Set<String> requiredFields = parseStringList(
+        config['required_fields'],
+      ).toSet();
+
       _vehicleRequiredFields = requiredFields;
       _vehicleFuelOptions = fuelOptions;
       notifyListeners();
-    } catch (_) {
-      // Keep existing cached config
+    } catch (error) {
+      // Keep existing cached config; surface the failure for debugging.
+      debugPrint(
+        '[VehicleFormConfig] Failed to load vehicle form options: $error',
+      );
     }
   }
 
@@ -2766,40 +2757,34 @@ class AppController extends ChangeNotifier {
       body['doors'] = doorsInt;
     }
 
+    final String? driver = _nullIfBlank(_driverName);
+    if (driver == null) {
+      return const VehicleSubmitResult(
+        error: 'Driver not identified — please sign in again',
+      );
+    }
+    body['driver'] = driver;
+
     try {
-      final Uri baseUri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/Vehicle',
+      // Driver-callable save. The backend upserts the Vehicle with elevated
+      // permissions (drivers can't write /api/resource/Vehicle), sets
+      // Driver.vehicle, and returns the full saved doc under `message`.
+      final Uri saveUri = Uri.parse(ApiConstants.saveVehicle);
+      final bool wasUpdate = _vehicle != null;
+      final Map<String, dynamic> responsePayload = await _authorizedPostJson(
+        saveUri,
+        body,
       );
-      final Map<String, dynamic>? existing = await fetchVehicleByLicensePlate(
-        plate,
-      );
-      final String? vehicleName = _nullIfBlank(existing?['name']?.toString());
-      Map<String, dynamic> responsePayload;
-      final bool wasUpdate = vehicleName != null;
 
-      if (vehicleName != null) {
-        final Uri updateUri = Uri.parse(
-          '${ApiConstants.erpBaseUrl}/api/resource/Vehicle/${Uri.encodeComponent(vehicleName)}',
-        );
-        responsePayload = await authorizedPutJson(updateUri, body);
-      } else {
-        responsePayload = await _authorizedPostJson(baseUri, body);
-      }
-
-      final dynamic rawData = responsePayload['data'];
-      final Map<String, dynamic> data = rawData is Map<String, dynamic>
+      final dynamic rawData = responsePayload['message'];
+      final Map<String, dynamic> finalData = rawData is Map<String, dynamic>
           ? rawData
           : body;
-      final String? finalName =
-          _nullIfBlank(data['name']?.toString()) ?? vehicleName;
-      final Map<String, dynamic>? fetched = await fetchVehicleByName(
-        finalName ?? '',
-      );
-      final Map<String, dynamic> finalData = fetched ?? data;
+      final String? finalName = _nullIfBlank(finalData['name']?.toString());
       _submittedVehicleRaw = finalData;
       _vehicle = _vehicleFromApiData(finalData);
       await _persistVehicleIdentity(
-        vehicleName: _nullIfBlank(finalData['name']?.toString()) ?? finalName,
+        vehicleName: finalName,
         licensePlate: plate,
       );
       final SharedPreferences vehicleSubmitPrefs =
@@ -2808,14 +2793,6 @@ class AppController extends ChangeNotifier {
         _prefVehicleRawJson,
         jsonEncode(finalData),
       );
-      // Keep Driver.vehicle in sync so the Driver doc is the source of truth
-      // for vehicle identity after logout (SharedPreferences are cleared).
-      if (finalName != null) {
-        try {
-          await _setDriverField('vehicle', finalName);
-        } catch (_) {
-        }
-      }
       notifyListeners();
       return VehicleSubmitResult(
         vehicleName: finalName,
