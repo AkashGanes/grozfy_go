@@ -47,6 +47,7 @@ class DashboardScreen extends ConsumerStatefulWidget {
 class _DashboardScreenState extends ConsumerState<DashboardScreen>
     with WidgetsBindingObserver {
   bool _licenseDialogShowing = false;
+  bool _profileCompleteDialogShowing = false;
   bool _isNavigating = false;
   late AppController _app;
 
@@ -66,6 +67,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             !_licenseDialogShowing &&
             ModalRoute.of(context)?.isCurrent == true) {
           _showLicenseRemovedDialog();
+        }
+      });
+    }
+    if (_app.justCompletedProfile && !_profileCompleteDialogShowing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            !_profileCompleteDialogShowing &&
+            ModalRoute.of(context)?.isCurrent == true) {
+          _showProfileCompleteDialog();
         }
       });
     }
@@ -115,6 +125,85 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         ),
       ),
     ).then((_) => _licenseDialogShowing = false);
+  }
+
+  void _showProfileCompleteDialog() {
+    _profileCompleteDialogShowing = true;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    const accent = Color(0xFF1AB36A);
+    final cardBg = isDark ? const Color(0xFF1B1E2A) : Colors.white;
+    final chipBg = isDark ? const Color(0xFF14352A) : const Color(0xFFE7F7EE);
+    final titleColor = isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
+    final subtitleColor = isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: cardBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: chipBg),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.celebration_rounded,
+                  color: accent,
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Profile Completed Successfully!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: titleColor,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "You're all set to ride and earn.",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: subtitleColor, height: 1.4),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: accent,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Got it',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ).animate().fadeIn(duration: 220.ms).scale(
+        begin: const Offset(0.92, 0.92),
+        curve: Curves.easeOutBack,
+        duration: 260.ms,
+      ),
+    ).then((_) {
+      _profileCompleteDialogShowing = false;
+      _app.markProfileCompletionAcknowledged();
+    });
   }
 
   @override
@@ -666,20 +755,93 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
 
     final orders = app.activeOrders;
 
-    // ── No orders ─────────────────────────────────────────────────────────────
-    if (orders.isEmpty) {
+    // ── Incomplete profile ───────────────────────────────────────────────────
+    if (orders.isNotEmpty && app.profileCompleteness.percentage < 1.0) {
       return _placeholder(
         context,
         Row(
           children: [
-            Expanded(child: Text(app.t('no_active_order'))),
+            Expanded(
+              child: Text(
+                'Complete your profile to view and manage active orders.',
+              ),
+            ),
             TextButton(
-              onPressed: () =>
-                  Navigator.of(context).pushNamed(AppRoutes.orderListing),
-              child: Text(app.t('browse_nearby')),
+              onPressed: () => showProfileCompletenessSheet(context),
+              child: const Text('Complete Profile'),
             ),
           ],
         ),
+      );
+    }
+
+    // ── No orders ─────────────────────────────────────────────────────────────
+    if (orders.isEmpty) {
+      return _placeholder(
+        context,
+        Material(
+          color: const Color(0xFF1F4FB6),
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () =>
+                Navigator.of(context).pushNamed(AppRoutes.orderListing),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 14,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.explore_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          app.t('browse_nearby'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          app.t('no_active_order'),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.85),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        heading: app.t('available_orders'),
       );
     }
 
@@ -1349,14 +1511,15 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 
-  Widget _placeholder(BuildContext context, Widget body) {
+  Widget _placeholder(BuildContext context, Widget body, {String? heading}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 4, bottom: 10),
           child: Text(
-            widget.app.t('active_order'),
+            heading ?? widget.app.t('active_order'),
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
@@ -1436,6 +1599,14 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     DeliveryOrder order,
     ({String label, OrderProgressStatus next}) transition,
   ) async {
+    if (app.profileCompleteness.percentage < 1.0) {
+      showInfoSnack(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!app.isOnline) {
+      showInfoSnack(context, 'You are offline — go online to process orders.');
+      return;
+    }
     final navigator = Navigator.of(context);
 
     if (transition.next == OrderStatus.delivered) {

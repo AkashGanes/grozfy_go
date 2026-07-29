@@ -932,6 +932,14 @@ class _ExternalDeliveryTripDetailsScreenState
     );
 
     if (confirmed != true || !mounted) return;
+    if (ref.read(appControllerProvider).profileCompleteness.percentage < 1.0) {
+      showInfoSnack(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!ref.read(appControllerProvider).isOnline) {
+      showInfoSnack(context, 'You are offline — go online to process orders.');
+      return;
+    }
 
     // Block if any delivery stop is still in a non-terminal state.
     const activeStatuses = {'pending', 'out for delivery', 'out_for_delivery'};
@@ -2084,6 +2092,14 @@ class _ExternalDeliveryTripDetailsScreenState
     String targetStatusLabel,
     Future<void> Function() commit,
   ) async {
+    if (ref.read(appControllerProvider).profileCompleteness.percentage < 1.0) {
+      showInfoSnack(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!ref.read(appControllerProvider).isOnline) {
+      showInfoSnack(context, 'You are offline — go online to process orders.');
+      return;
+    }
     final stopKey = '${ps.pickupJob}-${ps.stop}';
     _controller.beginAction(stopKey);
     try {
@@ -2154,6 +2170,14 @@ class _ExternalDeliveryTripDetailsScreenState
   ) async {
     final current = stop.status.trim().toLowerCase();
     if (current == newStatus.trim().toLowerCase()) return;
+    if (ref.read(appControllerProvider).profileCompleteness.percentage < 1.0) {
+      showInfoSnack(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!ref.read(appControllerProvider).isOnline) {
+      showInfoSnack(context, 'You are offline — go online to process orders.');
+      return;
+    }
 
     // Intercept "Delivered" — show proof-of-delivery capture sheet
     if (newStatus == 'Delivered') {

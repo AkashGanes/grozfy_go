@@ -123,6 +123,14 @@ class _PickupJobDetailScreenState
       showInfoSnack(context, 'You are offline — connect and try again.');
       return;
     }
+    if (ref.read(appControllerProvider).profileCompleteness.percentage < 1.0) {
+      showInfoSnack(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!ref.read(appControllerProvider).isOnline) {
+      showInfoSnack(context, 'You are offline — go online to process orders.');
+      return;
+    }
 
     setState(() => _isSubmitting = true);
     try {
@@ -189,6 +197,14 @@ class _PickupJobDetailScreenState
       showInfoSnack(context, 'You are offline — connect and try again.');
       return;
     }
+    if (ref.read(appControllerProvider).profileCompleteness.percentage < 1.0) {
+      showInfoSnack(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!ref.read(appControllerProvider).isOnline) {
+      showInfoSnack(context, 'You are offline — go online to process orders.');
+      return;
+    }
 
     setState(() => _isSubmitting = true);
     try {
@@ -234,6 +250,14 @@ class _PickupJobDetailScreenState
     if (result == null || !mounted) return;
     if (!ConnectivityService().isConnected) {
       showInfoSnack(context, 'You are offline — connect and try again.');
+      return;
+    }
+    if (ref.read(appControllerProvider).profileCompleteness.percentage < 1.0) {
+      showInfoSnack(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!ref.read(appControllerProvider).isOnline) {
+      showInfoSnack(context, 'You are offline — go online to process orders.');
       return;
     }
 
@@ -311,6 +335,14 @@ class _PickupJobDetailScreenState
     if (confirmed != true || !mounted) return;
     if (!ConnectivityService().isConnected) {
       showInfoSnack(context, 'You are offline — connect and try again.');
+      return;
+    }
+    if (ref.read(appControllerProvider).profileCompleteness.percentage < 1.0) {
+      showInfoSnack(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!ref.read(appControllerProvider).isOnline) {
+      showInfoSnack(context, 'You are offline — go online to process orders.');
       return;
     }
 
