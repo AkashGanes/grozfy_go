@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../../core/state/app_scope.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
@@ -490,6 +492,13 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
   }
 
   Future<void> _acceptDelivery(BuildContext context) async {
+    // Offline drivers can't take on work — this accept path creates a trip
+    // directly via the repository, bypassing AppController.acceptOrder, so it
+    // needs its own guard.
+    if (!AppScope.of(context).isOnline) {
+      AppToast.show(context, 'You are Offline. Go Online to accept orders.');
+      return;
+    }
     final navigator = Navigator.of(context);
     AppToast.show(context, 'Creating trip...');
     try {
@@ -616,7 +625,7 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
+                color: context.textSecondary,
               ),
             ),
             const SizedBox(height: 8),
@@ -637,7 +646,7 @@ class _DeliveryDetailsSheetState extends State<_DeliveryDetailsSheet> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey[600],
+                color: context.textSecondary,
               ),
             ),
             const SizedBox(height: 8),

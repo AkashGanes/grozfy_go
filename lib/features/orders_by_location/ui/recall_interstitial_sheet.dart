@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import '../../../core/theme/context_colors.dart';
+
 /// Forced acknowledgement sheet shown the moment a Recall Pending is detected.
 /// Used by the trip details screen, dashboard active-order section, and the
 /// order-progress screen. [isDismissible: false] and [enableDrag: false] are
@@ -26,38 +28,24 @@ class RecallInterstitialSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final bool isDark = context.isDark;
 
     // ── Colors ─────────────────────────────────────────────────────────────────
-    final Color surface = isDark ? const Color(0xFF1B1E2A) : Colors.white;
-    final Color textPrimary = isDark
-        ? const Color(0xFFF2F4F7)
-        : const Color(0xFF101828);
-    final Color textSecondary = isDark
-        ? const Color(0xFFA4ABB8)
-        : const Color(0xFF667085);
-    final Color divider = isDark
-        ? const Color(0xFF2A2F3D)
-        : const Color(0xFFE4E7EC);
-    final Color subtleFill = isDark
-        ? const Color(0xFF252A38)
-        : const Color(0xFFF7F8FA);
-    final Color cancelRed = isDark
-        ? const Color(0xFFFF6370)
-        : const Color(0xFFE8384F);
-    final Color cancelRedBg = isDark
-        ? const Color(0xFF4A1A28)
-        : const Color(0xFFFEF0F0);
+    final Color surface = context.cardColor;
+    final Color textPrimary = context.textPrimary;
+    final Color textSecondary = context.textSecondary;
+    final Color divider = context.borderSubtle;
+    final Color subtleFill = context.surfaceContainer;
+    final Color cancelRed = context.danger;
+    final Color cancelRedBg = context.dangerContainer;
 
+    // Solid CTA button fill (white label) — kept brightness-branched because
+    // the success token is a foreground color, too bright for a filled button.
     final Color ctaGreenBg = isDark
         ? const Color(0xFF14532D)
         : const Color(0xFF16A34A);
-    final Color infoBg = isDark
-        ? const Color(0xFF1A2636)
-        : const Color(0xFFF0F9FF);
-    final Color infoIcon = isDark
-        ? const Color(0xFF93C5FD)
-        : const Color(0xFF2563EB);
+    final Color infoBg = context.infoContainer;
+    final Color infoIcon = context.info;
 
     // ── Labels ────────────────────────────────────────────────────────────────
     final title = recallCount == 1

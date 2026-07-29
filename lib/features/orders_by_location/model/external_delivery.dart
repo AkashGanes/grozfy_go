@@ -297,5 +297,20 @@ extension ExternalDeliveryStatusColor on String {
     'Pending' => const Color(0xFF757575),
     _ => const Color(0xFF757575),
   };
+
+  /// Brightness-aware variant of [statusColor]; the dark shades above are
+  /// unreadable on dark surfaces, so dark mode uses lightened equivalents.
+  Color statusColorIn(BuildContext context) {
+    if (Theme.of(context).brightness != Brightness.dark) return statusColor;
+    return switch (this) {
+      'Delivered' => const Color(0xFF7BD980),
+      'Added to Trip' => const Color(0xFFFFB059),
+      'Failed' => const Color(0xFFFF8484),
+      'Return Initiated' => const Color(0xFFC896F5),
+      'Returned' => const Color(0xFFCDBBB5),
+      'Pending' => const Color(0xFFB6BDCA),
+      _ => const Color(0xFFB6BDCA),
+    };
+  }
 }
 

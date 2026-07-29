@@ -9,7 +9,7 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/providers.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/authed_network_image.dart';
 import '../dashboard/widgets/dashboard_colors.dart';
@@ -470,7 +470,7 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Icon(Icons.error_outline_rounded, size: 48, color: Colors.red),
+        Icon(Icons.error_outline_rounded, size: 48, color: context.danger),
         const SizedBox(height: 12),
         Text(
           message,
@@ -548,12 +548,12 @@ class _MyOrdersScreenState extends ConsumerState<MyOrdersScreen> {
           curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(vertical: 9),
           decoration: BoxDecoration(
-            color: selected ? AppTheme.oceanBlue : Colors.transparent,
+            color: selected ? context.scheme.primary : Colors.transparent,
             borderRadius: BorderRadius.circular(9),
             boxShadow: selected
                 ? [
                     BoxShadow(
-                      color: AppTheme.oceanBlue.withValues(alpha: 0.3),
+                      color: context.scheme.primary.withValues(alpha: 0.3),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -886,7 +886,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
               icon: Icons.settings_outlined,
               label: 'Settings',
               route: AppRoutes.settings,
-              color: const Color(0xFF6B7280),
+              color: context.textSecondary,
             ),
             _divider(),
             _tile(
@@ -912,7 +912,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
               icon: Icons.privacy_tip_outlined,
               label: 'Terms & Privacy',
               route: AppRoutes.settings,
-              color: const Color(0xFF6B7280),
+              color: context.textSecondary,
             ),
           ],
         ).animate().fadeIn(duration: 280.ms, delay: 180.ms).slideY(begin: 0.04, end: 0),
@@ -930,7 +930,7 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade700,
+                  color: context.textSecondary,
                   letterSpacing: 0.4,
                 ),
               ),
@@ -1331,13 +1331,13 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0xFF1AB36A).withValues(alpha: 0.12),
+                color: context.successContainer,
                 borderRadius: BorderRadius.circular(999),
               ),
-              child: const Text(
+              child: Text(
                 'NEW',
                 style: TextStyle(
-                  color: Color(0xFF118A52),
+                  color: context.success,
                   fontSize: 9,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.5,
@@ -1378,7 +1378,8 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
                 Expanded(
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
+                      backgroundColor:
+                          Theme.of(dialogContext).colorScheme.error,
                       foregroundColor: Colors.white,
                     ),
                     onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -1417,26 +1418,26 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: const Color(0xFFE8384F).withValues(alpha: 0.12),
+            color: context.dangerContainer,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: const Icon(
+          child: Icon(
             Icons.logout_rounded,
-            color: Color(0xFFE8384F),
+            color: context.danger,
             size: 19,
           ),
         ),
-        title: const Text(
+        title: Text(
           'Log out',
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: Color(0xFFB7283A),
+            color: context.danger,
           ),
         ),
         trailing: Icon(
           Icons.chevron_right_rounded,
-          color: const Color(0xFFE8384F).withValues(alpha: 0.4),
+          color: context.danger.withValues(alpha: 0.4),
           size: 20,
         ),
         onTap: _confirmAndLogout,
@@ -1462,16 +1463,12 @@ class _OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color cardBg = isDark ? const Color(0xFF1B1E2A) : Colors.white;
-    final Color cardBorder =
-        isDark ? const Color(0xFF2A2F3D) : const Color(0xFFE4E7EC);
-    final Color textPrimary =
-        isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
-    final Color textSecondary =
-        isDark ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
-    const Color accent = Color(0xFF1F5FE8);
-    final statusColor = order.status.statusColor;
+    final Color cardBg = context.cardColor;
+    final Color cardBorder = context.borderSubtle;
+    final Color textPrimary = context.textPrimary;
+    final Color textSecondary = context.textSecondary;
+    final Color accent = context.scheme.primary;
+    final statusColor = order.status.statusColorIn(context);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1490,8 +1487,7 @@ class _OrderCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black
-                          .withValues(alpha: isDark ? 0.25 : 0.04),
+                      color: context.shadowColor,
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -1546,9 +1542,7 @@ class _OrderCard extends StatelessWidget {
                           _CardMetaRow(
                             icon: Icons.store_rounded,
                             iconColor: const Color(0xFF2D6CDF),
-                            iconBg: isDark
-                                ? const Color(0xFF1A2C4F)
-                                : const Color(0xFFE5EEFB),
+                            iconBg: context.infoContainer,
                             label: 'Store',
                             value: order.storeName.isNotEmpty
                                 ? order.storeName
@@ -1559,9 +1553,7 @@ class _OrderCard extends StatelessWidget {
                           _CardMetaRow(
                             icon: Icons.person_rounded,
                             iconColor: const Color(0xFF1AB36A),
-                            iconBg: isDark
-                                ? const Color(0xFF14352A)
-                                : const Color(0xFFE7F7EE),
+                            iconBg: context.successContainer,
                             label: 'Customer',
                             value: order.customerName.isNotEmpty
                                 ? order.customerName
@@ -1572,7 +1564,7 @@ class _OrderCard extends StatelessWidget {
                           _CardMetaRow(
                             icon: Icons.location_on_rounded,
                             iconColor: const Color(0xFF7C3AED),
-                            iconBg: isDark
+                            iconBg: context.isDark
                                 ? const Color(0xFF2D2148)
                                 : const Color(0xFFEFE9FE),
                             label: 'Drop',
@@ -1586,7 +1578,7 @@ class _OrderCard extends StatelessWidget {
                             _CardMetaRow(
                               icon: Icons.schedule_rounded,
                               iconColor: const Color(0xFFF38B19),
-                              iconBg: isDark
+                              iconBg: context.isDark
                                   ? const Color(0xFF3A2613)
                                   : const Color(0xFFFFEFDA),
                               label: 'Date',

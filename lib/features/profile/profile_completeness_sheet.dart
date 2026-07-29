@@ -2,27 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
-
-bool _isDark(BuildContext c) => Theme.of(c).brightness == Brightness.dark;
-Color _cardBg(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF1B1E2A) : Colors.white;
-Color _cardBorder(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF2A2F3D) : const Color(0xFFEFF1F4);
-Color _textPrimary(BuildContext c) =>
-    _isDark(c) ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
-Color _textSecondary(BuildContext c) =>
-    _isDark(c) ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
-Color _textTertiary(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF98A2B3) : const Color(0xFF475467);
-Color _progressTrack(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF2A2F3D) : const Color(0xFFE9EDF1);
-Color _bannerBg(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF14352A) : const Color(0xFFE7F7EE);
-Color _supportBg(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF1B2A3F) : const Color(0xFFEAF1FB);
-Color _iconChipBg(BuildContext c) =>
-    _isDark(c) ? const Color(0xFF252A38) : Colors.white;
 
 void showProfileCompletenessSheet(BuildContext context) {
   showAppBottomSheet<void>(
@@ -107,19 +88,16 @@ class _ProgressCard extends StatelessWidget {
   final int remaining;
   final double progress;
 
-  static const _accent = Color(0xFF1AB36A);
-
   @override
   Widget build(BuildContext context) {
-    final isDark = _isDark(context);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _cardBg(context),
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.04),
+            color: context.shadowColor,
             blurRadius: 14,
             offset: const Offset(0, 4),
           ),
@@ -140,16 +118,17 @@ class _ProgressCard extends StatelessWidget {
                   child: CircularProgressIndicator(
                     value: progress,
                     strokeWidth: 6,
-                    backgroundColor: _progressTrack(context),
-                    valueColor: const AlwaysStoppedAnimation<Color>(_accent),
+                    backgroundColor: context.borderSubtle,
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(context.success),
                   ),
                 ),
                 Text(
                   '$percent%',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    color: _accent,
+                    color: context.success,
                   ),
                 ),
               ],
@@ -166,7 +145,7 @@ class _ProgressCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
-                    color: _textPrimary(context),
+                    color: context.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -176,7 +155,7 @@ class _ProgressCard extends StatelessWidget {
                       : '$completedCount of $totalCount steps completed',
                   style: TextStyle(
                     fontSize: 13,
-                    color: _textSecondary(context),
+                    color: context.textSecondary,
                     height: 1.35,
                   ),
                 ),
@@ -197,7 +176,7 @@ class _UnlockBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _bannerBg(context),
+        color: context.successContainer,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -206,13 +185,13 @@ class _UnlockBanner extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: _iconChipBg(context),
+              color: context.isDark ? context.surfaceContainer : Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
             alignment: Alignment.center,
-            child: const Icon(
+            child: Icon(
               Icons.card_giftcard_rounded,
-              color: Color(0xFF118A52),
+              color: context.success,
               size: 24,
             ),
           ),
@@ -226,13 +205,13 @@ class _UnlockBanner extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
-                    color: _textPrimary(context),
+                    color: context.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 3),
                 Text(
                   'Finish remaining steps to start accepting orders.',
-                  style: TextStyle(fontSize: 12, color: _textTertiary(context)),
+                  style: TextStyle(fontSize: 12, color: context.textTertiary),
                 ),
               ],
             ),
@@ -287,7 +266,7 @@ class _CompletenessItemRow extends StatelessWidget {
     final completed = item.isCompleted;
     final tone = completed ? _doneColor : _pendingColor;
 
-    final cardBg = _cardBg(context);
+    final cardBg = context.cardColor;
     return Material(
       color: cardBg,
       borderRadius: BorderRadius.circular(16),
@@ -299,7 +278,7 @@ class _CompletenessItemRow extends StatelessWidget {
           decoration: BoxDecoration(
             color: cardBg,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _cardBorder(context)),
+            border: Border.all(color: context.borderSubtle),
           ),
           child: Row(
             children: [
@@ -322,7 +301,7 @@ class _CompletenessItemRow extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w800,
-                        color: _textPrimary(context),
+                        color: context.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -330,7 +309,7 @@ class _CompletenessItemRow extends StatelessWidget {
                       description,
                       style: TextStyle(
                         fontSize: 12,
-                        color: _textSecondary(context),
+                        color: context.textSecondary,
                         height: 1.35,
                       ),
                     ),
@@ -373,7 +352,7 @@ class _CompleteButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: _cardBg(context),
+      color: context.cardColor,
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onTap,
@@ -415,10 +394,12 @@ class _SupportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final linkColor =
+        context.isDark ? context.info : const Color(0xFF1F4FB6);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _supportBg(context),
+        color: context.infoContainer,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -427,13 +408,13 @@ class _SupportCard extends StatelessWidget {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: _iconChipBg(context),
+              color: context.isDark ? context.surfaceContainer : Colors.white,
               borderRadius: BorderRadius.circular(12),
             ),
             alignment: Alignment.center,
-            child: const Icon(
+            child: Icon(
               Icons.headset_mic_outlined,
-              color: Color(0xFF1F4FB6),
+              color: linkColor,
               size: 22,
             ),
           ),
@@ -447,32 +428,32 @@ class _SupportCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
-                    color: _textPrimary(context),
+                    color: context.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   "We're here to help you 24/7",
-                  style: TextStyle(fontSize: 12, color: _textTertiary(context)),
+                  style: TextStyle(fontSize: 12, color: context.textTertiary),
                 ),
               ],
             ),
           ),
           GestureDetector(
             onTap: onTap,
-            child: const Row(
+            child: Row(
               children: [
                 Text(
                   'Contact Support',
                   style: TextStyle(
-                    color: Color(0xFF1F4FB6),
+                    color: linkColor,
                     fontWeight: FontWeight.w800,
                     fontSize: 13,
                   ),
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: Color(0xFF1F4FB6),
+                  color: linkColor,
                   size: 18,
                 ),
               ],

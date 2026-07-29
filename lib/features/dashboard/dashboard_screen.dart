@@ -12,6 +12,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
@@ -592,17 +593,11 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
   }
 
   String? _getTripIdForOrder(String orderId) {
-    // Access trip ID through the activeTripIds exposed by AppController.
-    // We use the activeTripId getter with a temporary index switch.
-    final orders = widget.app.activeOrders;
-    final idx = orders.indexWhere((o) => o.orderId == orderId);
-    if (idx == -1) return null;
-    // Temporarily switch viewed index to get the right tripId.
-    final savedIdx = widget.app.currentlyViewedOrderIndex;
-    widget.app.setViewedOrderIndex(idx);
-    final tripId = widget.app.activeTripId;
-    widget.app.setViewedOrderIndex(savedIdx);
-    return tripId;
+    // Read the trip ID directly from AppController's orderId → tripId map.
+    // (Do NOT switch the viewed-order index here: that fires notifyListeners
+    // and, when called from initState/build, throws "Tried to modify a
+    // provider while the widget tree was building".)
+    return widget.app.tripIdForOrder(orderId);
   }
 
   // ── Interstitial ─────────────────────────────────────────────────────────────
@@ -882,7 +877,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1F4FB6),
+                      color: context.scheme.primary,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: const Row(
@@ -994,10 +989,10 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                 const SizedBox(width: 12),
                 Text(
                   '${_currentPageIndex + 1} of ${orders.length}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF667085),
+                    color: context.textSecondary,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1043,16 +1038,12 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
     final Color surface = DashColors.cardBg(context);
     final Color divider = DashColors.cardBorder(context);
 
-    // 2026 palette — vivid red accent for cancellation status.
-    const Color cancelRed = Color(0xFFE8384F);
-    final Color cancelRedDark = Color(0xFFFF6370); // bright red for dark mode
-    final Color cancelRedBg = isDark
-        ? const Color(0xFF4A1A28)
-        : const Color(0xFFFEF0F0);
+    // Cancellation status uses the theme's brightness-aware danger tokens.
+    final Color cancelRedBg = context.dangerContainer;
     final Color cancelRedBorder = isDark
         ? const Color(0xFF7A2E40)
         : const Color(0xFFFCD6D6);
-    final Color cancelRedFg = isDark ? cancelRedDark : cancelRed;
+    final Color cancelRedFg = context.danger;
 
     final String itemLabel = data.itemCount > 0
         ? '${data.itemCount} item${data.itemCount == 1 ? '' : 's'} to return'
@@ -1074,7 +1065,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                 border: Border.all(color: divider),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.28 : 0.06),
+                    color: context.shadowColor,
                     blurRadius: 24,
                     offset: const Offset(0, 8),
                   ),
@@ -1406,17 +1397,13 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                                           Icon(
                                             Icons.call_rounded,
                                             size: 12,
-                                            color: isDark
-                                                ? const Color(0xFF4ADE80)
-                                                : const Color(0xFF16A34A),
+                                            color: context.success,
                                           ),
                                           const SizedBox(width: 4),
                                           Text(
                                             'Call',
                                             style: TextStyle(
-                                              color: isDark
-                                                  ? const Color(0xFF4ADE80)
-                                                  : const Color(0xFF16A34A),
+                                              color: context.success,
                                               fontSize: 11,
                                               fontWeight: FontWeight.w700,
                                             ),
@@ -1460,9 +1447,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                                   icon: Icon(
                                     Icons.navigation_rounded,
                                     size: 16,
-                                    color: isDark
-                                        ? const Color(0xFF93C5FD)
-                                        : const Color(0xFF2563EB),
+                                    color: context.info,
                                   ),
                                   label: Text(
                                     'Navigate',
@@ -1483,7 +1468,7 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                               height: 46,
                               child: ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1F4FB6),
+                                  backgroundColor: context.scheme.primary,
                                   foregroundColor: Colors.white,
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
@@ -1534,18 +1519,18 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w800,
-              color: isDark ? const Color(0xFFF2F4F7) : const Color(0xFF101828),
+              color: context.textPrimary,
             ),
           ),
         ),
         Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1B1E2A) : Colors.white,
+            color: context.cardColor,
             borderRadius: BorderRadius.circular(22),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.06),
+                color: context.shadowColor,
                 blurRadius: 18,
                 offset: const Offset(0, 6),
               ),
@@ -1815,7 +1800,7 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
     final statusNorm = job.status.trim().toLowerCase();
     final statusColor = statusNorm == 'picked up'
         ? const Color(0xFF35C2B5)
-        : AppTheme.oceanBlue;
+        : context.scheme.primary;
 
     return Padding(
       padding: const EdgeInsets.only(top: 10),
@@ -1826,10 +1811,10 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(
-            color: AppTheme.oceanBlue.withValues(alpha: 0.06),
+            color: context.scheme.primary.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: AppTheme.oceanBlue.withValues(alpha: 0.20),
+              color: context.scheme.primary.withValues(alpha: 0.20),
             ),
           ),
           child: Row(
@@ -1838,13 +1823,13 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+                  color: context.scheme.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.inventory_2_outlined,
                   size: 16,
-                  color: AppTheme.oceanBlue,
+                  color: context.scheme.primary,
                 ),
               ),
               const SizedBox(width: 12),
@@ -1854,8 +1839,8 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
                   children: [
                     Text(
                       job.name,
-                      style: const TextStyle(
-                        color: AppTheme.nightBlue,
+                      style: TextStyle(
+                        color: context.textPrimary,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1863,8 +1848,8 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
                     if (job.customerName.isNotEmpty)
                       Text(
                         job.customerName,
-                        style: const TextStyle(
-                          color: Colors.black45,
+                        style: TextStyle(
+                          color: context.textSecondary,
                           fontSize: 11,
                         ),
                         maxLines: 1,
@@ -1890,10 +1875,10 @@ class _ActivePickupJobSectionState extends State<_ActivePickupJobSection> {
                 ),
               ),
               const SizedBox(width: 6),
-              const Icon(
+              Icon(
                 Icons.chevron_right_rounded,
                 size: 18,
-                color: Colors.black26,
+                color: context.iconMuted,
               ),
             ],
           ),

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 import 'auth_widgets.dart';
 
@@ -137,7 +138,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
     return '$m:${s.toString().padLeft(2, '0')}';
   }
 
-  Widget _buildOtpBox(int index, String otp, bool isDark, Color textColor) {
+  Widget _buildOtpBox(int index, String otp) {
     final bool filled = index < otp.length;
     final bool isActive = index == otp.length && _focusNode.hasFocus;
     return AnimatedContainer(
@@ -145,20 +146,14 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       width: 46,
       height: 56,
       decoration: BoxDecoration(
-        color: filled
-            ? (isDark ? const Color(0xFF2A2A3E) : Colors.white)
-            : (isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : const Color(0xFFF4F7FB)),
+        color: filled ? context.cardColor : context.surfaceContainer,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isActive
-              ? AppTheme.nightBlue
+              ? context.textPrimary
               : filled
                   ? AppTheme.oceanBlue
-                  : (isDark
-                        ? Colors.white24
-                        : const Color(0xFFD0D9E6)),
+                  : context.borderStrong,
           width: isActive || filled ? 2 : 1.5,
         ),
       ),
@@ -168,7 +163,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w800,
-            color: textColor,
+            color: context.textPrimary,
           ),
         ),
       ),
@@ -180,9 +175,8 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
     final app = ref.watch(appControllerProvider);
     final theme = Theme.of(context);
     final bool isDark = theme.brightness == Brightness.dark;
-    final Color textColor = isDark ? Colors.white : AppTheme.nightBlue;
-    final Color mutedColor =
-        isDark ? Colors.white54 : const Color(0xFF8A9BB0);
+    final Color textColor = context.textPrimary;
+    final Color mutedColor = context.textSecondary;
     final String otp = _otpCtrl.text;
     final bool canSubmit = otp.length == 6 && !_busy;
 
@@ -201,9 +195,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.white,
+                    color: context.cardColor,
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: isDark
                         ? null
@@ -244,9 +236,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                   vertical: 11,
                 ),
                 decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : const Color(0xFFF1F4F9),
+                  color: context.surfaceContainer,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -295,7 +285,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: List.generate(
                         6,
-                        (i) => _buildOtpBox(i, otp, isDark, textColor),
+                        (i) => _buildOtpBox(i, otp),
                       ),
                     ),
                     // Hidden TextField — captures keyboard input
@@ -369,15 +359,11 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: canSubmit
                       ? AppTheme.nightBlue
-                      : (isDark
-                            ? Colors.grey.shade800
-                            : Colors.grey.shade300),
+                      : context.surfaceContainer,
                   foregroundColor:
-                      canSubmit ? Colors.white : Colors.grey.shade500,
-                  disabledBackgroundColor: isDark
-                      ? Colors.grey.shade800
-                      : Colors.grey.shade300,
-                  disabledForegroundColor: Colors.grey.shade500,
+                      canSubmit ? Colors.white : context.textDisabled,
+                  disabledBackgroundColor: context.surfaceContainer,
+                  disabledForegroundColor: context.textDisabled,
                   minimumSize: const Size.fromHeight(56),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),

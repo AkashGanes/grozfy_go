@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/context_colors.dart';
 import '../../../core/utils/call_utils.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_shell.dart';
@@ -246,7 +247,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(backgroundColor: context.danger),
             child: const Text('Clear'),
           ),
         ],
@@ -662,9 +663,9 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        icon: const Icon(
+        icon: Icon(
           Icons.location_on_rounded,
-          color: Color(0xFF2E7D32),
+          color: context.success,
           size: 48,
         ),
         title: const Text('You have arrived!', textAlign: TextAlign.center),
@@ -673,7 +674,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
           children: [
             Text(
               '${_formatDistance(_distanceToDestination)} from destination',
-              style: const TextStyle(fontSize: 14, color: Colors.black54),
+              style: TextStyle(fontSize: 14, color: context.textSecondary),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -689,8 +690,8 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
           OutlinedButton(
             onPressed: () => Navigator.pop(ctx, false),
             style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.black54,
-              side: const BorderSide(color: Colors.black26),
+              foregroundColor: context.textSecondary,
+              side: BorderSide(color: context.borderStrong),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -809,9 +810,9 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          icon: const Icon(
+          icon: Icon(
             Icons.check_circle_rounded,
-            color: Color(0xFF2E7D32),
+            color: context.success,
             size: 52,
           ),
           title: const Text('Delivered!'),
@@ -901,15 +902,15 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
             Icon(
               Icons.warning_amber_rounded,
-              color: Color(0xFFE65100),
+              color: context.warning,
               size: 28,
             ),
-            SizedBox(width: 10),
-            Text('Cancel Delivery?'),
+            const SizedBox(width: 10),
+            const Text('Cancel Delivery?'),
           ],
         ),
         content: const Text(
@@ -923,7 +924,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFC62828),
+              backgroundColor: context.danger,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(ctx, true),
@@ -989,9 +990,9 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(
+                Icon(
                   Icons.error_outline_rounded,
-                  color: Colors.redAccent,
+                  color: context.danger,
                   size: 36,
                 ),
                 const SizedBox(height: 8),
@@ -1119,7 +1120,7 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   Widget _buildContent() {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final detail = _detail!;
-    final statusColor = detail.status.statusColor;
+    final statusColor = detail.status.statusColorIn(context);
     final s = detail.status.toLowerCase();
 
     return Stack(

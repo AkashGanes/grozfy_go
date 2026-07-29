@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 import 'auth_widgets.dart';
 
@@ -50,13 +51,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final app = ref.watch(appControllerProvider);
     final theme = Theme.of(context);
     final bool isDark = theme.brightness == Brightness.dark;
-    final Color textColor = isDark ? Colors.white : AppTheme.nightBlue;
-    final Color mutedColor =
-        isDark ? Colors.white54 : const Color(0xFF8A9BB0);
-    final Color inputBg =
-        isDark ? theme.colorScheme.surface : Colors.white;
-    final Color borderColor =
-        isDark ? Colors.white12 : const Color(0xFFDDE3EC);
+    final Color textColor = context.textPrimary;
+    final Color mutedColor = context.textSecondary;
+    final Color inputBg = context.cardColor;
+    final Color borderColor = context.borderSubtle;
 
     return AuthBackground(
       child: SafeArea(
@@ -110,9 +108,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white.withValues(alpha: 0.08)
-                            : const Color(0xFFF1F4F9),
+                        color: context.surfaceContainer,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -183,7 +179,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         padding: const EdgeInsets.only(right: 12),
                         child: Icon(
                           Icons.check_circle_rounded,
-                          color: Colors.green.shade500,
+                          color: context.success,
                           size: 20,
                         ),
                       ),
@@ -213,15 +209,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _isMobileValid
                       ? AppTheme.nightBlue
-                      : (isDark
-                            ? Colors.grey.shade800
-                            : Colors.grey.shade300),
+                      : context.surfaceContainer,
                   foregroundColor:
-                      _isMobileValid ? Colors.white : Colors.grey.shade500,
-                  disabledBackgroundColor: isDark
-                      ? Colors.grey.shade800
-                      : Colors.grey.shade300,
-                  disabledForegroundColor: Colors.grey.shade500,
+                      _isMobileValid ? Colors.white : context.textDisabled,
+                  disabledBackgroundColor: context.surfaceContainer,
+                  disabledForegroundColor: context.textDisabled,
                   minimumSize: const Size.fromHeight(56),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),

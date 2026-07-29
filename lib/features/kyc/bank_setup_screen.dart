@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
@@ -229,7 +230,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     }
 
     return Scaffold(
-      backgroundColor: KycColors.pageBg(context),
       body: SafeArea(
         child: Stack(
           children: [
@@ -339,7 +339,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
                                     _ifscLookupError!,
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: Colors.red.shade600,
+                                      color: context.danger,
                                     ),
                                   ),
                                 ),
@@ -356,7 +356,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
                                         child: Icon(
                                           Icons.close_rounded,
                                           size: 18,
-                                          color: KycColors.textHint(context),
+                                          color: context.textTertiary,
                                         ),
                                       )
                                     : null,
@@ -439,7 +439,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       label: 'Bank *',
       trailing: Icon(
         Icons.keyboard_arrow_down_rounded,
-        color: KycColors.textHint(context),
+        color: context.textTertiary,
       ),
       onTap: () async {
         final String? selected = await _pickBank();
@@ -456,8 +456,8 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
             fontSize: 14,
             fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
             color: hasValue
-                ? KycColors.textPrimary(context)
-                : KycColors.textHint(context),
+                ? context.textPrimary
+                : context.textTertiary,
           ),
         ),
       ),
@@ -472,7 +472,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       label: 'Account Type',
       trailing: Icon(
         Icons.keyboard_arrow_down_rounded,
-        color: KycColors.textHint(context),
+        color: context.textTertiary,
       ),
       onTap: !canOpen
           ? null
@@ -495,8 +495,8 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
             fontSize: 14,
             fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
             color: hasValue
-                ? KycColors.textPrimary(context)
-                : KycColors.textHint(context),
+                ? context.textPrimary
+                : context.textTertiary,
           ),
         ),
       ),
@@ -524,7 +524,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
     if (_ifscLookupError != null) {
       return Icon(
         Icons.error_outline_rounded,
-        color: Colors.red.shade400,
+        color: context.danger,
         size: 20,
       );
     }
@@ -541,7 +541,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
               ? Icons.visibility_off_outlined
               : Icons.visibility_outlined,
           size: 20,
-          color: KycColors.textHint(context),
+          color: context.textTertiary,
         ),
       ),
     );
@@ -569,10 +569,10 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
       inputFormatters: inputFormatters,
       style: kycInputStyle(context).copyWith(
         color: readOnly
-            ? KycColors.textSecondary(context)
-            : KycColors.textPrimary(context),
+            ? context.textSecondary
+            : context.textPrimary,
       ),
-      decoration: kycHintDecoration(hint),
+      decoration: kycHintDecoration(context, hint),
     );
   }
 }
@@ -638,7 +638,7 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: KycColors.textSecondary(context),
+                color: context.textSecondary,
                 letterSpacing: 0.4,
               ),
             ),
@@ -675,7 +675,7 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
-                color: KycColors.textPrimary(context),
+                color: context.textPrimary,
               ),
             ),
             const SizedBox(height: 4),
@@ -683,7 +683,7 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
               'You can still use what you typed.',
               style: TextStyle(
                 fontSize: 13,
-                color: KycColors.textSecondary(context),
+                color: context.textSecondary,
               ),
             ),
             const SizedBox(height: 16),
@@ -729,7 +729,7 @@ class _LinkSearchBottomSheetState extends State<_LinkSearchBottomSheet> {
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w800,
-              color: KycColors.textPrimary(context),
+              color: context.textPrimary,
             ),
           ),
         ],

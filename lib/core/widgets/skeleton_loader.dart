@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-import '../theme/app_theme.dart';
+import '../theme/context_colors.dart';
 
 class SkeletonLine extends StatelessWidget {
   const SkeletonLine({
@@ -21,7 +21,7 @@ class SkeletonLine extends StatelessWidget {
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+        color: context.surfaceContainer,
         borderRadius: BorderRadius.circular(borderRadius),
       ),
     );
@@ -42,7 +42,7 @@ class SkeletonCircle extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: AppTheme.oceanBlue.withValues(alpha: 0.12),
+        color: context.surfaceContainer,
         shape: BoxShape.circle,
       ),
     );
@@ -73,11 +73,11 @@ class SkeletonCard extends StatelessWidget {
               ? scheme.outline.withValues(alpha: 0.2)
               : Colors.white.withValues(alpha: 0.7),
         ),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x140A1D3A),
+            color: context.shadowColor,
             blurRadius: 18,
-            offset: Offset(0, 10),
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -133,7 +133,7 @@ class _SkeletonItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final highlightColor = shimmerColor ?? AppTheme.oceanBlue.withValues(alpha: 0.06);
+    final highlightColor = shimmerColor ?? context.fillMuted;
 
     return SkeletonCard(
       child: Row(
@@ -219,7 +219,7 @@ class SkeletonListTile extends StatelessWidget {
         .animate(onPlay: (controller) => controller.repeat())
         .shimmer(
           duration: 1200.ms,
-          color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+          color: context.fillMuted,
         );
   }
 }
@@ -254,7 +254,7 @@ class SkeletonFormField extends StatelessWidget {
         .animate(onPlay: (controller) => controller.repeat())
         .shimmer(
           duration: 1200.ms,
-          color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+          color: context.fillMuted,
         );
   }
 }
@@ -270,24 +270,24 @@ class SkeletonStatsGrid extends StatelessWidget {
       children: [
         Row(
           children: [
-            Expanded(child: _skeletonStatTile()),
+            Expanded(child: _skeletonStatTile(context)),
             const SizedBox(width: 10),
-            Expanded(child: _skeletonStatTile()),
+            Expanded(child: _skeletonStatTile(context)),
           ],
         ),
         const SizedBox(height: 10),
         Row(
           children: [
-            Expanded(child: _skeletonStatTile()),
+            Expanded(child: _skeletonStatTile(context)),
             const SizedBox(width: 10),
-            Expanded(child: _skeletonStatTile()),
+            Expanded(child: _skeletonStatTile(context)),
           ],
         ),
       ],
     );
   }
 
-  Widget _skeletonStatTile() {
+  Widget _skeletonStatTile(BuildContext context) {
     return SkeletonCard(
       padding: const EdgeInsets.all(14),
       child: Column(
@@ -310,7 +310,7 @@ class SkeletonStatsGrid extends StatelessWidget {
         .animate(onPlay: (controller) => controller.repeat())
         .shimmer(
           duration: 1200.ms,
-          color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+          color: context.fillMuted,
         );
   }
 }
@@ -374,7 +374,7 @@ class SkeletonDetailCard extends StatelessWidget {
         .animate(onPlay: (controller) => controller.repeat())
         .shimmer(
           duration: 1200.ms,
-          color: AppTheme.oceanBlue.withValues(alpha: 0.08),
+          color: context.fillMuted,
         );
   }
 }

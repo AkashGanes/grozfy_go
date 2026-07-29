@@ -1,48 +1,17 @@
 import 'package:flutter/material.dart';
 
-const Color kKycAccent = Color(0xFF2DBA9F);
-const Color kKycAccentSoft = Color(0xFFE6F4F1);
-const Color kKycCardBorder = Color(0xFFE7EBF0);
-const Color kKycTextPrimary = Color(0xFF101828);
-const Color kKycTextHint = Color(0xFF98A2B3);
-const Color kKycTextSecondary = Color(0xFF667085);
-const Color kKycBg = Color(0xFFF7F9FC);
+import '../../../core/theme/context_colors.dart';
 
-/// Theme-adaptive color tokens for the KYC / form-card design system.
-/// Use these instead of the constants above when you want correct
-/// rendering in dark mode.
+const Color kKycAccent = Color(0xFF2DBA9F);
+
+/// Brand accent tokens for the KYC / form-card design system.
+/// Neutral colors (text, cards, borders, fills) come from the central
+/// `AppColors` extension in core/theme/context_colors.dart.
 class KycColors {
   static const Color accent = Color(0xFF2DBA9F);
 
-  static bool _isDark(BuildContext c) =>
-      Theme.of(c).brightness == Brightness.dark;
-
   static Color accentSoft(BuildContext c) =>
-      _isDark(c) ? const Color(0xFF1F3D38) : const Color(0xFFE6F4F1);
-
-  static Color pageBg(BuildContext c) =>
-      _isDark(c) ? const Color(0xFF12141C) : const Color(0xFFF7F9FC);
-
-  static Color cardBg(BuildContext c) =>
-      _isDark(c) ? const Color(0xFF1B1E2A) : Colors.white;
-
-  static Color cardBorder(BuildContext c) =>
-      _isDark(c) ? const Color(0xFF2A2F3D) : const Color(0xFFE7EBF0);
-
-  static Color textPrimary(BuildContext c) =>
-      _isDark(c) ? const Color(0xFFF2F4F7) : const Color(0xFF101828);
-
-  static Color textSecondary(BuildContext c) =>
-      _isDark(c) ? const Color(0xFFA4ABB8) : const Color(0xFF667085);
-
-  static Color textHint(BuildContext c) =>
-      _isDark(c) ? const Color(0xFF747B8B) : const Color(0xFF98A2B3);
-
-  static Color searchFill(BuildContext c) =>
-      _isDark(c) ? const Color(0xFF252A38) : const Color(0xFFF2F4F7);
-
-  static Color sheetGrabber(BuildContext c) =>
-      _isDark(c) ? const Color(0xFF3D4255) : const Color(0xFFD0D5DD);
+      c.isDark ? const Color(0xFF1F3D38) : const Color(0xFFE6F4F1);
 }
 
 class KycHeader extends StatelessWidget {
@@ -83,7 +52,7 @@ class KycHeader extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
-                    color: KycColors.textPrimary(context),
+                    color: context.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -91,7 +60,7 @@ class KycHeader extends StatelessWidget {
                   subtitle,
                   style: TextStyle(
                     fontSize: 13,
-                    color: KycColors.textSecondary(context),
+                    color: context.textSecondary,
                     height: 1.3,
                   ),
                 ),
@@ -124,7 +93,7 @@ class KycBackChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cardBg = KycColors.cardBg(context);
+    final cardBg = context.cardColor;
     return Material(
       color: cardBg,
       borderRadius: BorderRadius.circular(12),
@@ -138,12 +107,12 @@ class KycBackChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: cardBg,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: KycColors.cardBorder(context)),
+            border: Border.all(color: context.borderSubtle),
           ),
           child: Icon(
             Icons.arrow_back_rounded,
             size: 22,
-            color: KycColors.textPrimary(context),
+            color: context.textPrimary,
           ),
         ),
       ),
@@ -164,7 +133,7 @@ class KycSectionHeading extends StatelessWidget {
         style: TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w800,
-          color: KycColors.textPrimary(context),
+          color: context.textPrimary,
         ),
       ),
     );
@@ -193,9 +162,9 @@ class KycFieldCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
-        color: KycColors.cardBg(context),
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: KycColors.cardBorder(context)),
+        border: Border.all(color: context.borderSubtle),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -220,7 +189,7 @@ class KycFieldCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
-                    color: KycColors.textPrimary(context),
+                    color: context.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -259,14 +228,13 @@ class KycPrimaryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
-        color: KycColors.cardBg(context),
+        color: context.cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
+            color: Colors.black.withValues(alpha: context.isDark ? 0.4 : 0.08),
             blurRadius: 14,
             offset: const Offset(0, -2),
           ),
@@ -306,7 +274,11 @@ class KycPrimaryButton extends StatelessWidget {
   }
 }
 
-InputDecoration kycHintDecoration(String hint, {Color? hintColor}) {
+InputDecoration kycHintDecoration(
+  BuildContext context,
+  String hint, {
+  Color? hintColor,
+}) {
   return InputDecoration(
     isDense: true,
     contentPadding: EdgeInsets.zero,
@@ -318,23 +290,17 @@ InputDecoration kycHintDecoration(String hint, {Color? hintColor}) {
     filled: false,
     fillColor: Colors.transparent,
     hintText: hint,
-    hintStyle: TextStyle(color: hintColor ?? kKycTextHint, fontSize: 14),
+    hintStyle: TextStyle(color: hintColor ?? context.textTertiary, fontSize: 14),
     errorStyle: const TextStyle(fontSize: 11.5, height: 1),
     counterText: '',
   );
 }
 
 TextStyle kycInputStyle(BuildContext context) => TextStyle(
-      color: KycColors.textPrimary(context),
+      color: context.textPrimary,
       fontSize: 14,
       fontWeight: FontWeight.w500,
     );
-
-const TextStyle kKycInputTextStyle = TextStyle(
-  color: kKycTextPrimary,
-  fontSize: 14,
-  fontWeight: FontWeight.w500,
-);
 
 class KycSearchInput extends StatefulWidget {
   const KycSearchInput({
@@ -373,17 +339,16 @@ class _KycSearchInputState extends State<KycSearchInput> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       height: 50,
       padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
-        color: KycColors.cardBg(context),
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: KycColors.cardBorder(context)),
+        border: Border.all(color: context.borderSubtle),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+            color: context.shadowColor,
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -420,7 +385,7 @@ class _KycSearchInputState extends State<KycSearchInput> {
                 disabledBorder: InputBorder.none,
                 hintText: widget.hint,
                 hintStyle: TextStyle(
-                  color: KycColors.textHint(context),
+                  color: context.textTertiary,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
                 ),
@@ -439,16 +404,14 @@ class _KycSearchInputState extends State<KycSearchInput> {
                 height: 28,
                 margin: const EdgeInsets.only(right: 6),
                 decoration: BoxDecoration(
-                  color: isDark
-                      ? const Color(0xFF3D4255)
-                      : KycColors.searchFill(context),
+                  color: context.surfaceContainer,
                   borderRadius: BorderRadius.circular(99),
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   Icons.close_rounded,
                   size: 16,
-                  color: KycColors.textSecondary(context),
+                  color: context.textSecondary,
                 ),
               ),
             ),
@@ -477,7 +440,7 @@ class KycResultTile extends StatelessWidget {
     final letter = leadingLetter ??
         (label.isNotEmpty ? label[0].toUpperCase() : '?');
     return Material(
-      color: selected ? KycColors.accentSoft(context) : KycColors.cardBg(context),
+      color: selected ? KycColors.accentSoft(context) : context.cardColor,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -487,7 +450,7 @@ class KycResultTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: selected ? kKycAccent : KycColors.cardBorder(context),
+              color: selected ? kKycAccent : context.borderSubtle,
               width: selected ? 1.4 : 1,
             ),
           ),
@@ -520,7 +483,7 @@ class KycResultTile extends StatelessWidget {
                     fontSize: 14,
                     fontWeight:
                         selected ? FontWeight.w800 : FontWeight.w600,
-                    color: KycColors.textPrimary(context),
+                    color: context.textPrimary,
                   ),
                 ),
               ),
@@ -530,7 +493,7 @@ class KycResultTile extends StatelessWidget {
                     ? Icons.check_circle_rounded
                     : Icons.chevron_right_rounded,
                 size: selected ? 22 : 20,
-                color: selected ? kKycAccent : KycColors.textHint(context),
+                color: selected ? kKycAccent : context.textTertiary,
               ),
             ],
           ),

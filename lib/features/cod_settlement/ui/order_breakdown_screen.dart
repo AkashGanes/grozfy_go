@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/context_colors.dart';
 import '../model/daily_driver_settlement.dart';
 
 class OrderBreakdownScreen extends StatelessWidget {
@@ -14,15 +15,11 @@ class OrderBreakdownScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final dateLabel = _formatDate(settlementDate);
 
     final total = orders.fold<double>(0, (s, o) => s + o.amountCollected);
 
     return Scaffold(
-      backgroundColor: isDark
-          ? const Color(0xFF0F1117)
-          : const Color(0xFFF2F4F8),
       appBar: AppBar(
         title: Text(
           dateLabel.isNotEmpty ? dateLabel : 'Order Breakdown',
@@ -30,14 +27,12 @@ class OrderBreakdownScreen extends StatelessWidget {
         ),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: isDark
-            ? const Color(0xFF0F1117)
-            : const Color(0xFFF2F4F8),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         foregroundColor: Theme.of(context).colorScheme.onSurface,
       ),
       body: orders.isEmpty
           ? _buildEmpty(context)
-          : _buildContent(context, isDark, total),
+          : _buildContent(context, total),
     );
   }
 
@@ -79,14 +74,13 @@ class OrderBreakdownScreen extends StatelessWidget {
   // Main content
   // ---------------------------------------------------------------------------
 
-  Widget _buildContent(BuildContext context, bool isDark, double total) {
+  Widget _buildContent(BuildContext context, double total) {
     return Column(
       children: [
         // ── Summary header ───────────────────────────────────────────────────
         _SummaryHeader(
           orderCount: orders.length,
           total: total,
-          isDark: isDark,
         ),
 
         // ── Order list ───────────────────────────────────────────────────────
@@ -94,8 +88,7 @@ class OrderBreakdownScreen extends StatelessWidget {
           child: ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
             itemCount: orders.length,
-            itemBuilder: (ctx, i) =>
-                _OrderCard(order: orders[i], isDark: isDark),
+            itemBuilder: (ctx, i) => _OrderCard(order: orders[i]),
           ),
         ),
       ],
@@ -133,12 +126,10 @@ class _SummaryHeader extends StatelessWidget {
   const _SummaryHeader({
     required this.orderCount,
     required this.total,
-    required this.isDark,
   });
 
   final int orderCount;
   final double total;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
@@ -227,24 +218,22 @@ class _SummaryHeader extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _OrderCard extends StatelessWidget {
-  const _OrderCard({required this.order, required this.isDark});
+  const _OrderCard({required this.order});
   final SettlementOrder order;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    final cardColor = isDark ? const Color(0xFF1E2235) : Colors.white;
     final isUpi = order.collectionMode.toUpperCase() == 'UPI';
     final timeLabel = _formatTime(order.deliveredAt);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.22 : 0.06),
+            color: context.shadowColor,
             blurRadius: 14,
             offset: const Offset(0, 4),
           ),
@@ -265,13 +254,13 @@ class _OrderCard extends StatelessWidget {
                   height: 36,
                   decoration: BoxDecoration(
                     color:
-                        const Color(0xFF1C4E80).withValues(alpha: 0.08),
+                        context.scheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(
+                  child: Icon(
                     Icons.inventory_2_rounded,
                     size: 17,
-                    color: Color(0xFF1C4E80),
+                    color: context.scheme.primary,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -313,15 +302,15 @@ class _OrderCard extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1C4E80).withValues(alpha: 0.08),
+                    color: context.scheme.primary.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     '₹${_fmt(order.amountCollected)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF1C4E80),
+                      color: context.scheme.primary,
                       letterSpacing: -0.3,
                     ),
                   ),
@@ -385,8 +374,7 @@ class _OrderCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w500,
-                        color: const Color(0xFF2563EB)
-                            .withValues(alpha: 0.75),
+                        color: context.info.withValues(alpha: 0.75),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -441,7 +429,7 @@ class _ModeChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUpi = mode.toUpperCase() == 'UPI';
-    final color = isUpi ? const Color(0xFF2563EB) : const Color(0xFF16A34A);
+    final color = isUpi ? context.info : context.success;
     final icon =
         isUpi ? Icons.smartphone_rounded : Icons.currency_rupee_rounded;
     final label = isUpi ? 'UPI' : 'Cash';

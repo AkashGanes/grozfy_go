@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/cod_settlement/providers/settlement_provider.dart';
-import '../theme/app_theme.dart';
+import '../theme/context_colors.dart';
 
 class AppBottomNav extends ConsumerWidget {
   const AppBottomNav({
@@ -17,7 +17,6 @@ class AppBottomNav extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final bool showSettlementBadge = ref.watch(settlementBadgeProvider);
 
     return Container(
@@ -25,7 +24,7 @@ class AppBottomNav extends ConsumerWidget {
         color: scheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+            color: context.shadowColor,
             blurRadius: 20,
             offset: const Offset(0, -4),
           ),
@@ -83,7 +82,7 @@ class _NavItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color inactive =
         Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
-    final Color iconColor = isSelected ? AppTheme.oceanBlue : inactive;
+    final Color iconColor = isSelected ? context.scheme.primary : inactive;
 
     return InkWell(
       onTap: onTap,
@@ -104,8 +103,8 @@ class _NavItem extends StatelessWidget {
                     child: Container(
                       width: 8,
                       height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
+                      decoration: BoxDecoration(
+                        color: context.danger,
                         shape: BoxShape.circle,
                       ),
                     ),

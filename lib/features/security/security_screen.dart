@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/security/app_lock_provider.dart';
+import '../../core/theme/context_colors.dart';
 
 class SecurityScreen extends ConsumerStatefulWidget {
   const SecurityScreen({super.key});
@@ -203,7 +204,7 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                    color: context.shadowColor,
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -303,8 +304,7 @@ class _SecurityScreenState extends ConsumerState<SecurityScreen>
                           ]
                         : [
                             BoxShadow(
-                              color: Colors.black
-                                  .withValues(alpha: isDark ? 0.25 : 0.06),
+                              color: context.shadowColor,
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
@@ -789,7 +789,7 @@ class _ThemedCard extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.25 : 0.06),
+            color: context.shadowColor,
             blurRadius: 18,
             offset: const Offset(0, 5),
           ),

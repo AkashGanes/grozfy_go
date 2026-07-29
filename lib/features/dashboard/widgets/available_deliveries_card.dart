@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/context_colors.dart';
 import 'dashboard_colors.dart';
 import 'section_card.dart';
 
@@ -48,16 +49,16 @@ class AvailableDeliveriesCard extends StatelessWidget {
                   children: [
                     Text(
                       viewAllLabel,
-                      style: const TextStyle(
-                        color: Color(0xFF1F4FB6),
+                      style: TextStyle(
+                        color: context.scheme.primary,
                         fontWeight: FontWeight.w700,
                         fontSize: 13,
                       ),
                     ),
                     const SizedBox(width: 2),
-                    const Icon(
+                    Icon(
                       Icons.chevron_right_rounded,
-                      color: Color(0xFF1F4FB6),
+                      color: context.scheme.primary,
                       size: 18,
                     ),
                   ],
@@ -122,8 +123,8 @@ class AvailableDeliveriesCard extends StatelessWidget {
                     ),
                     child: Text(
                       actionLabel,
-                      style: const TextStyle(
-                        color: Color(0xFF118A52),
+                      style: TextStyle(
+                        color: context.success,
                         fontWeight: FontWeight.w700,
                         fontSize: 12,
                       ),

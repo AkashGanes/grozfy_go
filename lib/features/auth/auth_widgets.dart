@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 
 class AuthBackground extends StatelessWidget {
   const AuthBackground({super.key, required this.child});
@@ -10,12 +11,8 @@ class AuthBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color bg = isDark
-        ? Theme.of(context).scaffoldBackgroundColor
-        : const Color(0xFFEEF2F8);
 
     return Scaffold(
-      backgroundColor: bg,
       body: Stack(
         children: [
           Positioned(
@@ -73,13 +70,12 @@ class AuthStepPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color dotActive = AppTheme.oceanBlue;
-    final Color dotInactive =
-        isDark ? Colors.white24 : const Color(0xFFD0D9E6);
+    final Color dotInactive = context.borderStrong;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.white,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(20),
         boxShadow: isDark
             ? null
@@ -103,7 +99,7 @@ class AuthStepPill extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white70 : const Color(0xFF4A6080),
+              color: context.textSecondary,
             ),
           ),
         ],

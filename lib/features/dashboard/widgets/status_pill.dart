@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/context_colors.dart';
+
 enum StatusPillTone { success, warning, info, danger, neutral }
 
 class StatusPill extends StatelessWidget {
@@ -16,46 +18,46 @@ class StatusPill extends StatelessWidget {
   final IconData? icon;
   final bool dense;
 
-  Color _bg() {
+  Color _bg(BuildContext context) {
     switch (tone) {
       case StatusPillTone.success:
-        return const Color(0xFF1AB36A).withValues(alpha: 0.12);
+        return context.successContainer;
       case StatusPillTone.warning:
-        return const Color(0xFFF6A623).withValues(alpha: 0.16);
+        return context.warningContainer;
       case StatusPillTone.info:
-        return const Color(0xFF2D6CDF).withValues(alpha: 0.12);
+        return context.infoContainer;
       case StatusPillTone.danger:
-        return const Color(0xFFE8384F).withValues(alpha: 0.12);
+        return context.dangerContainer;
       case StatusPillTone.neutral:
-        return const Color(0xFF6B7280).withValues(alpha: 0.12);
+        return context.fillMuted;
     }
   }
 
-  Color _fg() {
+  Color _fg(BuildContext context) {
     switch (tone) {
       case StatusPillTone.success:
-        return const Color(0xFF118A52);
+        return context.success;
       case StatusPillTone.warning:
-        return const Color(0xFFB87707);
+        return context.warning;
       case StatusPillTone.info:
-        return const Color(0xFF1F4FB6);
+        return context.info;
       case StatusPillTone.danger:
-        return const Color(0xFFB7283A);
+        return context.danger;
       case StatusPillTone.neutral:
-        return const Color(0xFF4B5563);
+        return context.textSecondary;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final fg = _fg();
+    final fg = _fg(context);
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: dense ? 8 : 10,
         vertical: dense ? 3 : 5,
       ),
       decoration: BoxDecoration(
-        color: _bg(),
+        color: _bg(context),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(

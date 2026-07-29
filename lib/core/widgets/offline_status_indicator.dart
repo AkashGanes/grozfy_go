@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/connectivity_service.dart';
+import '../theme/context_colors.dart';
 import '../services/offline_storage_service.dart' show SyncStatus;
 import '../services/offline_trip_manager.dart';
 import '../services/sync_manager.dart';
@@ -32,17 +33,19 @@ class _OfflineBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.orange.shade100,
-        border: Border(bottom: BorderSide(color: Colors.orange.shade300)),
+        color: context.warningContainer,
+        border: Border(
+          bottom: BorderSide(color: context.warning.withValues(alpha: 0.4)),
+        ),
       ),
       child: Row(
         children: [
-          Icon(Icons.cloud_off, size: 16, color: Colors.orange.shade800),
+          Icon(Icons.cloud_off, size: 16, color: context.warning),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               'Offline — changes will sync when you reconnect',
-              style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+              style: TextStyle(fontSize: 12, color: context.warning),
             ),
           ),
           const _PendingSyncBadge(),

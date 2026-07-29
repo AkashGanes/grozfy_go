@@ -8,6 +8,7 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
@@ -964,19 +965,19 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                                           ? null
                                           : () => _onMarkFailed(context, order),
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.red,
-                                        side: const BorderSide(color: Colors.red),
+                                        foregroundColor: context.danger,
+                                        side: BorderSide(color: context.danger),
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(16),
                                         ),
                                       ),
                                       child: _markingFailed
-                                          ? const SizedBox(
+                                          ? SizedBox(
                                               width: 22,
                                               height: 22,
                                               child: CircularProgressIndicator(
                                                 strokeWidth: 2.5,
-                                                color: Colors.red,
+                                                color: context.danger,
                                               ),
                                             )
                                           : const Row(
@@ -1088,7 +1089,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
         const SizedBox(height: 12),
         Container(
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF8E1),
+                color: context.warningContainer,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: _recallOrange.withValues(alpha: 0.5), width: 1.5),
                 boxShadow: [
@@ -1170,7 +1171,7 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                             ),
                             const SizedBox(height: 14),
                           ],
-                          const Divider(height: 1, color: Color(0xFFFFCC80)),
+                          Divider(height: 1, color: _recallOrange.withValues(alpha: 0.35)),
                           const SizedBox(height: 14),
                           SizedBox(
                             width: double.infinity,
@@ -1206,14 +1207,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 14, color: Colors.black38)),
+        Padding(padding: const EdgeInsets.only(top: 1), child: Icon(icon, size: 14, color: context.iconMuted)),
         const SizedBox(width: 7),
         if (label != null)
-          Text('$label: ', style: const TextStyle(color: Colors.black38, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text('$label: ', style: TextStyle(color: context.textTertiary, fontSize: 12, fontWeight: FontWeight.w600)),
         Expanded(
           child: Text(text,
               style: TextStyle(
-                  color: const Color(0xFF1B1E2A),
+                  color: context.textPrimary,
                   fontSize: 13,
                   fontWeight: bold ? FontWeight.w700 : FontWeight.normal)),
         ),
@@ -1224,24 +1225,24 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Widget _recallCallRow(String phone) {
     return Row(
       children: [
-        const Icon(Icons.phone_outlined, size: 14, color: Colors.black38),
+        Icon(Icons.phone_outlined, size: 14, color: context.iconMuted),
         const SizedBox(width: 7),
-        Expanded(child: Text(phone, style: const TextStyle(color: Color(0xFF1B1E2A), fontSize: 13))),
+        Expanded(child: Text(phone, style: TextStyle(color: context.textPrimary, fontSize: 13))),
         GestureDetector(
           onTap: () => _launchCall(phone),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: const Color(0xFF2E7D32).withValues(alpha: 0.1),
+              color: context.success.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFF2E7D32).withValues(alpha: 0.3)),
+              border: Border.all(color: context.success.withValues(alpha: 0.3)),
             ),
-            child: const Row(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.call_rounded, size: 13, color: Color(0xFF2E7D32)),
-                SizedBox(width: 4),
-                Text('Call', style: TextStyle(color: Color(0xFF2E7D32), fontSize: 11, fontWeight: FontWeight.w600)),
+                Icon(Icons.call_rounded, size: 13, color: context.success),
+                const SizedBox(width: 4),
+                Text('Call', style: TextStyle(color: context.success, fontSize: 11, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -1278,7 +1279,7 @@ class _ProgressTimeline extends StatelessWidget {
               height: 2,
               decoration: BoxDecoration(
                 color: done
-                    ? const Color(0xFF2E7D32)
+                    ? context.success
                     : scheme.onSurface.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(1),
               ),
@@ -1290,7 +1291,7 @@ class _ProgressTimeline extends StatelessWidget {
         final isDone = idx < currentIndex;
         final isCurrent = idx == currentIndex;
         final dotColor = isDone
-            ? const Color(0xFF2E7D32)
+            ? context.success
             : isCurrent
             ? AppTheme.oceanBlue
             : scheme.onSurface.withValues(alpha: 0.15);
@@ -1479,17 +1480,17 @@ class _DeliveredBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final (Color color, IconData icon, String label) = switch (status) {
       OrderStatus.delivered => (
-        const Color(0xFF2E7D32),
+        context.success,
         Icons.check_circle_rounded,
         'Delivered Successfully',
       ),
       OrderStatus.cancelled => (
-        const Color(0xFFC62828),
+        context.danger,
         Icons.cancel_rounded,
         'Order Cancelled',
       ),
       _ => (
-        Colors.grey,
+        context.textSecondary,
         Icons.info_outline_rounded,
         'Order Closed',
       ),
