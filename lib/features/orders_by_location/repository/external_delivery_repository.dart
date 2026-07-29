@@ -313,27 +313,6 @@ class ExternalDeliveryRepository {
     return result;
   }
 
-  /// Batch-fetches [ExternalDelivery] records by name, so a trip's stops can
-  /// be joined to their delivery coordinates (latitude/longitude) in a single
-  /// call instead of one request per stop. Reuses [fetchPage]'s existing
-  /// geo-fields-with-fallback behavior, so a delivery missing lat/lng is
-  /// simply absent those fields rather than failing the whole batch.
-  Future<Map<String, ExternalDelivery>> fetchDeliveriesByNames(
-    List<String> names,
-  ) async {
-    if (names.isEmpty) return <String, ExternalDelivery>{};
-    final List<ExternalDelivery> rows = await fetchPage(
-      limitStart: 0,
-      limitPageLength: names.length,
-      filters: <List<dynamic>>[
-        <dynamic>['External Delivery', 'name', 'in', names],
-      ],
-    );
-    return <String, ExternalDelivery>{
-      for (final ExternalDelivery d in rows) d.name: d,
-    };
-  }
-
   /// Fetches the driver's **available** (Pending) deliveries filtered by their
   /// configured delivery radius, via the custom `list_available_deliveries`
   /// method. Unlike [fetchPage] — which hits the generic REST list and is
