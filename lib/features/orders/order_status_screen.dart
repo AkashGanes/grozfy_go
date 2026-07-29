@@ -225,6 +225,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
   Future<void> _onMarkFailed(BuildContext context, DeliveryOrder order) async {
     final app = AppScope.of(context);
+    if (app.profileCompleteness.percentage < 1.0) {
+      AppToast.show(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!app.isOnline) {
+      AppToast.show(context, 'You are offline — go online to process orders.');
+      return;
+    }
     final isCod = order.paymentMode.toUpperCase() == 'COD';
     final result = await showFailedDeliverySheet(context, isCod: isCod);
     if (result == null || !mounted) return;
@@ -270,6 +278,16 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
   Future<void> _handleConfirmRecall(DeliveryOrder order) async {
     // ignore: avoid_print
     print('[Recall] _handleConfirmRecall called — orderId=${order.orderId} recallData=${_recallData?.orderId} syncing=$_syncing');
+
+    final app = AppScope.of(context);
+    if (app.profileCompleteness.percentage < 1.0) {
+      AppToast.show(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!app.isOnline) {
+      AppToast.show(context, 'You are offline — go online to process orders.');
+      return;
+    }
 
     final data = _recallData;
     if (data == null || _syncing) {
@@ -363,7 +381,6 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
 
     if (!mounted) return;
     AppToast.show(context, 'Recall confirmed — items returned to store.');
-    final app = AppScope.of(context);
     app.clearActiveOrder();
     if (mounted) {
       Navigator.of(context).pushNamedAndRemoveUntil(
@@ -459,6 +476,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
     final app = AppScope.of(context);
     final order = app.activeOrder;
     if (order == null || _syncing) return;
+    if (app.profileCompleteness.percentage < 1.0) {
+      AppToast.show(context, 'Complete your profile to process orders.');
+      return;
+    }
+    if (!app.isOnline) {
+      AppToast.show(context, 'You are offline — go online to process orders.');
+      return;
+    }
     final navigator = Navigator.of(context);
 
     final next = _nextStatus(order.orderStatus);
