@@ -32,7 +32,6 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
 
   String? _selectedBank;
   String? _selectedAccountType;
-  String? _accountTypeDoctype;
 
   final _formKey = GlobalKey<FormState>();
 
@@ -71,14 +70,11 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
 
   Future<void> _loadData() async {
     final app = AppScope.of(context);
-    final results = await Future.wait([
+    await Future.wait([
       app.hydrateBankFromBackend(),
-      app.fetchBankAccountLinkDoctypes(),
+      app.fetchBankFormOptions(),
     ]);
     if (!mounted) return;
-    final Map<String, String> linkDoctypes =
-        results[1] as Map<String, String>? ?? {};
-    _accountTypeDoctype = linkDoctypes['account_type'];
 
     final Map<String, dynamic>? bankData = app.submittedBankRaw;
     setState(() {
@@ -113,16 +109,21 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
   }
 
   Future<String?> _pickAccountType() async {
-    final String? doctype = _accountTypeDoctype;
-    if (doctype == null) return null;
     final app = AppScope.of(context);
+    final List<String> options = app.bankAccountTypeOptions;
+    if (options.isEmpty) return null;
     return showAppBottomSheet<String>(
       context: context,
       builder: (BuildContext sheetCtx) => _LinkSearchBottomSheet(
         title: 'Account Type',
         initialQuery: _selectedAccountType,
-        onSearch: (String q) =>
-            app.fetchLinkOptions(doctype: doctype, query: q, pageLength: 20),
+        onSearch: (String q) async {
+          final String query = q.trim().toLowerCase();
+          if (query.isEmpty) return options;
+          return options
+              .where((String o) => o.toLowerCase().contains(query))
+              .toList();
+        },
       ),
     );
   }
@@ -466,7 +467,7 @@ class _BankSetupScreenState extends State<BankSetupScreen> {
 
   Widget _accountTypeCard() {
     final bool hasValue = _selectedAccountType?.trim().isNotEmpty == true;
-    final bool canOpen = _accountTypeDoctype != null;
+    final bool canOpen = AppScope.of(context).bankAccountTypeOptions.isNotEmpty;
     return KycFieldCard(
       icon: Icons.account_balance_rounded,
       label: 'Account Type',

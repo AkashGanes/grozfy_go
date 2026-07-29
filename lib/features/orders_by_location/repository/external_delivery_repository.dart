@@ -959,9 +959,15 @@ class ExternalDeliveryRepository {
       throw Exception('No orders provided for trip creation');
     }
 
+    // 'docstatus': 1 + status 'Scheduled' — same pattern as the working
+    // single-order path (createTripByOrderName) — so a multi-order batch
+    // trip is born Submitted instead of Draft. Frappe defaults docstatus
+    // to 0 on insert when omitted, which is what left these trips Draft
+    // (and invisible to fetchActiveOrdersForDriver's docstatus=1 filter).
     final createPayload = {
       'driver': await _getLoggedInDriver(),
-      'status': 'Draft',
+      'status': 'Scheduled',
+      'docstatus': 1,
       'trip_date': DateTime.now().toIso8601String().split('T').first,
       'stops': orders.map((o) => {'external_delivery': o.name}).toList(),
     };
@@ -1810,6 +1816,11 @@ class ExternalDeliveryRepository {
     final String code = (prefs.getString(_prefLanguageCode) ?? 'en').trim();
     return code.isEmpty ? 'en' : code;
   }
+
+  /// Public entry point for marking [trip] fully Completed. Reused by the
+  /// return-to-store flow (via [_completeTrip] below) and by the trip-details
+  /// screen's auto-completion once every stop has reached a terminal status.
+  Future<void> completeTrip(ExternalDeliveryTrip trip) => _completeTrip(trip);
 
   Future<void> _completeTrip(ExternalDeliveryTrip trip) async {
     _logApi('mark_returned_to_store trip', 'trip=${trip.name}');

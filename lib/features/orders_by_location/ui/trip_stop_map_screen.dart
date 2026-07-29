@@ -14,10 +14,17 @@ class TripStopMapScreen extends StatefulWidget {
     super.key,
     required this.address,
     this.stopNumber,
+    this.knownLocation,
   });
 
   final String address;
   final int? stopNumber;
+
+  /// Pre-resolved coordinates for this stop, if already known (e.g. joined
+  /// from the linked delivery/pickup record). When provided, the Nominatim
+  /// address geocode is skipped entirely; when null, behavior is unchanged
+  /// from before — the address is geocoded as usual.
+  final LatLng? knownLocation;
 
   @override
   State<TripStopMapScreen> createState() => _TripStopMapScreenState();
@@ -51,6 +58,10 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
   }
 
   Future<void> _geocodeAddress() async {
+    if (widget.knownLocation != null) {
+      _stopLocation = widget.knownLocation;
+      return;
+    }
     try {
       final uri = Uri.parse(
         'https://nominatim.openstreetmap.org/search'
