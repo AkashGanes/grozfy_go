@@ -349,9 +349,17 @@ class ExternalDeliveryRepository {
   /// ```json
   /// { "message": [ { "name": ..., "store_name": ..., "distance_km": 1.8, ... } ] }
   /// ```
+  ///
+  /// [driverLat]/[driverLng] are the driver's live GPS position. They are
+  /// optional on both sides: when omitted, the backend falls back to the
+  /// driver's last known server-side position. Pass them only when a real fix is
+  /// available, so a denied permission or missing fix degrades to that fallback
+  /// rather than sending a bogus origin.
   Future<List<ExternalDelivery>> fetchAvailableDeliveries({
     String? storeName,
     List<List<dynamic>>? filters,
+    double? driverLat,
+    double? driverLng,
   }) async {
     final driver = await _getLoggedInDriver();
     final params = <String, String>{'driver': driver};
@@ -360,6 +368,11 @@ class ExternalDeliveryRepository {
     }
     if (filters != null && filters.isNotEmpty) {
       params['filters'] = jsonEncode(filters);
+    }
+    // Both or neither — a lone coordinate can't define an origin.
+    if (driverLat != null && driverLng != null) {
+      params['driver_lat'] = driverLat.toString();
+      params['driver_lng'] = driverLng.toString();
     }
 
     final uri = Uri.parse(
