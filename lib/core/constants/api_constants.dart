@@ -55,4 +55,25 @@ class ApiConstants {
 
   static const String submitBankTransfer =
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.cod_settlement.submit_bank_transfer';
+
+  // ---------------------------------------------------------------------------
+  // Delivery Radius endpoints
+  // ---------------------------------------------------------------------------
+
+  // GET: returns {delivery_radius_enabled, minimum_radius_km, default_radius_km,
+  // maximum_radius_km, selected_radius_km} for the logged-in driver.
+  static const String getDeliveryRadiusSettings =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.delivery_radius.get_delivery_radius';
+
+  // POST: {selected_radius_km} → persists the driver's chosen radius.
+  static const String updateDeliveryRadius =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.delivery_radius.update_delivery_radius';
+
+  // Radius-aware "Available Orders" feed. Server filters Pending deliveries by
+  // the driver's selected delivery radius and returns the full set in one call,
+  // each row carrying a server-computed `distance_km`. Replaces the generic
+  // `/api/resource/External Delivery` list (which is radius-blind) for that
+  // screen only.
+  static const String listAvailableDeliveries =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.delivery_radius.list_available_deliveries';
 }

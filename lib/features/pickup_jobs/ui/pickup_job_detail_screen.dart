@@ -14,6 +14,7 @@ import '../../../core/services/connectivity_service.dart';
 import '../../../core/state/providers.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/context_colors.dart';
+import '../../../core/utils/maps_launcher.dart';
 import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/app_toast.dart';
 import '../model/pickup_job.dart';
@@ -1116,11 +1117,11 @@ class _PickupJobDetailScreenState
         ),
         if (hasCoords)
           GestureDetector(
-            onTap: () async {
-              final url = Uri.parse(
-                  'https://maps.google.com/?q=$lat,$lng');
-              if (await canLaunchUrl(url)) await launchUrl(url);
-            },
+            onTap: () => launchGoogleMapsNavigation(
+              context,
+              lat: lat,
+              lng: lng,
+            ),
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 8, vertical: 5),

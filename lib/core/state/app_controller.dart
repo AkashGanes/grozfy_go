@@ -95,12 +95,6 @@ class AppController extends ChangeNotifier {
       'license_requires_reupload';
   static const String _prefWasProfileComplete = 'was_profile_complete';
   static const String _prefThemeMode = 'theme_mode';
-  static const String _prefDeliveryRadiusKm = 'delivery_radius_km';
-  // Mirror of the business-defined radius policy (from the Driver DocType), kept
-  // in prefs so the policy survives an offline cold start.
-  static const String _prefDeliveryRadiusEnabled = 'delivery_radius_enabled';
-  static const String _prefDeliveryRadiusDefaultKm = 'delivery_radius_default_km';
-  static const String _prefDeliveryRadiusMaxKm = 'delivery_radius_max_km';
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
   static const String _prefActiveOrderId = 'active_order_id';
@@ -196,6 +190,8 @@ class AppController extends ChangeNotifier {
   List<String> _uomOptions = <String>[];
   List<String> _vehicleFuelOptions = <String>[];
   Set<String> _vehicleRequiredFields = <String>{};
+  List<String> _bankAccountTypeOptions = <String>[];
+  Set<String> _bankRequiredFields = <String>{};
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
@@ -211,15 +207,6 @@ class AppController extends ChangeNotifier {
   String _liveCoordinates = '28.6139, 77.2090';
   double? _currentLatitude;
   double? _currentLongitude;
-  // Partner's self-selected delivery radius in km. null means "no limit" —
-  // every order is shown regardless of distance.
-  double? _deliveryRadiusKm;
-  // Business-defined radius policy, sourced from the logged-in Driver doc.
-  // `_deliveryRadiusFeatureEnabled` gates whether the radius limit is offered at
-  // all; the default/max drive the Settings slider's initial value and ceiling.
-  bool _deliveryRadiusFeatureEnabled = false;
-  double? _businessDefaultRadiusKm;
-  double? _businessMaxRadiusKm;
   String? _currentLocationLabel;
   String? _selectedStoreName;
   String? _profileImagePath;
@@ -371,6 +358,10 @@ class AppController extends ChangeNotifier {
       List<String>.unmodifiable(_vehicleFuelOptions);
   Set<String> get vehicleRequiredFields =>
       Set<String>.unmodifiable(_vehicleRequiredFields);
+  List<String> get bankAccountTypeOptions =>
+      List<String>.unmodifiable(_bankAccountTypeOptions);
+  Set<String> get bankRequiredFields =>
+      Set<String>.unmodifiable(_bankRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
   DateTime? get onlineSince => _onlineSince;
@@ -385,10 +376,6 @@ class AppController extends ChangeNotifier {
   String get liveCoordinates => _liveCoordinates;
   double? get currentLatitude => _currentLatitude;
   double? get currentLongitude => _currentLongitude;
-  double? get deliveryRadiusKm => _deliveryRadiusKm;
-  bool get deliveryRadiusFeatureEnabled => _deliveryRadiusFeatureEnabled;
-  double? get businessDefaultRadiusKm => _businessDefaultRadiusKm;
-  double? get businessMaxRadiusKm => _businessMaxRadiusKm;
   String? get currentLocationLabel => _currentLocationLabel;
   String? get selectedStoreName => _selectedStoreName;
   String? get profileImagePath => _profileImagePath;
@@ -765,13 +752,6 @@ class AppController extends ChangeNotifier {
     await PartnerWidgetManager.initialize();
     _currentLatitude = prefs.getDouble(_prefCurrentLat);
     _currentLongitude = prefs.getDouble(_prefCurrentLng);
-    _deliveryRadiusKm = prefs.getDouble(_prefDeliveryRadiusKm);
-    // Restore the business policy from its prefs mirror so the Settings slider
-    // has sane bounds before the Driver doc is (re)fetched — important offline.
-    _deliveryRadiusFeatureEnabled =
-        prefs.getBool(_prefDeliveryRadiusEnabled) ?? false;
-    _businessDefaultRadiusKm = prefs.getDouble(_prefDeliveryRadiusDefaultKm);
-    _businessMaxRadiusKm = prefs.getDouble(_prefDeliveryRadiusMaxKm);
     _currentLocationLabel = _nullIfBlank(
       prefs.getString(_prefCurrentLocationLabel),
     );
@@ -958,60 +938,6 @@ class AppController extends ChangeNotifier {
       return prefs.setInt(_prefThemeMode, mode.index);
     });
     notifyListeners();
-  }
-
-  /// Sets the partner's delivery radius in km. Pass null (or a non-positive
-  /// value) to mean "no limit" — the stored pref is removed so it loads back as
-  /// null on next launch. The value is capped at the business-defined
-  /// [businessMaxRadiusKm] so a partner can never exceed the configured ceiling.
-  void setDeliveryRadiusKm(double? km) {
-    double? normalized = (km == null || km <= 0) ? null : km;
-    final double? max = _businessMaxRadiusKm;
-    if (normalized != null && max != null && max > 0 && normalized > max) {
-      normalized = max;
-    }
-    _deliveryRadiusKm = normalized;
-    _writePref((SharedPreferences prefs) {
-      return normalized == null
-          ? prefs.remove(_prefDeliveryRadiusKm)
-          : prefs.setDouble(_prefDeliveryRadiusKm, normalized);
-    });
-    notifyListeners();
-  }
-
-  /// Whether [order]'s delivery location falls within the partner's chosen
-  /// radius. Fails open: returns true when no radius is set or when the
-  /// partner's current location is unknown, so a GPS hiccup never empties the
-  /// work list.
-  bool isWithinDeliveryRadius(DeliveryOrder order) {
-    final double? radius = _deliveryRadiusKm;
-    if (radius == null) return true;
-    final double? lat = _currentLatitude;
-    final double? lng = _currentLongitude;
-    if (lat == null || lng == null) return true;
-    return order.distanceKm <= radius;
-  }
-
-  /// Distance in km from the partner's current location to [lat]/[lng], or null
-  /// when the partner's location is unknown.
-  double? distanceFromPartnerKm(double lat, double lng) {
-    final double? plat = _currentLatitude;
-    final double? plng = _currentLongitude;
-    if (plat == null || plng == null) return null;
-    return _calculateDistance(plat, plng, lat, lng);
-  }
-
-  /// Radius check for a raw delivery coordinate. Used by the listing screen,
-  /// which works with order summaries rather than [DeliveryOrder]. Fails open
-  /// (returns true) when no radius is set, the coordinate is missing, or the
-  /// partner's location is unknown — so nothing is wrongly hidden.
-  bool isWithinDeliveryRadiusAt(double? lat, double? lng) {
-    final double? radius = _deliveryRadiusKm;
-    if (radius == null) return true;
-    if (lat == null || lng == null) return true;
-    final double? distance = distanceFromPartnerKm(lat, lng);
-    if (distance == null) return true;
-    return distance <= radius;
   }
 
   void setBackgroundColor(Color color) {
@@ -1893,12 +1819,6 @@ class AppController extends ChangeNotifier {
     _currentLatitude = null;
     _currentLongitude = null;
     _currentLocationLabel = null;
-    // Reset the delivery-radius selection and business policy so the next login
-    // starts from that driver's business default rather than a stale value.
-    _deliveryRadiusKm = null;
-    _deliveryRadiusFeatureEnabled = false;
-    _businessDefaultRadiusKm = null;
-    _businessMaxRadiusKm = null;
     _driverName = null;
     _vehicle = null;
     _submittedVehicleRaw = null;
@@ -2310,52 +2230,75 @@ class AppController extends ChangeNotifier {
 
   Future<void> fetchVehicleFormConfig() async {
     try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/DocType/Vehicle',
-      );
+      // Driver-accessible custom method. Replaces the Desk-only
+      // `/api/resource/DocType/Vehicle` meta read, which returned
+      // AuthenticationError for non-desk partner drivers.
+      final Uri uri = Uri.parse(ApiConstants.vehicleFormOptions);
       final Map<String, dynamic> payload = await _authorizedGet(uri);
-      final dynamic data = payload['data'];
-      if (data is! Map<String, dynamic>) {
-        return;
-      }
-      final dynamic fields = data['fields'];
-      if (fields is! List) {
+
+      // Config is returned under the standard Frappe `message` envelope.
+      final dynamic config = payload['message'];
+      if (config is! Map<String, dynamic>) {
         return;
       }
 
-      final Set<String> requiredFields = <String>{};
-      List<String> fuelOptions = <String>[];
-      for (final dynamic row in fields) {
-        if (row is! Map<String, dynamic>) {
-          continue;
+      List<String> parseStringList(dynamic raw) {
+        if (raw is! List) {
+          return <String>[];
         }
-        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
-        if (fieldname == null) {
-          continue;
-        }
-        final int reqd = int.tryParse(row['reqd']?.toString() ?? '0') ?? 0;
-        final int readOnly =
-            int.tryParse(row['read_only']?.toString() ?? '0') ?? 0;
-        if (reqd == 1 && readOnly == 0) {
-          requiredFields.add(fieldname);
-        }
-
-        if (fieldname == 'fuel_type') {
-          final String? rawOptions = _nullIfBlank(row['options']?.toString());
-          if (rawOptions != null) {
-            fuelOptions = rawOptions
-                .split('\n')
-                .map((value) => value.trim())
-                .where((value) => value.isNotEmpty)
-                .toList();
-          }
-        }
+        return raw
+            .map((dynamic value) => value?.toString().trim() ?? '')
+            .where((String value) => value.isNotEmpty)
+            .toList();
       }
+
+      final List<String> fuelOptions = parseStringList(
+        config['fuel_type_options'],
+      );
+      final Set<String> requiredFields = parseStringList(
+        config['required_fields'],
+      ).toSet();
+
       _vehicleRequiredFields = requiredFields;
       _vehicleFuelOptions = fuelOptions;
       notifyListeners();
-    } catch (_) {
-      // Keep existing cached config
+    } catch (error) {
+      // Keep existing cached config; surface the failure for debugging.
+      debugPrint(
+        '[VehicleFormConfig] Failed to load vehicle form options: $error',
+      );
+    }
+  }
+
+  Future<void> fetchBankFormOptions() async {
+    try {
+      // Driver-accessible custom method. Replaces the Desk-only
+      // `/api/resource/DocType/Bank Account` meta read that populated the
+      // Account Type picker but returned AuthenticationError for drivers.
+      final Uri uri = Uri.parse(ApiConstants.bankFormOptions);
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+
+      final dynamic config = payload['message'];
+      if (config is! Map<String, dynamic>) {
+        return;
+      }
+
+      List<String> parseStringList(dynamic raw) {
+        if (raw is! List) {
+          return <String>[];
+        }
+        return raw
+            .map((dynamic value) => value?.toString().trim() ?? '')
+            .where((String value) => value.isNotEmpty)
+            .toList();
+      }
+
+      _bankAccountTypeOptions = parseStringList(config['account_type_options']);
+      _bankRequiredFields = parseStringList(config['required_fields']).toSet();
+      notifyListeners();
+    } catch (error) {
+      // Keep existing cached config; surface the failure for debugging.
+      debugPrint('[BankFormConfig] Failed to load bank form options: $error');
     }
   }
 
@@ -2556,42 +2499,6 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, String>> fetchBankAccountLinkDoctypes() async {
-    try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/DocType/Bank%20Account',
-      );
-      final Map<String, dynamic> payload = await _authorizedGet(uri);
-      final dynamic data = payload['data'];
-      if (data is! Map<String, dynamic>) {
-        return <String, String>{};
-      }
-      final dynamic fields = data['fields'];
-      if (fields is! List) {
-        return <String, String>{};
-      }
-
-      final Map<String, String> doctypesByField = <String, String>{};
-      for (final dynamic row in fields) {
-        if (row is! Map<String, dynamic>) {
-          continue;
-        }
-        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
-        final String? fieldtype = _nullIfBlank(row['fieldtype']?.toString());
-        final String? options = _nullIfBlank(row['options']?.toString());
-        if (fieldname == null || fieldtype == null || options == null) {
-          continue;
-        }
-        if (fieldtype == 'Link' || fieldtype == 'Dynamic Link') {
-          doctypesByField[fieldname] = options;
-        }
-      }
-      return doctypesByField;
-    } catch (_) {
-      return <String, String>{};
-    }
-  }
-
   Future<void> hydrateBankFromBackend({bool forceRefresh = false}) async {
     if (!forceRefresh && _bank != null) {
       return;
@@ -2788,40 +2695,34 @@ class AppController extends ChangeNotifier {
       body['doors'] = doorsInt;
     }
 
+    final String? driver = _nullIfBlank(_driverName);
+    if (driver == null) {
+      return const VehicleSubmitResult(
+        error: 'Driver not identified — please sign in again',
+      );
+    }
+    body['driver'] = driver;
+
     try {
-      final Uri baseUri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/Vehicle',
+      // Driver-callable save. The backend upserts the Vehicle with elevated
+      // permissions (drivers can't write /api/resource/Vehicle), sets
+      // Driver.vehicle, and returns the full saved doc under `message`.
+      final Uri saveUri = Uri.parse(ApiConstants.saveVehicle);
+      final bool wasUpdate = _vehicle != null;
+      final Map<String, dynamic> responsePayload = await _authorizedPostJson(
+        saveUri,
+        body,
       );
-      final Map<String, dynamic>? existing = await fetchVehicleByLicensePlate(
-        plate,
-      );
-      final String? vehicleName = _nullIfBlank(existing?['name']?.toString());
-      Map<String, dynamic> responsePayload;
-      final bool wasUpdate = vehicleName != null;
 
-      if (vehicleName != null) {
-        final Uri updateUri = Uri.parse(
-          '${ApiConstants.erpBaseUrl}/api/resource/Vehicle/${Uri.encodeComponent(vehicleName)}',
-        );
-        responsePayload = await authorizedPutJson(updateUri, body);
-      } else {
-        responsePayload = await _authorizedPostJson(baseUri, body);
-      }
-
-      final dynamic rawData = responsePayload['data'];
-      final Map<String, dynamic> data = rawData is Map<String, dynamic>
+      final dynamic rawData = responsePayload['message'];
+      final Map<String, dynamic> finalData = rawData is Map<String, dynamic>
           ? rawData
           : body;
-      final String? finalName =
-          _nullIfBlank(data['name']?.toString()) ?? vehicleName;
-      final Map<String, dynamic>? fetched = await fetchVehicleByName(
-        finalName ?? '',
-      );
-      final Map<String, dynamic> finalData = fetched ?? data;
+      final String? finalName = _nullIfBlank(finalData['name']?.toString());
       _submittedVehicleRaw = finalData;
       _vehicle = _vehicleFromApiData(finalData);
       await _persistVehicleIdentity(
-        vehicleName: _nullIfBlank(finalData['name']?.toString()) ?? finalName,
+        vehicleName: finalName,
         licensePlate: plate,
       );
       final SharedPreferences vehicleSubmitPrefs =
@@ -2830,14 +2731,6 @@ class AppController extends ChangeNotifier {
         _prefVehicleRawJson,
         jsonEncode(finalData),
       );
-      // Keep Driver.vehicle in sync so the Driver doc is the source of truth
-      // for vehicle identity after logout (SharedPreferences are cleared).
-      if (finalName != null) {
-        try {
-          await _setDriverField('vehicle', finalName);
-        } catch (_) {
-        }
-      }
       notifyListeners();
       return VehicleSubmitResult(
         vehicleName: finalName,
@@ -2961,42 +2854,29 @@ class AppController extends ChangeNotifier {
       body['last_integration_date'] = normalizedLastIntegrationDate;
     }
 
-    try {
-      Map<String, dynamic>? responsePayload;
-      final String? existingName = await _findResourceName(
-        doctype: 'Bank Account',
-        filters: <List<String>>[
-          <String>['Bank Account', 'account_name', '=', normalizedAccountName],
-        ],
-        fields: <String>['name'],
-      );
-      if (existingName != null) {
-        final Uri updateUri = Uri.parse(
-          '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account/${Uri.encodeComponent(existingName)}',
-        );
-        responsePayload = await authorizedPutJson(updateUri, body);
-      } else {
-        final Uri createUri = Uri.parse(
-          '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account',
-        );
-        responsePayload = await _authorizedPostJson(createUri, body);
-      }
+    final String? driver = _nullIfBlank(_driverName);
+    if (driver == null) {
+      return 'Driver not identified — please sign in again';
+    }
+    body['driver'] = driver;
 
-      final dynamic responseData = responsePayload['data'];
+    try {
+      // Driver-callable save. The backend upserts the Bank Account with
+      // elevated permissions (drivers can't write /api/resource/Bank Account),
+      // stamps party_type='Driver'/party server-side, and returns the full
+      // saved doc under `message`.
+      final Uri saveUri = Uri.parse(ApiConstants.saveBankAccount);
+      final Map<String, dynamic> responsePayload = await _authorizedPostJson(
+        saveUri,
+        body,
+      );
+
+      final dynamic responseData = responsePayload['message'];
       final Map<String, dynamic>? raw = responseData is Map<String, dynamic>
           ? responseData
           : null;
-      final String? bankName =
-          _nullIfBlank(raw?['name']?.toString()) ?? existingName;
-      if (bankName != null) {
-        final Map<String, dynamic>? fetched = await _fetchResourceDoc(
-          'Bank Account',
-          bankName,
-        );
-        _submittedBankRaw = fetched ?? raw;
-      } else {
-        _submittedBankRaw = raw;
-      }
+      final String? bankName = _nullIfBlank(raw?['name']?.toString());
+      _submittedBankRaw = raw;
 
       _bank = BankDetails(
         accountNumber: normalizedBankAccountNo ?? normalizedAccountName,
@@ -4148,18 +4028,22 @@ class AppController extends ChangeNotifier {
       drop: dropAddress,
       deliveryInstructions: '',
       paymentMode: detail.paymentMode ?? '',
-      distanceKm:
-          (_currentLatitude != null &&
-              _currentLongitude != null &&
-              orderLatitude != null &&
-              orderLongitude != null)
-          ? _calculateDistance(
-              _currentLatitude!,
-              _currentLongitude!,
-              orderLatitude,
-              orderLongitude,
-            )
-          : 0,
+      // Prefer the server-computed distance (from the radius-aware
+      // `list_available_deliveries` feed) when present; otherwise fall back to
+      // a client-side Haversine estimate from the driver's current location.
+      distanceKm: (detail.distanceKm != null && detail.distanceKm! > 0)
+          ? detail.distanceKm!
+          : (_currentLatitude != null &&
+                    _currentLongitude != null &&
+                    orderLatitude != null &&
+                    orderLongitude != null)
+              ? _calculateDistance(
+                  _currentLatitude!,
+                  _currentLongitude!,
+                  orderLatitude,
+                  orderLongitude,
+                )
+              : 0,
       estimatedEarnings: detail.grandTotal ?? totalAmount,
       assignmentStatus: status == OrderStatus.pending
           ? OrderAssignmentStatus.unassigned
@@ -4882,74 +4766,6 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Reads the business-defined delivery-radius policy off the Driver doc
-  /// (`custom_delivery_radius_enabled`, `custom_default_delivery_radius_km`,
-  /// `custom_maximum_delivery_radius_km`), mirrors it to prefs for offline use, and
-  /// reconciles the partner's own saved selection with it: clearing it when the
-  /// business disables the limit, or clamping it down to a lowered cap.
-  void _applyDeliveryRadiusPolicy(Map<String, dynamic> driverDoc) {
-    final dynamic enabledRaw = driverDoc['custom_delivery_radius_enabled'];
-    _deliveryRadiusFeatureEnabled = enabledRaw == 1 ||
-        enabledRaw == true ||
-        enabledRaw?.toString() == '1';
-    _businessDefaultRadiusKm = _positiveOrNull(
-      driverDoc['custom_default_delivery_radius_km'],
-    );
-    _businessMaxRadiusKm = _positiveOrNull(
-      driverDoc['custom_maximum_delivery_radius_km'],
-    );
-
-    // Mirror the policy so an offline cold start still has sane slider bounds.
-    final bool enabled = _deliveryRadiusFeatureEnabled;
-    final double? defaultKm = _businessDefaultRadiusKm;
-    final double? maxKm = _businessMaxRadiusKm;
-    _writePref((SharedPreferences prefs) async {
-      await prefs.setBool(_prefDeliveryRadiusEnabled, enabled);
-      if (defaultKm != null) {
-        await prefs.setDouble(_prefDeliveryRadiusDefaultKm, defaultKm);
-      } else {
-        await prefs.remove(_prefDeliveryRadiusDefaultKm);
-      }
-      if (maxKm != null) {
-        await prefs.setDouble(_prefDeliveryRadiusMaxKm, maxKm);
-      } else {
-        await prefs.remove(_prefDeliveryRadiusMaxKm);
-      }
-      return true;
-    });
-
-    // Business turned the feature off → drop any local restriction so the
-    // partner sees every order again.
-    if (!_deliveryRadiusFeatureEnabled) {
-      if (_deliveryRadiusKm != null) {
-        setDeliveryRadiusKm(null);
-      }
-      return;
-    }
-    // Apply the business default whenever there is no saved selection. Logout
-    // clears the saved value, so this path runs on the next login and resets
-    // the radius to custom_default_delivery_radius_km. setDeliveryRadiusKm caps
-    // it at custom_maximum_delivery_radius_km. A mid-session selection survives app
-    // restarts because it is non-null here and only gets clamped to the cap.
-    if (_deliveryRadiusKm == null) {
-      if (defaultKm != null) {
-        setDeliveryRadiusKm(defaultKm);
-      }
-    } else if (maxKm != null && _deliveryRadiusKm! > maxKm) {
-      setDeliveryRadiusKm(maxKm);
-    }
-  }
-
-  /// Parses a Frappe Float to a positive double, returning null for missing,
-  /// unparseable, or non-positive values (treated as "not configured").
-  double? _positiveOrNull(dynamic raw) {
-    final double? value = (raw is num)
-        ? raw.toDouble()
-        : double.tryParse(raw?.toString() ?? '');
-    if (value == null || value <= 0) return null;
-    return value;
-  }
-
   Future<void> fetchLoggedInEmployeeDriverProfile({
     bool forceRefresh = false,
   }) async {
@@ -5050,7 +4866,6 @@ class AppController extends ChangeNotifier {
       );
 
       if (driverDoc != null) {
-        _applyDeliveryRadiusPolicy(driverDoc);
         _checkLicenseStatus(driverDoc);
         _applyRatingFromDriverDoc(driverDoc);
         final dynamic onlineRaw = driverDoc['custom_custom_is_online'];
