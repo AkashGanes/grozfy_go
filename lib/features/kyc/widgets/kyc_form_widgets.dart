@@ -22,6 +22,8 @@ class KycHeader extends StatelessWidget {
     required this.onBack,
     this.assetPath,
     this.icon,
+    this.trailingNote,
+    this.showBottomBorder = false,
   }) : assert(
           assetPath != null || icon != null,
           'Provide either assetPath or icon for the header decoration',
@@ -33,10 +35,27 @@ class KycHeader extends StatelessWidget {
   final IconData? icon;
   final VoidCallback onBack;
 
+  /// Optional small widget rendered below the subtitle (e.g. a trust badge).
+  final Widget? trailingNote;
+
+  /// Adds a 1px bottom border once the host screen has scrolled, so the
+  /// hairline doesn't permanently compete with the card sitting beneath it.
+  final bool showBottomBorder;
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: showBottomBorder
+                ? context.borderSubtle
+                : Colors.transparent,
+          ),
+        ),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -50,8 +69,8 @@ class KycHeader extends StatelessWidget {
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w500,
                     color: context.textPrimary,
                   ),
                 ),
@@ -60,10 +79,15 @@ class KycHeader extends StatelessWidget {
                   subtitle,
                   style: TextStyle(
                     fontSize: 13,
+                    fontWeight: FontWeight.w400,
                     color: context.textSecondary,
                     height: 1.3,
                   ),
                 ),
+                if (trailingNote != null) ...[
+                  const SizedBox(height: 8),
+                  trailingNote!,
+                ],
               ],
             ),
           ),
