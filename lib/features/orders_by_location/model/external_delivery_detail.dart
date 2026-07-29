@@ -42,6 +42,7 @@ class ExternalDeliveryDetail {
     this.pickupAddress,
     this.latitude,
     this.longitude,
+    this.distanceKm,
     this.paymentMode,
     this.paymentMethod,
     this.grandTotal,
@@ -65,6 +66,10 @@ class ExternalDeliveryDetail {
   final String? pickupAddress;
   final double? latitude;
   final double? longitude;
+  // Server-computed driver→delivery distance (km) from the radius-aware
+  // `list_available_deliveries` feed; null when the source didn't provide it
+  // (the app then falls back to a client-side Haversine estimate).
+  final double? distanceKm;
   final String? paymentMode;
   final String? paymentMethod;
   final double? grandTotal;
@@ -140,6 +145,7 @@ class ExternalDeliveryDetail {
           ?? _nullIfBlank(m['store_address']?.toString()),
       latitude: lat,
       longitude: lng,
+      distanceKm: toDouble(m['distance_km']),
       paymentMode: _nullIfBlank(
         m['payment_mode']?.toString() ??
         m['mode_of_payment']?.toString() ??

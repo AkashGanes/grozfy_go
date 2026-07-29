@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -14,6 +13,7 @@ import '../../core/state/app_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/context_colors.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/maps_launcher.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../notifications/providers/notification_providers.dart';
@@ -949,7 +949,11 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
                 ActiveOrderAction(
                   label: app.t('open_maps'),
                   icon: Icons.map_outlined,
-                  onTap: () => _openInMaps(context, currentOrder, app),
+                  onTap: () => launchGoogleMapsNavigation(
+                    context,
+                    lat: currentOrder.latitude,
+                    lng: currentOrder.longitude,
+                  ),
                 ),
                 ActiveOrderAction(
                   label: app.t('track_order'),
@@ -1710,52 +1714,6 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       return;
     }
     Navigator.of(context).pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
-  }
-
-  Future<void> _openInMaps(
-    BuildContext context,
-    DeliveryOrder order,
-    AppController app,
-  ) async {
-    final double lat = order.latitude;
-    final double lng = order.longitude;
-
-    if (Platform.isAndroid) {
-      final Uri androidUri = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
-      if (await canLaunchUrl(androidUri)) {
-        await launchUrl(androidUri, mode: LaunchMode.externalApplication);
-        return;
-      }
-    }
-
-    if (Platform.isIOS) {
-      final Uri googleMapsIos = Uri.parse(
-        'comgooglemaps://?daddr=$lat,$lng&directionsmode=driving',
-      );
-      if (await canLaunchUrl(googleMapsIos)) {
-        await launchUrl(googleMapsIos);
-        return;
-      }
-      final Uri appleMaps = Uri.parse('maps:?daddr=$lat,$lng');
-      if (await canLaunchUrl(appleMaps)) {
-        await launchUrl(appleMaps);
-        return;
-      }
-    }
-
-    final Uri webUri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1'
-      '&destination=$lat,$lng'
-      '&travelmode=driving',
-    );
-    final bool launched = await launchUrl(
-      webUri,
-      mode: LaunchMode.externalApplication,
-    );
-    if (!context.mounted) return;
-    if (!launched) {
-      showInfoSnack(context, app.t('unable_open_maps'));
-    }
   }
 
 }

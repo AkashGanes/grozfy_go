@@ -313,6 +313,102 @@ class ExternalDeliveryRepository {
     return result;
   }
 
+  /// Batch-fetches [ExternalDelivery] records by name, so a trip's stops can
+  /// be joined to their delivery coordinates (latitude/longitude) in a single
+  /// call instead of one request per stop. Reuses [fetchPage]'s existing
+  /// geo-fields-with-fallback behavior, so a delivery missing lat/lng is
+  /// simply absent those fields rather than failing the whole batch.
+  Future<Map<String, ExternalDelivery>> fetchDeliveriesByNames(
+    List<String> names,
+  ) async {
+    if (names.isEmpty) return <String, ExternalDelivery>{};
+    final List<ExternalDelivery> rows = await fetchPage(
+      limitStart: 0,
+      limitPageLength: names.length,
+      filters: <List<dynamic>>[
+        <dynamic>['External Delivery', 'name', 'in', names],
+      ],
+    );
+    return <String, ExternalDelivery>{
+      for (final ExternalDelivery d in rows) d.name: d,
+    };
+  }
+
+  /// Fetches the driver's **available** (Pending) deliveries filtered by their
+  /// configured delivery radius, via the custom `list_available_deliveries`
+  /// method. Unlike [fetchPage] — which hits the generic REST list and is
+  /// radius-blind — the server here filters by the driver's selected radius and
+  /// returns the *full* set in a single call, each row carrying a
+  /// server-computed `distance_km`.
+  ///
+  /// [storeName] and [filters] (the same status/date/customer Frappe clauses the
+  /// list screen already builds) are forwarded so those filters keep working
+  /// server-side. Expected response envelope, mirroring the other custom driver
+  /// endpoints (e.g. `list_pickup_pool`):
+  ///
+  /// ```json
+  /// { "message": [ { "name": ..., "store_name": ..., "distance_km": 1.8, ... } ] }
+  /// ```
+  Future<List<ExternalDelivery>> fetchAvailableDeliveries({
+    String? storeName,
+    List<List<dynamic>>? filters,
+  }) async {
+    final driver = await _getLoggedInDriver();
+    final params = <String, String>{'driver': driver};
+    if (storeName != null && storeName.isNotEmpty) {
+      params['store_name'] = storeName;
+    }
+    if (filters != null && filters.isNotEmpty) {
+      params['filters'] = jsonEncode(filters);
+    }
+
+    final uri = Uri.parse(
+      ApiConstants.listAvailableDeliveries,
+    ).replace(queryParameters: params);
+    _logApi('list_available_deliveries request', uri.toString());
+
+    final sw = Stopwatch()..start();
+    final resp = await _get(uri, headers: await _authHeaders());
+    final int networkMs = sw.elapsedMilliseconds;
+
+    if (resp.statusCode == 401) {
+      throw Exception('401: Invalid API credentials.');
+    }
+    if (resp.statusCode == 403) {
+      throw Exception('403: Access denied. Check API permissions.');
+    }
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final message = decoded['message'];
+    if (message is! List) return <ExternalDelivery>[];
+
+    final result = message
+        .whereType<Map<String, dynamic>>()
+        .map(ExternalDelivery.fromJson)
+        .toList();
+
+    // The list UI inserts a StoreHeader whenever store_name changes between
+    // consecutive rows, so rows must be grouped by store. A custom method's
+    // ordering isn't guaranteed, so enforce the same order the generic path used
+    // (store_name asc, then modified desc). distance_km is parsed onto the model
+    // but intentionally not used for ordering.
+    result.sort((a, b) {
+      final byStore = a.storeName.compareTo(b.storeName);
+      if (byStore != 0) return byStore;
+      return b.modified.compareTo(a.modified);
+    });
+
+    _logApi(
+      'list_available_deliveries timing',
+      'network=${networkMs}ms rows=${result.length} '
+          'storeFilter=${storeName ?? "ALL"}',
+    );
+    return result;
+  }
+
   /// Fetches a full page of order details in a single HTTP call using the
   /// Frappe desk reportview endpoint. This endpoint is used by the Frappe UI
   /// itself and is not subject to the in_list_view field restriction that the
@@ -884,9 +980,15 @@ class ExternalDeliveryRepository {
       throw Exception('No orders provided for trip creation');
     }
 
+    // 'docstatus': 1 + status 'Scheduled' — same pattern as the working
+    // single-order path (createTripByOrderName) — so a multi-order batch
+    // trip is born Submitted instead of Draft. Frappe defaults docstatus
+    // to 0 on insert when omitted, which is what left these trips Draft
+    // (and invisible to fetchActiveOrdersForDriver's docstatus=1 filter).
     final createPayload = {
       'driver': await _getLoggedInDriver(),
-      'status': 'Draft',
+      'status': 'Scheduled',
+      'docstatus': 1,
       'trip_date': DateTime.now().toIso8601String().split('T').first,
       'stops': orders.map((o) => {'external_delivery': o.name}).toList(),
     };
@@ -1735,6 +1837,11 @@ class ExternalDeliveryRepository {
     final String code = (prefs.getString(_prefLanguageCode) ?? 'en').trim();
     return code.isEmpty ? 'en' : code;
   }
+
+  /// Public entry point for marking [trip] fully Completed. Reused by the
+  /// return-to-store flow (via [_completeTrip] below) and by the trip-details
+  /// screen's auto-completion once every stop has reached a terminal status.
+  Future<void> completeTrip(ExternalDeliveryTrip trip) => _completeTrip(trip);
 
   Future<void> _completeTrip(ExternalDeliveryTrip trip) async {
     _logApi('mark_returned_to_store trip', 'trip=${trip.name}');

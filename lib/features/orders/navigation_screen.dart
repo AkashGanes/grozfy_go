@@ -1,12 +1,10 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/context_colors.dart';
+import '../../core/utils/maps_launcher.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
@@ -271,10 +269,10 @@ class _NavigationScreenState extends State<NavigationScreen> {
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: () => _launchGoogleMapsNavigation(
+            onPressed: () => launchGoogleMapsNavigation(
               context,
-              order.latitude,
-              order.longitude,
+              lat: order.latitude,
+              lng: order.longitude,
             ),
             icon: const Icon(Icons.navigation_rounded),
             label: Text(app.t('open_google_maps')),
@@ -378,61 +376,6 @@ class _NavigationScreenState extends State<NavigationScreen> {
     );
   }
 
-  Future<void> _launchGoogleMapsNavigation(
-    BuildContext context,
-    double lat,
-    double lng,
-  ) async {
-    // Try each URI in order, launching without canLaunchUrl check because
-    // custom schemes (google.navigation, comgooglemaps) can return false on
-    // Android 11+ even when the app is installed.
-    if (Platform.isAndroid) {
-      // Native navigation intent — starts turn-by-turn from current GPS location.
-      final Uri navUri = Uri.parse('google.navigation:q=$lat,$lng&mode=d');
-      try {
-        if (await launchUrl(navUri, mode: LaunchMode.externalApplication)) {
-          return;
-        }
-      } catch (_) {}
-
-      // Fallback: geo URI with destination query (opens Maps or lets user choose).
-      final Uri geoUri = Uri.parse('geo:$lat,$lng?q=$lat,$lng');
-      try {
-        if (await launchUrl(geoUri, mode: LaunchMode.externalApplication)) {
-          return;
-        }
-      } catch (_) {}
-    }
-
-    if (Platform.isIOS) {
-      final Uri googleMapsIos = Uri.parse(
-        'comgooglemaps://?daddr=$lat,$lng&directionsmode=driving',
-      );
-      try {
-        if (await launchUrl(googleMapsIos)) return;
-      } catch (_) {}
-
-      final Uri appleMaps = Uri.parse('maps:?daddr=$lat,$lng');
-      try {
-        if (await launchUrl(appleMaps)) return;
-      } catch (_) {}
-    }
-
-    // Universal fallback: web Google Maps with driving directions.
-    final Uri webUri = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1'
-      '&destination=$lat,$lng'
-      '&travelmode=driving',
-    );
-    try {
-      await launchUrl(webUri, mode: LaunchMode.externalApplication);
-      return;
-    } catch (_) {}
-
-    if (context.mounted) {
-      AppToast.show(context, 'Could not open maps');
-    }
-  }
 }
 
 class _StepTile extends StatelessWidget {

@@ -33,6 +33,10 @@ class PartnerTimingLogDao extends DatabaseAccessor<FlowFleetDatabase>
         .get();
   }
 
+  /// Rows for [partner] only. Timing rows outlive the session that wrote them,
+  /// so a device holds several drivers' history at once — an unknown [partner]
+  /// must match nothing rather than everything, or the caller silently renders
+  /// the previous driver's hours as the current one's.
   Future<List<PartnerTimingLog>> getEventsInRange(
     DateTime start,
     DateTime end, {
@@ -47,18 +51,19 @@ class PartnerTimingLogDao extends DatabaseAccessor<FlowFleetDatabase>
                 t.eventTime.isSmallerThanValue(endStr) &
                 (partner != null && partner.isNotEmpty
                     ? t.partner.equals(partner)
-                    : const Constant(true)),
+                    : const Constant(false)),
           )
           ..orderBy([(t) => OrderingTerm.asc(t.eventTime)]))
         .get();
   }
 
+  /// Every row for [partner]. See [getEventsInRange] on the unknown-partner case.
   Future<List<PartnerTimingLog>> getAllEvents({String? partner}) {
     return (select(partnerTimingLogs)
           ..where(
             (t) => partner != null && partner.isNotEmpty
                 ? t.partner.equals(partner)
-                : const Constant(true),
+                : const Constant(false),
           )
           ..orderBy([(t) => OrderingTerm.asc(t.eventTime)]))
         .get();
