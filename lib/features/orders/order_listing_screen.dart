@@ -323,8 +323,11 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     int pageKey,
   ) async {
     try {
+      final (double? driverLat, double? driverLng) = await _driverCoords(app);
       final summaries = await _repository.fetchAvailableDeliveries(
         storeName: _selectedStore,
+        driverLat: driverLat,
+        driverLng: driverLng,
         filters: <List<dynamic>>[
           <dynamic>['External Delivery', 'status', '=', 'Pending'],
         ],
@@ -340,6 +343,28 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       );
       return _fetchOrdersGenericFallback(app);
     }
+  }
+
+  /// The driver's current GPS position for the radius-aware feed, or
+  /// `(null, null)` when it can't be established.
+  ///
+  /// Uses the app's existing location service — [AppController
+  /// .ensureCurrentLocation] — with `forceRefresh` so the backend filters
+  /// against where the driver actually is, not a position restored from prefs on
+  /// a cold start or picked manually on the map. If the fresh fix fails, that
+  /// call keeps any previously known location, and only a total absence of one
+  /// yields `(null, null)` — at which point the caller omits `driver_lat`/
+  /// `driver_lng` and the backend falls back to its own origin.
+  Future<(double?, double?)> _driverCoords(AppController app) async {
+    final bool located = await app.ensureCurrentLocation(forceRefresh: true);
+    if (!located) {
+      debugPrint(
+        '[OrderListing] no GPS fix — omitting driver_lat/driver_lng, '
+        'backend will use its own fallback origin',
+      );
+      return (null, null);
+    }
+    return (app.currentLatitude, app.currentLongitude);
   }
 
   /// True when [e] indicates the backend method simply isn't deployed (Frappe's

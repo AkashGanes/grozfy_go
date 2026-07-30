@@ -21,6 +21,7 @@ import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
 import '../repository/external_delivery_repository.dart';
 import 'cod_collection_sheet.dart';
+import 'delivery_otp_sheet.dart';
 import 'delivery_proof_sheet.dart';
 
 class OrderLocationDetailScreen extends StatefulWidget {
@@ -769,23 +770,67 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   // Status helpers
   // ---------------------------------------------------------------------------
 
-  void _onSlideAcceptAndStart() {
-    _updateStatus('Added to Trip');
-    _startTracking();
+  Future<void> _onSlideAcceptAndStart() async {
+    if (!ConnectivityService().isConnected) {
+      AppToast.show(context, 'You are offline — go online to accept orders.');
+      return;
+    }
+
+    setState(() => _updating = true);
+    try {
+      // Create and submit the trip first — its own submit sets
+      // External Delivery.status server-side (mirrors the Desk flow and
+      // AppController.acceptOrder), so the backend's status-change
+      // propagation hook fires and Order Index updates correctly. Do NOT
+      // PATCH status directly, and do NOT swallow a failure here — with no
+      // separate status write, silently succeeding would leave the order
+      // stuck at Pending with no visible error.
+      await widget.repository.createTripByOrderName(widget.order.name);
+      if (!mounted) return;
+      await _refreshDetail();
+      if (!mounted) return;
+      AppToast.show(context, 'Trip created — starting delivery');
+      _startTracking();
+    } catch (e) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          'Failed to create trip: ${e.toString().replaceFirst('Exception: ', '')}',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
   }
 
   Future<void> _onSlideDelivered() async {
-    // COD: ask how customer paid before proceeding
     final detail = _detail;
+
+    // Customer-facing OTP gate. On success the order is already Delivered
+    // server-side — everything below just records COD payment (if any) and
+    // refreshes the UI to reflect it.
+    final bool? otpVerified = await showDeliveryOtpSheet(
+      context,
+      repository: widget.repository,
+      externalDelivery: widget.order.name,
+    );
+    if (!mounted || otpVerified != true) return;
+
+    _stopTracking();
+
+    // COD: ask how customer paid, purely to record payment fields.
     if (detail != null && detail.isCod) {
       final codResult = await showCodCollectionSheet(
         context,
         amountToCollect: detail.codAmountToCollect ?? 0,
       );
       if (!mounted) return;
-      if (codResult == null) return;
+      if (codResult == null) {
+        // Order is already Delivered from the OTP step — just reflect it.
+        await _refreshDetail();
+        return;
+      }
 
-      _stopTracking();
       setState(() => _updating = true);
       try {
         await widget.repository.markDeliveredWithCod(
@@ -793,14 +838,10 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
           codCollectionMode: codResult.mode,
           codUpiReference: codResult.upiRef,
         );
-        await _refreshDetail();
       } catch (e) {
-        if (mounted) {
-          setState(() => _updating = false);
-          AppToast.show(context, 'Failed to mark delivered: $e');
-        }
-        return;
+        if (mounted) AppToast.show(context, 'COD save failed: $e');
       }
+      await _refreshDetail();
 
       if (!mounted) return;
       setState(() => _updating = false);
@@ -843,19 +884,8 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
       return;
     }
 
-    _stopTracking();
     setState(() => _updating = true);
-
-    try {
-      await widget.repository.updateStatus(widget.order.name, 'Delivered');
-      await _refreshDetail();
-    } catch (e) {
-      if (mounted) {
-        setState(() => _updating = false);
-        AppToast.show(context, 'Failed to mark delivered: $e');
-      }
-      return; // Don't show success dialog on failure
-    }
+    await _refreshDetail();
 
     if (!mounted) return;
     setState(() => _updating = false);

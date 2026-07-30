@@ -20,6 +20,7 @@ import '../notifications/providers/notification_providers.dart';
 import '../orders_by_location/model/external_delivery.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/cod_collection_sheet.dart';
+import '../orders_by_location/ui/delivery_otp_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
@@ -1661,6 +1662,15 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
           if (!context.mounted) return;
         }
       }
+
+      // Customer-facing OTP gate — required before the order can be
+      // committed as Delivered.
+      final bool? otpVerified = await showDeliveryOtpSheet(
+        context,
+        repository: ExternalDeliveryRepository(),
+        externalDelivery: order.orderId,
+      );
+      if (!context.mounted || otpVerified != true) return;
     }
 
     final error = await app.updateOrderStatus(transition.next);

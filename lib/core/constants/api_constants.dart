@@ -27,6 +27,16 @@ class ApiConstants {
       '$erpBaseUrl/api/resource/External%20Delivery%20Trip';
   static const String defaultExternalDeliveryDriver = 'HR-DRI-2026-00001';
 
+  // POST: {external_delivery, otp} → verifies the customer-provided delivery
+  // OTP and, on success, transitions the order to Delivered server-side.
+  // Response: {success: true, external_delivery: "..."} or
+  // {success: true, already_delivered: true, ...}. On failure the server
+  // returns one of: "Invalid OTP", "OTP already verified",
+  // "Order is not Out for Delivery", "Delivery partner is not assigned to
+  // this order" — surfaced as-is via _extractErrorMessage.
+  static const String verifyDeliveryOtp =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.driver.verify_delivery_otp';
+
   // Driver location ping endpoint. Backend exposes a method that accepts
   // {driver, latitude, longitude, recorded_at} and persists a Driver Location
   // Ping record. Server is responsible for de-duplicating by recorded_at so

@@ -3233,13 +3233,27 @@ class AppController extends ChangeNotifier {
   /// was already set, or it was just fetched); false when it couldn't be
   /// obtained (service off, permission denied, or fetch failure) so the caller
   /// can fail open.
-  Future<bool> ensureCurrentLocation() async {
-    if (_currentLatitude != null && _currentLongitude != null) {
+  ///
+  /// Pass [forceRefresh] to take a new fix even when a location is already
+  /// known. [_currentLatitude] can hold a position restored from prefs on a cold
+  /// start or one the partner picked manually on the map, so callers that need
+  /// the partner's *actual* position right now (e.g. sending `driver_lat`/
+  /// `driver_lng` to the radius-aware order feed) must not settle for it. When a
+  /// forced refresh fails, any previously known location is kept and reported as
+  /// available rather than discarded — a stale origin still beats none.
+  ///
+  /// The fix is capped by [_locationFixTimeout] so a device that never returns a
+  /// position can't stall the caller indefinitely; the timeout surfaces as a
+  /// caught exception and falls back to the known location.
+  Future<bool> ensureCurrentLocation({bool forceRefresh = false}) async {
+    final bool hasKnownLocation =
+        _currentLatitude != null && _currentLongitude != null;
+    if (hasKnownLocation && !forceRefresh) {
       return true;
     }
     try {
       final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return false;
+      if (!serviceEnabled) return hasKnownLocation;
 
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
@@ -3247,12 +3261,13 @@ class AppController extends ChangeNotifier {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        return false;
+        return hasKnownLocation;
       }
 
       final Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
+          timeLimit: _locationFixTimeout,
         ),
       );
       _currentLatitude = position.latitude;
@@ -3262,9 +3277,13 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (_) {
-      return false;
+      return hasKnownLocation;
     }
   }
+
+  /// Upper bound on a single [ensureCurrentLocation] fix. Long enough for a cold
+  /// GPS lock, short enough that the order list never appears to hang on it.
+  static const Duration _locationFixTimeout = Duration(seconds: 8);
 
   void stopTracking() {
     _positionStream?.cancel();
@@ -3413,6 +3432,12 @@ class AppController extends ChangeNotifier {
           eventType: TimingEventType.tripCompleted,
           tripRef: targetId,
         );
+        _acceptedOrders.removeWhere((order) => order.orderId == targetId);
+        clearOrder(targetId);
+      } else if (status == OrderStatus.failed ||
+          status == OrderStatus.cancelled ||
+          status == OrderStatus.rejected ||
+          status == OrderStatus.returned) {
         _acceptedOrders.removeWhere((order) => order.orderId == targetId);
         clearOrder(targetId);
       } else if (status == OrderStatus.reachedPickup) {
@@ -3682,6 +3707,7 @@ class AppController extends ChangeNotifier {
         OrderStatus.delivered,
         OrderStatus.cancelled,
         OrderStatus.rejected,
+        OrderStatus.failed,
       };
 
       // Fetch all order details in parallel instead of sequentially.
@@ -3784,17 +3810,17 @@ class AppController extends ChangeNotifier {
     }
 
     try {
-      await _orderRepository.updateStatusViaSetValue(orderId, 'Added to Trip');
-
-      // Create and submit an External Delivery Trip in Frappe so the web
-      // dashboard reflects the accepted order immediately.
-      try {
-        final String tripName = await _orderRepository.createTripByOrderName(
-          orderId,
-        );
-        _activeTripIds[orderId] = tripName;
-      } catch (_) {
-      }
+      // Create and submit an External Delivery Trip in Frappe first — its own
+      // submit sets External Delivery.status server-side, mirroring the Desk
+      // flow exactly so the backend's status-change propagation hook fires
+      // and Order Index updates correctly. Do NOT set status directly here
+      // and do NOT swallow a failure: with no separate status write, silently
+      // succeeding would leave the order stuck at Pending with no visible
+      // error — surface it so the driver can see and retry.
+      final String tripName = await _orderRepository.createTripByOrderName(
+        orderId,
+      );
+      _activeTripIds[orderId] = tripName;
 
       // Stamp driver on the order record so it is queryable by driver after
       // logout/login (SharedPreferences are cleared on logout).
@@ -3942,6 +3968,7 @@ class AppController extends ChangeNotifier {
         OrderStatus.cancelled,
         OrderStatus.rejected,
         OrderStatus.pending,
+        OrderStatus.failed,
       };
 
       // Fetch all order details in parallel.

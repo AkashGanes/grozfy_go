@@ -349,9 +349,17 @@ class ExternalDeliveryRepository {
   /// ```json
   /// { "message": [ { "name": ..., "store_name": ..., "distance_km": 1.8, ... } ] }
   /// ```
+  ///
+  /// [driverLat]/[driverLng] are the driver's live GPS position. They are
+  /// optional on both sides: when omitted, the backend falls back to the
+  /// driver's last known server-side position. Pass them only when a real fix is
+  /// available, so a denied permission or missing fix degrades to that fallback
+  /// rather than sending a bogus origin.
   Future<List<ExternalDelivery>> fetchAvailableDeliveries({
     String? storeName,
     List<List<dynamic>>? filters,
+    double? driverLat,
+    double? driverLng,
   }) async {
     final driver = await _getLoggedInDriver();
     final params = <String, String>{'driver': driver};
@@ -360,6 +368,11 @@ class ExternalDeliveryRepository {
     }
     if (filters != null && filters.isNotEmpty) {
       params['filters'] = jsonEncode(filters);
+    }
+    // Both or neither — a lone coordinate can't define an origin.
+    if (driverLat != null && driverLng != null) {
+      params['driver_lat'] = driverLat.toString();
+      params['driver_lng'] = driverLng.toString();
     }
 
     final uri = Uri.parse(
@@ -1964,6 +1977,36 @@ class ExternalDeliveryRepository {
       'status': _returnedStatus,
       'store_notified': 1,
     });
+  }
+
+  /// Verifies the customer-provided delivery OTP for [externalDelivery]. On
+  /// success (including the already-delivered case) the order has been
+  /// transitioned to Delivered server-side — callers should just refresh.
+  /// On failure this throws with the server's exact message ("Invalid OTP",
+  /// "OTP already verified", "Order is not Out for Delivery", "Delivery
+  /// partner is not assigned to this order") via [_extractErrorMessage], so
+  /// callers can display it as-is.
+  Future<void> verifyDeliveryOtp({
+    required String externalDelivery,
+    required String otp,
+  }) async {
+    final uri = Uri.parse(ApiConstants.verifyDeliveryOtp);
+    _logApi(
+      'verify_delivery_otp request',
+      'POST $uri external_delivery=$externalDelivery',
+    );
+    final resp = await _post(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'external_delivery': externalDelivery, 'otp': otp}),
+    );
+    _logApi(
+      'verify_delivery_otp response',
+      'code=${resp.statusCode} body=${resp.body}',
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
   }
 
   Future<Map<String, dynamic>> confirmRecallReceivedAtStore({
