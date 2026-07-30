@@ -26,6 +26,7 @@ import '../../pickup_jobs/model/pickup_job.dart';
 import '../../pickup_jobs/repository/pickup_job_repository.dart';
 import 'cod_collection_sheet.dart';
 import 'cod_handover_sheet.dart';
+import 'delivery_otp_sheet.dart';
 import 'delivery_proof_sheet.dart';
 import 'failed_delivery_bottom_sheet.dart';
 import '../../pickup_jobs/ui/failed_pickup_bottom_sheet.dart';
@@ -2268,6 +2269,16 @@ class _ExternalDeliveryTripDetailsScreenState
         );
       }
       if (!mounted) return;
+
+      // Customer-facing OTP gate — transitions the External Delivery order
+      // to Delivered server-side on success. Everything below just records
+      // COD payment (if any) and flips the trip-stop row's own status.
+      final bool? otpVerified = await showDeliveryOtpSheet(
+        context,
+        repository: ExternalDeliveryRepository(),
+        externalDelivery: orderName,
+      );
+      if (!mounted || otpVerified != true) return;
 
       if (isCod) {
         // COD order: collect payment after proof

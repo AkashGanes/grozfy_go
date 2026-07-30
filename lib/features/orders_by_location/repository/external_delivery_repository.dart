@@ -1979,6 +1979,36 @@ class ExternalDeliveryRepository {
     });
   }
 
+  /// Verifies the customer-provided delivery OTP for [externalDelivery]. On
+  /// success (including the already-delivered case) the order has been
+  /// transitioned to Delivered server-side — callers should just refresh.
+  /// On failure this throws with the server's exact message ("Invalid OTP",
+  /// "OTP already verified", "Order is not Out for Delivery", "Delivery
+  /// partner is not assigned to this order") via [_extractErrorMessage], so
+  /// callers can display it as-is.
+  Future<void> verifyDeliveryOtp({
+    required String externalDelivery,
+    required String otp,
+  }) async {
+    final uri = Uri.parse(ApiConstants.verifyDeliveryOtp);
+    _logApi(
+      'verify_delivery_otp request',
+      'POST $uri external_delivery=$externalDelivery',
+    );
+    final resp = await _post(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'external_delivery': externalDelivery, 'otp': otp}),
+    );
+    _logApi(
+      'verify_delivery_otp response',
+      'code=${resp.statusCode} body=${resp.body}',
+    );
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
   Future<Map<String, dynamic>> confirmRecallReceivedAtStore({
     required String externalDelivery,
   }) async {
