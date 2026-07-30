@@ -8,6 +8,7 @@ import '../../core/navigation/app_routes.dart';
 import '../../core/models/app_models.dart';
 import '../../core/state/app_controller.dart';
 import '../../core/state/app_scope.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_bottom_sheet.dart';
 import '../../core/widgets/app_shell.dart';
@@ -87,14 +88,18 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   }
 
   /// Reloads the list when the driver's availability flips. AppScope is an
-  /// InheritedNotifier, so this fires whenever AppController notifies. Going
-  /// Offline empties the list (no available orders reach an Offline driver);
-  /// going back Online refills it.
+  /// InheritedNotifier, so this fires whenever AppController notifies. While
+  /// Offline, build() replaces the list with an OfflineStateView so the pool
+  /// is never fetched; going back Online, this refresh repopulates it.
   void _syncOnlineState() {
     final bool online = _app?.isOnline ?? false;
     if (_lastOnline != null && online != _lastOnline) {
-      _lastGroupStore = null;
       _hiddenByRadiusCount = 0;
+      if (!online && _selectionMode) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _exitSelectionMode();
+        });
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _pagingController.refresh();
       });
@@ -781,6 +786,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   Widget build(BuildContext context) {
     final ColorScheme scheme = Theme.of(context).colorScheme;
     final bool searching = _searchQuery.length >= 2;
+    final bool online = _app?.isOnline ?? false;
 
     return PopScope(
       canPop: !_selectionMode,
@@ -799,7 +805,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             : (_selectedStore ?? 'All Stores'),
         scrollable: false,
         actions: [
-          if (!_selectionMode) ...[
+          if (!_selectionMode && online) ...[
             IconButton(
               icon: Icon(
                 _showSearchBar ? Icons.search_off_rounded : Icons.search_rounded,
@@ -818,7 +824,12 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             ),
           ],
         ],
-        child: Column(
+        child: !online
+            ? OfflineStateView(
+                message: 'Go Online to see available orders.',
+                onGoOnline: () => _app!.setOnline(true),
+              )
+            : Column(
           children: [
           // Search bar — collapsed by default, revealed via the header icon so
           // it doesn't compete with the order list for a first-time driver's
