@@ -1117,7 +1117,7 @@ class _ExternalDeliveryTripDetailsScreenState
                 physics: const NeverScrollableScrollPhysics(),
                 buildDefaultDragHandles: false,
                 itemCount: pendingOrdered.length,
-                onReorderItem: (int oldIndex, int newIndex) {
+                onReorder: (int oldIndex, int newIndex) {
                   _controller.reorder(oldIndex, newIndex);
                 },
                 itemBuilder: (context, index) {
