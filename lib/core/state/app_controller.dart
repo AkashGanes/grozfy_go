@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,6 +27,7 @@ import '../services/secure_token_storage.dart';
 import '../services/sync_manager.dart';
 import '../utils/formatters.dart';
 import '../utils/validators.dart' as app_validators;
+import '../../features/legal/legal_screens.dart';
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
 import '../../features/orders_by_location/repository/external_delivery_repository.dart';
@@ -1717,9 +1719,46 @@ class AppController extends ChangeNotifier {
     return DateTime.tryParse(raw)?.toUtc();
   }
 
+  /// Cached so repeated reads do not cross the platform channel. Empty string
+  /// means "unavailable" — resolved once, then reused either way.
+  String? _cachedAppVersion;
+
+  /// `1.4.2+37` style — the build number is what distinguishes two releases
+  /// carrying the same marketing version, which is exactly what matters when
+  /// reconstructing what a driver saw.
+  Future<String> _resolveAppVersion() async {
+    final String? cached = _cachedAppVersion;
+    if (cached != null) return cached;
+
+    String resolved = '';
+    try {
+      final PackageInfo info = await PackageInfo.fromPlatform();
+      resolved = info.buildNumber.isEmpty
+          ? info.version
+          : '${info.version}+${info.buildNumber}';
+    } catch (_) {
+      // No platform channel (widget tests, unsupported host). The version is
+      // supplementary to the consent record, so registration must not fail
+      // just because it could not be read.
+      resolved = '';
+    }
+
+    _cachedAppVersion = resolved;
+    return resolved;
+  }
+
+  /// Creates the partner account.
+  ///
+  /// [consent] is what the driver accepted at the gate. When supplied it is
+  /// sent with the registration so the backend can create the matching
+  /// Delivery Partner Consent record in the same transaction — an account can
+  /// then never exist without a record of which policy version was agreed to.
+  /// It stays optional so the call remains valid for any caller that predates
+  /// the consent gate.
   Future<String?> registerNewPartner({
     required String fullName,
     String? email,
+    LegalConsentResult? consent,
   }) async {
     if (fullName.trim().isEmpty) {
       return 'Full name is required';
@@ -1737,6 +1776,19 @@ class AppController extends ChangeNotifier {
       };
       if (email != null && email.trim().isNotEmpty) {
         body['email'] = email.trim();
+      }
+      if (consent != null) {
+        body['consent_version'] = consent.version;
+        body['consent_documents'] = consent.documents;
+        body['consent_source'] = consent.source;
+
+        // Recorded against the consent so a later dispute can be tied to the
+        // exact build the driver saw. Omitted rather than sent blank if the
+        // platform channel is unavailable.
+        final String appVersion = await _resolveAppVersion();
+        if (appVersion.isNotEmpty) {
+          body['app_version'] = appVersion;
+        }
       }
 
       final http.Response response = await http.post(

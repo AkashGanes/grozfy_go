@@ -30,6 +30,7 @@ import 'features/kyc/kyc_documents_screen.dart';
 import 'features/kyc/vehicle_details_screen.dart';
 import 'features/kyc/vehicle_submitted_details_screen.dart';
 import 'features/language/language_selection_screen.dart';
+import 'features/legal/legal_screens.dart';
 import 'features/location/current_location_picker_screen.dart';
 import 'features/location/location_tracking_screen.dart';
 import 'features/orders/navigation_screen.dart';
@@ -393,6 +394,37 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
             case AppRoutes.support:
               return MaterialPageRoute<void>(
                 builder: (_) => const SupportScreen(),
+              );
+            // ── Privacy & Legal module ──────────────────────────────────────
+            case AppRoutes.legal:
+              return MaterialPageRoute<void>(
+                builder: (_) => const TermsPrivacyScreen(),
+              );
+            case AppRoutes.legalConsent:
+              // Returns a LegalConsentResult once accepted, carrying the
+              // document version and document set the caller must record.
+              return MaterialPageRoute<LegalConsentResult>(
+                builder: (_) => const TermsPrivacyScreen(requireConsent: true),
+              );
+            case AppRoutes.legalPrivacy:
+              return MaterialPageRoute<void>(
+                builder: (_) => const PrivacyPolicyScreen(),
+              );
+            case AppRoutes.legalDataDetail:
+              return MaterialPageRoute<void>(
+                builder: (_) => const DataCollectionScreen(),
+              );
+            case AppRoutes.legalTerms:
+              return MaterialPageRoute<void>(
+                builder: (_) => const TermsConditionsScreen(),
+              );
+            case AppRoutes.legalPermissions:
+              return MaterialPageRoute<void>(
+                builder: (_) => const DataPermissionsScreen(),
+              );
+            case AppRoutes.legalContact:
+              return MaterialPageRoute<void>(
+                builder: (_) => const ContactSupportScreen(),
               );
             case AppRoutes.codSettlement:
               return MaterialPageRoute<void>(

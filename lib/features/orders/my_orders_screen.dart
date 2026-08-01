@@ -911,9 +911,11 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
             _tile(
               icon: Icons.privacy_tip_outlined,
               label: 'Terms & Privacy',
-              route: AppRoutes.settings,
-              color: context.textSecondary,
+              route: AppRoutes.legal,
+              color: const Color(0xFF2D6CDF),
             ),
+            // Data & Permissions is reachable from inside Terms & Privacy, so
+            // it is not duplicated here.
           ],
         ).animate().fadeIn(duration: 280.ms, delay: 180.ms).slideY(begin: 0.04, end: 0),
         const SizedBox(height: 12),
