@@ -199,6 +199,26 @@ class PickupJobRepository {
     }
   }
 
+  // ── Verify return OTP ─────────────────────────────────────────────────────
+
+  Future<void> verifyReturnOtp({
+    required String pickupJob,
+    required String otp,
+  }) async {
+    final uri = Uri.parse(ApiConstants.verifyReturnOtp);
+    _logApi('verify_return_otp request', 'POST $uri pickup_job=$pickupJob');
+    final resp = await _post(
+      uri,
+      headers: {...await _authHeaders(), 'Content-Type': 'application/json'},
+      body: jsonEncode({'pickup_job': pickupJob, 'otp': otp}),
+    );
+    _logApi('verify_return_otp response',
+        'code=${resp.statusCode} body=${resp.body}');
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+  }
+
   // ── Mark picked up ────────────────────────────────────────────────────────
 
   Future<void> markPickedUp(String pickupJob, {String? proofPhotoPath}) async {

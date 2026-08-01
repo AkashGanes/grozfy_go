@@ -37,6 +37,16 @@ class ApiConstants {
   static const String verifyDeliveryOtp =
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.driver.verify_delivery_otp';
 
+  // POST: {pickup_job, otp} → verifies the customer-provided return OTP and,
+  // on success, transitions the Pickup Job to Picked Up server-side.
+  // Response: {success: true, pickup_job: "..."} or
+  // {success: true, already_picked_up: true, ...}. On failure the server
+  // returns one of: "Invalid OTP", "OTP already verified",
+  // "Pickup is not Scheduled", "Delivery partner is not assigned to this
+  // return" — surfaced as-is via _extractErrorMessage.
+  static const String verifyReturnOtp =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.driver.verify_return_otp';
+
   // Driver location ping endpoint. Backend exposes a method that accepts
   // {driver, latitude, longitude, recorded_at} and persists a Driver Location
   // Ping record. Server is responsible for de-duplicating by recorded_at so
