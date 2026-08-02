@@ -6,6 +6,30 @@ import 'app_bottom_nav.dart';
 import 'app_toast.dart';
 import 'offline_status_indicator.dart';
 
+/// The app-wide page background: the scaffold colour with a soft diagonal
+/// blend of the secondary and tertiary accents. Exposed so screens that build
+/// their own [Scaffold] still sit on the same background as every AppShell
+/// page instead of a flat colour.
+LinearGradient appBackgroundGradient(BuildContext context) {
+  final theme = Theme.of(context);
+  final bgColor = theme.scaffoldBackgroundColor;
+  return LinearGradient(
+    colors: [
+      bgColor,
+      Color.alphaBlend(
+        theme.colorScheme.secondary.withValues(alpha: 0.08),
+        bgColor,
+      ),
+      Color.alphaBlend(
+        theme.colorScheme.tertiary.withValues(alpha: 0.06),
+        bgColor,
+      ),
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
+
 class AppShell extends StatelessWidget {
   const AppShell({
     super.key,
@@ -45,7 +69,6 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final bgColor = theme.scaffoldBackgroundColor;
     final effectivePadding = noBottomPadding
         ? EdgeInsets.fromLTRB(padding.left, padding.top, padding.right, 0)
         : padding;
@@ -53,26 +76,10 @@ class AppShell extends StatelessWidget {
 
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              bgColor,
-              Color.alphaBlend(
-                theme.colorScheme.secondary.withValues(alpha: 0.08),
-                bgColor,
-              ),
-              Color.alphaBlend(
-                theme.colorScheme.tertiary.withValues(alpha: 0.06),
-                bgColor,
-              ),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
+        decoration: BoxDecoration(gradient: appBackgroundGradient(context)),
         child: Stack(
           children: [
-            const _BackdropShapes(),
+            const AppBackdropShapes(),
             SafeArea(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -292,8 +299,10 @@ class StatTile extends StatelessWidget {
   }
 }
 
-class _BackdropShapes extends StatelessWidget {
-  const _BackdropShapes();
+/// The three soft accent shapes behind every page. Public so screens with a
+/// custom [Scaffold] can paint the same backdrop.
+class AppBackdropShapes extends StatelessWidget {
+  const AppBackdropShapes({super.key});
 
   @override
   Widget build(BuildContext context) {
