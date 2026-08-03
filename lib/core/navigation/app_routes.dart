@@ -68,4 +68,5 @@ class AppRoutes {
   static const legalTerms = '/legal/terms';
   static const legalPermissions = '/legal/permissions';
   static const legalContact = '/legal/contact';
+  static const legalDeleteAccount = '/legal/delete-account';
 }

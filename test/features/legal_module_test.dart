@@ -2,6 +2,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:grozfy_go/core/constants/legal_constants.dart';
+import 'package:grozfy_go/core/models/app_models.dart';
 import 'package:grozfy_go/core/theme/app_theme.dart';
 import 'package:grozfy_go/features/legal/legal_content.dart';
 import 'package:grozfy_go/features/legal/legal_design.dart';
@@ -41,6 +42,7 @@ void main() {
     'Terms & Conditions': const TermsConditionsScreen(),
     'Data & Permissions': const DataPermissionsScreen(),
     'Contact & Support': const ContactSupportScreen(),
+    'Delete Account': const DeleteAccountScreen(),
   };
 
   group('renders in light theme', () {
@@ -212,8 +214,195 @@ void main() {
     expect(result, isNull);
   });
 
+  testWidgets('the policy offers deletion from inside the section about it',
+      (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(host(const PrivacyPolicyScreen()));
+    await tester.pumpAndSettle();
+
+    // Nothing at the top of the document — the way to delete belongs with the
+    // text that explains it, not above the policy the partner is still reading.
+    expect(find.text('Delete my account'), findsNothing);
+
+    final Finder section = find.text('Deleting Your Account');
+    await tester.ensureVisible(section);
+    await tester.pumpAndSettle();
+    await tester.tap(section);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Delete my account'), findsOneWidget);
+  });
+
+  testWidgets('deletion needs an explicit acknowledgement first',
+      (tester) async {
+    await tester.pumpWidget(host(const DeleteAccountScreen()));
+    await tester.pumpAndSettle();
+
+    final Finder submit =
+        find.widgetWithText(ElevatedButton, 'Request account deletion');
+    expect(submit, findsOneWidget);
+    expect(tester.widget<ElevatedButton>(submit).onPressed, isNull);
+
+    // The box sits below the fold on a default test viewport.
+    await tester.ensureVisible(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    expect(tester.widget<ElevatedButton>(submit).onPressed, isNotNull);
+
+    // The screen must state what survives deletion, not only what goes — a
+    // partner told "everything is deleted" would be told something untrue.
+    // LegalSectionLabel renders uppercase.
+    expect(find.text('WHAT WE DELETE'), findsOneWidget);
+    expect(find.text('WHAT WE HAVE TO KEEP'), findsOneWidget);
+  });
+
+  testWidgets('a blocked request shows what to clear, not a failure',
+      (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(host(
+      DeleteAccountScreen(
+        onLoadStatus: () async => (data: AccountDeletionStatus.none, error: null),
+        onSubmit: () async => (
+          data: const AccountDeletionStatus(
+            status: 'blocked',
+            requestName: 'ADR-2026-00015',
+            requestStatus: 'Blocked',
+            blockers: <AccountDeletionBlocker>[
+              AccountDeletionBlocker(
+                code: 'COD_OUTSTANDING',
+                message: 'You are holding ₹1,240 in cash collections.',
+                amount: 1240,
+              ),
+            ],
+          ),
+          error: null,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Request account deletion'));
+    await tester.pumpAndSettle();
+
+    // The server's wording, verbatim — the app must not paraphrase a blocker.
+    expect(find.text('You are holding ₹1,240 in cash collections.'), findsOneWidget);
+    // And the form is gone, so a second request cannot be fired at it.
+    expect(find.byType(Checkbox), findsNothing);
+    expect(find.widgetWithText(ElevatedButton, 'Check again'), findsOneWidget);
+
+    // Let the confirmation toast expire — it owns a timer.
+    await tester.pumpAndSettle(const Duration(seconds: 4));
+  });
+
+  testWidgets('an existing request is shown instead of a fresh form',
+      (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    bool cancelled = false;
+
+    await tester.pumpWidget(host(
+      DeleteAccountScreen(
+        onLoadStatus: () async => (
+          data: AccountDeletionStatus(
+            status: 'already_requested',
+            requestName: 'ADR-2026-00014',
+            requestStatus: 'Approved',
+            requestedOn: DateTime(2026, 8, 3),
+            scheduledDeletionOn: DateTime(2026, 8, 10),
+            cancellableUntil: DateTime(2026, 8, 10),
+          ),
+          error: null,
+        ),
+        onSubmit: () async => (data: null, error: 'should not be called'),
+        onCancelRequest: (name) async {
+          cancelled = name == 'ADR-2026-00014';
+          return (
+            data: const AccountDeletionStatus(
+              status: 'cancelled',
+              requestStatus: 'Cancelled',
+            ),
+            error: null,
+          );
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Never the form — raising a second request against a scheduled account is
+    // the thing this state exists to prevent.
+    expect(find.byType(Checkbox), findsNothing);
+    expect(find.textContaining('10 Aug 2026'), findsWidgets);
+
+    final Finder cancel =
+        find.widgetWithText(ElevatedButton, 'Cancel deletion request');
+    await tester.ensureVisible(cancel);
+    await tester.pumpAndSettle();
+    await tester.tap(cancel);
+    await tester.pumpAndSettle();
+
+    expect(cancelled, isTrue);
+    // Cancelling is terminal, so the partner is back to a fresh decision.
+    expect(find.byType(Checkbox), findsOneWidget);
+
+    await tester.pumpAndSettle(const Duration(seconds: 4));
+  });
+
+  testWidgets('a failed request is reported, never worked around',
+      (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(host(
+      DeleteAccountScreen(
+        onSubmit: () async => (data: null, error: 'Request failed (404)'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    await tester.tap(
+        find.widgetWithText(ElevatedButton, 'Request account deletion'));
+    await tester.pumpAndSettle();
+
+    // The server's own message, shown as-is. While `Driver.user_id` is being
+    // backfilled this is how the 404 reaches whoever is testing, so it must not
+    // be swallowed or paraphrased.
+    expect(find.text('Request failed (404)'), findsOneWidget);
+    // The API is the only deletion path — no alternative route may appear here.
+    expect(find.text('Email the request instead'), findsNothing);
+    // And the form stays, to retry from once the patch lands.
+    expect(find.widgetWithText(ElevatedButton, 'Request account deletion'),
+        findsOneWidget);
+  });
+
   test('content model is populated as the screens advertise', () {
-    expect(kPrivacySections, hasLength(13));
+    expect(kPrivacySections, hasLength(14));
+    expect(
+      kPrivacySections.any((s) => s.title == 'Deleting Your Account'),
+      isTrue,
+      reason: 'the policy must describe deletion, not just offer the button',
+    );
     expect(kTermsSections, hasLength(10));
     expect(kDataGroups, hasLength(6));
     expect(kPermissions, hasLength(5));

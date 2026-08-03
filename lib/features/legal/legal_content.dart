@@ -314,6 +314,33 @@ const List<LegalSection> kPrivacySections = <LegalSection>[
         'the Contact & Support page.',
   ),
   LegalSection(
+    title: 'Deleting Your Account',
+    icon: Icons.person_remove_outlined,
+    summary: 'How to close your account and what happens to your data',
+    paragraphs: [
+      'You can ask us to delete your partner account from inside the app — open '
+          'the More tab and tap "Delete Account", just above Log out. You do '
+          'not have to email us or call support first.',
+      'Deletion is permanent. Your delivery history, ratings and incentive '
+          'progress cannot be restored, and a new account starts verification '
+          'from the beginning.',
+    ],
+    bullets: [
+      'Deleted — profile, contact details, photo, verification documents, '
+          'vehicle and bank details, location history and device tokens.',
+      'Kept — order, payout and tax records for the period accounting law '
+          'requires. These are unlinked from your profile and are not used to '
+          'contact you.',
+      'Settled first — any pending earnings are paid and any cash you hold is '
+          'reconciled before the account closes.',
+      'Timing — we acknowledge the request within 48 hours and complete '
+          'deletion within 30 days.',
+    ],
+    closing:
+        'Deletion also withdraws your consent to this policy. Until the request '
+        'completes you can cancel it by contacting our privacy team.',
+  ),
+  LegalSection(
     title: 'Contact Us',
     icon: Icons.support_agent_rounded,
     summary: 'Reach our privacy team or Grievance Officer',
@@ -516,8 +543,8 @@ const List<LegalSection> kTermsSections = <LegalSection>[
     ],
     closing:
         'You may stop working with us at any time. Earnings already due are '
-        'still paid. To close your account, contact us through the Contact & '
-        'Support page.',
+        'still paid. To close your account, use "Delete Account" on the More '
+        'tab.',
   ),
   LegalSection(
     title: 'Limitation of Liability',

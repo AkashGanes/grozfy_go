@@ -7,20 +7,9 @@
 class LegalConstants {
   LegalConstants._();
 
-  // ---------------------------------------------------------------------------
-  // PLACEHOLDER DOMAIN — replace before any store submission. HTTPS only; Play
-  // rejects http:// policy links.
-  // ---------------------------------------------------------------------------
-  static const String _host = 'https://grozfy.com';
-
-  /// Web copies of the in-app documents.
-  static const String privacyPolicyUrl = '$_host/partner/privacy-policy';
-  static const String termsUrl = '$_host/partner/terms';
-
-  /// Flip to true once the web copies are live. Until then the "view on web"
-  /// affordances stay hidden rather than opening a dead link — the in-app
-  /// documents are unaffected and always readable.
-  static const bool webCopiesPublished = false;
+  // The web copies live in docs/web/ and their published URLs go straight into
+  // the Play Console listing — the app never links to them, so no URL constants
+  // are kept here. See docs/web/README.md.
 
   // ---------------------------------------------------------------------------
   // Document version. Recorded against the driver's acceptance so there is a

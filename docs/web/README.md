@@ -54,13 +54,19 @@ Play's requirements for these URLs:
 1. **Placeholder details.** `grozfy.com`, the phone number and the office
    address in `legal_constants.dart` and in these pages are placeholders.
    Replace with the real published values.
-2. **There is no account deletion path, in-app or on the web.** It was removed
-   on request. Google Play requires apps that allow account creation to also
-   offer in-app deletion plus a web-accessible deletion URL (*Data safety* →
-   *Data deletion*), so this is an open blocker for a Play release — not an
-   oversight in this folder. Restoring it means bringing back
-   `lib/features/legal/delete_account_screen.dart`, its route, and a deletion
-   page here.
+2. **Account deletion has no web URL and no backend endpoint yet.** The in-app
+   path exists — More → *Delete Account*, directly above *Log out*
+   (`DeleteAccountScreen`) — and the policy documents it at
+   `privacy-policy.html#delete-account`. Two gaps remain:
+   - Play's *Data safety* → *Data deletion* form wants a **web-accessible
+     deletion URL**. The policy anchor covers the "how to request" half; a
+     standalone form page here would be stronger.
+   - The `request_account_deletion` API is implemented and the app calls it —
+     there is no email fallback. It currently returns `404` because most
+     `Driver` rows have no `user_id` for the ownership check to resolve; a
+     backend backfill patch is in progress. The endpoints, DocType, settlement
+     checks and erasure policy are specified in
+     [`docs/backend-specs/request_account_deletion.md`](../backend-specs/request_account_deletion.md).
 3. **Backend is still plain HTTP.** `ApiConstants.erpBaseUrl` points at
    `http://209.182.232.35:8004`, which carries Aadhaar, PAN, driving licence,
    bank details and GPS. The Data Safety form would have to declare data as

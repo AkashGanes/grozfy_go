@@ -426,6 +426,21 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
               return MaterialPageRoute<void>(
                 builder: (_) => const ContactSupportScreen(),
               );
+            case AppRoutes.legalDeleteAccount:
+              // The screen takes no providers — the controller's methods are
+              // handed in here, which keeps it renderable on its own.
+              return MaterialPageRoute<void>(
+                builder: (_) => Consumer(
+                  builder: (context, ref, _) {
+                    final controller = ref.watch(appControllerProvider);
+                    return DeleteAccountScreen(
+                      onLoadStatus: controller.fetchAccountDeletionStatus,
+                      onSubmit: controller.requestAccountDeletion,
+                      onCancelRequest: controller.cancelAccountDeletion,
+                    );
+                  },
+                ),
+              );
             case AppRoutes.codSettlement:
               return MaterialPageRoute<void>(
                 builder: (_) => const DailySettlementScreen(),

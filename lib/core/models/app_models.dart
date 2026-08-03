@@ -611,3 +611,103 @@ class NotificationLog {
     );
   }
 }
+
+/// One reason a deletion request could not proceed — cash still held, a trip
+/// still open, a legal hold. The backend sends `message` already worded and
+/// localised, so the app never builds a sentence from `code`.
+///
+/// Spec: docs/backend-specs/request_account_deletion.md §7.
+class AccountDeletionBlocker {
+  const AccountDeletionBlocker({
+    required this.code,
+    required this.message,
+    this.amount,
+    this.count,
+  });
+
+  final String code;
+  final String message;
+  final double? amount;
+  final int? count;
+
+  factory AccountDeletionBlocker.fromJson(Map<String, dynamic> json) {
+    return AccountDeletionBlocker(
+      code: (json['code'] ?? '').toString(),
+      message: (json['message'] ?? '').toString(),
+      amount: json['amount'] == null
+          ? null
+          : double.tryParse(json['amount'].toString()),
+      count: json['count'] == null
+          ? null
+          : int.tryParse(json['count'].toString()),
+    );
+  }
+}
+
+/// State of the partner's account deletion request.
+///
+/// [status] is the outcome of the call — `none`, `success`, `blocked`,
+/// `already_requested`, `cancelled` — while [requestStatus] is the lifecycle
+/// state of the row itself (`Requested`, `Blocked`, `Approved`, `Cancelled`,
+/// `Rejected`, `Completed`). They answer different questions: the first says
+/// what just happened, the second what is true now.
+class AccountDeletionStatus {
+  const AccountDeletionStatus({
+    required this.status,
+    this.requestName,
+    this.requestStatus,
+    this.requestedOn,
+    this.scheduledDeletionOn,
+    this.cancellableUntil,
+    this.blockers = const <AccountDeletionBlocker>[],
+  });
+
+  final String status;
+  final String? requestName;
+  final String? requestStatus;
+  final DateTime? requestedOn;
+  final DateTime? scheduledDeletionOn;
+  final DateTime? cancellableUntil;
+  final List<AccountDeletionBlocker> blockers;
+
+  static const AccountDeletionStatus none =
+      AccountDeletionStatus(status: 'none');
+
+  /// A request exists and has not reached a terminal state.
+  bool get isPending =>
+      requestStatus == 'Requested' ||
+      requestStatus == 'Blocked' ||
+      requestStatus == 'Approved';
+
+  /// Settlement is outstanding — [blockers] says what to clear.
+  bool get isBlocked => status == 'blocked' || requestStatus == 'Blocked';
+
+  /// Scheduled and inside the grace period, so it can still be called off.
+  bool get isCancellable =>
+      requestStatus == 'Approved' && requestName != null;
+
+  factory AccountDeletionStatus.fromJson(Map<String, dynamic> json) {
+    DateTime? parse(String key) {
+      final Object? raw = json[key];
+      if (raw == null || raw.toString().trim().isEmpty) return null;
+      return DateTime.tryParse(raw.toString());
+    }
+
+    final Object? rawBlockers = json['blockers'];
+    return AccountDeletionStatus(
+      status: (json['status'] ?? 'none').toString(),
+      requestName: json['request_name']?.toString(),
+      requestStatus: json['request_status']?.toString(),
+      requestedOn: parse('requested_on'),
+      scheduledDeletionOn: parse('scheduled_deletion_on'),
+      cancellableUntil: parse('cancellable_until'),
+      blockers: rawBlockers is List
+          ? rawBlockers
+                .whereType<Map<String, dynamic>>()
+                .map(AccountDeletionBlocker.fromJson)
+                .where((b) => b.message.isNotEmpty)
+                .toList(growable: false)
+          : const <AccountDeletionBlocker>[],
+    );
+  }
+}

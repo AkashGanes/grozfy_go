@@ -131,26 +131,20 @@ class LegalSectionLabel extends StatelessWidget {
 /// Flat, neutral leading glyph. One treatment for every row — no per-section
 /// colour, no gradient.
 class LegalGlyph extends StatelessWidget {
-  const LegalGlyph({super.key, required this.icon, this.tint});
+  const LegalGlyph({super.key, required this.icon});
 
   final IconData icon;
 
-  /// Only supplied for genuinely semantic rows (destructive actions).
-  final Color? tint;
-
   @override
   Widget build(BuildContext context) {
-    final Color color = tint ?? context.textSecondary;
     return Container(
       width: 34,
       height: 34,
       decoration: BoxDecoration(
-        color: tint == null
-            ? context.fillSubtle
-            : tint!.withValues(alpha: 0.10),
+        color: context.fillSubtle,
         borderRadius: BorderRadius.circular(10),
       ),
-      child: Icon(icon, color: color, size: 17),
+      child: Icon(icon, color: context.textSecondary, size: 17),
     );
   }
 }
@@ -413,7 +407,6 @@ class LegalNavRow extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.meta,
-    this.tint,
   });
 
   final IconData icon;
@@ -423,9 +416,6 @@ class LegalNavRow extends StatelessWidget {
   /// Small trailing count, e.g. "13".
   final String? meta;
 
-  /// Semantic colour — only for destructive rows.
-  final Color? tint;
-
   @override
   Widget build(BuildContext context) {
     return InkWell(
@@ -434,7 +424,7 @@ class LegalNavRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            LegalGlyph(icon: icon, tint: tint),
+            LegalGlyph(icon: icon),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -442,7 +432,7 @@ class LegalNavRow extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: tint ?? DashColors.textPrimary(context),
+                  color: DashColors.textPrimary(context),
                 ),
               ),
             ),

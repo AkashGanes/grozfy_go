@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/legal_constants.dart';
+import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
@@ -25,6 +26,7 @@ import 'legal_design.dart';
 ///   4. [TermsConditionsScreen] — the full terms
 ///   5. [DataPermissionsScreen] — why each permission is asked for
 ///   6. [ContactSupportScreen]  — channels and the Grievance Officer
+///   7. [DeleteAccountScreen]   — exercising the right to erasure
 /// ---------------------------------------------------------------------------
 
 /// What the consent gate returns when a partner accepts.
@@ -281,6 +283,16 @@ class PrivacyPolicyScreen extends StatelessWidget {
           ),
         ],
       ),
+      // The section that explains deletion is also where a partner decides to
+      // go through with it, so the way there sits at the end of that section
+      // rather than at the top of the document.
+      sectionExtras: {
+        'Deleting Your Account': _Link(
+          'Delete my account',
+          () => Navigator.of(context).pushNamed(AppRoutes.legalDeleteAccount),
+          color: context.danger,
+        ),
+      },
     );
   }
 }
@@ -703,6 +715,394 @@ class ContactSupportScreen extends StatelessWidget {
   }
 }
 
+/// Screen 7 — Delete Account.
+///
+/// Reached from the Privacy Policy, because that is where the right to erasure
+/// is described. Deliberately provider-free: the partner's details arrive as
+/// parameters so this stays a plain widget the route can build and a test can
+/// render without standing up app state.
+///
+/// Talks to `grozfy_go.grozfy_go.api.account.*` (spec:
+/// `docs/backend-specs/request_account_deletion.md`). The request is not
+/// immediate — it is approved, then erased after a grace period, so this screen
+/// has three faces: raise a request, show what is blocking one, and show a
+/// scheduled one with a way to call it off.
+///
+/// The callbacks are injected rather than read from a provider. That keeps the
+/// screen renderable on its own, and lets the blocked and scheduled states be
+/// tested without a server.
+///
+/// A failed call is reported, not worked around. There is no email fallback:
+/// the API is the deletion path, and a request that did not reach it must look
+/// like a request that did not reach it.
+class DeleteAccountScreen extends StatefulWidget {
+  const DeleteAccountScreen({
+    super.key,
+    this.onLoadStatus,
+    this.onSubmit,
+    this.onCancelRequest,
+  });
+
+  final Future<({AccountDeletionStatus? data, String? error})> Function()?
+      onLoadStatus;
+  final Future<({AccountDeletionStatus? data, String? error})> Function()?
+      onSubmit;
+  final Future<({AccountDeletionStatus? data, String? error})> Function(
+    String requestName,
+  )? onCancelRequest;
+
+  @override
+  State<DeleteAccountScreen> createState() => _DeleteAccountScreenState();
+}
+
+class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
+  bool _understood = false;
+  bool _sending = false;
+  bool _loading = false;
+  String? _error;
+  AccountDeletionStatus? _request;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.onLoadStatus != null) {
+      _loading = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadStatus());
+    }
+  }
+
+  /// A partner who already asked must see that, not a fresh form they could
+  /// submit again.
+  Future<void> _loadStatus() async {
+    final result = await widget.onLoadStatus!();
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      // A failed status read is not evidence there is no request, but it must
+      // not block the screen either — fall through to the form, where a
+      // duplicate submit returns `already_requested` anyway.
+      if (result.data != null && result.data!.isPending) {
+        _request = result.data;
+      }
+    });
+  }
+
+  static const List<String> _removed = [
+    'Your profile, photo, phone number, email and address',
+    'Aadhaar, PAN and driving licence copies',
+    'Vehicle, bank and UPI details',
+    'Location history and saved device tokens',
+  ];
+
+  static const List<String> _retained = [
+    'Order, payout and tax records the law requires us to keep — unlinked from '
+        'your profile',
+    'Anything needed to close an open dispute or settle cash you are holding',
+  ];
+
+  Future<void> _submit() async {
+    // Never return silently. A button that does nothing is indistinguishable
+    // from a broken one, and this is the screen where "did that work?" matters
+    // most.
+    if (widget.onSubmit == null) {
+      setState(
+        () => _error = 'Account deletion is unavailable in this build.',
+      );
+      return;
+    }
+
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+
+    final result = await widget.onSubmit!();
+    if (!mounted) return;
+
+    if (result.data != null) {
+      setState(() {
+        _sending = false;
+        _request = result.data;
+      });
+      AppToast.show(context, _outcomeMessage(result.data!));
+      return;
+    }
+
+    // Report the failure and stop. Routing around a broken endpoint would make
+    // a request that never landed look to the partner like one that did.
+    setState(() {
+      _sending = false;
+      _error = result.error ?? 'Could not reach the server. Please try again.';
+    });
+  }
+
+  String _outcomeMessage(AccountDeletionStatus status) {
+    if (status.isBlocked) {
+      return 'Deletion is on hold until the items below are cleared';
+    }
+    if (status.status == 'already_requested') {
+      return 'You already have a deletion request in progress';
+    }
+    return 'Deletion requested. You can still cancel it until '
+        '${_formatDate(status.cancellableUntil)}.';
+  }
+
+  Future<void> _cancel() async {
+    final String? name = _request?.requestName;
+    if (name == null || widget.onCancelRequest == null) return;
+
+    setState(() => _sending = true);
+    final result = await widget.onCancelRequest!(name);
+    if (!mounted) return;
+
+    setState(() {
+      _sending = false;
+      // Cancelled and rejected are terminal, so the form comes back — a new
+      // decision means a new request.
+      if (result.data != null) _request = null;
+      if (result.data != null) _understood = false;
+    });
+    AppToast.show(
+      context,
+      result.data != null
+          ? 'Your account will not be deleted.'
+          : result.error ?? 'Could not cancel the request',
+    );
+  }
+
+  static String _formatDate(DateTime? value) {
+    if (value == null) return 'the scheduled date';
+    const List<String> months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${value.day} ${months[value.month - 1]} ${value.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final AccountDeletionStatus? request = _request;
+
+    return AppShell(
+      title: 'Delete Account',
+      subtitle: request != null && request.isPending
+          ? 'Your request is being processed'
+          : 'This closes your partner account for good',
+      loading: _loading,
+      loadingMessage: 'Checking your account…',
+      child: request != null && request.isPending
+          ? _pendingBody(context, request)
+          : _formBody(context),
+    );
+  }
+
+  /// A request already exists — blocked on settlement, or scheduled. Either way
+  /// the form must not be shown, or a partner would raise a second request
+  /// against an account that already has one.
+  Widget _pendingBody(BuildContext context, AccountDeletionStatus request) {
+    final Color danger = context.danger;
+    final bool blocked = request.isBlocked;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LegalIntro(
+          blocked
+              ? 'We cannot delete your account yet. Clear the items below, then '
+                  'ask again — nothing has been deleted.'
+              : 'Your account is scheduled for deletion on '
+                  '${_formatDate(request.scheduledDeletionOn)}. Until then you '
+                  'can keep working as normal, and you can still change your '
+                  'mind.',
+        ),
+        if (blocked) ...[
+          const LegalSectionLabel('Before you can delete'),
+          LegalCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (int i = 0; i < request.blockers.length; i++) ...[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.error_outline_rounded,
+                        size: 18,
+                        color: danger,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        // Worded and localised by the server, shown verbatim —
+                        // the app must not invent copy from the code.
+                        child: Text(
+                          request.blockers[i].message,
+                          style: TextStyle(
+                            fontSize: 13,
+                            height: 1.5,
+                            fontWeight: FontWeight.w500,
+                            color: DashColors.textPrimary(context),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (i != request.blockers.length - 1)
+                    const SizedBox(height: 14),
+                ],
+              ],
+            ),
+          ).legalEntrance(0),
+          const SizedBox(height: LegalTokens.gapGroup),
+          LegalPrimaryButton(
+            label: 'Check again',
+            color: danger,
+            busy: _sending,
+            onPressed: _submit,
+          ),
+        ] else ...[
+          const LegalSectionLabel('What happens next'),
+          LegalCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LegalBullet(
+                  'On ${_formatDate(request.scheduledDeletionOn)} your personal '
+                  'data is permanently erased.',
+                ),
+                const LegalBullet(
+                  'Pending earnings are paid and any cash you hold is '
+                  'reconciled first.',
+                ),
+                const LegalBullet(
+                  'Order and tax records are kept, with your details removed.',
+                ),
+              ],
+            ),
+          ).legalEntrance(0),
+          const SizedBox(height: LegalTokens.gapGroup),
+          LegalNote(
+            'Request ${request.requestName ?? ''} · raised '
+            '${_formatDate(request.requestedOn)}',
+            icon: Icons.receipt_long_outlined,
+          ).legalEntrance(1),
+          const SizedBox(height: LegalTokens.gapGroup),
+          if (request.isCancellable && widget.onCancelRequest != null)
+            LegalPrimaryButton(
+              label: 'Cancel deletion request',
+              busy: _sending,
+              onPressed: _cancel,
+            ),
+        ],
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+
+  Widget _formBody(BuildContext context) {
+    final Color danger = context.danger;
+
+    return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const LegalIntro(
+            'Deleting your account removes your personal data from Grozfy. It '
+            'cannot be undone — your delivery history, ratings and incentive '
+            'progress are lost, and signing up again means starting '
+            'verification from scratch.',
+          ),
+          const LegalSectionLabel('What we delete'),
+          LegalCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final String item in _removed) LegalBullet(item),
+              ],
+            ),
+          ).legalEntrance(0),
+          const SizedBox(height: LegalTokens.gapGroup),
+          const LegalSectionLabel('What we have to keep'),
+          LegalCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final String item in _retained) LegalBullet(item),
+              ],
+            ),
+          ).legalEntrance(1),
+          const SizedBox(height: LegalTokens.gapGroup),
+          const LegalNote(
+            'Pending earnings are paid and any cash you hold is reconciled '
+            'before the account closes. We acknowledge your request within 48 '
+            'hours and finish within 30 days.',
+            icon: Icons.schedule_rounded,
+          ).legalEntrance(2),
+          const SizedBox(height: LegalTokens.gapGroup),
+          InkWell(
+            onTap: () => setState(() => _understood = !_understood),
+            borderRadius: BorderRadius.circular(LegalTokens.innerRadius),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Checkbox(
+                    value: _understood,
+                    activeColor: danger,
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    onChanged: (v) => setState(() => _understood = v ?? false),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        'I understand my account and data will be permanently '
+                        'deleted and cannot be recovered.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.5,
+                          fontWeight: FontWeight.w500,
+                          color: DashColors.textPrimary(context),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (_error != null) ...[
+            LegalNote(_error!, icon: Icons.error_outline_rounded),
+            const SizedBox(height: 12),
+          ],
+          LegalPrimaryButton(
+            label: 'Request account deletion',
+            color: danger,
+            busy: _sending,
+            onPressed: _understood ? _submit : null,
+          ),
+          const SizedBox(height: 10),
+          Center(
+            child: TextButton(
+              onPressed: _sending ? null : () => Navigator.of(context).pop(),
+              child: Text(
+                'Keep my account',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: context.textSecondary,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+    );
+  }
+}
+
 // ── Shared pieces ───────────────────────────────────────────────────────────
 
 /// Shell for the two long-form documents.
@@ -716,6 +1116,7 @@ class _DocumentPage extends StatefulWidget {
     required this.intro,
     required this.sections,
     this.leadingGroup,
+    this.sectionExtras = const <String, Widget>{},
   });
 
   final String title;
@@ -725,6 +1126,11 @@ class _DocumentPage extends StatefulWidget {
   /// Optional group inserted above the sections — used by the privacy policy to
   /// link through to the collected-data page.
   final Widget? leadingGroup;
+
+  /// Widget appended inside a named section's body, keyed by section title.
+  /// Lets a section that describes an action also offer it, without putting
+  /// that action at the top of the document where it is not in context.
+  final Map<String, Widget> sectionExtras;
 
   @override
   State<_DocumentPage> createState() => _DocumentPageState();
@@ -790,6 +1196,7 @@ class _DocumentPageState extends State<_DocumentPage> {
                       LegalNote(section.closing!),
                       const SizedBox(height: 10),
                     ],
+                    ?widget.sectionExtras[section.title],
                   ],
                 ),
             ],
@@ -861,14 +1268,17 @@ class _Highlight extends StatelessWidget {
 /// steps to complete — rendering them as rows in a card was what made a
 /// two-item list read as a checklist.
 class _Link extends StatelessWidget {
-  const _Link(this.label, this.onTap);
+  const _Link(this.label, this.onTap, {this.color});
 
   final String label;
   final VoidCallback onTap;
 
+  /// Overrides the default link blue — used for the destructive one.
+  final Color? color;
+
   @override
   Widget build(BuildContext context) {
-    final Color accent = context.info;
+    final Color accent = color ?? context.info;
 
     return InkWell(
       onTap: onTap,
