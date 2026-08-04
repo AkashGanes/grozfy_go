@@ -3948,6 +3948,19 @@ class AppController extends ChangeNotifier {
           await _orderRepository.fetchActiveOrdersForDriverDirect();
       if (summaries.isEmpty) return;
 
+      // Only restore orders that were touched recently. A record can sit in
+      // a non-terminal status indefinitely (abandoned test data, a delivery
+      // the driver was later reassigned away from, etc.) — silently pulling
+      // one of those back in on every login would look like an order got
+      // accepted on its own. Cap restoration to genuinely in-flight work.
+      const staleAfter = Duration(hours: 24);
+      final now = DateTime.now();
+      final freshSummaries = summaries.where((s) {
+        final modified = DateTime.tryParse(s.modified);
+        return modified == null || now.difference(modified) <= staleAfter;
+      }).toList();
+      if (freshSummaries.isEmpty) return;
+
       // Build orderId → tripId map across all active trips (best-effort).
       Map<String, String> tripIdByOrder = {};
       try {
@@ -3964,7 +3977,7 @@ class AppController extends ChangeNotifier {
       };
 
       // Fetch all order details in parallel.
-      final ids = summaries
+      final ids = freshSummaries
           .map((s) => s.name.trim())
           .where((id) => id.isNotEmpty && !_activeOrders.any((o) => o.orderId == id))
           .toList();
@@ -5062,10 +5075,13 @@ class AppController extends ChangeNotifier {
           );
           if (fetchedName != null) {
             _driverName = fetchedName;
-            _writePref(
-              (SharedPreferences prefs) =>
-                  prefs.setString(_prefDriverName, fetchedName),
-            );
+            // Awaited (not _writePref's fire-and-forget) so callers that run
+            // right after this — e.g. _backgroundSync's active-order
+            // restore, which re-derives the driver from this same pref —
+            // can't race the write and fall back to the wrong driver.
+            final SharedPreferences prefs =
+                await SharedPreferences.getInstance();
+            await prefs.setString(_prefDriverName, fetchedName);
           }
         }
 
