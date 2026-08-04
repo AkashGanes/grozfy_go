@@ -2268,7 +2268,7 @@ class _ExternalDeliveryTripDetailsScreenState
       if (!mounted) return;
 
       final double codAmount = detail?.codAmountToCollect ?? 0;
-      final bool isCod = detail != null && detail.isCod && codAmount > 0;
+      final bool isCod = detail != null && detail.isCod;
 
       // Capture proof photo for both online and COD
       final photoPath = await showDeliveryProofSheet(context);
