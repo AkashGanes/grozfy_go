@@ -513,7 +513,17 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
               codCollectionMode: _codResult!.mode,
               codUpiReference: _codResult!.upiRef,
             );
-          } catch (_) {}
+          } catch (e) {
+            // The cash is already in the driver's hands. Dropping this record
+            // silently means it never reaches settlement and the shortfall
+            // surfaces later as a discrepancy nobody can explain.
+            if (!context.mounted) return;
+            AppToast.show(
+              context,
+              'Cash collected but not recorded on the server: '
+              '${e.toString().replaceFirst('Exception: ', '')}',
+            );
+          }
           if (!mounted) return;
         }
       } else {
@@ -543,7 +553,14 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                 codCollectionMode: codResult.mode,
                 codUpiReference: codResult.upiRef,
               );
-            } catch (_) {}
+            } catch (e) {
+              if (!context.mounted) return;
+              AppToast.show(
+                context,
+                'Cash collected but not recorded on the server: '
+                '${e.toString().replaceFirst('Exception: ', '')}',
+              );
+            }
             if (!mounted) return;
           }
         }

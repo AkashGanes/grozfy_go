@@ -64,7 +64,14 @@ class _NavigationScreenState extends State<NavigationScreen> {
               codCollectionMode: _codResult!.mode,
               codUpiReference: _codResult!.upiRef,
             );
-          } catch (_) {}
+          } catch (e) {
+            if (!context.mounted) return;
+            AppToast.show(
+              context,
+              'Cash collected but not recorded on the server: '
+              '${e.toString().replaceFirst('Exception: ', '')}',
+            );
+          }
           if (!mounted) return;
         }
       } else {
@@ -89,7 +96,14 @@ class _NavigationScreenState extends State<NavigationScreen> {
                 codCollectionMode: codResult.mode,
                 codUpiReference: codResult.upiRef,
               );
-            } catch (_) {}
+            } catch (e) {
+              if (!context.mounted) return;
+              AppToast.show(
+                context,
+                'Cash collected but not recorded on the server: '
+                '${e.toString().replaceFirst('Exception: ', '')}',
+              );
+            }
             if (!mounted) return;
           }
         }

@@ -26,6 +26,8 @@ import '../services/secure_token_storage.dart';
 import '../services/sync_manager.dart';
 import '../utils/formatters.dart';
 import '../utils/validators.dart' as app_validators;
+import '../../features/cod_settlement/model/cod_limit_status.dart';
+import '../../features/cod_settlement/repository/cod_settlement_repository.dart';
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
 import '../../features/orders_by_location/repository/external_delivery_repository.dart';
@@ -245,6 +247,8 @@ class AppController extends ChangeNotifier {
   final List<DeliveryOrder> _acceptedOrders = <DeliveryOrder>[];
   final ExternalDeliveryRepository _orderRepository =
       ExternalDeliveryRepository();
+  final CodSettlementRepository _codSettlementRepository =
+      CodSettlementRepository();
   bool _isLoadingOrders = false;
   String? _orderLoadingError;
   bool _isFetchingActiveOrder = false;
@@ -3347,6 +3351,61 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Strips the `Exception: ` prefix Dart puts on `throw Exception(...)` so the
+  /// server's own wording is what the driver reads.
+  String _cleanError(Object e) =>
+      e.toString().replaceFirst('Exception: ', '').trim();
+
+  /// True when a call failed because the device couldn't reach the server at
+  /// all, as opposed to the server answering and refusing.
+  ///
+  /// The distinction matters: a refusal is a real disagreement the driver has to
+  /// see, while a dead connection is expected in the field and must not stop
+  /// committed work from completing locally.
+  bool _isTransportFailure(Object e) {
+    if (e is SocketException ||
+        e is TimeoutException ||
+        e is http.ClientException) {
+      return true;
+    }
+    final String text = e.toString().toLowerCase();
+    return text.contains('socketexception') ||
+        text.contains('clientexception') ||
+        text.contains('failed host lookup') ||
+        text.contains('connection refused') ||
+        text.contains('connection closed') ||
+        text.contains('connection reset') ||
+        text.contains('network is unreachable') ||
+        text.contains('timeoutexception') ||
+        text.contains('timed out');
+  }
+
+  /// Runs a server write and reports a refusal back to the caller.
+  ///
+  /// Returns null when the write landed, **or** when the device is simply
+  /// offline — in that case the caller carries on and updates local state, which
+  /// is what lets a driver finish a delivery with no signal. Returns the
+  /// server's message when the server was reachable and rejected the write, so
+  /// it reaches the driver instead of being swallowed. Silently discarding
+  /// these is what let the app march through `Reached Pickup` → `Picked Up` →
+  /// `Out for Delivery` while the backend rejected all three.
+  Future<String?> _pushToServer(
+    Future<void> Function() write, {
+    required String what,
+  }) async {
+    try {
+      await write();
+      return null;
+    } catch (e) {
+      if (_isTransportFailure(e)) {
+        debugPrint('[AppController] $what deferred — device offline: $e');
+        return null;
+      }
+      debugPrint('[AppController] $what rejected by server: $e');
+      return _cleanError(e);
+    }
+  }
+
   Future<String?> updateOrderStatus(
     OrderProgressStatus status, {
     String? orderId,
@@ -3368,25 +3427,43 @@ class AppController extends ChangeNotifier {
     try {
       final String? frappeStatus = _toFrappeStatus(status);
       if (frappeStatus != null) {
-        try {
-          await _orderRepository.updateStatusViaSetValue(
+        final String? syncError = await _pushToServer(
+          () => _orderRepository.updateStatusViaSetValue(
             targetId,
             frappeStatus,
-          );
-        } catch (_) {
-        }
+          ),
+          what: 'status write ($frappeStatus)',
+        );
+        if (syncError != null) return syncError;
       }
 
+      // The Trip Stop is where in-progress state lives now that External
+      // Delivery only moves between terminal states. This is supplementary
+      // tracking though — a rejected stop update must not stop the driver
+      // completing a delivery, so it is reported as a notice rather than
+      // failing the transition.
       if (targetTripId != null) {
         final String? stopStatus = _toTripStopStatus(status);
         if (stopStatus != null) {
-          try {
-            await _orderRepository.updateTripStopStatusByDelivery(
+          final String? stopError = await _pushToServer(
+            () => _orderRepository.updateTripStopStatusByDelivery(
               tripId: targetTripId,
               deliveryId: targetId,
               newStatus: stopStatus,
+            ),
+            what: 'trip stop update ($stopStatus)',
+          );
+          if (stopError != null) {
+            _notices.insert(
+              0,
+              AppNotice(
+                title: 'Trip not updated',
+                message:
+                    'Your progress on order $targetId could not be sent to '
+                    'the server: $stopError',
+                time: DateTime.now(),
+              ),
             );
-          } catch (_) {
           }
         }
       }
@@ -3758,6 +3835,28 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// Returns a driver-facing reason when accepting [detail] would push the
+  /// driver past their cash-in-hand limit, or null when the order is allowed.
+  ///
+  /// Always fails open — a null status (feature disabled, endpoint undeployed,
+  /// request failed) means "no limit in play". The backend enforces the rule
+  /// independently, so a false negative here costs nothing.
+  Future<String?> _codBlockReason(ExternalDeliveryDetail detail) async {
+    try {
+      final CodLimitStatus? status =
+          await _codSettlementRepository.getCodLimitStatusOrNull();
+      if (status == null) return null;
+      return status.blockReasonFor(
+        isCod: true,
+        // Mirrors the server's fallback: a COD order with no explicit collection
+        // amount still carries its full value as exposure.
+        amount: detail.codAmountToCollect ?? detail.grandTotal ?? 0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String?> acceptOrder(String orderId) async {
     // Offline drivers must not be able to take on work. This is the primary
     // guard for the order-details and orders-by-location accept flows.
@@ -3792,9 +3891,9 @@ class AppController extends ChangeNotifier {
 
     // Fresh server check — guards against race condition where another partner
     // accepted the same order between the list load and this tap.
+    ExternalDeliveryDetail? freshDetail;
     try {
-      final ExternalDeliveryDetail freshDetail = await _orderRepository
-          .fetchDetail(orderId);
+      freshDetail = await _orderRepository.fetchDetail(orderId);
       if (freshDetail.status.toLowerCase() != 'pending') {
         return 'This order was just taken by another partner';
       }
@@ -3802,26 +3901,73 @@ class AppController extends ChangeNotifier {
       // Non-fatal — proceed with acceptance if the check itself fails.
     }
 
+    // Cash-in-hand guard. Reuses the detail already fetched above, so this costs
+    // one extra request only for COD orders. Prepaid orders are never blocked —
+    // carrying cash must not stop the driver earning on work that collects none.
+    //
+    // Fails open: if the limit can't be resolved (undeployed endpoint, network
+    // blip, missing detail) the driver is allowed through. The backend is the
+    // real enforcement point; this check exists to fail fast with a clear
+    // message rather than to be the gate.
+    if (freshDetail != null && freshDetail.isCod) {
+      final String? reason = await _codBlockReason(freshDetail);
+      if (reason != null) return reason;
+    }
+
     try {
       await _orderRepository.updateStatusViaSetValue(orderId, 'Added to Trip');
 
       // Create and submit an External Delivery Trip in Frappe so the web
       // dashboard reflects the accepted order immediately.
+      //
+      // The order's status was already committed above, so a failure here
+      // leaves it half-accepted: accepted on the server, but with no trip to
+      // hang stop updates or location pings off. That used to be discarded
+      // silently, which is how a backend rejection turned into "the trip is
+      // not created" with nothing anywhere to explain it. The accept itself
+      // did succeed, so this is reported as a notice rather than by failing
+      // the accept — the driver keeps the order and can see what went wrong.
       try {
         final String tripName = await _orderRepository.createTripByOrderName(
           orderId,
         );
         _activeTripIds[orderId] = tripName;
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[AppController] trip creation failed for $orderId: $e');
+        _notices.insert(
+          0,
+          AppNotice(
+            title: 'Trip not created',
+            message:
+                'Order $orderId was accepted but its trip could not be '
+                'created: ${_cleanError(e)}',
+            time: DateTime.now(),
+          ),
+        );
       }
 
       // Stamp driver on the order record so it is queryable by driver after
       // logout/login (SharedPreferences are cleared on logout).
+      //
+      // Reported the same way: losing this doesn't break the delivery in
+      // progress, but it does make the order vanish from the driver's list
+      // after a re-login, which is impossible to diagnose without a trace.
       try {
         if (_driverName != null && _driverName!.isNotEmpty) {
           await _orderRepository.setDriverOnOrder(orderId, _driverName!);
         }
-      } catch (_) {
+      } catch (e) {
+        debugPrint('[AppController] driver stamp failed for $orderId: $e');
+        _notices.insert(
+          0,
+          AppNotice(
+            title: 'Order not linked to you',
+            message:
+                'Order $orderId was accepted but could not be linked to your '
+                'profile: ${_cleanError(e)}',
+            time: DateTime.now(),
+          ),
+        );
       }
 
       _availableOrders.removeWhere((order) => order.orderId == orderId);
@@ -4010,14 +4156,22 @@ class AppController extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// The External Delivery status the app is allowed to write, or null when the
+  /// app must not touch `status` for this transition.
+  ///
+  /// The backend models **`Added to Trip` as the single in-progress state**. Its
+  /// state machine only permits `Cancelled` / `Delivered` / `Failed` / `Pending`
+  /// / `Return Initiated` out of it and rejects anything else with a 417
+  /// `illegal transition`. So `Reached Pickup`, `Picked Up` and
+  /// `Out for Delivery` are deliberately absent here — writing them produced
+  /// three rejected calls per delivery while the app advanced regardless,
+  /// leaving the driver's screen and the server disagreeing.
+  ///
+  /// Intermediate progress is represented by the Trip Stop status
+  /// ([_toTripStopStatus]), the location pings, and the app's own
+  /// [OrderStatus] — never by External Delivery.status.
   String? _toFrappeStatus(OrderStatus status) {
     switch (status) {
-      case OrderStatus.reachedPickup:
-        return 'Reached Pickup';
-      case OrderStatus.pickedUp:
-        return 'Picked Up';
-      case OrderStatus.outForDelivery:
-        return 'Out for Delivery';
       case OrderStatus.delivered:
         return 'Delivered';
       case OrderStatus.failed:
@@ -4027,6 +4181,15 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  /// Trip Stop status for a transition, or null when the stop has no
+  /// corresponding state.
+  ///
+  /// With External Delivery pinned at `Added to Trip` for the whole journey,
+  /// only terminal outcomes are pushed to the server. In-progress state —
+  /// reaching the pickup, collecting the parcel, going en route — is carried by
+  /// the timing events (`pickupReached` / `pickedUp`) written at the end of
+  /// [updateOrderStatus], by the location pings, and by the app's own
+  /// [OrderStatus].
   String? _toTripStopStatus(OrderStatus status) {
     switch (status) {
       case OrderStatus.delivered:

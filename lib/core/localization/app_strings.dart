@@ -162,6 +162,17 @@ class AppStrings {
       'delivery_radius': 'Delivery Radius',
       'delivery_radius_subtitle': 'Only receive orders within this distance',
       'delivery_radius_updated': 'Delivery radius updated',
+      // cod cash limit
+      'cash_in_hand': 'Cash in Hand',
+      'cash_limit_of': 'of',
+      'cash_limit_available': 'available',
+      'cash_limit_ok': 'Within limit',
+      'cash_limit_warning': 'Approaching your cash limit',
+      'cash_limit_reached': 'Cash limit reached',
+      'cash_limit_blocked_hint':
+          'Settle your cash to accept more COD orders. Prepaid orders are still available.',
+      'cash_limit_in_flight': 'in undelivered COD orders',
+      'settle_now': 'Settle now',
       // generic errors
       'error_network': 'No internet connection. Please check your network.',
       'error_timeout': 'Request timed out. Please try again.',

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../../core/services/secure_token_storage.dart';
+import '../model/cod_limit_status.dart';
 import '../model/daily_driver_settlement.dart';
 
 class SubmitBankTransferResult {
@@ -28,12 +29,28 @@ class CodSettlementRepository {
   static const Duration _networkTimeout = Duration(seconds: 15);
   static const Set<int> _okCodes = {200, 201};
   static const String _prefLanguageCode = 'language_code';
+  static const String _prefDriverName = 'driver_name';
 
   static final Uri _refreshTokenUri = Uri.parse(
     '${ApiConstants.erpBaseUrl}/api/method/frappe.integrations.oauth2.get_token',
   );
 
   Map<String, String>? _cachedHeaders;
+
+  /// The logged-in Driver docname, resolved the same way as every other custom
+  /// grozfy call: from the `driver_name` pref that [AppController] persists
+  /// after the driver profile loads.
+  ///
+  /// The backend identifies the driver from this value, NOT from the OAuth
+  /// session user (which is a shared API user).
+  Future<String> _requireDriver() async {
+    final prefs = await SharedPreferences.getInstance();
+    final driver = prefs.getString(_prefDriverName)?.trim() ?? '';
+    if (driver.isEmpty) {
+      throw Exception('Driver profile not loaded yet. Please try again.');
+    }
+    return driver;
+  }
 
   Future<Map<String, String>> _authHeaders() async {
     return _cachedHeaders ??= await _buildAuthHeaders();
@@ -197,6 +214,48 @@ class CodSettlementRepository {
     if (data == null) throw Exception('Unexpected response format.');
 
     return DailyDriverSettlement.fromJson(data);
+  }
+
+  /// Current cash-in-hand exposure vs. the driver's configured COD limit.
+  ///
+  /// Throws on network/auth/parse failure — callers that must not be blocked by
+  /// a hiccup should use [getCodLimitStatusOrNull].
+  Future<CodLimitStatus> getCodLimitStatus() async {
+    final driver = await _requireDriver();
+    final uri = Uri.parse(
+      ApiConstants.getCodLimitStatus,
+    ).replace(queryParameters: <String, String>{'driver': driver});
+    final resp = await _get(uri);
+
+    if (resp.statusCode == 401) throw Exception('401: Invalid API credentials.');
+    if (resp.statusCode == 403) throw Exception('403: Access denied.');
+    if (!_okCodes.contains(resp.statusCode)) {
+      throw Exception(_extractErrorMessage(resp));
+    }
+
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final data = decoded['message'];
+    if (data is! Map<String, dynamic>) {
+      throw Exception('Unexpected response format.');
+    }
+
+    return CodLimitStatus.fromJson(data);
+  }
+
+  /// [getCodLimitStatus] that degrades to null instead of throwing.
+  ///
+  /// The cash-in-hand surfaces are advisory (the backend is the real enforcement
+  /// point), so a missing endpoint or a network blip must never hide the
+  /// dashboard or block the driver from accepting work. Returning null makes the
+  /// whole feature invisible, which is exactly the behaviour we want while the
+  /// backend method is still undeployed.
+  Future<CodLimitStatus?> getCodLimitStatusOrNull() async {
+    try {
+      return await getCodLimitStatus();
+    } catch (e) {
+      _log('COD limit status unavailable: $e');
+      return null;
+    }
   }
 
   Future<SubmitBankTransferResult> submitBankTransfer({

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/navigation/app_routes.dart';
 import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../model/cod_limit_status.dart';
 import '../model/daily_driver_settlement.dart';
 import '../providers/settlement_provider.dart';
 import '../repository/cod_settlement_repository.dart';
@@ -220,6 +221,8 @@ class _DailySettlementScreenState
       if (result.success) {
         showInfoSnack(context, 'Transfer submitted successfully.');
         ref.invalidate(settlementProvider);
+        // Settling frees cash-in-hand headroom, so the limit must refetch too.
+        ref.invalidate(codLimitStatusProvider);
       } else {
         setState(() {
           _submitError = result.message.isNotEmpty
@@ -462,6 +465,10 @@ class _DailySettlementScreenState
 
                 // View Order Breakdown button
                 _OrderBreakdownButton(settlement: settlement),
+
+                // Cash-in-hand vs. limit. Hides itself (including its spacing)
+                // when no COD limit is configured for this driver.
+                const _CashLimitRow(),
 
                 const SizedBox(height: 24),
 
@@ -760,6 +767,135 @@ class _BreakdownChip extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cash-in-hand vs. COD limit
+// ---------------------------------------------------------------------------
+
+/// Shows how much of the driver's cash limit is consumed, so the settlement
+/// screen answers "how much room do I have left?" alongside "what do I owe?".
+///
+/// Collapses to nothing when the limit isn't in play (feature disabled, no
+/// limit configured, or the backend endpoint undeployed).
+class _CashLimitRow extends ConsumerWidget {
+  const _CashLimitRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final CodLimitStatus? status = ref
+        .watch(codLimitStatusProvider)
+        .asData
+        ?.value;
+    if (status == null || !status.hasValidLimit) {
+      return const SizedBox.shrink();
+    }
+
+    final Color accent = status.isBlocked
+        ? const Color(0xFFDC2626)
+        : status.isWarning
+            ? const Color(0xFFD97706)
+            : const Color(0xFF16A34A);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: context.cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accent.withValues(alpha: 0.30)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.account_balance_wallet_rounded,
+                    color: accent,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Cash in Hand',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w500,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withValues(alpha: 0.50),
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        '₹${_fmtAmount(status.cashInHand)} of '
+                        '₹${_fmtAmount(status.maxLimit)}',
+                        style: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '₹${_fmtAmount(status.availableLimit)} left',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: status.usedFraction,
+                minHeight: 6,
+                backgroundColor: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.08),
+                valueColor: AlwaysStoppedAnimation<Color>(accent),
+              ),
+            ),
+            if (status.isBlocked) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Settle your cash to accept more COD orders. '
+                'Prepaid orders are still available.',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.35,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.60),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -1432,28 +1568,6 @@ class _ConfirmRow extends StatelessWidget {
 // Helpers
 // ---------------------------------------------------------------------------
 
-String _fmtAmount(double amount) {
-  if (amount == amount.truncateToDouble()) {
-    return _addCommas(amount.toStringAsFixed(0));
-  }
-  return _addCommas(amount.toStringAsFixed(2));
-}
-
-String _addCommas(String s) {
-  final parts = s.split('.');
-  final intPart = parts[0];
-  final buffer = StringBuffer();
-  int count = 0;
-  for (int i = intPart.length - 1; i >= 0; i--) {
-    if (count > 0 && count == 3) {
-      buffer.write(',');
-      count = 0;
-    } else if (count > 0 && (count - 3) % 2 == 0 && count > 3) {
-      buffer.write(',');
-    }
-    buffer.write(intPart[i]);
-    count++;
-  }
-  final result = buffer.toString().split('').reversed.join();
-  return parts.length > 1 ? '$result.${parts[1]}' : result;
-}
+// Delegates to the shared formatter on CodLimitStatus so the settlement screen
+// and the cash-in-hand surfaces can never render the same figure differently.
+String _fmtAmount(double amount) => CodLimitStatus.formatAmount(amount);

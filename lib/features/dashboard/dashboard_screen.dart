@@ -28,6 +28,7 @@ import '../orders_by_location/ui/trip_stop_map_screen.dart';
 import '../orders/my_orders_screen.dart';
 import 'widgets/active_order_card.dart';
 import 'widgets/availability_card.dart';
+import 'widgets/cash_in_hand_card.dart';
 import 'widgets/current_location_card.dart';
 import 'widgets/dashboard_colors.dart';
 import 'widgets/dashboard_greeting_header.dart';
@@ -87,6 +88,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
     if (state == AppLifecycleState.resumed) {
       _app.fetchLoggedInEmployeeDriverProfile(forceRefresh: true);
       ref.invalidate(settlementProvider);
+      ref.invalidate(codLimitStatusProvider);
     }
   }
 
@@ -235,6 +237,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 if (mounted) {
                   setState(() => _isNavigating = false);
                   ref.invalidate(settlementProvider);
+                  ref.invalidate(codLimitStatusProvider);
                 }
               });
         } else if (index == 2) {
@@ -244,6 +247,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 if (mounted) {
                   setState(() => _isNavigating = false);
                   ref.invalidate(settlementProvider);
+                  ref.invalidate(codLimitStatusProvider);
                 }
               });
         } else {
@@ -323,6 +327,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           const SizedBox(height: 14),
           const DailySummaryCard(),
           const SizedBox(height: 14),
+          // Collapses to nothing (including its spacing) when no COD limit is
+          // configured or the backend endpoint isn't deployed yet.
+          const CashInHandCard(),
           _ActiveOrderSection(app: app),
           const _ActivePickupJobSection(),
           const SizedBox(height: 14),
@@ -400,15 +407,18 @@ class _KycWarningBanner extends StatelessWidget {
 
 // ── Active order section — polls for recall status ────────────────────────────
 
-class _ActiveOrderSection extends StatefulWidget {
+// ConsumerStatefulWidget so the delivery-completion path can invalidate the
+// cash-in-hand limit — delivering a COD order changes the driver's exposure.
+class _ActiveOrderSection extends ConsumerStatefulWidget {
   const _ActiveOrderSection({required this.app});
   final AppController app;
 
   @override
-  State<_ActiveOrderSection> createState() => _ActiveOrderSectionState();
+  ConsumerState<_ActiveOrderSection> createState() =>
+      _ActiveOrderSectionState();
 }
 
-class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
+class _ActiveOrderSectionState extends ConsumerState<_ActiveOrderSection> {
   // Recall uses the app's warm "warning" family (mango #F6A623 / tertiary),
   // in a deeper shade that stays legible under white text in light & dark.
   static const Color _recallAccent = Color(0xFFB26A06);
@@ -1680,6 +1690,9 @@ class _ActiveOrderSectionState extends State<_ActiveOrderSection> {
       return;
     }
     if (transition.next == OrderStatus.delivered) {
+      // Completing a delivery shifts COD exposure (in-flight → cash held), so
+      // the limit must refetch before the dashboard rebuilds.
+      ref.invalidate(codLimitStatusProvider);
       AppToast.show(context, app.t('order_delivered'));
       navigator.pushNamedAndRemoveUntil(AppRoutes.dashboard, (route) => false);
     } else {

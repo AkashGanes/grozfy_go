@@ -66,6 +66,24 @@ class ApiConstants {
   static const String submitBankTransfer =
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.cod_settlement.submit_bank_transfer';
 
+  // GET: ?driver=... → {message: {enabled, settled_balance, in_flight_cod,
+  // cash_in_hand, max_limit, available_limit, warning_threshold_percent,
+  // state: "ok"|"warning"|"blocked", in_flight_orders, currency}}.
+  // Drives the cash-in-hand card and the COD accept guard. `state` is computed
+  // server-side so app and server agree on the thresholds. See
+  // docs/backend-specs/cod_cash_limit.md.
+  static const String getCodLimitStatus =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.cod_settlement.get_cod_limit_status';
+
+  // POST: {driver, external_delivery} → atomically re-checks the order is
+  // Pending, enforces the COD cash limit, stamps status + driver, and creates
+  // the trip. Returns {success, external_delivery, trip, status}; rejects via
+  // frappe.throw whose message is surfaced verbatim to the driver.
+  // NOT yet called by the app — acceptOrder still runs the legacy set_value →
+  // trip → stamp sequence. See docs/backend-specs/cod_cash_limit.md.
+  static const String acceptDelivery =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.driver.accept_delivery';
+
   // ---------------------------------------------------------------------------
   // Delivery Radius endpoints
   // ---------------------------------------------------------------------------
