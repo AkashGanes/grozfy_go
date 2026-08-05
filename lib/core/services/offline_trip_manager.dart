@@ -370,6 +370,12 @@ class OfflineTripManager {
         'total_stops': s.totalStops,
         'completes_stops': s.completedStops,
         'modified': s.modified,
+        // Optional enrichment fields — cached too, so an offline list renders
+        // the same card as the online one.
+        'customer_name': s.customerName,
+        'delivery_location': s.location,
+        'total_orders': s.orderCount,
+        'driver_earnings': s.earnings,
       };
 
   Map<String, dynamic> _tripToJson(ExternalDeliveryTrip t) => {
