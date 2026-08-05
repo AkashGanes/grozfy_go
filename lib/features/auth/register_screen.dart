@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/widgets/app_shell.dart';
+import '../legal/legal_screens.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -29,11 +30,24 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   Future<void> _register() async {
     final app = ref.read(appControllerProvider);
+
+    // Consent is taken before the account is created, so we are not processing
+    // the partner's data ahead of their agreement. The gate returns a result
+    // only after they have opened a document and ticked the box; anything else
+    // — back button, dismissal — returns null and leaves them on this screen
+    // with nothing submitted.
+    final LegalConsentResult? consent = await Navigator.of(context)
+        .pushNamed<LegalConsentResult>(AppRoutes.legalConsent);
+    if (consent == null || !mounted) return;
+
     setState(() => _busy = true);
 
+    // The consent travels with the registration request rather than in a
+    // follow-up call, so an account can never exist without its consent record.
     final String? error = await app.registerNewPartner(
       fullName: _nameCtrl.text.trim(),
       email: _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
+      consent: consent,
     );
 
     if (!mounted) return;

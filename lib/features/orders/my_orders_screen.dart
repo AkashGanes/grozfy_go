@@ -911,12 +911,22 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
             _tile(
               icon: Icons.privacy_tip_outlined,
               label: 'Terms & Privacy',
-              route: AppRoutes.settings,
-              color: context.textSecondary,
+              route: AppRoutes.legal,
+              color: const Color(0xFF2D6CDF),
             ),
+            // Data & Permissions is reachable from inside Terms & Privacy, so
+            // it is not duplicated here.
           ],
         ).animate().fadeIn(duration: 280.ms, delay: 180.ms).slideY(begin: 0.04, end: 0),
         const SizedBox(height: 12),
+        // Sits with Log out rather than inside a section: both end the
+        // partner's session, and Play expects deletion to be findable without
+        // reading the policy first.
+        _deleteAccountItem()
+            .animate()
+            .fadeIn(duration: 280.ms, delay: 220.ms)
+            .slideY(begin: 0.04, end: 0),
+        const SizedBox(height: 10),
         _logoutItem()
             .animate()
             .fadeIn(duration: 280.ms, delay: 240.ms)
@@ -1406,6 +1416,44 @@ class _MoreScreenState extends ConsumerState<MoreScreen> {
     final app = ref.read(appControllerProvider);
     navigator.pushNamedAndRemoveUntil(AppRoutes.login, (route) => false);
     await app.logout();
+  }
+
+  Widget _deleteAccountItem() {
+    return SectionCard(
+      padding: EdgeInsets.zero,
+      borderRadius: 18,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+        leading: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: context.dangerContainer,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            Icons.person_remove_outlined,
+            color: context.danger,
+            size: 19,
+          ),
+        ),
+        title: Text(
+          'Delete Account',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: context.danger,
+          ),
+        ),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: context.danger.withValues(alpha: 0.4),
+          size: 20,
+        ),
+        onTap: () =>
+            Navigator.of(context).pushNamed(AppRoutes.legalDeleteAccount),
+      ),
+    );
   }
 
   Widget _logoutItem() {

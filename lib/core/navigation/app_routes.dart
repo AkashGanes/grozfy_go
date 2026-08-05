@@ -57,4 +57,16 @@ class AppRoutes {
   static const support = '/support';
   static const codSettlement = '/cod-settlement';
   static const orderBreakdown = '/order-breakdown';
+
+  // Privacy & Legal module. `legal` is the hub in reference mode;
+  // `legalConsent` is the same screen as the onboarding gate and pops `true`
+  // once the driver accepts.
+  static const legal = '/legal';
+  static const legalConsent = '/legal/consent';
+  static const legalPrivacy = '/legal/privacy-policy';
+  static const legalDataDetail = '/legal/privacy-policy/data';
+  static const legalTerms = '/legal/terms';
+  static const legalPermissions = '/legal/permissions';
+  static const legalContact = '/legal/contact';
+  static const legalDeleteAccount = '/legal/delete-account';
 }
