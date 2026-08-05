@@ -96,7 +96,6 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
   void _syncOnlineState() {
     final bool online = _app?.isOnline ?? false;
     if (_lastOnline != null && online != _lastOnline) {
-      _hiddenByRadiusCount = 0;
       if (!online && _selectionMode) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _exitSelectionMode();
