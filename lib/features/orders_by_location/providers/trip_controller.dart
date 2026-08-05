@@ -482,14 +482,21 @@ class TripController extends StateNotifier<TripControllerState> {
   }
 
   /// En Route → Picked Up. Mirrors `PickupJobDetailScreen._handleMarkPickedUp`.
+  /// Caller has already run the customer OTP gate, which transitions the
+  /// Pickup Job to Picked Up server-side — this call is now just for the
+  /// proof photo, so a failure here is swallowed rather than surfaced as a
+  /// blocking error.
   Future<void> markPickupPickedUpCommit(
     PickupTripStop ps, {
     String? proofPhotoPath,
   }) async {
-    await PickupJobRepository().markPickedUp(
-      ps.pickupJob,
-      proofPhotoPath: proofPhotoPath,
-    );
+    try {
+      await PickupJobRepository().markPickedUp(
+        ps.pickupJob,
+        proofPhotoPath: proofPhotoPath,
+      );
+    } catch (_) {
+    }
   }
 
   /// Picked Up → Received at Store. Mirrors

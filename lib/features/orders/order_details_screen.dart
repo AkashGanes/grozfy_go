@@ -7,6 +7,7 @@ import '../../core/state/app_scope.dart';
 import '../../core/theme/context_colors.dart';
 import '../../core/utils/maps_launcher.dart';
 import '../../core/widgets/app_toast.dart';
+import '../../core/widgets/offline_state_view.dart';
 import '../orders_by_location/model/external_delivery_detail.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import 'widgets/order_timer_widget.dart';
@@ -135,6 +136,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
 
     final bool isPending = order.orderStatus == OrderStatus.pending;
+    // Unclaimed work — hide customer/store details from an Offline driver,
+    // mirroring the block on the listing screen and on accepting the order.
+    final bool blockedOffline = isPending && !app.isOnline;
     final bool showNavigate =
         !isPending &&
         (order.orderStatus == OrderStatus.accepted ||
@@ -177,7 +181,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
               onBack: () => Navigator.of(context).maybePop(),
             ),
             Expanded(
-              child: ListView(
+              child: blockedOffline
+                  ? OfflineStateView(
+                      message: 'Go Online to view this order.',
+                      onGoOnline: () => app.setOnline(true),
+                    )
+                  : ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
                   if (isClosedStatus) ...[

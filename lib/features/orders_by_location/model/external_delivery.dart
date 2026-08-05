@@ -244,6 +244,10 @@ class ExternalDeliveryTripSummary {
     required this.totalStops,
     required this.completedStops,
     required this.modified,
+    this.customerName,
+    this.location,
+    this.orderCount,
+    this.earnings,
   });
 
   final String name;
@@ -255,7 +259,23 @@ class ExternalDeliveryTripSummary {
   final int completedStops;
   final String modified;
 
+  // Enrichment fields for the trip list card. The list endpoint doesn't return
+  // these today, so they stay null and the card omits the matching line. They
+  // fill in automatically once the backend adds `customer_name`,
+  // `delivery_location`/`city`, `total_orders` and `driver_earnings`.
+  final String? customerName;
+  final String? location;
+  final int? orderCount;
+
+  /// Driver payout for the trip, in rupees.
+  final double? earnings;
+
   factory ExternalDeliveryTripSummary.fromJson(Map<String, dynamic> m) {
+    String? nonEmpty(Object? v) {
+      final s = v?.toString().trim();
+      return (s == null || s.isEmpty) ? null : s;
+    }
+
     return ExternalDeliveryTripSummary(
       name: (m['name'] ?? '').toString(),
       driver: (m['driver'] ?? '').toString(),
@@ -265,6 +285,12 @@ class ExternalDeliveryTripSummary {
       totalStops: (m['total_stops'] as num?)?.toInt() ?? 0,
       completedStops: (m['completes_stops'] as num?)?.toInt() ?? 0,
       modified: (m['modified'] ?? '').toString(),
+      customerName: nonEmpty(m['customer_name']),
+      location: nonEmpty(m['delivery_location'] ?? m['city']),
+      orderCount: (m['total_orders'] as num?)?.toInt(),
+      earnings: (m['driver_earnings'] ?? m['trip_earnings']) is num
+          ? ((m['driver_earnings'] ?? m['trip_earnings']) as num).toDouble()
+          : null,
     );
   }
 }

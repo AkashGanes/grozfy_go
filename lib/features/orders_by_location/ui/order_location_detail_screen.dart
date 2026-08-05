@@ -770,9 +770,37 @@ class _OrderLocationDetailScreenState extends State<OrderLocationDetailScreen> {
   // Status helpers
   // ---------------------------------------------------------------------------
 
-  void _onSlideAcceptAndStart() {
-    _updateStatus('Added to Trip');
-    _startTracking();
+  Future<void> _onSlideAcceptAndStart() async {
+    if (!ConnectivityService().isConnected) {
+      AppToast.show(context, 'You are offline — go online to accept orders.');
+      return;
+    }
+
+    setState(() => _updating = true);
+    try {
+      // Create and submit the trip first — its own submit sets
+      // External Delivery.status server-side (mirrors the Desk flow and
+      // AppController.acceptOrder), so the backend's status-change
+      // propagation hook fires and Order Index updates correctly. Do NOT
+      // PATCH status directly, and do NOT swallow a failure here — with no
+      // separate status write, silently succeeding would leave the order
+      // stuck at Pending with no visible error.
+      await widget.repository.createTripByOrderName(widget.order.name);
+      if (!mounted) return;
+      await _refreshDetail();
+      if (!mounted) return;
+      AppToast.show(context, 'Trip created — starting delivery');
+      _startTracking();
+    } catch (e) {
+      if (mounted) {
+        AppToast.show(
+          context,
+          'Failed to create trip: ${e.toString().replaceFirst('Exception: ', '')}',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _updating = false);
+    }
   }
 
   Future<void> _onSlideDelivered() async {

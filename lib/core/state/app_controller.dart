@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,6 +29,7 @@ import '../utils/formatters.dart';
 import '../utils/validators.dart' as app_validators;
 import '../../features/cod_settlement/model/cod_limit_status.dart';
 import '../../features/cod_settlement/repository/cod_settlement_repository.dart';
+import '../../features/legal/legal_screens.dart';
 import '../../features/orders_by_location/model/external_delivery.dart';
 import '../../features/orders_by_location/model/external_delivery_detail.dart';
 import '../../features/orders_by_location/repository/external_delivery_repository.dart';
@@ -1721,9 +1723,46 @@ class AppController extends ChangeNotifier {
     return DateTime.tryParse(raw)?.toUtc();
   }
 
+  /// Cached so repeated reads do not cross the platform channel. Empty string
+  /// means "unavailable" — resolved once, then reused either way.
+  String? _cachedAppVersion;
+
+  /// `1.4.2+37` style — the build number is what distinguishes two releases
+  /// carrying the same marketing version, which is exactly what matters when
+  /// reconstructing what a driver saw.
+  Future<String> _resolveAppVersion() async {
+    final String? cached = _cachedAppVersion;
+    if (cached != null) return cached;
+
+    String resolved = '';
+    try {
+      final PackageInfo info = await PackageInfo.fromPlatform();
+      resolved = info.buildNumber.isEmpty
+          ? info.version
+          : '${info.version}+${info.buildNumber}';
+    } catch (_) {
+      // No platform channel (widget tests, unsupported host). The version is
+      // supplementary to the consent record, so registration must not fail
+      // just because it could not be read.
+      resolved = '';
+    }
+
+    _cachedAppVersion = resolved;
+    return resolved;
+  }
+
+  /// Creates the partner account.
+  ///
+  /// [consent] is what the driver accepted at the gate. When supplied it is
+  /// sent with the registration so the backend can create the matching
+  /// Delivery Partner Consent record in the same transaction — an account can
+  /// then never exist without a record of which policy version was agreed to.
+  /// It stays optional so the call remains valid for any caller that predates
+  /// the consent gate.
   Future<String?> registerNewPartner({
     required String fullName,
     String? email,
+    LegalConsentResult? consent,
   }) async {
     if (fullName.trim().isEmpty) {
       return 'Full name is required';
@@ -1741,6 +1780,19 @@ class AppController extends ChangeNotifier {
       };
       if (email != null && email.trim().isNotEmpty) {
         body['email'] = email.trim();
+      }
+      if (consent != null) {
+        body['consent_version'] = consent.version;
+        body['consent_documents'] = consent.documents;
+        body['consent_source'] = consent.source;
+
+        // Recorded against the consent so a later dispute can be tied to the
+        // exact build the driver saw. Omitted rather than sent blank if the
+        // platform channel is unavailable.
+        final String appVersion = await _resolveAppVersion();
+        if (appVersion.isNotEmpty) {
+          body['app_version'] = appVersion;
+        }
       }
 
       final http.Response response = await http.post(
@@ -3006,6 +3058,93 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  // ── Account deletion ────────────────────────────────────────────────────────
+  //
+  // Spec: docs/backend-specs/request_account_deletion.md. The Driver is
+  // resolved from the session server-side, so none of these send one — passing
+  // a driver that isn't the caller's is a 403 by design.
+
+  /// Raises a deletion request.
+  ///
+  /// A `blocked` outcome is **not** an error: it means settlement is
+  /// outstanding, and the returned [AccountDeletionStatus.blockers] say what to
+  /// clear. Callers must render it, not treat it as a failure.
+  ///
+  /// `reason` / `reason_code` stay reserved on the contract (spec §3.1) but are
+  /// not collected yet, so nothing sends them.
+  Future<({AccountDeletionStatus? data, String? error})>
+      requestAccountDeletion() async {
+    final Map<String, dynamic> body = <String, dynamic>{
+      // Server-side proof the destructive-action confirmation was shown. The
+      // backend returns 417 without it.
+      'confirmed': '1',
+    };
+
+    final String appVersion = await _resolveAppVersion();
+    if (appVersion.isNotEmpty) {
+      body['app_version'] = appVersion;
+    }
+
+    return _accountDeletionCall(
+      () => _authorizedPostJson(
+        Uri.parse(ApiConstants.requestAccountDeletion),
+        body,
+      ),
+    );
+  }
+
+  /// Current state of the partner's request, or
+  /// [AccountDeletionStatus.none] when there isn't one.
+  Future<({AccountDeletionStatus? data, String? error})>
+      fetchAccountDeletionStatus() async {
+    return _accountDeletionCall(
+      () => authorizedGet(Uri.parse(ApiConstants.accountDeletionStatus)),
+    );
+  }
+
+  /// Calls off a scheduled deletion. Fails with a 409 once the grace period
+  /// has passed — by then the erasure job may already have run.
+  Future<({AccountDeletionStatus? data, String? error})> cancelAccountDeletion(
+    String requestName,
+  ) async {
+    final String? name = _nullIfBlank(requestName);
+    if (name == null) {
+      return (data: null, error: 'No deletion request to cancel');
+    }
+    return _accountDeletionCall(
+      () => _authorizedPostJson(
+        Uri.parse(ApiConstants.cancelAccountDeletion),
+        <String, dynamic>{'request_name': name},
+      ),
+    );
+  }
+
+  /// Shared envelope handling for the three deletion endpoints — they all
+  /// return the same `message` object, so they all parse the same way.
+  Future<({AccountDeletionStatus? data, String? error})> _accountDeletionCall(
+    Future<Map<String, dynamic>> Function() send,
+  ) async {
+    try {
+      final Map<String, dynamic> payload = await send();
+      final Object? message = payload['message'];
+      if (message is Map<String, dynamic>) {
+        debugPrint('[account-deletion] ok: $message');
+        return (data: AccountDeletionStatus.fromJson(message), error: null);
+      }
+      // A 2xx with no object is not something to guess at — treating an
+      // unreadable response as "deletion scheduled" would be the worst
+      // possible default.
+      debugPrint('[account-deletion] unreadable payload: $payload');
+      return (data: null, error: 'Unexpected response from the server');
+    } catch (e) {
+      debugPrint('[account-deletion] failed: $e');
+      return (
+        data: null,
+        error: e.toString().replaceFirst('Exception: ', ''),
+      );
+    }
+  }
+
   void setPermissionState({
     bool? foreground,
     bool? background,
@@ -3511,6 +3650,12 @@ class AppController extends ChangeNotifier {
         );
         _acceptedOrders.removeWhere((order) => order.orderId == targetId);
         clearOrder(targetId);
+      } else if (status == OrderStatus.failed ||
+          status == OrderStatus.cancelled ||
+          status == OrderStatus.rejected ||
+          status == OrderStatus.returned) {
+        _acceptedOrders.removeWhere((order) => order.orderId == targetId);
+        clearOrder(targetId);
       } else if (status == OrderStatus.reachedPickup) {
         _notices.insert(
           0,
@@ -3778,6 +3923,7 @@ class AppController extends ChangeNotifier {
         OrderStatus.delivered,
         OrderStatus.cancelled,
         OrderStatus.rejected,
+        OrderStatus.failed,
       };
 
       // Fetch all order details in parallel instead of sequentially.
@@ -3915,36 +4061,17 @@ class AppController extends ChangeNotifier {
     }
 
     try {
-      await _orderRepository.updateStatusViaSetValue(orderId, 'Added to Trip');
-
-      // Create and submit an External Delivery Trip in Frappe so the web
-      // dashboard reflects the accepted order immediately.
-      //
-      // The order's status was already committed above, so a failure here
-      // leaves it half-accepted: accepted on the server, but with no trip to
-      // hang stop updates or location pings off. That used to be discarded
-      // silently, which is how a backend rejection turned into "the trip is
-      // not created" with nothing anywhere to explain it. The accept itself
-      // did succeed, so this is reported as a notice rather than by failing
-      // the accept — the driver keeps the order and can see what went wrong.
-      try {
-        final String tripName = await _orderRepository.createTripByOrderName(
-          orderId,
-        );
-        _activeTripIds[orderId] = tripName;
-      } catch (e) {
-        debugPrint('[AppController] trip creation failed for $orderId: $e');
-        _notices.insert(
-          0,
-          AppNotice(
-            title: 'Trip not created',
-            message:
-                'Order $orderId was accepted but its trip could not be '
-                'created: ${_cleanError(e)}',
-            time: DateTime.now(),
-          ),
-        );
-      }
+      // Create and submit an External Delivery Trip in Frappe first — its own
+      // submit sets External Delivery.status server-side, mirroring the Desk
+      // flow exactly so the backend's status-change propagation hook fires
+      // and Order Index updates correctly. Do NOT set status directly here
+      // and do NOT swallow a failure: with no separate status write, silently
+      // succeeding would leave the order stuck at Pending with no visible
+      // error — surface it so the driver can see and retry.
+      final String tripName = await _orderRepository.createTripByOrderName(
+        orderId,
+      );
+      _activeTripIds[orderId] = tripName;
 
       // Stamp driver on the order record so it is queryable by driver after
       // logout/login (SharedPreferences are cleared on logout).
@@ -4107,6 +4234,7 @@ class AppController extends ChangeNotifier {
         OrderStatus.cancelled,
         OrderStatus.rejected,
         OrderStatus.pending,
+        OrderStatus.failed,
       };
 
       // Fetch all order details in parallel.

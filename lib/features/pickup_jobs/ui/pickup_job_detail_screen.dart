@@ -20,6 +20,7 @@ import '../../../core/widgets/app_toast.dart';
 import '../model/pickup_job.dart';
 import '../repository/pickup_job_repository.dart';
 import 'failed_pickup_bottom_sheet.dart';
+import 'return_otp_sheet.dart';
 
 class PickupJobDetailScreen extends ConsumerStatefulWidget {
   const PickupJobDetailScreen({super.key, required this.pickupJobName});
@@ -132,20 +133,31 @@ class _PickupJobDetailScreenState
       return;
     }
 
+    // Customer-facing OTP gate — transitions the Pickup Job to Picked Up
+    // server-side on success. Everything below just records the photo/local
+    // state; the actual status transition already happened via OTP verify.
+    final bool? otpVerified = await showReturnOtpSheet(
+      context,
+      repository: PickupJobRepository(),
+      pickupJob: job.name,
+    );
+    if (!mounted || otpVerified != true) return;
+
     setState(() => _isSubmitting = true);
     try {
       await PickupJobRepository()
           .markPickedUp(job.name, proofPhotoPath: photoPath);
-      if (!mounted) return;
+    } catch (e) {
+      // Non-fatal: the OTP step above already transitioned the job to
+      // Picked Up server-side, so a failure here (e.g. proof-photo upload
+      // or a redundant status write) shouldn't block the driver.
+      if (mounted) AppToast.show(context, 'Pickup save failed: $e');
+    }
+    if (mounted) {
       showInfoSnack(context, 'Picked up — head to the store.');
       setState(() { _future = _load(); });
-    } catch (e) {
-      if (!mounted) return;
-      showInfoSnack(
-          context, e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
     }
+    if (mounted) setState(() => _isSubmitting = false);
   }
 
   // ── Drop at Store (B.4) ───────────────────────────────────────────────────

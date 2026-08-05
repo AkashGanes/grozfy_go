@@ -37,6 +37,16 @@ class ApiConstants {
   static const String verifyDeliveryOtp =
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.driver.verify_delivery_otp';
 
+  // POST: {pickup_job, otp} → verifies the customer-provided return OTP and,
+  // on success, transitions the Pickup Job to Picked Up server-side.
+  // Response: {success: true, pickup_job: "..."} or
+  // {success: true, already_picked_up: true, ...}. On failure the server
+  // returns one of: "Invalid OTP", "OTP already verified",
+  // "Pickup is not Scheduled", "Delivery partner is not assigned to this
+  // return" — surfaced as-is via _extractErrorMessage.
+  static const String verifyReturnOtp =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.driver.verify_return_otp';
+
   // Driver location ping endpoint. Backend exposes a method that accepts
   // {driver, latitude, longitude, recorded_at} and persists a Driver Location
   // Ping record. Server is responsible for de-duplicating by recorded_at so
@@ -140,4 +150,30 @@ class ApiConstants {
   // the `/api/resource/Bank Account` POST/PUT that returned AuthenticationError.
   static const String saveBankAccount =
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.bank.save_bank_account';
+
+  // ---------------------------------------------------------------------------
+  // Account deletion endpoints
+  //
+  // Spec: docs/backend-specs/request_account_deletion.md. All three are
+  // session-authenticated and resolve the Driver from the session user — a
+  // `driver` that isn't the caller's is a 403, so none of these may be called
+  // on behalf of anyone else.
+  // ---------------------------------------------------------------------------
+
+  // POST: {confirmed: 1, app_version?, reason?} → creates the request and
+  // returns {status: success|blocked|already_requested, request_name,
+  // request_status, scheduled_deletion_on, cancellable_until, blockers[]}.
+  // `blocked` is a 200, not an error: it means settlement is outstanding and
+  // carries display-ready messages saying what to clear.
+  static const String requestAccountDeletion =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.account.request_account_deletion';
+
+  // GET → {status: "none"} or the same object as above for a live request.
+  static const String accountDeletionStatus =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.account.get_account_deletion_status';
+
+  // POST: {request_name} → {status: "cancelled"}. 409 once the grace period
+  // has passed or the request is already terminal.
+  static const String cancelAccountDeletion =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.account.cancel_account_deletion';
 }
