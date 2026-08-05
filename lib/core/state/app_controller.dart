@@ -3573,6 +3573,12 @@ class AppController extends ChangeNotifier {
         );
         _acceptedOrders.removeWhere((order) => order.orderId == targetId);
         clearOrder(targetId);
+      } else if (status == OrderStatus.failed ||
+          status == OrderStatus.cancelled ||
+          status == OrderStatus.rejected ||
+          status == OrderStatus.returned) {
+        _acceptedOrders.removeWhere((order) => order.orderId == targetId);
+        clearOrder(targetId);
       } else if (status == OrderStatus.reachedPickup) {
         _notices.insert(
           0,
@@ -3840,6 +3846,7 @@ class AppController extends ChangeNotifier {
         OrderStatus.delivered,
         OrderStatus.cancelled,
         OrderStatus.rejected,
+        OrderStatus.failed,
       };
 
       // Fetch all order details in parallel instead of sequentially.
@@ -3942,17 +3949,17 @@ class AppController extends ChangeNotifier {
     }
 
     try {
-      await _orderRepository.updateStatusViaSetValue(orderId, 'Added to Trip');
-
-      // Create and submit an External Delivery Trip in Frappe so the web
-      // dashboard reflects the accepted order immediately.
-      try {
-        final String tripName = await _orderRepository.createTripByOrderName(
-          orderId,
-        );
-        _activeTripIds[orderId] = tripName;
-      } catch (_) {
-      }
+      // Create and submit an External Delivery Trip in Frappe first — its own
+      // submit sets External Delivery.status server-side, mirroring the Desk
+      // flow exactly so the backend's status-change propagation hook fires
+      // and Order Index updates correctly. Do NOT set status directly here
+      // and do NOT swallow a failure: with no separate status write, silently
+      // succeeding would leave the order stuck at Pending with no visible
+      // error — surface it so the driver can see and retry.
+      final String tripName = await _orderRepository.createTripByOrderName(
+        orderId,
+      );
+      _activeTripIds[orderId] = tripName;
 
       // Stamp driver on the order record so it is queryable by driver after
       // logout/login (SharedPreferences are cleared on logout).
@@ -4100,6 +4107,7 @@ class AppController extends ChangeNotifier {
         OrderStatus.cancelled,
         OrderStatus.rejected,
         OrderStatus.pending,
+        OrderStatus.failed,
       };
 
       // Fetch all order details in parallel.

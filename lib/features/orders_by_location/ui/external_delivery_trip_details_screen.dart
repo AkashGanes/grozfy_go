@@ -30,6 +30,7 @@ import 'delivery_otp_sheet.dart';
 import 'delivery_proof_sheet.dart';
 import 'failed_delivery_bottom_sheet.dart';
 import '../../pickup_jobs/ui/failed_pickup_bottom_sheet.dart';
+import '../../pickup_jobs/ui/return_otp_sheet.dart';
 
 import '../../../core/utils/geo_distance.dart';
 import '../../../core/utils/maps_launcher.dart';
@@ -2048,6 +2049,16 @@ class _ExternalDeliveryTripDetailsScreenState
       color: const Color(0xFF6A1B9A),
     );
     if (confirmed != true || !mounted) return;
+
+    // Customer-facing OTP gate — transitions the Pickup Job to Picked Up
+    // server-side on success.
+    final bool? otpVerified = await showReturnOtpSheet(
+      context,
+      repository: PickupJobRepository(),
+      pickupJob: ps.pickupJob,
+    );
+    if (!mounted || otpVerified != true) return;
+
     await _runPickupCommit(
       ps,
       'Picked Up',
@@ -2257,7 +2268,7 @@ class _ExternalDeliveryTripDetailsScreenState
       if (!mounted) return;
 
       final double codAmount = detail?.codAmountToCollect ?? 0;
-      final bool isCod = detail != null && detail.isCod && codAmount > 0;
+      final bool isCod = detail != null && detail.isCod;
 
       // Capture proof photo for both online and COD
       final photoPath = await showDeliveryProofSheet(context);
