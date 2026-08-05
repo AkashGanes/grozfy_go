@@ -14,9 +14,16 @@ import '../../../core/widgets/app_toast.dart';
 /// Shows the proof-of-delivery capture bottom sheet.
 /// Returns the local file path if the driver captured/selected a photo,
 /// or null if they tapped "Skip".
+///
+/// Deliberately not barrier/swipe dismissible — both buttons here proceed
+/// with the delivery (with or without a photo), so a driver tapping outside
+/// or swiping down must not silently fall through to "proceed anyway"; they
+/// have to make an explicit Skip/Confirm choice.
 Future<String?> showDeliveryProofSheet(BuildContext context) {
   return showAppBottomSheet<String?>(
     context: context,
+    isDismissible: false,
+    enableDrag: false,
     builder: (_) => const _DeliveryProofSheet(),
   );
 }

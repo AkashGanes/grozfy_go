@@ -5,6 +5,7 @@ import '../../core/models/app_models.dart';
 import '../../core/navigation/app_routes.dart';
 import '../../core/state/app_scope.dart';
 import '../../core/theme/context_colors.dart';
+import '../../core/utils/maps_launcher.dart';
 import '../../core/widgets/app_toast.dart';
 import '../../core/widgets/offline_state_view.dart';
 import '../orders_by_location/model/external_delivery_detail.dart';
@@ -350,8 +351,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                               ? _IconAction(
                                   icon: Icons.location_on_rounded,
                                   color: const Color(0xFFE8384F),
-                                  onTap: () => _launchUri(
-                                    'https://www.google.com/maps/search/?api=1&query=${order.latitude},${order.longitude}',
+                                  onTap: () => launchGoogleMapsNavigation(
+                                    context,
+                                    lat: order.latitude,
+                                    lng: order.longitude,
                                   ),
                                 )
                               : null,

@@ -19,6 +19,7 @@ import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../orders_by_location/repository/external_delivery_repository.dart';
 import '../orders_by_location/ui/cod_collection_sheet.dart';
+import '../orders_by_location/ui/delivery_otp_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 
@@ -834,6 +835,15 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
       } catch (_) {}
       if (!mounted) return;
     }
+
+    // Customer-facing OTP gate — required before the order can be
+    // committed as Delivered.
+    final bool? otpVerified = await showDeliveryOtpSheet(
+      context,
+      repository: ExternalDeliveryRepository(),
+      externalDelivery: deliveryName,
+    );
+    if (!mounted || otpVerified != true) return;
 
     AppToast.show(context, 'Confirming delivery $deliveryName...');
 

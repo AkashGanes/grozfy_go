@@ -196,6 +196,8 @@ class AppController extends ChangeNotifier {
   List<String> _uomOptions = <String>[];
   List<String> _vehicleFuelOptions = <String>[];
   Set<String> _vehicleRequiredFields = <String>{};
+  List<String> _bankAccountTypeOptions = <String>[];
+  Set<String> _bankRequiredFields = <String>{};
   PermissionState _permissionState = const PermissionState();
 
   bool _isOnline = false;
@@ -371,6 +373,10 @@ class AppController extends ChangeNotifier {
       List<String>.unmodifiable(_vehicleFuelOptions);
   Set<String> get vehicleRequiredFields =>
       Set<String>.unmodifiable(_vehicleRequiredFields);
+  List<String> get bankAccountTypeOptions =>
+      List<String>.unmodifiable(_bankAccountTypeOptions);
+  Set<String> get bankRequiredFields =>
+      Set<String>.unmodifiable(_bankRequiredFields);
   PermissionState get permissionState => _permissionState;
   bool get isOnline => _isOnline;
   DateTime? get onlineSince => _onlineSince;
@@ -1532,6 +1538,10 @@ class AppController extends ChangeNotifier {
       if (status == 'not_found') {
         _registrationToken = responseData['registration_token']?.toString();
         _pendingRegistrationMobile = mobile.trim();
+        // This path returns before _persistSession, so nothing else resets the
+        // previous session's KYC identity. Without this, a new user registering
+        // on a reused device sees the prior driver's details on the KYC form.
+        _clearKycIdentity();
         notifyListeners();
         return 'ACCOUNT_NOT_FOUND';
       }
@@ -1884,6 +1894,7 @@ class AppController extends ChangeNotifier {
     _profileDetailsLoading = false;
     _profileCompleted = false;
     _kycCompleted = false;
+    _clearKycIdentity();
     _wasProfileComplete = false;
     _currentLatitude = null;
     _currentLongitude = null;
@@ -1932,6 +1943,14 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefCurrentLocationLabel),
       prefs.remove(_prefProfileCompleted),
       prefs.remove(_prefKycCompleted),
+      // KYC identity is per-user PII and pre-fills the KYC form. Left behind,
+      // bootstrap() reads it back and shows it to whoever logs in next.
+      prefs.remove(_prefKycLicenseNo),
+      prefs.remove(_prefKycAadharNo),
+      prefs.remove(_prefKycPanNo),
+      prefs.remove(_prefKycLicenseUrl),
+      prefs.remove(_prefKycAadharUrl),
+      prefs.remove(_prefKycPanUrl),
       prefs.remove(_prefProfileImagePath),
       prefs.remove(_prefServerProfileImageUrl),
       prefs.remove(_prefDriverName),
@@ -2033,6 +2052,22 @@ class AppController extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Blank the KYC identity fields held in memory.
+  ///
+  /// These pre-fill the KYC form, so they are per-user PII: anything left here
+  /// when the session identity changes surfaces on the next user's KYC page.
+  /// Callers are responsible for clearing the matching prefs and notifying.
+  void _clearKycIdentity() {
+    _existingLicenseNo = null;
+    _existingAadharNo = null;
+    _existingPanNo = null;
+    _existingLicenseUrl = null;
+    _existingAadharUrl = null;
+    _existingPanUrl = null;
+    _existingIssuingDate = null;
+    _existingExpiryDate = null;
   }
 
   /// Submit KYC to create or update the Driver record on ERPNext.
@@ -2281,52 +2316,75 @@ class AppController extends ChangeNotifier {
 
   Future<void> fetchVehicleFormConfig() async {
     try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/DocType/Vehicle',
-      );
+      // Driver-accessible custom method. Replaces the Desk-only
+      // `/api/resource/DocType/Vehicle` meta read, which returned
+      // AuthenticationError for non-desk partner drivers.
+      final Uri uri = Uri.parse(ApiConstants.vehicleFormOptions);
       final Map<String, dynamic> payload = await _authorizedGet(uri);
-      final dynamic data = payload['data'];
-      if (data is! Map<String, dynamic>) {
-        return;
-      }
-      final dynamic fields = data['fields'];
-      if (fields is! List) {
+
+      // Config is returned under the standard Frappe `message` envelope.
+      final dynamic config = payload['message'];
+      if (config is! Map<String, dynamic>) {
         return;
       }
 
-      final Set<String> requiredFields = <String>{};
-      List<String> fuelOptions = <String>[];
-      for (final dynamic row in fields) {
-        if (row is! Map<String, dynamic>) {
-          continue;
+      List<String> parseStringList(dynamic raw) {
+        if (raw is! List) {
+          return <String>[];
         }
-        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
-        if (fieldname == null) {
-          continue;
-        }
-        final int reqd = int.tryParse(row['reqd']?.toString() ?? '0') ?? 0;
-        final int readOnly =
-            int.tryParse(row['read_only']?.toString() ?? '0') ?? 0;
-        if (reqd == 1 && readOnly == 0) {
-          requiredFields.add(fieldname);
-        }
-
-        if (fieldname == 'fuel_type') {
-          final String? rawOptions = _nullIfBlank(row['options']?.toString());
-          if (rawOptions != null) {
-            fuelOptions = rawOptions
-                .split('\n')
-                .map((value) => value.trim())
-                .where((value) => value.isNotEmpty)
-                .toList();
-          }
-        }
+        return raw
+            .map((dynamic value) => value?.toString().trim() ?? '')
+            .where((String value) => value.isNotEmpty)
+            .toList();
       }
+
+      final List<String> fuelOptions = parseStringList(
+        config['fuel_type_options'],
+      );
+      final Set<String> requiredFields = parseStringList(
+        config['required_fields'],
+      ).toSet();
+
       _vehicleRequiredFields = requiredFields;
       _vehicleFuelOptions = fuelOptions;
       notifyListeners();
-    } catch (_) {
-      // Keep existing cached config
+    } catch (error) {
+      // Keep existing cached config; surface the failure for debugging.
+      debugPrint(
+        '[VehicleFormConfig] Failed to load vehicle form options: $error',
+      );
+    }
+  }
+
+  Future<void> fetchBankFormOptions() async {
+    try {
+      // Driver-accessible custom method. Replaces the Desk-only
+      // `/api/resource/DocType/Bank Account` meta read that populated the
+      // Account Type picker but returned AuthenticationError for drivers.
+      final Uri uri = Uri.parse(ApiConstants.bankFormOptions);
+      final Map<String, dynamic> payload = await _authorizedGet(uri);
+
+      final dynamic config = payload['message'];
+      if (config is! Map<String, dynamic>) {
+        return;
+      }
+
+      List<String> parseStringList(dynamic raw) {
+        if (raw is! List) {
+          return <String>[];
+        }
+        return raw
+            .map((dynamic value) => value?.toString().trim() ?? '')
+            .where((String value) => value.isNotEmpty)
+            .toList();
+      }
+
+      _bankAccountTypeOptions = parseStringList(config['account_type_options']);
+      _bankRequiredFields = parseStringList(config['required_fields']).toSet();
+      notifyListeners();
+    } catch (error) {
+      // Keep existing cached config; surface the failure for debugging.
+      debugPrint('[BankFormConfig] Failed to load bank form options: $error');
     }
   }
 
@@ -2527,42 +2585,6 @@ class AppController extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, String>> fetchBankAccountLinkDoctypes() async {
-    try {
-      final Uri uri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/DocType/Bank%20Account',
-      );
-      final Map<String, dynamic> payload = await _authorizedGet(uri);
-      final dynamic data = payload['data'];
-      if (data is! Map<String, dynamic>) {
-        return <String, String>{};
-      }
-      final dynamic fields = data['fields'];
-      if (fields is! List) {
-        return <String, String>{};
-      }
-
-      final Map<String, String> doctypesByField = <String, String>{};
-      for (final dynamic row in fields) {
-        if (row is! Map<String, dynamic>) {
-          continue;
-        }
-        final String? fieldname = _nullIfBlank(row['fieldname']?.toString());
-        final String? fieldtype = _nullIfBlank(row['fieldtype']?.toString());
-        final String? options = _nullIfBlank(row['options']?.toString());
-        if (fieldname == null || fieldtype == null || options == null) {
-          continue;
-        }
-        if (fieldtype == 'Link' || fieldtype == 'Dynamic Link') {
-          doctypesByField[fieldname] = options;
-        }
-      }
-      return doctypesByField;
-    } catch (_) {
-      return <String, String>{};
-    }
-  }
-
   Future<void> hydrateBankFromBackend({bool forceRefresh = false}) async {
     if (!forceRefresh && _bank != null) {
       return;
@@ -2759,40 +2781,34 @@ class AppController extends ChangeNotifier {
       body['doors'] = doorsInt;
     }
 
+    final String? driver = _nullIfBlank(_driverName);
+    if (driver == null) {
+      return const VehicleSubmitResult(
+        error: 'Driver not identified — please sign in again',
+      );
+    }
+    body['driver'] = driver;
+
     try {
-      final Uri baseUri = Uri.parse(
-        '${ApiConstants.erpBaseUrl}/api/resource/Vehicle',
+      // Driver-callable save. The backend upserts the Vehicle with elevated
+      // permissions (drivers can't write /api/resource/Vehicle), sets
+      // Driver.vehicle, and returns the full saved doc under `message`.
+      final Uri saveUri = Uri.parse(ApiConstants.saveVehicle);
+      final bool wasUpdate = _vehicle != null;
+      final Map<String, dynamic> responsePayload = await _authorizedPostJson(
+        saveUri,
+        body,
       );
-      final Map<String, dynamic>? existing = await fetchVehicleByLicensePlate(
-        plate,
-      );
-      final String? vehicleName = _nullIfBlank(existing?['name']?.toString());
-      Map<String, dynamic> responsePayload;
-      final bool wasUpdate = vehicleName != null;
 
-      if (vehicleName != null) {
-        final Uri updateUri = Uri.parse(
-          '${ApiConstants.erpBaseUrl}/api/resource/Vehicle/${Uri.encodeComponent(vehicleName)}',
-        );
-        responsePayload = await authorizedPutJson(updateUri, body);
-      } else {
-        responsePayload = await _authorizedPostJson(baseUri, body);
-      }
-
-      final dynamic rawData = responsePayload['data'];
-      final Map<String, dynamic> data = rawData is Map<String, dynamic>
+      final dynamic rawData = responsePayload['message'];
+      final Map<String, dynamic> finalData = rawData is Map<String, dynamic>
           ? rawData
           : body;
-      final String? finalName =
-          _nullIfBlank(data['name']?.toString()) ?? vehicleName;
-      final Map<String, dynamic>? fetched = await fetchVehicleByName(
-        finalName ?? '',
-      );
-      final Map<String, dynamic> finalData = fetched ?? data;
+      final String? finalName = _nullIfBlank(finalData['name']?.toString());
       _submittedVehicleRaw = finalData;
       _vehicle = _vehicleFromApiData(finalData);
       await _persistVehicleIdentity(
-        vehicleName: _nullIfBlank(finalData['name']?.toString()) ?? finalName,
+        vehicleName: finalName,
         licensePlate: plate,
       );
       final SharedPreferences vehicleSubmitPrefs =
@@ -2801,14 +2817,6 @@ class AppController extends ChangeNotifier {
         _prefVehicleRawJson,
         jsonEncode(finalData),
       );
-      // Keep Driver.vehicle in sync so the Driver doc is the source of truth
-      // for vehicle identity after logout (SharedPreferences are cleared).
-      if (finalName != null) {
-        try {
-          await _setDriverField('vehicle', finalName);
-        } catch (_) {
-        }
-      }
       notifyListeners();
       return VehicleSubmitResult(
         vehicleName: finalName,
@@ -2932,42 +2940,29 @@ class AppController extends ChangeNotifier {
       body['last_integration_date'] = normalizedLastIntegrationDate;
     }
 
-    try {
-      Map<String, dynamic>? responsePayload;
-      final String? existingName = await _findResourceName(
-        doctype: 'Bank Account',
-        filters: <List<String>>[
-          <String>['Bank Account', 'account_name', '=', normalizedAccountName],
-        ],
-        fields: <String>['name'],
-      );
-      if (existingName != null) {
-        final Uri updateUri = Uri.parse(
-          '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account/${Uri.encodeComponent(existingName)}',
-        );
-        responsePayload = await authorizedPutJson(updateUri, body);
-      } else {
-        final Uri createUri = Uri.parse(
-          '${ApiConstants.erpBaseUrl}/api/resource/Bank%20Account',
-        );
-        responsePayload = await _authorizedPostJson(createUri, body);
-      }
+    final String? driver = _nullIfBlank(_driverName);
+    if (driver == null) {
+      return 'Driver not identified — please sign in again';
+    }
+    body['driver'] = driver;
 
-      final dynamic responseData = responsePayload['data'];
+    try {
+      // Driver-callable save. The backend upserts the Bank Account with
+      // elevated permissions (drivers can't write /api/resource/Bank Account),
+      // stamps party_type='Driver'/party server-side, and returns the full
+      // saved doc under `message`.
+      final Uri saveUri = Uri.parse(ApiConstants.saveBankAccount);
+      final Map<String, dynamic> responsePayload = await _authorizedPostJson(
+        saveUri,
+        body,
+      );
+
+      final dynamic responseData = responsePayload['message'];
       final Map<String, dynamic>? raw = responseData is Map<String, dynamic>
           ? responseData
           : null;
-      final String? bankName =
-          _nullIfBlank(raw?['name']?.toString()) ?? existingName;
-      if (bankName != null) {
-        final Map<String, dynamic>? fetched = await _fetchResourceDoc(
-          'Bank Account',
-          bankName,
-        );
-        _submittedBankRaw = fetched ?? raw;
-      } else {
-        _submittedBankRaw = raw;
-      }
+      final String? bankName = _nullIfBlank(raw?['name']?.toString());
+      _submittedBankRaw = raw;
 
       _bank = BankDetails(
         accountNumber: normalizedBankAccountNo ?? normalizedAccountName,
@@ -3238,13 +3233,27 @@ class AppController extends ChangeNotifier {
   /// was already set, or it was just fetched); false when it couldn't be
   /// obtained (service off, permission denied, or fetch failure) so the caller
   /// can fail open.
-  Future<bool> ensureCurrentLocation() async {
-    if (_currentLatitude != null && _currentLongitude != null) {
+  ///
+  /// Pass [forceRefresh] to take a new fix even when a location is already
+  /// known. [_currentLatitude] can hold a position restored from prefs on a cold
+  /// start or one the partner picked manually on the map, so callers that need
+  /// the partner's *actual* position right now (e.g. sending `driver_lat`/
+  /// `driver_lng` to the radius-aware order feed) must not settle for it. When a
+  /// forced refresh fails, any previously known location is kept and reported as
+  /// available rather than discarded — a stale origin still beats none.
+  ///
+  /// The fix is capped by [_locationFixTimeout] so a device that never returns a
+  /// position can't stall the caller indefinitely; the timeout surfaces as a
+  /// caught exception and falls back to the known location.
+  Future<bool> ensureCurrentLocation({bool forceRefresh = false}) async {
+    final bool hasKnownLocation =
+        _currentLatitude != null && _currentLongitude != null;
+    if (hasKnownLocation && !forceRefresh) {
       return true;
     }
     try {
       final bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) return false;
+      if (!serviceEnabled) return hasKnownLocation;
 
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
@@ -3252,12 +3261,13 @@ class AppController extends ChangeNotifier {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        return false;
+        return hasKnownLocation;
       }
 
       final Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
+          timeLimit: _locationFixTimeout,
         ),
       );
       _currentLatitude = position.latitude;
@@ -3267,9 +3277,13 @@ class AppController extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (_) {
-      return false;
+      return hasKnownLocation;
     }
   }
+
+  /// Upper bound on a single [ensureCurrentLocation] fix. Long enough for a cold
+  /// GPS lock, short enough that the order list never appears to hang on it.
+  static const Duration _locationFixTimeout = Duration(seconds: 8);
 
   void stopTracking() {
     _positionStream?.cancel();
@@ -4119,18 +4133,22 @@ class AppController extends ChangeNotifier {
       drop: dropAddress,
       deliveryInstructions: '',
       paymentMode: detail.paymentMode ?? '',
-      distanceKm:
-          (_currentLatitude != null &&
-              _currentLongitude != null &&
-              orderLatitude != null &&
-              orderLongitude != null)
-          ? _calculateDistance(
-              _currentLatitude!,
-              _currentLongitude!,
-              orderLatitude,
-              orderLongitude,
-            )
-          : 0,
+      // Prefer the server-computed distance (from the radius-aware
+      // `list_available_deliveries` feed) when present; otherwise fall back to
+      // a client-side Haversine estimate from the driver's current location.
+      distanceKm: (detail.distanceKm != null && detail.distanceKm! > 0)
+          ? detail.distanceKm!
+          : (_currentLatitude != null &&
+                    _currentLongitude != null &&
+                    orderLatitude != null &&
+                    orderLongitude != null)
+              ? _calculateDistance(
+                  _currentLatitude!,
+                  _currentLongitude!,
+                  orderLatitude,
+                  orderLongitude,
+                )
+              : 0,
       estimatedEarnings: detail.grandTotal ?? totalAmount,
       assignmentStatus: status == OrderStatus.pending
           ? OrderAssignmentStatus.unassigned
@@ -4978,7 +4996,6 @@ class AppController extends ChangeNotifier {
           );
         }
       }
-      driverName ??= await _findDefaultDriverName();
 
       if (driverName != null) {
         driverDoc = await _fetchResourceDoc('Driver', driverName);
@@ -5005,6 +5022,11 @@ class AppController extends ChangeNotifier {
         _existingExpiryDate = _nullIfBlank(
           driverDoc?['expiry_date']?.toString(),
         );
+      } else {
+        // No Driver record maps to this user (a new signup, before KYC is
+        // submitted). These fields pre-fill the KYC form, so they must be
+        // blank rather than left holding a previous session's values.
+        _clearKycIdentity();
       }
       if (employeeName != null) {
         employeeDoc = await _fetchResourceDoc('Employee', employeeName);
@@ -5182,25 +5204,6 @@ class AppController extends ChangeNotifier {
       }
     }
     return null;
-  }
-
-  Future<String?> _findDefaultDriverName() async {
-    final String configured = ApiConstants.defaultExternalDeliveryDriver.trim();
-    if (configured.isNotEmpty) {
-      final Map<String, dynamic>? configuredDoc = await _fetchResourceDoc(
-        'Driver',
-        configured,
-      );
-      if (configuredDoc != null) {
-        return configured;
-      }
-    }
-
-    return _findResourceName(
-      doctype: 'Driver',
-      filters: const <List<String>>[],
-      fields: const <String>['name'],
-    );
   }
 
   Future<String?> _findResourceName({
