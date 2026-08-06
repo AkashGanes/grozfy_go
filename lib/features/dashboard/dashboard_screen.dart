@@ -38,6 +38,9 @@ import '../pickup_jobs/model/pickup_job.dart';
 import '../pickup_jobs/repository/pickup_job_repository.dart';
 import '../cod_settlement/providers/settlement_provider.dart';
 
+
+import '../sos/ui/sos_sheet.dart';
+
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
@@ -266,6 +269,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
                 Navigator.of(context).pushNamed(AppRoutes.notifications),
             onAvatarTap: () =>
                 Navigator.of(context).pushNamed(AppRoutes.profile),
+            onSosTap: () => showSosSheet(context),
           );
         },
       ),

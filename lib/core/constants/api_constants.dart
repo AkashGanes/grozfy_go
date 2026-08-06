@@ -158,4 +158,30 @@ class ApiConstants {
   // has passed or the request is already terminal.
   static const String cancelAccountDeletion =
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.account.cancel_account_deletion';
+
+  // ---------------------------------------------------------------------------
+  // SOS / Emergency Assistance endpoints
+  //
+  // Both are session-authenticated and resolve the driver from the session user
+  // — neither takes a `driver` argument, so neither can be called on behalf of
+  // anyone else. The backend auto-attaches active trip/order context.
+  // ---------------------------------------------------------------------------
+
+  // POST: {lat, lng, message?} → {success, sos_alert, driver_resolved_via,
+  // delivery_trip, external_delivery}. Only a missing/invalid lat or lng can
+  // fail this call — driver-identity and trip-lookup problems never do.
+  //
+  // NOTE: there is no `alert_uuid` and no server-side dedupe, so *every* call
+  // creates a row. Never retry automatically (see SosRepository).
+  static const String triggerSos =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.sos.trigger_sos';
+
+  // Operations number dialled by the "Call operations" fallback when an alert
+  // could not be confirmed by the server. While this is empty the UI *hides*
+  // the call action rather than dialling nothing.
+  //
+  // TODO: set a real, monitored operations number before release. Push
+  // notifications to ops are a dead channel today (no Delivery Manager has an
+  // FCM token registered), which makes this the most reliable path to a human.
+  static const String sosFallbackOpsPhone = '';
 }

@@ -16,6 +16,7 @@ class DashboardGreetingHeader extends StatelessWidget {
     this.hasUnreadNotifications = false,
     this.onNotificationsTap,
     this.onAvatarTap,
+    this.onSosTap,
   });
 
   final String name;
@@ -26,6 +27,10 @@ class DashboardGreetingHeader extends StatelessWidget {
   final bool hasUnreadNotifications;
   final VoidCallback? onNotificationsTap;
   final VoidCallback? onAvatarTap;
+
+  /// Opens the emergency flow. Lives in the header so it is reachable from the
+  /// dashboard without scrolling, on duty or on a trip.
+  final VoidCallback? onSosTap;
 
   String _greeting() {
     final hour = DateTime.now().hour;
@@ -98,6 +103,16 @@ class DashboardGreetingHeader extends StatelessWidget {
               ],
             ),
           ),
+          if (onSosTap != null) ...[
+            _IconButtonChip(
+              icon: Icons.sos_rounded,
+              onTap: onSosTap,
+              background: const Color(0xFFE8384F),
+              foreground: Colors.white,
+              tooltip: 'Emergency assistance',
+            ),
+            const SizedBox(width: 8),
+          ],
           _IconButtonChip(
             icon: Icons.notifications_none_rounded,
             badge: hasUnreadNotifications,
@@ -166,17 +181,24 @@ class _IconButtonChip extends StatelessWidget {
     required this.icon,
     this.onTap,
     this.badge = false,
+    this.background,
+    this.foreground,
+    this.tooltip,
   });
 
   final IconData icon;
   final VoidCallback? onTap;
   final bool badge;
+  final Color? background;
+  final Color? foreground;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: scheme.surface,
+    final surface = background ?? scheme.surface;
+    final chip = Material(
+      color: surface,
       borderRadius: BorderRadius.circular(14),
       elevation: 0,
       child: InkWell(
@@ -186,7 +208,7 @@ class _IconButtonChip extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: scheme.surface,
+            color: surface,
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
@@ -199,7 +221,7 @@ class _IconButtonChip extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Icon(icon, size: 22, color: scheme.onSurface),
+              Icon(icon, size: 22, color: foreground ?? scheme.onSurface),
               if (badge)
                 Positioned(
                   top: 10,
@@ -219,5 +241,8 @@ class _IconButtonChip extends StatelessWidget {
         ),
       ),
     );
+
+    if (tooltip == null) return chip;
+    return Tooltip(message: tooltip!, child: chip);
   }
 }

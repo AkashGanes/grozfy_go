@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
 import '../delivery_radius/ui/delivery_radius_card.dart';
+import '../sos/ui/sos_sheet.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -32,6 +33,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const DeliveryRadiusCard(),
           const SizedBox(height: 16),
           _buildLanguageCustomizationSection(context, controller),
+          const SizedBox(height: 16),
+          const _SosHapticsCard(),
           const SizedBox(height: 16),
           _buildResetButton(context, controller),
           const SizedBox(height: 16),
@@ -501,5 +504,58 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Color _getContrastColor(Color color) {
     final double luminance = color.computeLuminance();
     return luminance > 0.5 ? Colors.black : Colors.white;
+  }
+}
+
+/// Toggles the haptic feedback on the emergency (SOS) button.
+///
+/// Scoped to SOS deliberately rather than being an app-wide haptics switch:
+/// this exists so a driver can trigger an alert discreetly when being watched,
+/// not as a general preference.
+class _SosHapticsCard extends StatefulWidget {
+  const _SosHapticsCard();
+
+  @override
+  State<_SosHapticsCard> createState() => _SosHapticsCardState();
+}
+
+class _SosHapticsCardState extends State<_SosHapticsCard> {
+  bool _enabled = SosHaptics.enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    SosHaptics.load().then((value) {
+      if (mounted) setState(() => _enabled = value);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: SwitchListTile(
+        value: _enabled,
+        secondary: Icon(
+          Icons.vibration,
+          color: theme.colorScheme.primary,
+          size: 22,
+        ),
+        title: Text(
+          'Emergency button vibration',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: const Text(
+          'Vibrate while holding the SOS button. Turn off to raise an alert '
+          'silently.',
+        ),
+        onChanged: (value) {
+          setState(() => _enabled = value);
+          SosHaptics.setEnabled(value);
+        },
+      ),
+    );
   }
 }
