@@ -571,8 +571,9 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
       return;
     }
     showInfoSnack(context, 'KYC submitted successfully');
-    Navigator.of(context)
-        .pushNamedAndRemoveUntil(AppRoutes.dashboard, (_) => false);
+    Navigator.of(
+      context,
+    ).pushNamedAndRemoveUntil(AppRoutes.kycApprovalStatus, (_) => false);
   }
 
   Map<String, String> get _authHeaders =>

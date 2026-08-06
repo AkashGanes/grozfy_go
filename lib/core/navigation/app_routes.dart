@@ -27,6 +27,7 @@ class AppRoutes {
   static const otp = '/otp';
   static const register = '/register';
   static const kycDocuments = '/kyc-documents';
+  static const kycApprovalStatus = '/kyc-approval-status';
   static const vehicleDetails = '/vehicle-details';
   static const vehicleSubmittedDetails = '/vehicle-submitted-details';
   static const bankSetup = '/bank-setup';
