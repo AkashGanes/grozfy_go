@@ -287,6 +287,23 @@ class AppStrings {
       'delivery_failed': 'Delivery Failed',
       'confirm_failed_delivery': 'Confirm Failed Delivery',
       'add_any_additional_details': 'Add any additional details...',
+      // force update
+      'update_required_title': 'Update required',
+      'update_required_message':
+          'This version of the app is no longer supported. Update to the '
+          'latest version to keep taking deliveries.',
+      'update_available_title': 'Update available',
+      'update_available_message':
+          'A newer version is ready with improvements and fixes.',
+      'update_now': 'Update now',
+      'update_later': 'Later',
+      'update_installed_version': 'Installed version',
+      'update_latest_version': 'Latest version',
+      'update_whats_new': "What's new",
+      'update_store_unavailable':
+          'Could not open the store. Update the app manually, or contact '
+          'support for help.',
+      'update_need_help': 'Need help? Contact support',
     },
 
     // ─── HINDI ──────────────────────────────────────────────────────────────
@@ -484,6 +501,23 @@ class AppStrings {
       'delivery_failed': 'डिलीवरी विफल',
       'confirm_failed_delivery': 'विफल डिलीवरी की पुष्टि',
       'add_any_additional_details': 'कोई अतिरिक्त विवरण जोड़ें...',
+      // force update
+      'update_required_title': 'अपडेट आवश्यक है',
+      'update_required_message':
+          'ऐप का यह संस्करण अब समर्थित नहीं है। डिलीवरी जारी रखने के लिए '
+          'नवीनतम संस्करण में अपडेट करें।',
+      'update_available_title': 'अपडेट उपलब्ध है',
+      'update_available_message':
+          'सुधारों और समाधानों के साथ नया संस्करण तैयार है।',
+      'update_now': 'अभी अपडेट करें',
+      'update_later': 'बाद में',
+      'update_installed_version': 'इंस्टॉल किया गया संस्करण',
+      'update_latest_version': 'नवीनतम संस्करण',
+      'update_whats_new': 'नया क्या है',
+      'update_store_unavailable':
+          'स्टोर नहीं खुल सका। ऐप को मैन्युअल रूप से अपडेट करें, या सहायता से '
+          'संपर्क करें।',
+      'update_need_help': 'मदद चाहिए? सहायता से संपर्क करें',
     },
 
     // ─── TAMIL ──────────────────────────────────────────────────────────────
@@ -680,6 +714,23 @@ class AppStrings {
       'delivery_failed': 'டெலிவரி தோல்வி',
       'confirm_failed_delivery': 'தோல்வியடைந்த டெலிவரியை உறுதிப்படுத்தவும்',
       'add_any_additional_details': 'கூடுதல் விவரங்களைச் சேர்க்கவும்...',
+      // force update
+      'update_required_title': 'புதுப்பிப்பு அவசியம்',
+      'update_required_message':
+          'இந்த பதிப்பு இனி ஆதரிக்கப்படாது. டெலிவரிகளைத் தொடர சமீபத்திய '
+          'பதிப்பிற்குப் புதுப்பிக்கவும்.',
+      'update_available_title': 'புதுப்பிப்பு கிடைக்கிறது',
+      'update_available_message':
+          'மேம்பாடுகளுடன் புதிய பதிப்பு தயாராக உள்ளது.',
+      'update_now': 'இப்போது புதுப்பிக்கவும்',
+      'update_later': 'பிறகு',
+      'update_installed_version': 'நிறுவப்பட்ட பதிப்பு',
+      'update_latest_version': 'சமீபத்திய பதிப்பு',
+      'update_whats_new': 'புதியது என்ன',
+      'update_store_unavailable':
+          'ஸ்டோரைத் திறக்க முடியவில்லை. செயலியை கைமுறையாகப் புதுப்பிக்கவும், '
+          'அல்லது ஆதரவைத் தொடர்பு கொள்ளவும்.',
+      'update_need_help': 'உதவி வேண்டுமா? ஆதரவைத் தொடர்பு கொள்ளவும்',
     },
 
     // ─── TELUGU ─────────────────────────────────────────────────────────────
@@ -876,6 +927,23 @@ class AppStrings {
       'delivery_failed': 'డెలివరీ విఫలమైంది',
       'confirm_failed_delivery': 'విఫలమైన డెలివరీని నిర్ధారించండి',
       'add_any_additional_details': 'అదనపు వివరాలను జోడించండి...',
+      // force update
+      'update_required_title': 'అప్‌డేట్ అవసరం',
+      'update_required_message':
+          'యాప్ యొక్క ఈ వెర్షన్‌కు ఇకపై మద్దతు లేదు. డెలివరీలు కొనసాగించడానికి '
+          'తాజా వెర్షన్‌కు అప్‌డేట్ చేయండి.',
+      'update_available_title': 'అప్‌డేట్ అందుబాటులో ఉంది',
+      'update_available_message':
+          'మెరుగుదలలతో కొత్త వెర్షన్ సిద్ధంగా ఉంది.',
+      'update_now': 'ఇప్పుడే అప్‌డేట్ చేయండి',
+      'update_later': 'తర్వాత',
+      'update_installed_version': 'ఇన్‌స్టాల్ చేసిన వెర్షన్',
+      'update_latest_version': 'తాజా వెర్షన్',
+      'update_whats_new': 'కొత్తగా ఏముంది',
+      'update_store_unavailable':
+          'స్టోర్‌ను తెరవలేకపోయాము. యాప్‌ను మాన్యువల్‌గా అప్‌డేట్ చేయండి, '
+          'లేదా సపోర్ట్‌ను సంప్రదించండి.',
+      'update_need_help': 'సహాయం కావాలా? సపోర్ట్‌ను సంప్రదించండి',
     },
 
     // ─── KANNADA ────────────────────────────────────────────────────────────
@@ -1072,6 +1140,23 @@ class AppStrings {
       'delivery_failed': 'ಡೆಲಿವರಿ ವಿಫಲವಾಗಿದೆ',
       'confirm_failed_delivery': 'ವಿಫಲ ಡೆಲಿವರಿಯನ್ನು ದೃಢಪಡಿಸಿ',
       'add_any_additional_details': 'ಹೆಚ್ಚುವರಿ ವಿವರಗಳನ್ನು ಸೇರಿಸಿ...',
+      // force update
+      'update_required_title': 'ಅಪ್‌ಡೇಟ್ ಅಗತ್ಯವಿದೆ',
+      'update_required_message':
+          'ಆ್ಯಪ್‌ನ ಈ ಆವೃತ್ತಿಗೆ ಇನ್ನು ಬೆಂಬಲವಿಲ್ಲ. ಡೆಲಿವರಿಗಳನ್ನು ಮುಂದುವರಿಸಲು '
+          'ಇತ್ತೀಚಿನ ಆವೃತ್ತಿಗೆ ಅಪ್‌ಡೇಟ್ ಮಾಡಿ.',
+      'update_available_title': 'ಅಪ್‌ಡೇಟ್ ಲಭ್ಯವಿದೆ',
+      'update_available_message':
+          'ಸುಧಾರಣೆಗಳೊಂದಿಗೆ ಹೊಸ ಆವೃತ್ತಿ ಸಿದ್ಧವಾಗಿದೆ.',
+      'update_now': 'ಈಗ ಅಪ್‌ಡೇಟ್ ಮಾಡಿ',
+      'update_later': 'ನಂತರ',
+      'update_installed_version': 'ಸ್ಥಾಪಿಸಲಾದ ಆವೃತ್ತಿ',
+      'update_latest_version': 'ಇತ್ತೀಚಿನ ಆವೃತ್ತಿ',
+      'update_whats_new': 'ಹೊಸತೇನಿದೆ',
+      'update_store_unavailable':
+          'ಸ್ಟೋರ್ ತೆರೆಯಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ. ಆ್ಯಪ್ ಅನ್ನು ಕೈಯಾರೆ ಅಪ್‌ಡೇಟ್ ಮಾಡಿ, '
+          'ಅಥವಾ ಬೆಂಬಲವನ್ನು ಸಂಪರ್ಕಿಸಿ.',
+      'update_need_help': 'ಸಹಾಯ ಬೇಕೇ? ಬೆಂಬಲವನ್ನು ಸಂಪರ್ಕಿಸಿ',
     },
 
     // ─── MALAYALAM ──────────────────────────────────────────────────────────
@@ -1268,6 +1353,23 @@ class AppStrings {
       'delivery_failed': 'ഡെലിവറി പരാജയപ്പെട്ടു',
       'confirm_failed_delivery': 'പരാജയപ്പെട്ട ഡെലിവറി സ്ഥിരീകരിക്കുക',
       'add_any_additional_details': 'കൂടുതൽ വിശദാംശങ്ങൾ ചേർക്കുക...',
+      // force update
+      'update_required_title': 'അപ്‌ഡേറ്റ് ആവശ്യമാണ്',
+      'update_required_message':
+          'ആപ്പിന്റെ ഈ പതിപ്പ് ഇനി പിന്തുണയ്ക്കുന്നില്ല. ഡെലിവറികൾ തുടരാൻ '
+          'ഏറ്റവും പുതിയ പതിപ്പിലേക്ക് അപ്‌ഡേറ്റ് ചെയ്യുക.',
+      'update_available_title': 'അപ്‌ഡേറ്റ് ലഭ്യമാണ്',
+      'update_available_message':
+          'മെച്ചപ്പെടുത്തലുകളോടെ പുതിയ പതിപ്പ് തയ്യാറാണ്.',
+      'update_now': 'ഇപ്പോൾ അപ്‌ഡേറ്റ് ചെയ്യുക',
+      'update_later': 'പിന്നീട്',
+      'update_installed_version': 'ഇൻസ്റ്റാൾ ചെയ്ത പതിപ്പ്',
+      'update_latest_version': 'ഏറ്റവും പുതിയ പതിപ്പ്',
+      'update_whats_new': 'പുതിയത് എന്ത്',
+      'update_store_unavailable':
+          'സ്റ്റോർ തുറക്കാൻ കഴിഞ്ഞില്ല. ആപ്പ് സ്വയം അപ്‌ഡേറ്റ് ചെയ്യുക, '
+          'അല്ലെങ്കിൽ സപ്പോർട്ടുമായി ബന്ധപ്പെടുക.',
+      'update_need_help': 'സഹായം വേണോ? സപ്പോർട്ടുമായി ബന്ധപ്പെടുക',
     },
 
     // ─── BENGALI ────────────────────────────────────────────────────────────
@@ -1465,6 +1567,23 @@ class AppStrings {
       'delivery_failed': 'ডেলিভারি ব্যর্থ',
       'confirm_failed_delivery': 'ব্যর্থ ডেলিভারি নিশ্চিত করুন',
       'add_any_additional_details': 'অতিরিক্ত বিবরণ যোগ করুন...',
+      // force update
+      'update_required_title': 'আপডেট প্রয়োজন',
+      'update_required_message':
+          'অ্যাপের এই সংস্করণ আর সমর্থিত নয়। ডেলিভারি চালিয়ে যেতে সর্বশেষ '
+          'সংস্করণে আপডেট করুন।',
+      'update_available_title': 'আপডেট উপলব্ধ',
+      'update_available_message':
+          'উন্নতি ও সংশোধন সহ নতুন সংস্করণ প্রস্তুত।',
+      'update_now': 'এখনই আপডেট করুন',
+      'update_later': 'পরে',
+      'update_installed_version': 'ইনস্টল করা সংস্করণ',
+      'update_latest_version': 'সর্বশেষ সংস্করণ',
+      'update_whats_new': 'নতুন কী আছে',
+      'update_store_unavailable':
+          'স্টোর খোলা যায়নি। অ্যাপটি নিজে আপডেট করুন, অথবা সহায়তার সাথে '
+          'যোগাযোগ করুন।',
+      'update_need_help': 'সাহায্য দরকার? সহায়তার সাথে যোগাযোগ করুন',
     },
   };
 

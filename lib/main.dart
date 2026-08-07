@@ -49,6 +49,7 @@ import 'features/orders/order_tracking_screen.dart';
 import 'features/permissions/location_permission_screen.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/security/security_screen.dart';
+import 'features/settings/force_update_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/support/support_screen.dart';
@@ -174,7 +175,12 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
           if (controller.isLoggedIn) {
             content = _AppLockObserver(child: content);
           }
-          return NoInternetWrapper(child: content);
+          // Outermost: a mandatory update has to cover the no-internet overlay
+          // and the lock screen too, and its own "Retry check" is the way out
+          // of a stale block.
+          return ForceUpdateGate(
+            child: NoInternetWrapper(child: content),
+          );
         },
         onGenerateRoute: (RouteSettings settings) {
           switch (settings.name) {

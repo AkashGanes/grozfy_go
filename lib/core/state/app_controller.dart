@@ -17,7 +17,9 @@ import '../constants/api_constants.dart';
 import '../localization/app_strings.dart';
 import '../localization/localized_text.dart';
 import '../models/app_models.dart';
+import '../models/app_version_status.dart';
 import '../navigation/app_routes.dart';
+import '../services/app_version_service.dart';
 import '../services/connectivity_service.dart';
 import '../services/timing_sync_engine.dart';
 import '../services/fcm_initializer.dart';
@@ -150,6 +152,21 @@ class AppController extends ChangeNotifier {
     ),
   ];
 
+  // ── Force update / minimum supported version ────────────────────────────
+  // The verdict starts at "up to date" and only ever leaves that state on an
+  // explicit instruction from the backend, so nothing here can lock a driver
+  // out before the first successful check.
+  final AppVersionService _appVersionService;
+  AppVersionStatus _versionStatus = const AppVersionStatus.upToDate();
+  DateTime? _lastVersionCheckAt;
+  bool _versionCheckInFlight = false;
+  bool _optionalUpdateDismissed = false;
+  bool _mandatoryUpdateDismissed = false;
+
+  /// Resume checks are throttled to this so app-switching does not hammer the
+  /// endpoint. `force: true` bypasses it.
+  static const Duration _versionCheckThrottle = Duration(minutes: 30);
+
   String _languageCode = '';
   bool _bootstrapped = false;
   bool _isLoggedIn = false;
@@ -274,7 +291,11 @@ class AppController extends ChangeNotifier {
   final PartnerTimingLogDao? _timingDao;
   final Set<String> _recentEventKeys = {};
 
-  AppController({PartnerTimingLogDao? timingDao}) : _timingDao = timingDao;
+  AppController({
+    PartnerTimingLogDao? timingDao,
+    AppVersionService? appVersionService,
+  }) : _timingDao = timingDao,
+       _appVersionService = appVersionService ?? AppVersionService();
 
   // Public entry-point for UI-triggered events (stop_delivered, stop_failed,
   // trip_completed). The 10-second dedup window prevents double-fires from
@@ -869,6 +890,11 @@ class AppController extends ChangeNotifier {
 
     _bootstrapped = true;
 
+    // Unawaited: the splash must not wait on the network. The gate reacts when
+    // the verdict lands, which for a blocking verdict is within a second or so
+    // of the first frame.
+    unawaited(checkAppVersion());
+
     // Subscribe to FCM only when driver is online so offline drivers
     // don't receive order notifications.
     if (_isOnline) unawaited(FCMService().subscribe(this));
@@ -942,6 +968,95 @@ class AppController extends ChangeNotifier {
   }
 
   void setAppResumed(bool isResumed) {
+    // A driver who leaves the app open for days would otherwise never see a
+    // newly-published floor. Throttled inside checkAppVersion().
+    if (isResumed) unawaited(checkAppVersion());
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Force update / minimum supported version
+  // ---------------------------------------------------------------------------
+
+  /// The current verdict. Defaults to [AppVersionStatus.upToDate] and returns
+  /// to it whenever a check cannot be completed — see [AppVersionService].
+  AppVersionStatus get versionStatus => _versionStatus;
+
+  /// True when the running build is below the supported floor and the update
+  /// sheet should be on screen, blocking input to the app behind it.
+  ///
+  /// By product decision the sheet carries a "Later", so this is not a hard
+  /// lockout: dismissing clears it for the rest of the session. The flag is
+  /// deliberately **not** persisted — a relaunch prompts again, which is what
+  /// keeps "Later" from becoming "never".
+  bool get isUpdateBlocking =>
+      _versionStatus.isBlocking && !_mandatoryUpdateDismissed;
+
+  /// True when the dismissible prompt should be on screen: an optional update
+  /// exists, it isn't snoozed, and the driver hasn't dismissed it this session.
+  bool get shouldPromptOptionalUpdate =>
+      _versionStatus.isOptional && !_optionalUpdateDismissed;
+
+  /// Asks the backend whether this build is still supported.
+  ///
+  /// Never throws and never leaves the app in a blocked state because of a
+  /// failure. [force] skips the throttle.
+  Future<void> checkAppVersion({bool force = false}) async {
+    if (_versionCheckInFlight) return;
+
+    final DateTime now = DateTime.now();
+    final DateTime? last = _lastVersionCheckAt;
+    if (!force &&
+        last != null &&
+        now.difference(last) < _versionCheckThrottle) {
+      return;
+    }
+
+    _versionCheckInFlight = true;
+    try {
+      final AppVersionStatus status = await _appVersionService.check();
+      _lastVersionCheckAt = DateTime.now();
+
+      final bool changed =
+          status.requirement != _versionStatus.requirement ||
+          status.latestVersion != _versionStatus.latestVersion;
+      _versionStatus = status;
+
+      if (status.isOptional) {
+        // Respect a "Later" that is still inside its window.
+        final bool due = await _appVersionService.shouldShowOptionalPrompt();
+        _optionalUpdateDismissed = !due;
+      } else {
+        _optionalUpdateDismissed = false;
+      }
+
+      // A dismissal only covers the verdict it was given for. If the block
+      // lifts and a later check re-imposes one — ops raising the floor again
+      // mid-session — the sheet comes back.
+      if (!status.isBlocking) _mandatoryUpdateDismissed = false;
+
+      if (changed || status.hasUpdate) notifyListeners();
+    } finally {
+      _versionCheckInFlight = false;
+    }
+  }
+
+  /// "Later" on the optional prompt. Suppresses it for
+  /// [AppVersionService.optionalSnooze] and for the rest of this session.
+  Future<void> dismissOptionalUpdate() async {
+    _optionalUpdateDismissed = true;
+    notifyListeners();
+    await _appVersionService.snoozeOptionalPrompt();
+  }
+
+  /// "Later" on the mandatory sheet.
+  ///
+  /// Session-scoped on purpose: unlike the optional prompt this writes no
+  /// snooze to disk, so the next launch shows it again. An unsupported build
+  /// keeps working in between — that is the cost of putting a "Later" on a
+  /// mandatory update, and it is why the flag never outlives the process.
+  void dismissMandatoryUpdate() {
+    _mandatoryUpdateDismissed = true;
     notifyListeners();
   }
 

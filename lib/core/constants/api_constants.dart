@@ -98,6 +98,25 @@ class ApiConstants {
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.delivery_radius.list_available_deliveries';
 
   // ---------------------------------------------------------------------------
+  // App version / force update
+  //
+  // Spec: docs/force_update_backend_spec.md.
+  // ---------------------------------------------------------------------------
+
+  // GET ?platform=android|ios&version=1.0.1&build_number=2
+  //   → {message: {update_required, update_available, min_supported_build,
+  //      recommended_build, latest_version, store_url, title, message,
+  //      release_notes[]}}
+  //
+  // Must be `allow_guest=True`: the check runs before login and with an
+  // expired token, and a 401 here would be indistinguishable from a backend
+  // outage. The client treats every non-200 — including the 404 returned
+  // until this method is deployed — as "up to date", so the app never locks a
+  // driver out because the endpoint is missing or unreachable.
+  static const String appVersionCheck =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.app_version.check_app_version';
+
+  // ---------------------------------------------------------------------------
   // Vehicle endpoints
   // ---------------------------------------------------------------------------
 
