@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/localization/app_strings.dart';
+import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_shell.dart';
@@ -37,6 +38,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const _SosHapticsCard(),
           const SizedBox(height: 16),
           _buildResetButton(context, controller),
+          const SizedBox(height: 16),
+          _buildDeleteAccountCard(context),
           const SizedBox(height: 16),
         ],
       ),
@@ -458,6 +461,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Account deletion, moved here from the More tab.
+  ///
+  /// Kept last and visually separated from the preference cards above: it is
+  /// the only destructive, irreversible action on this screen. Play requires
+  /// an in-app deletion path, so this entry must stay reachable — More →
+  /// Settings → Delete Account.
+  Widget _buildDeleteAccountCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final danger = theme.colorScheme.error;
+
+    return Card(
+      child: ListTile(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        leading: Icon(Icons.person_remove_outlined, color: danger, size: 22),
+        title: Text(
+          'Delete Account',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: danger,
+          ),
+        ),
+        subtitle: const Text('Request permanent removal of your account.'),
+        trailing: Icon(
+          Icons.chevron_right_rounded,
+          color: danger.withValues(alpha: 0.4),
+          size: 20,
+        ),
+        onTap: () =>
+            Navigator.of(context).pushNamed(AppRoutes.legalDeleteAccount),
       ),
     );
   }

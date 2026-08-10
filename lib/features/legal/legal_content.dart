@@ -319,7 +319,7 @@ const List<LegalSection> kPrivacySections = <LegalSection>[
     summary: 'How to close your account and what happens to your data',
     paragraphs: [
       'You can ask us to delete your partner account from inside the app — open '
-          'the More tab and tap "Delete Account", just above Log out. You do '
+          'the More tab, tap Settings, then tap "Delete Account". You do '
           'not have to email us or call support first.',
       'Deletion is permanent. Your delivery history, ratings and incentive '
           'progress cannot be restored, and a new account starts verification '
@@ -543,8 +543,7 @@ const List<LegalSection> kTermsSections = <LegalSection>[
     ],
     closing:
         'You may stop working with us at any time. Earnings already due are '
-        'still paid. To close your account, use "Delete Account" on the More '
-        'tab.',
+        'still paid. To close your account, use "Delete Account" in Settings.',
   ),
   LegalSection(
     title: 'Limitation of Liability',
