@@ -329,7 +329,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           const SizedBox(height: 14),
           // Collapses to nothing (including its spacing) when no COD limit is
           // configured or the backend endpoint isn't deployed yet.
-          const CashInHandCard(),
+          const CashInHandCard(margin: EdgeInsets.only(bottom: 14)),
           _ActiveOrderSection(app: app),
           const _ActivePickupJobSection(),
           const SizedBox(height: 14),

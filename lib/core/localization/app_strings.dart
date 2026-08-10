@@ -167,11 +167,17 @@ class AppStrings {
       'cash_limit_of': 'of',
       'cash_limit_available': 'available',
       'cash_limit_ok': 'Within limit',
-      'cash_limit_warning': 'Approaching your cash limit',
-      'cash_limit_reached': 'Cash limit reached',
+      // Kept short: these render inside a pill beside the card title, and a
+      // long label crowds it out (and leaves no room for longer translations).
+      'cash_limit_warning': 'Near limit',
+      'cash_limit_reached': 'Limit reached',
       'cash_limit_blocked_hint':
           'Settle your cash to accept more COD orders. Prepaid orders are still available.',
       'cash_limit_in_flight': 'in undelivered COD orders',
+      'cash_limit_collected': 'collected',
+      'cash_limit_in_order': 'in 1 order',
+      'cash_limit_in_orders': 'in {count} orders',
+      'cash_limit_none_held': 'You are not holding any COD cash.',
       'settle_now': 'Settle now',
       // generic errors
       'error_network': 'No internet connection. Please check your network.',

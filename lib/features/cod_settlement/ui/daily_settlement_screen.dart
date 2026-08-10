@@ -466,9 +466,10 @@ class _DailySettlementScreenState
                 // View Order Breakdown button
                 _OrderBreakdownButton(settlement: settlement),
 
-                // Cash-in-hand vs. limit. Hides itself (including its spacing)
-                // when no COD limit is configured for this driver.
-                const _CashLimitRow(),
+                // The cash-limit card lives on the dashboard only. Here it was
+                // both redundant — the hero above already states what is owed —
+                // and actively wrong: its card tap and "Settle now" chip both
+                // navigate to this very screen, pushing a second copy of it.
 
                 const SizedBox(height: 24),
 
@@ -781,126 +782,6 @@ class _BreakdownChip extends StatelessWidget {
 ///
 /// Collapses to nothing when the limit isn't in play (feature disabled, no
 /// limit configured, or the backend endpoint undeployed).
-class _CashLimitRow extends ConsumerWidget {
-  const _CashLimitRow();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final CodLimitStatus? status = ref
-        .watch(codLimitStatusProvider)
-        .asData
-        ?.value;
-    if (status == null || !status.hasValidLimit) {
-      return const SizedBox.shrink();
-    }
-
-    final Color accent = status.isBlocked
-        ? const Color(0xFFDC2626)
-        : status.isWarning
-            ? const Color(0xFFD97706)
-            : const Color(0xFF16A34A);
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: context.cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: accent.withValues(alpha: 0.30)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.account_balance_wallet_rounded,
-                    color: accent,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Cash in Hand',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w500,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.50),
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        '₹${_fmtAmount(status.cashInHand)} of '
-                        '₹${_fmtAmount(status.maxLimit)}',
-                        style: const TextStyle(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  '₹${_fmtAmount(status.availableLimit)} left',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: accent,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: status.usedFraction,
-                minHeight: 6,
-                backgroundColor: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.08),
-                valueColor: AlwaysStoppedAnimation<Color>(accent),
-              ),
-            ),
-            if (status.isBlocked) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Settle your cash to accept more COD orders. '
-                'Prepaid orders are still available.',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  height: 1.35,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.60),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Order Breakdown button
 // ---------------------------------------------------------------------------
