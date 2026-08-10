@@ -19,6 +19,7 @@ import '../../../core/widgets/app_shell.dart';
 import '../../../core/widgets/app_toast.dart';
 import '../model/pickup_job.dart';
 import '../repository/pickup_job_repository.dart';
+import '../../sos/ui/sos_sheet.dart';
 import 'failed_pickup_bottom_sheet.dart';
 import 'return_otp_sheet.dart';
 
@@ -433,6 +434,7 @@ class _PickupJobDetailScreenState
       title: 'Pickup Job',
       subtitle: widget.pickupJobName,
       scrollable: false,
+      actions: const [SosButton()],
       child: FutureBuilder<_JobDetail>(
         future: _future,
         builder: (context, snapshot) {

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/authed_network_image.dart';
+import '../../sos/ui/sos_sheet.dart';
 
 class DashboardGreetingHeader extends StatelessWidget {
   const DashboardGreetingHeader({
@@ -104,13 +105,7 @@ class DashboardGreetingHeader extends StatelessWidget {
             ),
           ),
           if (onSosTap != null) ...[
-            _IconButtonChip(
-              icon: Icons.sos_rounded,
-              onTap: onSosTap,
-              background: const Color(0xFFE8384F),
-              foreground: Colors.white,
-              tooltip: 'Emergency assistance',
-            ),
+            SosButton(onTap: onSosTap),
             const SizedBox(width: 8),
           ],
           _IconButtonChip(
@@ -181,23 +176,17 @@ class _IconButtonChip extends StatelessWidget {
     required this.icon,
     this.onTap,
     this.badge = false,
-    this.background,
-    this.foreground,
-    this.tooltip,
   });
 
   final IconData icon;
   final VoidCallback? onTap;
   final bool badge;
-  final Color? background;
-  final Color? foreground;
-  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final surface = background ?? scheme.surface;
-    final chip = Material(
+    final surface = scheme.surface;
+    return Material(
       color: surface,
       borderRadius: BorderRadius.circular(14),
       elevation: 0,
@@ -221,7 +210,7 @@ class _IconButtonChip extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Icon(icon, size: 22, color: foreground ?? scheme.onSurface),
+              Icon(icon, size: 22, color: scheme.onSurface),
               if (badge)
                 Positioned(
                   top: 10,
@@ -241,8 +230,5 @@ class _IconButtonChip extends StatelessWidget {
         ),
       ),
     );
-
-    if (tooltip == null) return chip;
-    return Tooltip(message: tooltip!, child: chip);
   }
 }

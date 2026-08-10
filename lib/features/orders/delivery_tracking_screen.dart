@@ -22,6 +22,7 @@ import '../orders_by_location/ui/cod_collection_sheet.dart';
 import '../orders_by_location/ui/delivery_otp_sheet.dart';
 import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
+import '../sos/ui/sos_sheet.dart';
 
 class DeliveryTrackingScreen extends StatefulWidget {
   final String? deliveryName;
@@ -1112,6 +1113,8 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen>
                     ),
                   ),
                   const Spacer(),
+                  const SosButton(),
+                  const SizedBox(width: 8),
                   Container(
                     decoration: BoxDecoration(
                       color: scheme.surface,

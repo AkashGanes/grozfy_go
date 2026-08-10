@@ -72,6 +72,53 @@ Future<void> showSosSheet(BuildContext context) {
   );
 }
 
+/// The round red emergency button, shared by every screen that shows one.
+///
+/// One definition rather than a copy per screen: the app has no persistent
+/// shell and no `AppBar` anywhere, so each active-trip screen hand-rolls its
+/// own header. Without a shared widget the SOS affordance would drift in size,
+/// colour and behaviour across them.
+///
+/// [onTap] defaults to opening the emergency sheet, so placing it on a new
+/// screen is `const SosButton()` and nothing else.
+class SosButton extends StatelessWidget {
+  const SosButton({super.key, this.size = 44, this.onTap});
+
+  /// 44 matches the header chips on the dashboard; the map screens use their
+  /// own slightly smaller floating controls and pass that size instead.
+  final double size;
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Emergency assistance',
+      child: Material(
+        color: _kDanger,
+        shape: const CircleBorder(),
+        elevation: 2,
+        shadowColor: _kDanger.withValues(alpha: 0.4),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap ?? () => showSosSheet(context),
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Center(
+              child: Icon(
+                Icons.sos_rounded,
+                size: size * 0.5,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 enum _SosStep { hold, reasons, countdown, sending, success, failure }
 
 /// Emergency assistance flow.
