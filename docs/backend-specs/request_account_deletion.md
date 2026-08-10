@@ -123,8 +123,8 @@ sends today):
 | Field            | Type   | Required | Notes |
 |------------------|--------|----------|-------|
 | `driver`         | string | no       | Driver docname, e.g. `HR-DRI-2026-00009`. Cross-checked against the session user; mismatch → `403`. |
-| `reason`         | string | no       | Free text from the partner, max 500 chars. Not currently collected by the app — reserved so a "why are you leaving?" field can be added without a contract change. |
-| `reason_code`    | string | no       | One of `Not Working Anymore`, `Privacy Concern`, `Switching Platform`, `Too Few Orders`, `Other`. Reserved, same as above. |
+| `reason`         | string | no       | Free text from the partner, max 500 chars. Collected by the Delete Account screen as an optional note; trimmed to 500 client-side, and omitted entirely when blank. |
+| `reason_code`    | string | no       | One of `Not Working Anymore`, `Privacy Concern`, `Switching Platform`, `Too Few Orders`, `Other`. Collected by the Delete Account screen as an optional dropdown; omitted when unset. |
 | `app_version`    | string | no       | e.g. `1.0.1+2`. Stored for audit, exactly as the consent record does. |
 | `confirmed`      | `1`    | yes      | The partner ticked the acknowledgement. Absent or not `1` → `417`. Server-side proof that the destructive-action confirmation was shown. |
 
@@ -711,10 +711,13 @@ is nowhere to send it.
   the server's own message and leaves the form to retry from — routing around a
   broken endpoint would make a request that never landed look like one that
   did, and would hide the failure from us.
-- **No reason field yet.** `reason` / `reason_code` stay reserved on the
-  contract (§3.1); the screen does not collect them. `AppController
-  .requestAccountDeletion()` still accepts both as optional named parameters so
-  adding the UI later needs no API change — nothing sends them today.
+- **The reason is optional, and stays optional.** The screen collects
+  `reason_code` (dropdown) and `reason` (free text) via
+  `AppController.requestAccountDeletion({reasonCode, reason})`, but neither
+  gates the submit button and blank values are omitted from the body rather
+  than sent empty. Deletion is a right, not a survey: a partner who answers
+  nothing must still be able to close their account. Do not make either field
+  required server-side without changing the UI first.
 
 **Correction to an earlier draft of this spec:** it said to sign the partner out
 on success. That was wrong. With a 7-day grace period the session must stay

@@ -3066,15 +3066,28 @@ class AppController extends ChangeNotifier {
   /// outstanding, and the returned [AccountDeletionStatus.blockers] say what to
   /// clear. Callers must render it, not treat it as a failure.
   ///
-  /// `reason` / `reason_code` stay reserved on the contract (spec §3.1) but are
-  /// not collected yet, so nothing sends them.
+  /// [reasonCode] and [reason] are both optional on the contract (spec §3.1)
+  /// and optional here: a partner who will not say why must still be able to
+  /// delete their account. Blank values are omitted rather than sent empty.
   Future<({AccountDeletionStatus? data, String? error})>
-      requestAccountDeletion() async {
+      requestAccountDeletion({String? reasonCode, String? reason}) async {
     final Map<String, dynamic> body = <String, dynamic>{
       // Server-side proof the destructive-action confirmation was shown. The
       // backend returns 417 without it.
       'confirmed': '1',
     };
+
+    final String? code = _nullIfBlank(reasonCode);
+    if (code != null) {
+      body['reason_code'] = code;
+    }
+
+    // The server caps `reason` at 500 chars and rejects longer values, so trim
+    // rather than lose the whole request over a long note.
+    final String? note = _nullIfBlank(reason);
+    if (note != null) {
+      body['reason'] = note.length > 500 ? note.substring(0, 500) : note;
+    }
 
     final String appVersion = await _resolveAppVersion();
     if (appVersion.isNotEmpty) {
