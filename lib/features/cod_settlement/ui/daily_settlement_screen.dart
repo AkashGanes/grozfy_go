@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/navigation/app_routes.dart';
 import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../model/cod_limit_status.dart';
 import '../model/daily_driver_settlement.dart';
 import '../providers/settlement_provider.dart';
 import '../repository/cod_settlement_repository.dart';
@@ -220,6 +221,8 @@ class _DailySettlementScreenState
       if (result.success) {
         showInfoSnack(context, 'Transfer submitted successfully.');
         ref.invalidate(settlementProvider);
+        // Settling frees cash-in-hand headroom, so the limit must refetch too.
+        ref.invalidate(codLimitStatusProvider);
       } else {
         setState(() {
           _submitError = result.message.isNotEmpty
@@ -462,6 +465,11 @@ class _DailySettlementScreenState
 
                 // View Order Breakdown button
                 _OrderBreakdownButton(settlement: settlement),
+
+                // The cash-limit card lives on the dashboard only. Here it was
+                // both redundant — the hero above already states what is owed —
+                // and actively wrong: its card tap and "Settle now" chip both
+                // navigate to this very screen, pushing a second copy of it.
 
                 const SizedBox(height: 24),
 
@@ -765,6 +773,15 @@ class _BreakdownChip extends StatelessWidget {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Cash-in-hand vs. COD limit
+// ---------------------------------------------------------------------------
+
+/// Shows how much of the driver's cash limit is consumed, so the settlement
+/// screen answers "how much room do I have left?" alongside "what do I owe?".
+///
+/// Collapses to nothing when the limit isn't in play (feature disabled, no
+/// limit configured, or the backend endpoint undeployed).
 // ---------------------------------------------------------------------------
 // Order Breakdown button
 // ---------------------------------------------------------------------------
@@ -1432,28 +1449,6 @@ class _ConfirmRow extends StatelessWidget {
 // Helpers
 // ---------------------------------------------------------------------------
 
-String _fmtAmount(double amount) {
-  if (amount == amount.truncateToDouble()) {
-    return _addCommas(amount.toStringAsFixed(0));
-  }
-  return _addCommas(amount.toStringAsFixed(2));
-}
-
-String _addCommas(String s) {
-  final parts = s.split('.');
-  final intPart = parts[0];
-  final buffer = StringBuffer();
-  int count = 0;
-  for (int i = intPart.length - 1; i >= 0; i--) {
-    if (count > 0 && count == 3) {
-      buffer.write(',');
-      count = 0;
-    } else if (count > 0 && (count - 3) % 2 == 0 && count > 3) {
-      buffer.write(',');
-    }
-    buffer.write(intPart[i]);
-    count++;
-  }
-  final result = buffer.toString().split('').reversed.join();
-  return parts.length > 1 ? '$result.${parts[1]}' : result;
-}
+// Delegates to the shared formatter on CodLimitStatus so the settlement screen
+// and the cash-in-hand surfaces can never render the same figure differently.
+String _fmtAmount(double amount) => CodLimitStatus.formatAmount(amount);

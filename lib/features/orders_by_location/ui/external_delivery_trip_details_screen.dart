@@ -17,6 +17,7 @@ import '../../../core/services/offline_trip_manager.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/app_shell.dart';
+import '../../cod_settlement/providers/settlement_provider.dart';
 import '../../../core/widgets/status_confirm_sheet.dart';
 import '../model/external_delivery.dart';
 import '../model/external_delivery_detail.dart';
@@ -990,6 +991,9 @@ class _ExternalDeliveryTripDetailsScreenState
           actualAmount: handoverResult.actualAmount,
           notes: handoverResult.notes,
         );
+        // Handing cash over frees cash-in-hand headroom — refetch the limit so
+        // the dashboard and the accept guard see the new available amount.
+        ref.invalidate(codLimitStatusProvider);
       } catch (_) {
         if (mounted) showInfoSnack(context, 'COD handover save failed — continuing');
       }
@@ -2346,6 +2350,11 @@ class _ExternalDeliveryTripDetailsScreenState
       try {
         await _controller.markDeliveredCommit(stop, isCod: isCod);
         if (!mounted) return;
+        if (isCod) {
+          // Delivering a COD stop moves its amount from in-flight exposure to
+          // cash actually held; either way the limit needs a refetch.
+          ref.invalidate(codLimitStatusProvider);
+        }
         final isConnected = ConnectivityService().isConnected;
         final String completionMessage = isConnected
             ? 'Stop status updated to Delivered'
