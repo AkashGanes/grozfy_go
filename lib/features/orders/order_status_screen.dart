@@ -18,6 +18,7 @@ import '../orders_by_location/ui/delivery_proof_sheet.dart';
 import '../orders_by_location/ui/failed_delivery_bottom_sheet.dart';
 import '../orders_by_location/ui/recall_interstitial_sheet.dart';
 import '../orders_by_location/ui/trip_stop_map_screen.dart';
+import '../sos/ui/sos_sheet.dart';
 import 'widgets/order_timer_widget.dart';
 
 const Color _recallOrange = Color(0xFFE65100);
@@ -726,7 +727,11 @@ class _OrderStatusScreenState extends State<OrderStatusScreen> {
                       ],
                     ),
                   ),
-                  if (app.isOrderTimerRunning) const OrderTimerWidget(),
+                  if (app.isOrderTimerRunning) ...[
+                    const OrderTimerWidget(),
+                    const SizedBox(width: 8),
+                  ],
+                  const SosButton(size: 40),
                 ],
               ),
             ),

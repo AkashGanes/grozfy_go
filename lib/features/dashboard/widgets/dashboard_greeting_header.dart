@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/context_colors.dart';
 import '../../../core/widgets/authed_network_image.dart';
+import '../../sos/ui/sos_sheet.dart';
 
 class DashboardGreetingHeader extends StatelessWidget {
   const DashboardGreetingHeader({
@@ -16,6 +17,7 @@ class DashboardGreetingHeader extends StatelessWidget {
     this.hasUnreadNotifications = false,
     this.onNotificationsTap,
     this.onAvatarTap,
+    this.onSosTap,
   });
 
   final String name;
@@ -26,6 +28,10 @@ class DashboardGreetingHeader extends StatelessWidget {
   final bool hasUnreadNotifications;
   final VoidCallback? onNotificationsTap;
   final VoidCallback? onAvatarTap;
+
+  /// Opens the emergency flow. Lives in the header so it is reachable from the
+  /// dashboard without scrolling, on duty or on a trip.
+  final VoidCallback? onSosTap;
 
   String _greeting() {
     final hour = DateTime.now().hour;
@@ -98,6 +104,10 @@ class DashboardGreetingHeader extends StatelessWidget {
               ],
             ),
           ),
+          if (onSosTap != null) ...[
+            SosButton(onTap: onSosTap),
+            const SizedBox(width: 8),
+          ],
           _IconButtonChip(
             icon: Icons.notifications_none_rounded,
             badge: hasUnreadNotifications,
@@ -175,8 +185,9 @@ class _IconButtonChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final surface = scheme.surface;
     return Material(
-      color: scheme.surface,
+      color: surface,
       borderRadius: BorderRadius.circular(14),
       elevation: 0,
       child: InkWell(
@@ -186,7 +197,7 @@ class _IconButtonChip extends StatelessWidget {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: scheme.surface,
+            color: surface,
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(

@@ -271,7 +271,7 @@ void main() {
     await tester.pumpWidget(host(
       DeleteAccountScreen(
         onLoadStatus: () async => (data: AccountDeletionStatus.none, error: null),
-        onSubmit: () async => (
+        onSubmit: ({String? reasonCode, String? reason}) async => (
           data: const AccountDeletionStatus(
             status: 'blocked',
             requestName: 'ADR-2026-00015',
@@ -329,7 +329,8 @@ void main() {
           ),
           error: null,
         ),
-        onSubmit: () async => (data: null, error: 'should not be called'),
+        onSubmit: ({String? reasonCode, String? reason}) async =>
+            (data: null, error: 'should not be called'),
         onCancelRequest: (name) async {
           cancelled = name == 'ADR-2026-00014';
           return (
@@ -372,7 +373,8 @@ void main() {
 
     await tester.pumpWidget(host(
       DeleteAccountScreen(
-        onSubmit: () async => (data: null, error: 'Request failed (404)'),
+        onSubmit: ({String? reasonCode, String? reason}) async =>
+            (data: null, error: 'Request failed (404)'),
       ),
     ));
     await tester.pumpAndSettle();

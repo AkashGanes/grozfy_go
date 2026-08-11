@@ -36,6 +36,7 @@ import '../../../core/utils/geo_distance.dart';
 import '../../../core/utils/maps_launcher.dart';
 import '../model/stop_progress_status.dart' as stop_progress;
 import '../providers/trip_controller.dart';
+import '../../sos/ui/sos_sheet.dart';
 import 'trip_stop_map_screen.dart';
 
 class ExternalDeliveryTripDetailsScreen extends ConsumerStatefulWidget {
@@ -227,7 +228,7 @@ class _ExternalDeliveryTripDetailsScreenState
       title: 'External Delivery Trip',
       subtitle: widget.tripName,
       scrollable: false,
-      actions: [_navigateButton()],
+      actions: [const SosButton(), const SizedBox(width: 8), _navigateButton()],
       child: FutureBuilder<ExternalDeliveryTrip>(
         future: _future,
         builder: (context, snapshot) {

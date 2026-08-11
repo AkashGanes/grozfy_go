@@ -745,8 +745,12 @@ class DeleteAccountScreen extends StatefulWidget {
 
   final Future<({AccountDeletionStatus? data, String? error})> Function()?
       onLoadStatus;
-  final Future<({AccountDeletionStatus? data, String? error})> Function()?
-      onSubmit;
+  /// Both arguments are optional — see [_reasonCodes]. A partner who skips the
+  /// question still gets their deletion.
+  final Future<({AccountDeletionStatus? data, String? error})> Function({
+    String? reasonCode,
+    String? reason,
+  })? onSubmit;
   final Future<({AccountDeletionStatus? data, String? error})> Function(
     String requestName,
   )? onCancelRequest;
@@ -762,6 +766,11 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   String? _error;
   AccountDeletionStatus? _request;
 
+  /// Both optional. Nothing here gates the submit button — deletion is a right,
+  /// not a survey, so a partner who answers neither still gets their request in.
+  String? _reasonCode;
+  final TextEditingController _reasonController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -769,6 +778,12 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       _loading = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => _loadStatus());
     }
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
   }
 
   /// A partner who already asked must see that, not a fresh form they could
@@ -794,6 +809,16 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     'Location history and saved device tokens',
   ];
 
+  /// Exactly the values the backend accepts for `reason_code` (spec §3.1);
+  /// anything else is rejected server-side.
+  static const List<String> _reasonCodes = [
+    'Not Working Anymore',
+    'Privacy Concern',
+    'Switching Platform',
+    'Too Few Orders',
+    'Other',
+  ];
+
   static const List<String> _retained = [
     'Order, payout and tax records the law requires us to keep — unlinked from '
         'your profile',
@@ -816,7 +841,10 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       _error = null;
     });
 
-    final result = await widget.onSubmit!();
+    final result = await widget.onSubmit!(
+      reasonCode: _reasonCode,
+      reason: _reasonController.text,
+    );
     if (!mounted) return;
 
     if (result.data != null) {
@@ -1036,6 +1064,46 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
             'hours and finish within 30 days.',
             icon: Icons.schedule_rounded,
           ).legalEntrance(2),
+          const SizedBox(height: LegalTokens.gapGroup),
+          const LegalSectionLabel('Why are you leaving? (optional)'),
+          LegalCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: _reasonCode,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final String code in _reasonCodes)
+                      DropdownMenuItem<String>(value: code, child: Text(code)),
+                  ],
+                  onChanged: _sending
+                      ? null
+                      : (value) => setState(() => _reasonCode = value),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _reasonController,
+                  enabled: !_sending,
+                  maxLines: 3,
+                  // Matches the server's cap so the note cannot be silently
+                  // truncated after the partner has written it.
+                  maxLength: 500,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(
+                    labelText: 'Anything you want to tell us?',
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ).legalEntrance(3),
           const SizedBox(height: LegalTokens.gapGroup),
           InkWell(
             onTap: () => setState(() => _understood = !_understood),

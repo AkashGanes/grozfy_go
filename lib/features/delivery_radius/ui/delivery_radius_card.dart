@@ -12,7 +12,15 @@ import '../providers/delivery_radius_provider.dart';
 /// fresh on build (via the autoDispose controller) so it never shows a stale
 /// value, and saves each change to the backend with optimistic UI + rollback.
 class DeliveryRadiusCard extends ConsumerStatefulWidget {
-  const DeliveryRadiusCard({super.key});
+  const DeliveryRadiusCard({super.key, this.sectionLabel});
+
+  /// Optional heading rendered directly above the card.
+  ///
+  /// It belongs here rather than in the caller because this widget is the only
+  /// one that knows whether it will draw anything at all — when the feature is
+  /// off for the driver it collapses to nothing, and a heading left stranded
+  /// over empty space is worse than no heading.
+  final Widget? sectionLabel;
 
   @override
   ConsumerState<DeliveryRadiusCard> createState() => _DeliveryRadiusCardState();
@@ -27,6 +35,17 @@ class _DeliveryRadiusCardState extends ConsumerState<DeliveryRadiusCard> {
 
   @override
   Widget build(BuildContext context) {
+    final Widget? content = _buildContent(context);
+    if (content == null) return const SizedBox.shrink();
+    if (widget.sectionLabel == null) return content;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [widget.sectionLabel!, content],
+    );
+  }
+
+  /// Null when the feature is off for this driver — see [sectionLabel].
+  Widget? _buildContent(BuildContext context) {
     final state = ref.watch(deliveryRadiusControllerProvider);
 
     // Still loading the very first response — show a compact placeholder rather
@@ -49,7 +68,7 @@ class _DeliveryRadiusCardState extends ConsumerState<DeliveryRadiusCard> {
     final settings = state.settings;
     // Feature disabled (or nothing loaded) → render nothing.
     if (settings == null || !settings.enabled || !settings.hasValidBounds) {
-      return const SizedBox.shrink();
+      return null;
     }
 
     return _buildCard(context, settings, state.isSaving);

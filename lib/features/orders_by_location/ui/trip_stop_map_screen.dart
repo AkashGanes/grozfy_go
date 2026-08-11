@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/context_colors.dart';
+import '../../sos/ui/sos_sheet.dart';
 
 class TripStopMapScreen extends StatefulWidget {
   const TripStopMapScreen({
@@ -257,6 +258,14 @@ class _TripStopMapScreenState extends State<TripStopMapScreen> {
                 ),
               ),
             ),
+          ),
+
+          // Emergency button — sits below the recenter slot so it never
+          // overlaps it, and stays put when recenter is hidden.
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 56,
+            right: 12,
+            child: const SosButton(size: 40),
           ),
 
           // Recenter button

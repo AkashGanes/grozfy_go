@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/localization/app_strings.dart';
+import '../../core/navigation/app_routes.dart';
 import '../../core/state/providers.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/context_colors.dart';
 import '../../core/widgets/app_shell.dart';
 import '../../core/widgets/app_toast.dart';
+import '../dashboard/widgets/section_card.dart';
 import '../delivery_radius/ui/delivery_radius_card.dart';
+import '../sos/ui/sos_sheet.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -27,18 +31,69 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _buildThemeCustomizationSection(context, controller),
-          const SizedBox(height: 16),
-          const DeliveryRadiusCard(),
-          const SizedBox(height: 16),
-          _buildLanguageCustomizationSection(context, controller),
-          const SizedBox(height: 16),
-          _buildResetButton(context, controller),
+          _section('Appearance', [
+            _buildThemeCustomizationSection(context, controller),
+            _divider(context),
+            _buildLanguageCustomizationSection(context, controller),
+          ]),
+          const SizedBox(height: 22),
+          // Draws its own label: the card hides itself when the feature is off
+          // for this driver, and a lone "DELIVERY" heading over nothing is
+          // worse than no heading at all.
+          DeliveryRadiusCard(sectionLabel: _sectionLabel(context, 'Delivery')),
+          const SizedBox(height: 22),
+          _section('Safety', [const _SosHapticsTile()]),
+          const SizedBox(height: 22),
+          _section('Account', [_buildDeleteAccountTile(context)]),
           const SizedBox(height: 16),
         ],
       ),
     );
   }
+
+  /// Groups related rows under one heading, matching the More tab
+  /// (`my_orders_screen.dart:_buildSection`) so Settings stops being the one
+  /// screen with its own layout language.
+  Widget _section(String title, List<Widget> children) {
+    return Builder(
+      builder: (context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionLabel(context, title),
+          SectionCard(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            borderRadius: 18,
+            child: Column(children: children),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _sectionLabel(BuildContext context, String title) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 10),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: Theme.of(
+            context,
+          ).colorScheme.onSurface.withValues(alpha: 0.6),
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+
+  Widget _divider(BuildContext context) => Divider(
+    height: 1,
+    thickness: 1,
+    indent: 16,
+    endIndent: 16,
+    color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.15),
+  );
 
   Widget _buildLanguageCustomizationSection(
     BuildContext context,
@@ -49,7 +104,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ? 'en'
         : controller.languageCode;
 
-    return Card(
+    // Transparent wrapper: this tile now sits inside its section's own
+    // SectionCard, and a second Card here would double the border and shadow.
+    return Material(
+      type: MaterialType.transparency,
       child: Theme(
         data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
@@ -216,7 +274,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   ) {
     final theme = Theme.of(context);
 
-    return Card(
+    // Transparent wrapper: this tile now sits inside its section's own
+    // SectionCard, and a second Card here would double the border and shadow.
+    return Material(
+      type: MaterialType.transparency,
       child: Theme(
         data: theme.copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
@@ -264,6 +325,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     colorOptions: AppTheme.accentColorOptions,
                     onColorSelected: controller.setAccentColor,
                   ),
+                  const Divider(height: 28),
+                  _buildResetButton(context, controller),
                 ],
               ),
             ),
@@ -459,10 +522,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// Account deletion, moved here from the More tab.
+  ///
+  /// Kept last and visually separated from the preference cards above: it is
+  /// the only destructive, irreversible action on this screen. Play requires
+  /// an in-app deletion path, so this entry must stay reachable — More →
+  /// Settings → Delete Account.
+  Widget _buildDeleteAccountTile(BuildContext context) {
+    // context.danger, not colorScheme.error — this is the same treatment as
+    // Log out on the More tab, and the two must not drift apart.
+    final Color danger = context.danger;
+
+    return ListTile(
+      leading: Icon(Icons.person_remove_outlined, color: danger, size: 22),
+      title: Text(
+        'Delete Account',
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: danger,
+        ),
+      ),
+      subtitle: const Text('Request permanent removal of your account.'),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: danger.withValues(alpha: 0.4),
+        size: 20,
+      ),
+      onTap: () =>
+          Navigator.of(context).pushNamed(AppRoutes.legalDeleteAccount),
+    );
+  }
+
+  /// Lives inside the Theme Customization panel — it resets the theme, so it
+  /// belongs with the controls it undoes rather than in a section of its own.
   Widget _buildResetButton(BuildContext context, dynamic controller) {
     final theme = Theme.of(context);
 
     return OutlinedButton.icon(
+      icon: const Icon(Icons.refresh, size: 18),
+      label: Text(controller.t('reset_defaults')),
+      style: OutlinedButton.styleFrom(
+        minimumSize: const Size.fromHeight(44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        side: BorderSide(
+          color: theme.colorScheme.outline.withValues(alpha: 0.5),
+        ),
+      ),
       onPressed: () {
         showDialog(
           context: context,
@@ -486,20 +592,62 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
         );
       },
-      icon: const Icon(Icons.refresh),
-      label: Text(controller.t('reset_defaults')),
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        side: BorderSide(
-          color: theme.colorScheme.outline.withValues(alpha: 0.5),
-        ),
-      ),
     );
   }
 
   Color _getContrastColor(Color color) {
     final double luminance = color.computeLuminance();
     return luminance > 0.5 ? Colors.black : Colors.white;
+  }
+}
+
+/// Toggles the haptic feedback on the emergency (SOS) button.
+///
+/// Scoped to SOS deliberately rather than being an app-wide haptics switch:
+/// this exists so a driver can trigger an alert discreetly when being watched,
+/// not as a general preference.
+class _SosHapticsTile extends StatefulWidget {
+  const _SosHapticsTile();
+
+  @override
+  State<_SosHapticsTile> createState() => _SosHapticsTileState();
+}
+
+class _SosHapticsTileState extends State<_SosHapticsTile> {
+  bool _enabled = SosHaptics.enabled;
+
+  @override
+  void initState() {
+    super.initState();
+    SosHaptics.load().then((value) {
+      if (mounted) setState(() => _enabled = value);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SwitchListTile(
+      value: _enabled,
+      secondary: Icon(
+        Icons.vibration,
+        color: theme.colorScheme.primary,
+        size: 22,
+      ),
+      title: Text(
+        'Emergency button vibration',
+        style: theme.textTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      subtitle: const Text(
+        'Vibrate while holding the SOS button. Turn off to raise an alert '
+        'silently.',
+      ),
+      onChanged: (value) {
+        setState(() => _enabled = value);
+        SosHaptics.setEnabled(value);
+      },
+    );
   }
 }
