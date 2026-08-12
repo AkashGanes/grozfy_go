@@ -94,6 +94,19 @@ class _KycApprovalStatusScreenState
       canPop: false,
       child: Scaffold(
         backgroundColor: context.surface,
+        appBar: AppBar(
+          toolbarHeight: 64,
+          title: const Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Text('KYC Verification'),
+            ),
+          ),
+          centerTitle: true,
+          backgroundColor: context.surface,
+          elevation: 0,
+        ),
         body: AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           switchInCurve: Curves.easeOutCubic,
@@ -101,9 +114,9 @@ class _KycApprovalStatusScreenState
           child: switch (phase) {
             _Phase.pending => _MinimalStatusView(
               key: const ValueKey('pending'),
-              iconOverride: _HourglassSandIcon(edgeColor: context.borderStrong, size: 96),
+              iconOverride: const _HourglassSandIcon(size: 168),
               title: 'Verification Pending',
-              subtitle: "We're reviewing your documents. This usually takes less than 24 hours.",
+              subtitle: "We're reviewing your documents. This may take above 24 hours.",
               actions: [
                 OutlinedButton.icon(
                   onPressed: _refreshing ? null : _refresh,
@@ -169,9 +182,12 @@ class _KycApprovalStatusScreenState
             ),
             _Phase.approved => _MinimalStatusView(
               key: const ValueKey('approved'),
-              icon: Icons.check_circle_rounded,
+              icon: Icons.verified_rounded,
               iconColor: context.success,
               iconContainerColor: context.successContainer,
+              containerSize: 116,
+              iconSize: 78,
+              richGlow: true,
               title: "You're Verified",
               subtitle: 'Your documents have been verified successfully. You can now start delivering and earning.',
               actions: [
@@ -203,6 +219,9 @@ class _MinimalStatusView extends StatelessWidget {
     this.iconColor,
     this.iconContainerColor,
     this.iconOverride,
+    this.containerSize = 96,
+    this.iconSize = 48,
+    this.richGlow = false,
     required this.title,
     required this.subtitle,
     this.extra,
@@ -213,6 +232,9 @@ class _MinimalStatusView extends StatelessWidget {
   final Color? iconColor;
   final Color? iconContainerColor;
   final Widget? iconOverride;
+  final double containerSize;
+  final double iconSize;
+  final bool richGlow;
   final String title;
   final String subtitle;
   final Widget? extra;
@@ -225,11 +247,23 @@ class _MinimalStatusView extends StatelessWidget {
       iconWidget = iconOverride!;
     } else {
       iconWidget = Container(
-        width: 96,
-        height: 96,
+        width: containerSize,
+        height: containerSize,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: iconContainerColor, shape: BoxShape.circle),
-        child: Icon(icon, size: 48, color: iconColor),
+        decoration: BoxDecoration(
+          color: iconContainerColor,
+          shape: BoxShape.circle,
+          boxShadow: richGlow
+              ? [
+                  BoxShadow(
+                    color: (iconColor ?? context.textPrimary).withValues(alpha: 0.22),
+                    blurRadius: 24,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : null,
+        ),
+        child: Icon(icon, size: iconSize, color: iconColor),
       );
     }
 
@@ -258,7 +292,13 @@ class _MinimalStatusView extends StatelessWidget {
               Text(
                 subtitle,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: context.textSecondary, fontSize: 14, height: 1.4),
+                style: TextStyle(
+                  color: context.textSecondary,
+                  fontSize: 14.5,
+                  height: 1.5,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.15,
+                ),
               ).animate().fadeIn(delay: 180.ms, duration: 400.ms).moveY(begin: 10, end: 0),
               if (extra != null) ...[
                 const SizedBox(height: 20),
@@ -276,15 +316,16 @@ class _MinimalStatusView extends StatelessWidget {
   }
 }
 
-/// A large hourglass whose sand drains from the top chamber into the bottom
-/// one over [_cycleDuration], then does one quick 180° flip in the last 8%
-/// of the cycle so the sand can start draining again. Owns its own
+/// A modern, minimal vector-style hourglass whose sand drains from the top
+/// chamber into the bottom one over [_cycleDuration], then does one quick
+/// 180° flip in the last 8% of the cycle so the sand can start draining
+/// again. Its brand blue is fixed — deliberately independent of the current
+/// theme — while the thin glass outline adapts for contrast. Owns its own
 /// [AnimationController], so the animation stops automatically the moment
 /// this widget is disposed (e.g. when the phase switches away from pending).
 class _HourglassSandIcon extends StatefulWidget {
-  const _HourglassSandIcon({required this.edgeColor, this.size = 72});
+  const _HourglassSandIcon({this.size = 160});
 
-  final Color edgeColor;
   final double size;
 
   @override
@@ -298,8 +339,10 @@ class _HourglassSandIconState extends State<_HourglassSandIcon>
   // exactly the same instant (t wrapping back to 0), so the flip always
   // lands seamlessly back on a freshly-full, upright hourglass.
   static const double _drainFraction = 0.92;
-  static const Color _sandColorLight = Color(0xFFFFC107);
-  static const Color _sandColorDark = Color(0xFFB8860B);
+  // Fixed brand blue — must read identically in every theme, so it never
+  // comes from context_colors/Theme.of.
+  static const Color _mainBlue = Color(0xFF3B8EF3);
+  static const Color _lightBlue = Color(0xFF8FC6FF);
   static const Duration _cycleDuration = Duration(seconds: 3);
 
   late final AnimationController _controller;
@@ -328,11 +371,14 @@ class _HourglassSandIconState extends State<_HourglassSandIcon>
         return Transform.rotate(
           angle: flipT * pi,
           child: CustomPaint(
-            size: Size(widget.size * 1.1, widget.size * 1.6),
+            size: Size(widget.size, widget.size * 1.15),
             painter: _HourglassPainter(
               progress: progress,
-              edgeColor: widget.edgeColor,
-              sandColor: context.isDark ? _sandColorDark : _sandColorLight,
+              mainColor: _mainBlue,
+              lightColor: _lightBlue,
+              // Same token + weight as the OutlinedButton's default border
+              // (colorScheme.outline, 1 logical pixel), for an exact match.
+              outlineColor: context.borderStrong,
             ),
           ),
         );
@@ -385,14 +431,31 @@ class _BezierWall {
 }
 
 class _HourglassPainter extends CustomPainter {
-  _HourglassPainter({required this.progress, required this.edgeColor, required this.sandColor});
+  _HourglassPainter({
+    required this.progress,
+    required this.mainColor,
+    required this.lightColor,
+    required this.outlineColor,
+  });
 
   /// 0 → top chamber full / bottom empty, 1 → top chamber empty / bottom full.
   final double progress;
-  final Color edgeColor;
-  final Color sandColor;
+  final Color mainColor;
+  final Color lightColor;
+  final Color outlineColor;
 
   static double _lerp(double a, double b, double t) => a + (b - a) * t;
+
+  /// A handful of small, fixed decorative dots and plus-marks scattered just
+  /// outside the glass silhouette — purely ornamental, deliberately placed
+  /// rather than randomly scattered, for a clean modern-illustration feel.
+  static const List<Offset> _dotSpots = [
+    Offset(0.06, 0.1),
+    Offset(0.94, 0.18),
+    Offset(0.1, 0.85),
+    Offset(0.9, 0.78),
+  ];
+  static const List<Offset> _plusSpots = [Offset(0.88, 0.42), Offset(0.14, 0.56)];
 
   /// The upper chamber's remaining sand — hugs the wall curves exactly and
   /// domes slightly at the surface as it drains.
@@ -500,7 +563,38 @@ class _HourglassPainter extends CustomPainter {
       Offset(right, bottomY),
     );
 
-    // 1. Glass outline — two quadratic-bezier half-bulbs meeting at the neck.
+    final Offset center = Offset(w / 2, h / 2);
+
+    // 0. Soft blue glow behind everything — lightweight (a single blurred
+    // circle), not a full illustration backdrop.
+    canvas.drawCircle(
+      center,
+      w * 0.62,
+      Paint()
+        ..color = mainColor.withValues(alpha: 0.16)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 24),
+    );
+
+    // A few very subtle decorative dots and plus-marks around the glass,
+    // fixed in place rather than randomly scattered, for a deliberate,
+    // premium illustration feel.
+    final Paint decorPaint = Paint()..color = mainColor.withValues(alpha: 0.28);
+    for (final Offset spot in _dotSpots) {
+      canvas.drawCircle(Offset(spot.dx * w, spot.dy * h), w * 0.014, decorPaint);
+    }
+    for (final Offset spot in _plusSpots) {
+      final Offset c = Offset(spot.dx * w, spot.dy * h);
+      final double armLen = w * 0.022;
+      final Paint plusPaint = Paint()
+        ..color = mainColor.withValues(alpha: 0.28)
+        ..strokeWidth = w * 0.008
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(Offset(c.dx - armLen, c.dy), Offset(c.dx + armLen, c.dy), plusPaint);
+      canvas.drawLine(Offset(c.dx, c.dy - armLen), Offset(c.dx, c.dy + armLen), plusPaint);
+    }
+
+    // 1. Glass outline — two quadratic-bezier half-bulbs meeting at the
+    // neck, thin and mostly transparent so the body reads as clean glass.
     final Path glassPath = Path()
       ..moveTo(left, topY)
       ..lineTo(right, topY)
@@ -513,71 +607,68 @@ class _HourglassPainter extends CustomPainter {
     canvas.drawPath(
       glassPath,
       Paint()
-        ..color = edgeColor
+        ..color = outlineColor
         ..style = PaintingStyle.stroke
-        ..strokeWidth = w * 0.016
+        ..strokeWidth = 1.0
         ..strokeJoin = StrokeJoin.round
         ..strokeCap = StrokeCap.round,
     );
 
-    // 2. Top and bottom caps — small filled rounded rects at full color.
-    final double capThickness = h * 0.07;
-    final Paint capPaint = Paint()..color = edgeColor;
+    // 2. Top and bottom bars — rounded, filled with the brand blue with a
+    // subtle lighter-blue gradient for depth.
+    final double capThickness = h * 0.06;
     final Radius capRadius = Radius.circular(capThickness / 2);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Rect.fromLTWH(left, topY - capThickness / 2, right - left, capThickness), capRadius),
-      capPaint,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(left, bottomY - capThickness / 2, right - left, capThickness),
-        capRadius,
-      ),
-      capPaint,
-    );
+    final double capOverhang = w * 0.035;
+    final double capLeft = left - capOverhang;
+    final double capRight = right + capOverhang;
+    final Rect topBarRect = Rect.fromLTWH(capLeft, topY - capThickness / 2, capRight - capLeft, capThickness);
+    final Rect bottomBarRect = Rect.fromLTWH(capLeft, bottomY - capThickness / 2, capRight - capLeft, capThickness);
+    final Paint topBarPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [lightColor, mainColor],
+      ).createShader(topBarRect);
+    final Paint bottomBarPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [mainColor, lightColor],
+      ).createShader(bottomBarRect);
+    canvas.drawRRect(RRect.fromRectAndRadius(topBarRect, capRadius), topBarPaint);
+    canvas.drawRRect(RRect.fromRectAndRadius(bottomBarRect, capRadius), bottomBarPaint);
 
     // 3 & 4. Top (draining) and bottom (accumulating) sand, hugging the
-    // glass walls exactly at the current fill level.
-    final Paint sandPaint = Paint()..color = sandColor;
-    canvas.drawPath(_topSandPath(topLeftWall, topRightWall, topY, midY, progress), sandPaint);
-    canvas.drawPath(_bottomSandPath(bottomLeftWall, bottomRightWall, bottomY, midY, progress), sandPaint);
+    // glass walls exactly at the current fill level, with a light-to-main
+    // blue gradient for a touch of depth.
+    final Path topSand = _topSandPath(topLeftWall, topRightWall, topY, midY, progress);
+    final Path bottomSand = _bottomSandPath(bottomLeftWall, bottomRightWall, bottomY, midY, progress);
+    final Paint sandPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [lightColor, mainColor],
+      ).createShader(Rect.fromLTWH(left, topY, right - left, bottomY - topY));
+    canvas.drawPath(topSand, sandPaint);
+    canvas.drawPath(bottomSand, sandPaint);
 
-    // 5. Sand stream through the neck, wobbling slightly for a trickling
-    // look, and stopping right at the current bottom sand surface.
+    // 5. A dotted stream through the neck — small evenly-spaced dots rather
+    // than a solid line — stopping right at the current bottom sand surface.
     if (progress > 0.02 && progress < 0.95) {
       final double bottomSurfaceY = _lerp(bottomY, midY, progress);
-      final double wobble = sin(progress * pi * 8) * w * 0.01;
-      canvas.drawLine(
-        Offset(w / 2 + wobble, midY),
-        Offset(w / 2 + wobble, bottomSurfaceY),
-        Paint()
-          ..color = sandColor.withValues(alpha: 0.85)
-          ..strokeWidth = w * 0.014
-          ..strokeCap = StrokeCap.round,
-      );
-    }
-
-    // 6. Falling particles — a few grains riding the stream down, with a
-    // fixed seed so their horizontal jitter stays stable frame to frame.
-    if (progress > 0.05 && progress < 0.9) {
-      final Random rnd = Random(42);
-      final double bottomSurfaceY = _lerp(bottomY, midY, progress);
-      for (int i = 0; i < 3; i++) {
-        final double jitterX = (rnd.nextDouble() - 0.5) * w * 0.03;
-        final double yT = (progress * 7 + i * 0.33) % 1.0;
+      const int dotCount = 6;
+      for (int i = 0; i < dotCount; i++) {
+        final double dotT = ((progress * 3) + i / dotCount) % 1.0;
         canvas.drawCircle(
-          Offset(w / 2 + jitterX, _lerp(midY, bottomSurfaceY, yT)),
-          w * 0.012,
-          Paint()..color = sandColor.withValues(alpha: 0.7),
+          Offset(w / 2, _lerp(midY, bottomSurfaceY, dotT)),
+          w * 0.009,
+          Paint()..color = mainColor.withValues(alpha: 0.8),
         );
       }
     }
   }
 
-  // 7. Only progress or color changes warrant a repaint.
+  // 6. Only progress or color changes warrant a repaint.
   @override
   bool shouldRepaint(covariant _HourglassPainter oldDelegate) =>
       oldDelegate.progress != progress ||
-      oldDelegate.edgeColor != edgeColor ||
-      oldDelegate.sandColor != sandColor;
+      oldDelegate.mainColor != mainColor ||
+      oldDelegate.lightColor != lightColor ||
+      oldDelegate.outlineColor != outlineColor;
 }
