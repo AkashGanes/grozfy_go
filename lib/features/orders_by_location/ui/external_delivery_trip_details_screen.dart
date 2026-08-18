@@ -144,11 +144,14 @@ class _ExternalDeliveryTripDetailsScreenState
     try {
       final repo = PickupJobRepository();
       final results = await Future.wait(
-        trip.pickupStops.map(
-          (ps) => ps.pickupJob.isEmpty
-              ? Future.value(null)
-              : repo.fetchJob(ps.pickupJob).catchError((_) => null),
-        ),
+        trip.pickupStops.map((ps) async {
+          if (ps.pickupJob.isEmpty) return null;
+          try {
+            return await repo.fetchJob(ps.pickupJob);
+          } catch (_) {
+            return null;
+          }
+        }),
       );
       if (mounted) {
         setState(() {
@@ -212,16 +215,16 @@ class _ExternalDeliveryTripDetailsScreenState
     // auto-launched — the driver taps the "Navigate" button explicitly (see
     // _navigateButton/_navigateAllPendingStops) so they see the stop list
     // first instead of being sent straight to Maps on screen entry.
-    ref.listen<TripControllerState>(
-      tripControllerProvider(widget.tripName),
-      (previous, next) {
-        final ExternalDeliveryTrip? justCompleted = next.justCompletedTrip;
-        if (justCompleted != null &&
-            justCompleted != previous?.justCompletedTrip) {
-          unawaited(_showTripCompletedDialog(justCompleted));
-        }
-      },
-    );
+    ref.listen<TripControllerState>(tripControllerProvider(widget.tripName), (
+      previous,
+      next,
+    ) {
+      final ExternalDeliveryTrip? justCompleted = next.justCompletedTrip;
+      if (justCompleted != null &&
+          justCompleted != previous?.justCompletedTrip) {
+        unawaited(_showTripCompletedDialog(justCompleted));
+      }
+    });
 
     return AppShell(
       title: 'External Delivery Trip',
@@ -974,7 +977,9 @@ class _ExternalDeliveryTripDetailsScreenState
     }
 
     // COD handover reconciliation before completing the trip
-    final codHandover = await ExternalDeliveryRepository().fetchCodHandover(trip.name);
+    final codHandover = await ExternalDeliveryRepository().fetchCodHandover(
+      trip.name,
+    );
     if (!mounted) return;
     if (codHandover != null && codHandover.needsCollection) {
       final handoverResult = await showCodHandoverSheet(
@@ -990,7 +995,8 @@ class _ExternalDeliveryTripDetailsScreenState
           notes: handoverResult.notes,
         );
       } catch (_) {
-        if (mounted) showInfoSnack(context, 'COD handover save failed — continuing');
+        if (mounted)
+          showInfoSnack(context, 'COD handover save failed — continuing');
       }
       if (!mounted) return;
     }
@@ -1047,8 +1053,12 @@ class _ExternalDeliveryTripDetailsScreenState
       final double? driverLat = app.currentLatitude;
       final double? driverLng = app.currentLongitude;
       if (coords != null && driverLat != null && driverLng != null) {
-        nextStopDistanceMeters =
-            haversineMeters(driverLat, driverLng, coords.$1, coords.$2);
+        nextStopDistanceMeters = haversineMeters(
+          driverLat,
+          driverLng,
+          coords.$1,
+          coords.$2,
+        );
         nextStopEtaLabel = _etaLabelFor(
           _stopKey(pendingOrdered.first),
           driverLat,
@@ -1127,8 +1137,10 @@ class _ExternalDeliveryTripDetailsScreenState
                   final bool hasMultipleStops = pendingOrdered.length > 1;
                   final bool isNext = index == 0;
                   final bool highlightAsNext = isNext && hasMultipleStops;
-                  final List<String> suggestedOrder = _controller.value.suggestedOrder;
-                  final bool isSuggestedNext = hasMultipleStops &&
+                  final List<String> suggestedOrder =
+                      _controller.value.suggestedOrder;
+                  final bool isSuggestedNext =
+                      hasMultipleStops &&
                       suggestedOrder.isNotEmpty &&
                       suggestedOrder.first == key;
 
@@ -1316,7 +1328,8 @@ class _ExternalDeliveryTripDetailsScreenState
     launchGoogleMapsMultiStopNavigation(context, stops: routeCoords);
   }
 
-  String _formatDistance(double meters) => TripController.formatDistance(meters);
+  String _formatDistance(double meters) =>
+      TripController.formatDistance(meters);
 
   /// Best-effort ETA label for the stop at [stopKey]/[destLat]/[destLng] from
   /// the driver's current position. Delegates to TripController, which owns
@@ -1327,8 +1340,7 @@ class _ExternalDeliveryTripDetailsScreenState
     double driverLng,
     double destLat,
     double destLng,
-  ) =>
-      _controller.etaLabelFor(stopKey, driverLat, driverLng, destLat, destLng);
+  ) => _controller.etaLabelFor(stopKey, driverLat, driverLng, destLat, destLng);
 
   /// Checks whether the driver is within the configured delivery radius of
   /// [stop], for gating "Mark Delivered". Delegates to TripController, which
@@ -1350,64 +1362,67 @@ class _ExternalDeliveryTripDetailsScreenState
         children: [
           Row(
             children: [
-          SizedBox(
-            width: 14,
-            height: 14,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                          decoration: BoxDecoration(
+                            color: accent,
+                            shape: BoxShape.circle,
+                          ),
+                        )
+                        .animate(onPlay: (controller) => controller.repeat())
+                        .scale(
+                          begin: const Offset(0.4, 0.4),
+                          end: const Offset(2.4, 2.4),
+                          duration: 1400.ms,
+                          curve: Curves.easeOut,
+                        )
+                        .fadeOut(begin: 0.55, duration: 1400.ms),
+                    Container(
+                      width: 7,
+                      height: 7,
                       decoration: BoxDecoration(
                         color: accent,
                         shape: BoxShape.circle,
                       ),
-                    )
-                    .animate(onPlay: (controller) => controller.repeat())
-                    .scale(
-                      begin: const Offset(0.4, 0.4),
-                      end: const Offset(2.4, 2.4),
-                      duration: 1400.ms,
-                      curve: Curves.easeOut,
-                    )
-                    .fadeOut(begin: 0.55, duration: 1400.ms),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Nearest stop',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: accent,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              if (distanceMeters != null) ...[
+                const SizedBox(width: 6),
                 Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                  width: 3,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: context.textTertiary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _formatDistance(distanceMeters),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: context.textSecondary,
+                  ),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            'Nearest stop',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: accent,
-              letterSpacing: 0.2,
-            ),
-          ),
-          if (distanceMeters != null) ...[
-            const SizedBox(width: 6),
-            Container(
-              width: 3,
-              height: 3,
-              decoration: BoxDecoration(
-                color: context.textTertiary,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              _formatDistance(distanceMeters),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: context.textSecondary,
-              ),
-            ),
-          ],
             ],
           ),
           if ((stopIndex != null && totalPending != null) || etaLabel != null)
@@ -1461,7 +1476,11 @@ class _ExternalDeliveryTripDetailsScreenState
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.auto_awesome_rounded, size: 12, color: context.textTertiary),
+          Icon(
+            Icons.auto_awesome_rounded,
+            size: 12,
+            color: context.textTertiary,
+          ),
           const SizedBox(width: 4),
           Text(
             'Suggested next',
@@ -1538,7 +1557,10 @@ class _ExternalDeliveryTripDetailsScreenState
                     address,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: context.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.textSecondary,
+                    ),
                   ),
                 ),
               const SizedBox(width: 8),
@@ -1718,19 +1740,12 @@ class _ExternalDeliveryTripDetailsScreenState
           if (ps.customerMobile.isNotEmpty) ...[
             Row(
               children: [
-                Icon(
-                  Icons.phone_outlined,
-                  size: 15,
-                  color: context.iconMuted,
-                ),
+                Icon(Icons.phone_outlined, size: 15, color: context.iconMuted),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     ps.customerMobile,
-                    style: TextStyle(
-                      color: context.textPrimary,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: context.textPrimary, fontSize: 13),
                   ),
                 ),
                 if (!isTerminal)
@@ -2016,7 +2031,9 @@ class _ExternalDeliveryTripDetailsScreenState
   }
 
   String _pickupCustomerLabel(PickupTripStop ps) =>
-      ps.customerName.trim().isNotEmpty ? ps.customerName.trim() : 'the customer';
+      ps.customerName.trim().isNotEmpty
+      ? ps.customerName.trim()
+      : 'the customer';
 
   Future<void> _handlePickupEnRoute(PickupTripStop ps) async {
     final confirmed = await showStatusConfirmSheet(
@@ -2209,8 +2226,10 @@ class _ExternalDeliveryTripDetailsScreenState
       // Always go through the offline-aware path: it queues + flushes
       // when online, and queues + updates the local cache when offline.
       // The user gets immediate visual feedback either way.
-      final String message =
-          await _controller.updateGenericStopStatusCommit(stop, newStatus);
+      final String message = await _controller.updateGenericStopStatusCommit(
+        stop,
+        newStatus,
+      );
       if (!mounted) return;
       showInfoSnack(context, message);
       await Future.delayed(const Duration(milliseconds: 800));
@@ -2248,8 +2267,9 @@ class _ExternalDeliveryTripDetailsScreenState
     final stopKey = _stopKey(stop);
     _controller.beginAction(stopKey);
     try {
-      final (bool withinRadius, String? blockMessage) =
-          _checkDeliveryRadiusFor(stop);
+      final (bool withinRadius, String? blockMessage) = _checkDeliveryRadiusFor(
+        stop,
+      );
       if (!withinRadius) {
         if (mounted) showInfoSnack(context, blockMessage!);
         return;
@@ -2454,7 +2474,9 @@ class _ExternalDeliveryTripDetailsScreenState
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             final Future<ExternalDeliveryTrip> newFuture = _loadTrip();
-            setState(() { _future = newFuture; });
+            setState(() {
+              _future = newFuture;
+            });
             _notifyStopCompleted(processResult.message, newFuture);
           }
         });
@@ -2520,7 +2542,11 @@ class _ExternalDeliveryTripDetailsScreenState
 
     return Row(
       children: [
-        Icon(Icons.location_on_outlined, size: 18, color: context.scheme.primary),
+        Icon(
+          Icons.location_on_outlined,
+          size: 18,
+          color: context.scheme.primary,
+        ),
         const SizedBox(width: 6),
         Text(
           'Stop ${stop.stop}',
@@ -2593,10 +2619,7 @@ class _ExternalDeliveryTripDetailsScreenState
               Expanded(
                 child: Text(
                   stop.mobile,
-                  style: TextStyle(
-                    color: context.textPrimary,
-                    fontSize: 13,
-                  ),
+                  style: TextStyle(color: context.textPrimary, fontSize: 13),
                 ),
               ),
               if (!isTerminal)
@@ -2931,14 +2954,22 @@ class _ExternalDeliveryTripDetailsScreenState
     final double? driverLat = app.currentLatitude;
     final double? driverLng = app.currentLongitude;
     if (coords != null && driverLat != null && driverLng != null) {
-      distanceMeters = haversineMeters(driverLat, driverLng, coords.$1, coords.$2);
+      distanceMeters = haversineMeters(
+        driverLat,
+        driverLng,
+        coords.$1,
+        coords.$2,
+      );
     }
-    final String distanceLabel =
-        distanceMeters != null ? ' · ${_formatDistance(distanceMeters)}' : '';
+    final String distanceLabel = distanceMeters != null
+        ? ' · ${_formatDistance(distanceMeters)}'
+        : '';
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$completionMessage  →  Next: Stop $stopNumber$distanceLabel'),
+        content: Text(
+          '$completionMessage  →  Next: Stop $stopNumber$distanceLabel',
+        ),
         action: SnackBarAction(
           label: 'Navigate',
           onPressed: _navigateAllPendingStops,

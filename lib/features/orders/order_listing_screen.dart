@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+// ignore_for_file: unused_import, unused_field
 import 'package:infinite_scroll_pagination/infinite_scroll_pagination.dart';
 
 import '../../core/navigation/app_routes.dart';
@@ -133,14 +134,17 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             final ColorScheme scheme = Theme.of(ctx).colorScheme;
             if (loading && !fetchStarted) {
               fetchStarted = true;
-              _repository.fetchStoreNames().then((names) {
-                setModal(() {
-                  stores = names;
-                  loading = false;
-                });
-              }).catchError((_) {
-                setModal(() => loading = false);
-              });
+              _repository
+                  .fetchStoreNames()
+                  .then((names) {
+                    setModal(() {
+                      stores = names;
+                      loading = false;
+                    });
+                  })
+                  .catchError((_) {
+                    setModal(() => loading = false);
+                  });
             }
 
             return AppBottomSheet(
@@ -392,7 +396,9 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     AppController app,
   ) async {
     final storeFilter = _selectedStore != null && _selectedStore!.isNotEmpty
-        ? [<dynamic>['External Delivery', 'store_name', '=', _selectedStore]]
+        ? [
+            <dynamic>['External Delivery', 'store_name', '=', _selectedStore],
+          ]
         : <List<dynamic>>[];
 
     try {
@@ -409,7 +415,9 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         details.map((d) => app.buildDeliveryOrderFromDetail(d)).toList(),
       );
     } catch (e) {
-      debugPrint('[OrderListing] reportview fallback failed, using summary: $e');
+      debugPrint(
+        '[OrderListing] reportview fallback failed, using summary: $e',
+      );
     }
 
     final summaries = await _repository.fetchPage(
@@ -524,12 +532,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
           filters: <List<dynamic>>[
             <dynamic>['External Delivery', 'status', '=', 'Pending'],
             if (_selectedStore != null)
-              <dynamic>[
-                'External Delivery',
-                'store_name',
-                '=',
-                _selectedStore,
-              ],
+              <dynamic>['External Delivery', 'store_name', '=', _selectedStore],
           ],
           orFilters: <List<dynamic>>[
             <dynamic>['External Delivery', 'name', 'like', '%$query%'],
@@ -546,12 +549,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
           filters: <List<dynamic>>[
             <dynamic>['External Delivery', 'status', '=', 'Pending'],
             if (_selectedStore != null)
-              <dynamic>[
-                'External Delivery',
-                'store_name',
-                '=',
-                _selectedStore,
-              ],
+              <dynamic>['External Delivery', 'store_name', '=', _selectedStore],
           ],
           orFilters: <List<dynamic>>[
             <dynamic>['External Delivery', 'name', 'like', '%$query%'],
@@ -600,9 +598,9 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       _selectedOrderIds.add(order.orderId);
       _selectedOrders.add(order);
     });
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) { if (mounted) _pagingController.notifyListeners(); },
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _pagingController.refresh();
+    });
   }
 
   void _toggleSelection(DeliveryOrder order) {
@@ -624,9 +622,9 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         _selectedOrders.add(order);
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) { if (mounted) _pagingController.notifyListeners(); },
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _pagingController.refresh();
+    });
   }
 
   void _exitSelectionMode() {
@@ -635,9 +633,9 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       _selectedOrderIds.clear();
       _selectedOrders.clear();
     });
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) { if (mounted) _pagingController.notifyListeners(); },
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _pagingController.refresh();
+    });
   }
 
   Future<void> _createBatchTrip() async {
@@ -711,7 +709,10 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
 
       _exitSelectionMode();
       _pagingController.refresh();
-      AppToast.show(context, 'Trip $tripName created (${orders.length} orders)');
+      AppToast.show(
+        context,
+        'Trip $tripName created (${orders.length} orders)',
+      );
       Navigator.of(context).pushNamed(AppRoutes.externalDeliveryTripList);
     } catch (e) {
       if (mounted) AppToast.show(context, 'Failed to create trip: $e');
@@ -728,12 +729,7 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         final a = _selectedOrders[i];
         final b = _selectedOrders[j];
         if (a.latitude != 0 && b.latitude != 0) {
-          if (_haversineKm(
-                a.latitude,
-                a.longitude,
-                b.latitude,
-                b.longitude,
-              ) >
+          if (_haversineKm(a.latitude, a.longitude, b.latitude, b.longitude) >
               maxKm) {
             return true;
           }
@@ -743,16 +739,12 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     return false;
   }
 
-  double _haversineKm(
-    double lat1,
-    double lon1,
-    double lat2,
-    double lon2,
-  ) {
+  double _haversineKm(double lat1, double lon1, double lat2, double lon2) {
     const double r = 6371.0;
     final double dLat = (lat2 - lat1) * pi / 180;
     final double dLon = (lon2 - lon1) * pi / 180;
-    final double a = sin(dLat / 2) * sin(dLat / 2) +
+    final double a =
+        sin(dLat / 2) * sin(dLat / 2) +
         cos(lat1 * pi / 180) *
             cos(lat2 * pi / 180) *
             sin(dLon / 2) *
@@ -765,81 +757,81 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
     // Positioned(left:0, right:0) above gives this tight finite width —
     // no SizedBox wrapper needed.
     return Container(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPad + 12),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          boxShadow: [
-            BoxShadow(
-              color: context.shadowColor,
-              blurRadius: 16,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.max,
-          children: [
-            TextButton.icon(
-              icon: const Icon(Icons.close_rounded, size: 18),
-              label: const Text('Cancel'),
-              onPressed: _exitSelectionMode,
-            ),
-            const Spacer(),
-            Text(
-              '${_selectedOrderIds.length} selected',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-            ),
-            const SizedBox(width: 12),
-            // Plain Material+InkWell avoids ElevatedButton's theme fixedSize
-            // (app theme sets fixedSize: Size(infinity, 52) which crashes
-            // in any unconstrained-width context including Positioned children).
-            Material(
-              color: _creatingBatchTrip
-                  ? context.scheme.primary.withValues(alpha: 0.6)
-                  : context.scheme.primary,
+      padding: EdgeInsets.fromLTRB(16, 12, 16, bottomPad + 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        boxShadow: [
+          BoxShadow(
+            color: context.shadowColor,
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          TextButton.icon(
+            icon: const Icon(Icons.close_rounded, size: 18),
+            label: const Text('Cancel'),
+            onPressed: _exitSelectionMode,
+          ),
+          const Spacer(),
+          Text(
+            '${_selectedOrderIds.length} selected',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(width: 12),
+          // Plain Material+InkWell avoids ElevatedButton's theme fixedSize
+          // (app theme sets fixedSize: Size(infinity, 52) which crashes
+          // in any unconstrained-width context including Positioned children).
+          Material(
+            color: _creatingBatchTrip
+                ? context.scheme.primary.withValues(alpha: 0.6)
+                : context.scheme.primary,
+            borderRadius: BorderRadius.circular(10),
+            child: InkWell(
+              onTap: _creatingBatchTrip ? null : _createBatchTrip,
               borderRadius: BorderRadius.circular(10),
-              child: InkWell(
-                onTap: _creatingBatchTrip ? null : _createBatchTrip,
-                borderRadius: BorderRadius.circular(10),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_creatingBatchTrip)
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      else
-                        const Icon(
-                          Icons.route_rounded,
-                          size: 18,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_creatingBatchTrip)
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
                           color: Colors.white,
                         ),
-                      const SizedBox(width: 6),
-                      const Text(
-                        'Create Trip',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                        ),
+                      )
+                    else
+                      const Icon(
+                        Icons.route_rounded,
+                        size: 18,
+                        color: Colors.white,
                       ),
-                    ],
-                  ),
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Create Trip',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -861,154 +853,164 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
       // internal Stack which provides unconstrained width to its children.
       child: Stack(
         children: [
-      AppShell(
-        title: _app?.t('available_orders') ?? 'New Orders',
-        subtitle: _selectionMode
-            ? '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected'
-            : (_selectedStore ?? 'All Stores'),
-        scrollable: false,
-        actions: [
-          if (!_selectionMode && online) ...[
-            IconButton(
-              icon: Icon(
-                _showSearchBar ? Icons.search_off_rounded : Icons.search_rounded,
-                color: context.iconPrimary,
-              ),
-              tooltip: 'Search orders',
-              onPressed: () {
-                if (_showSearchBar) _clearSearch();
-                setState(() => _showSearchBar = !_showSearchBar);
-              },
-            ),
-            IconButton(
-              icon: Icon(Icons.store_rounded, color: context.iconPrimary),
-              tooltip: 'Filter by store',
-              onPressed: _showStorePicker,
-            ),
-          ],
-        ],
-        child: !online
-            ? OfflineStateView(
-                message: 'Go Online to see available orders.',
-                onGoOnline: () => _app!.setOnline(true),
-              )
-            : Column(
-          children: [
-          // Search bar — collapsed by default, revealed via the header icon so
-          // it doesn't compete with the order list for a first-time driver's
-          // attention.
-          if (_showSearchBar)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: KycSearchInput(
-              controller: _searchController,
-              hint: 'Search by Order ID, Store or Customer…',
-              autofocus: true,
-            ),
-          ),
-
-          // Search status row
-          if (searching)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  if (_searchLoading) ...[
-                    SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: context.scheme.primary,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Searching…',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: scheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ] else if (_searchError != null) ...[
-                    Icon(
-                      Icons.error_outline,
-                      size: 14,
-                      color: context.danger,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        _searchError!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.danger,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ] else ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: context.scheme.primary.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: context.scheme.primary.withValues(alpha: 0.2),
-                        ),
-                      ),
-                      child: Text(
-                        '${_searchResults.length} result${_searchResults.length == 1 ? '' : 's'}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: context.scheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: _clearSearch,
-                    child: Text(
-                      'Clear',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: scheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
+          AppShell(
+            title: _app?.t('available_orders') ?? 'New Orders',
+            subtitle: _selectionMode
+                ? '${_selectedOrderIds.length} order${_selectedOrderIds.length == 1 ? '' : 's'} selected'
+                : (_selectedStore ?? 'All Stores'),
+            scrollable: false,
+            actions: [
+              if (!_selectionMode && online) ...[
+                IconButton(
+                  icon: Icon(
+                    _showSearchBar
+                        ? Icons.search_off_rounded
+                        : Icons.search_rounded,
+                    color: context.iconPrimary,
                   ),
-                ],
-              ),
-            ),
+                  tooltip: 'Search orders',
+                  onPressed: () {
+                    if (_showSearchBar) _clearSearch();
+                    setState(() => _showSearchBar = !_showSearchBar);
+                  },
+                ),
+                IconButton(
+                  icon: Icon(Icons.store_rounded, color: context.iconPrimary),
+                  tooltip: 'Filter by store',
+                  onPressed: _showStorePicker,
+                ),
+              ],
+            ],
+            child: !online
+                ? OfflineStateView(
+                    message: 'Go Online to see available orders.',
+                    onGoOnline: () => _app!.setOnline(true),
+                  )
+                : Column(
+                    children: [
+                      // Search bar — collapsed by default, revealed via the header icon so
+                      // it doesn't compete with the order list for a first-time driver's
+                      // attention.
+                      if (_showSearchBar)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: KycSearchInput(
+                            controller: _searchController,
+                            hint: 'Search by Order ID, Store or Customer…',
+                            autofocus: true,
+                          ),
+                        ),
 
-          // List area
-          Expanded(
-            child: searching
-                ? _buildSearchView()
-                : RefreshIndicator(
-                    onRefresh: () async {
-                      _pagingController.refresh();
-                    },
-                    color: Colors.orange,
-                    child: _buildPagedList(),
+                      // Search status row
+                      if (searching)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            children: [
+                              if (_searchLoading) ...[
+                                SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: context.scheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Searching…',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: scheme.onSurface.withValues(
+                                      alpha: 0.6,
+                                    ),
+                                  ),
+                                ),
+                              ] else if (_searchError != null) ...[
+                                Icon(
+                                  Icons.error_outline,
+                                  size: 14,
+                                  color: context.danger,
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    _searchError!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: context.danger,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ] else ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 3,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: context.scheme.primary.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: context.scheme.primary.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '${_searchResults.length} result${_searchResults.length == 1 ? '' : 's'}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: context.scheme.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              const Spacer(),
+                              GestureDetector(
+                                onTap: _clearSearch,
+                                child: Text(
+                                  'Clear',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: scheme.onSurface.withValues(
+                                      alpha: 0.6,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      // List area
+                      Expanded(
+                        child: searching
+                            ? _buildSearchView()
+                            : RefreshIndicator(
+                                onRefresh: () async {
+                                  _pagingController.refresh();
+                                },
+                                color: Colors.orange,
+                                child: _buildPagedList(),
+                              ),
+                      ),
+                    ],
                   ),
           ),
-          ],
-        ),
-      ),
-      // Selection bar as Positioned — gets tight horizontal constraints
-      // from the route-level Stack, not AppShell's unconstrained Stack.
-      if (_selectionMode)
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: _buildSelectionBar(),
-        ),
+          // Selection bar as Positioned — gets tight horizontal constraints
+          // from the route-level Stack, not AppShell's unconstrained Stack.
+          if (_selectionMode)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _buildSelectionBar(),
+            ),
         ],
       ),
     );
@@ -1023,7 +1025,9 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         parent: AlwaysScrollableScrollPhysics(),
       ),
       padding: EdgeInsets.fromLTRB(
-        0, 4, 0,
+        0,
+        4,
+        0,
         _selectionMode ? MediaQuery.of(context).padding.bottom + 80 : 20,
       ),
       builderDelegate: PagedChildBuilderDelegate<DeliveryOrder>(
@@ -1049,13 +1053,14 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
             order: order,
             isSelected: isSelected,
             inSelectionMode: _selectionMode,
-            onLongPress: _selectionMode ? null : () => _enterSelectionMode(order),
+            onLongPress: _selectionMode
+                ? null
+                : () => _enterSelectionMode(order),
             onTap: _selectionMode
                 ? () => _toggleSelection(order)
-                : () => Navigator.of(context).pushNamed(
-                      AppRoutes.orderDetails,
-                      arguments: order,
-                    ),
+                : () => Navigator.of(
+                    context,
+                  ).pushNamed(AppRoutes.orderDetails, arguments: order),
           );
         },
       ),
@@ -1082,7 +1087,9 @@ class _OrderListingScreenState extends State<OrderListingScreen> {
         parent: AlwaysScrollableScrollPhysics(),
       ),
       padding: EdgeInsets.fromLTRB(
-        0, 4, 0,
+        0,
+        4,
+        0,
         _selectionMode ? MediaQuery.of(context).padding.bottom + 80 : 20,
       ),
       itemCount: _searchResults.length,
@@ -1118,8 +1125,9 @@ class _FullOrderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color cardBg = context.cardColor;
-    final Color cardBorder =
-        isSelected ? context.success : context.borderSubtle;
+    final Color cardBorder = isSelected
+        ? context.success
+        : context.borderSubtle;
     final Color textPrimary = context.textPrimary;
     final Color textSecondary = context.textSecondary;
     final Color accent = context.scheme.primary;
@@ -1131,206 +1139,204 @@ class _FullOrderCard extends StatelessWidget {
         // can still win the gesture arena independently of the tap InkWell.
         onLongPress: onLongPress,
         child: Material(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(16),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          children: [
-            InkWell(
-              onTap: onTap,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? context.success.withValues(alpha: 0.06)
-                      : cardBg,
-                  border: Border.all(
-                    color: cardBorder,
-                    width: isSelected ? 2 : 1,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: context.shadowColor,
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
+          color: cardBg,
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            children: [
+              InkWell(
+                onTap: onTap,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? context.success.withValues(alpha: 0.06)
+                        : cardBg,
+                    border: Border.all(
+                      color: cardBorder,
+                      width: isSelected ? 2 : 1,
                     ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  order.orderId,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 15,
-                                    color: textPrimary,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: context.shadowColor,
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    order.orderId,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 15,
+                                      color: textPrimary,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              if (inSelectionMode)
-                                AnimatedContainer(
-                                  duration: const Duration(milliseconds: 150),
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: isSelected
-                                        ? context.success
-                                        : Colors.transparent,
-                                    border: Border.all(
+                                if (inSelectionMode)
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 150),
+                                    width: 24,
+                                    height: 24,
+                                    decoration: BoxDecoration(
                                       color: isSelected
                                           ? context.success
-                                          : context.borderStrong,
-                                      width: 2,
+                                          : Colors.transparent,
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? context.success
+                                            : context.borderStrong,
+                                        width: 2,
+                                      ),
+                                      borderRadius: BorderRadius.circular(6),
                                     ),
-                                    borderRadius: BorderRadius.circular(6),
+                                    child: isSelected
+                                        ? const Icon(
+                                            Icons.check_rounded,
+                                            size: 16,
+                                            color: Colors.white,
+                                          )
+                                        : null,
+                                  )
+                                else
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: context.warningContainer,
+                                      borderRadius: BorderRadius.circular(99),
+                                    ),
+                                    child: Text(
+                                      'UNASSIGNED',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w800,
+                                        color: context.warning,
+                                        letterSpacing: 0.6,
+                                      ),
+                                    ),
                                   ),
-                                  child: isSelected
-                                      ? const Icon(
-                                          Icons.check_rounded,
-                                          size: 16,
-                                          color: Colors.white,
-                                        )
-                                      : null,
-                                )
-                              else
-                                Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: context.warningContainer,
-                                  borderRadius: BorderRadius.circular(99),
-                                ),
-                                child: Text(
-                                  'UNASSIGNED',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: context.warning,
-                                    letterSpacing: 0.6,
-                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            _MetaRow(
+                              icon: Icons.store_rounded,
+                              iconColor: const Color(0xFF2D6CDF),
+                              iconBg: context.infoContainer,
+                              label: 'Store',
+                              value: order.storeName,
+                              labelColor: textSecondary,
+                              valueColor: textPrimary,
+                            ),
+                            _MetaRow(
+                              icon: Icons.person_rounded,
+                              iconColor: const Color(0xFF1AB36A),
+                              iconBg: context.successContainer,
+                              label: 'Customer',
+                              value: order.customerName,
+                              labelColor: textSecondary,
+                              valueColor: textPrimary,
+                            ),
+                            _MetaRow(
+                              icon: Icons.location_on_rounded,
+                              iconColor: const Color(0xFF7C3AED),
+                              iconBg: context.isDark
+                                  ? const Color(0xFF2D2148)
+                                  : const Color(0xFFEFE9FE),
+                              label: 'Drop',
+                              value: order.deliveryAddress,
+                              labelColor: textSecondary,
+                              valueColor: textPrimary,
+                            ),
+                            _MetaRow(
+                              icon: Icons.route_rounded,
+                              iconColor: const Color(0xFFF38B19),
+                              iconBg: context.isDark
+                                  ? const Color(0xFF3A2613)
+                                  : const Color(0xFFFFEFDA),
+                              label: 'Distance',
+                              value: order.distanceKm > 0
+                                  ? '${order.distanceKm.toStringAsFixed(2)} km'
+                                  : '—',
+                              labelColor: textSecondary,
+                              valueColor: textPrimary,
+                            ),
+                            _MetaRow(
+                              icon: Icons.currency_rupee_rounded,
+                              iconColor: const Color(0xFF1AB36A),
+                              iconBg: context.successContainer,
+                              label: 'Earnings',
+                              value: order.estimatedEarnings > 0
+                                  ? 'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}'
+                                  : 'Rs. 0',
+                              labelColor: textSecondary,
+                              valueColor: textPrimary,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (!inSelectionMode)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                          child: Material(
+                            color: accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              onTap: onTap,
+                              borderRadius: BorderRadius.circular(12),
+                              child: SizedBox(
+                                height: 48,
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    Text(
+                                      'View Details',
+                                      style: TextStyle(
+                                        color: accent,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      right: 14,
+                                      child: Icon(
+                                        Icons.chevron_right_rounded,
+                                        color: accent,
+                                        size: 22,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          _MetaRow(
-                            icon: Icons.store_rounded,
-                            iconColor: const Color(0xFF2D6CDF),
-                            iconBg: context.infoContainer,
-                            label: 'Store',
-                            value: order.storeName,
-                            labelColor: textSecondary,
-                            valueColor: textPrimary,
-                          ),
-                          _MetaRow(
-                            icon: Icons.person_rounded,
-                            iconColor: const Color(0xFF1AB36A),
-                            iconBg: context.successContainer,
-                            label: 'Customer',
-                            value: order.customerName,
-                            labelColor: textSecondary,
-                            valueColor: textPrimary,
-                          ),
-                          _MetaRow(
-                            icon: Icons.location_on_rounded,
-                            iconColor: const Color(0xFF7C3AED),
-                            iconBg: context.isDark
-                                ? const Color(0xFF2D2148)
-                                : const Color(0xFFEFE9FE),
-                            label: 'Drop',
-                            value: order.deliveryAddress,
-                            labelColor: textSecondary,
-                            valueColor: textPrimary,
-                          ),
-                          _MetaRow(
-                            icon: Icons.route_rounded,
-                            iconColor: const Color(0xFFF38B19),
-                            iconBg: context.isDark
-                                ? const Color(0xFF3A2613)
-                                : const Color(0xFFFFEFDA),
-                            label: 'Distance',
-                            value: order.distanceKm > 0
-                                ? '${order.distanceKm.toStringAsFixed(2)} km'
-                                : '—',
-                            labelColor: textSecondary,
-                            valueColor: textPrimary,
-                          ),
-                          _MetaRow(
-                            icon: Icons.currency_rupee_rounded,
-                            iconColor: const Color(0xFF1AB36A),
-                            iconBg: context.successContainer,
-                            label: 'Earnings',
-                            value: order.estimatedEarnings > 0
-                                ? 'Rs. ${order.estimatedEarnings.toStringAsFixed(0)}'
-                                : 'Rs. 0',
-                            labelColor: textSecondary,
-                            valueColor: textPrimary,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (!inSelectionMode)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-                      child: Material(
-                        color: accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          onTap: onTap,
-                          borderRadius: BorderRadius.circular(12),
-                          child: SizedBox(
-                            height: 48,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Text(
-                                  'View Details',
-                                  style: TextStyle(
-                                    color: accent,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 14,
-                                  child: Icon(
-                                    Icons.chevron_right_rounded,
-                                    color: accent,
-                                    size: 22,
-                                  ),
-                                ),
-                              ],
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: 4,
-              child: IgnorePointer(
-                child: ColoredBox(color: accent),
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 4,
+                child: IgnorePointer(child: ColoredBox(color: accent)),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         ),
       ),
     );

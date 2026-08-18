@@ -81,8 +81,7 @@ void main() async {
     await Firebase.initializeApp();
     // Initialize Notifications
     await FCMInitializer().init(container);
-  } catch (_) {
-  }
+  } catch (_) {}
 
   // Configure background location ping service
   await LocationPingService.initialize();
@@ -452,10 +451,8 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
                   const <SettlementOrder>[];
               final date = (args?['date'] as String?) ?? '';
               return MaterialPageRoute<void>(
-                builder: (_) => OrderBreakdownScreen(
-                  orders: orders,
-                  settlementDate: date,
-                ),
+                builder: (_) =>
+                    OrderBreakdownScreen(orders: orders, settlementDate: date),
               );
             default:
               return MaterialPageRoute<void>(

@@ -101,7 +101,8 @@ class AppController extends ChangeNotifier {
   // Mirror of the business-defined radius policy (from the Driver DocType), kept
   // in prefs so the policy survives an offline cold start.
   static const String _prefDeliveryRadiusEnabled = 'delivery_radius_enabled';
-  static const String _prefDeliveryRadiusDefaultKm = 'delivery_radius_default_km';
+  static const String _prefDeliveryRadiusDefaultKm =
+      'delivery_radius_default_km';
   static const String _prefDeliveryRadiusMaxKm = 'delivery_radius_max_km';
   static const String _prefBackgroundColor = 'background_color';
   static const String _prefAccentColor = 'accent_color';
@@ -385,7 +386,10 @@ class AppController extends ChangeNotifier {
   Duration get completedDutyToday => _completedDutyToday;
   int get completedTripsToday => _completedTripsToday;
   Duration get avgTripDurationToday => _completedTripsToday > 0
-      ? Duration(milliseconds: _totalTripTimeToday.inMilliseconds ~/ _completedTripsToday)
+      ? Duration(
+          milliseconds:
+              _totalTripTimeToday.inMilliseconds ~/ _completedTripsToday,
+        )
       : Duration.zero;
   bool get availabilitySyncing => _availabilitySyncing;
   bool get isTracking => _isTracking;
@@ -472,7 +476,6 @@ class AppController extends ChangeNotifier {
     }
   }
 
-
   EarningsSummary get earnings => _earnings;
 
   bool get isOrderTimerRunning =>
@@ -553,12 +556,15 @@ class AppController extends ChangeNotifier {
       _permissionState.allGranted;
 
   ProfileCompleteness get profileCompleteness {
-    final hasPhoto = _profileImagePath != null || _serverProfileImageUrl != null;
+    final hasPhoto =
+        _profileImagePath != null || _serverProfileImageUrl != null;
     final hasLocation = hasSelectedLocation;
-    final key = '${_profile?.fullName}_${hasPhoto}_${_kycCompleted}_'
+    final key =
+        '${_profile?.fullName}_${hasPhoto}_${_kycCompleted}_'
         '${_vehicle != null}_${_bank != null}_${hasLocation}_'
         '${_permissionState.allGranted}';
-    if (_cachedProfileCompleteness != null && _cachedProfileCompletenessKey == key) {
+    if (_cachedProfileCompleteness != null &&
+        _cachedProfileCompletenessKey == key) {
       return _cachedProfileCompleteness!;
     }
 
@@ -694,7 +700,9 @@ class AppController extends ChangeNotifier {
     }
     _isOnline = prefs.getBool(_prefIsOnline) ?? false;
     // Read driver name early so the DB query below filters by the correct partner.
-    final String? earlyDriverName = _nullIfBlank(prefs.getString(_prefDriverName));
+    final String? earlyDriverName = _nullIfBlank(
+      prefs.getString(_prefDriverName),
+    );
     if (_timingDao != null) {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
@@ -704,11 +712,16 @@ class AppController extends ChangeNotifier {
         endOfDay,
         partner: earlyDriverName,
       );
-      final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
-      final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
+      final logins = rows
+          .where((r) => r.eventType == TimingEventType.login)
+          .toList();
+      final logouts = rows
+          .where((r) => r.eventType == TimingEventType.logout)
+          .toList();
       if (logins.isNotEmpty && logouts.isNotEmpty) {
-        final diff = DateTime.parse(logouts.last.eventTime)
-            .difference(DateTime.parse(logins.first.eventTime));
+        final diff = DateTime.parse(
+          logouts.last.eventTime,
+        ).difference(DateTime.parse(logins.first.eventTime));
         if (!diff.isNegative) _completedDutyToday = diff;
       }
       if (_isOnline && logins.isNotEmpty) {
@@ -722,9 +735,12 @@ class AppController extends ChangeNotifier {
       // every trip_completed). Fall back to DB pairing if prefs has no entry
       // for today (first run after an app update, etc.).
       final now2 = DateTime.now();
-      final todayStr = '${now2.year}-${now2.month.toString().padLeft(2, '0')}-${now2.day.toString().padLeft(2, '0')}';
+      final todayStr =
+          '${now2.year}-${now2.month.toString().padLeft(2, '0')}-${now2.day.toString().padLeft(2, '0')}';
       final driverKey = earlyDriverName ?? '';
-      final savedDate = driverKey.isNotEmpty ? prefs.getString(_prefTripTimeSavedDate(driverKey)) : null;
+      final savedDate = driverKey.isNotEmpty
+          ? prefs.getString(_prefTripTimeSavedDate(driverKey))
+          : null;
       if (savedDate == todayStr) {
         final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs(driverKey)) ?? 0;
         _totalTripTimeToday = Duration(milliseconds: savedMs);
@@ -732,12 +748,17 @@ class AppController extends ChangeNotifier {
         // Prefs is from a previous day — compute from DB event pairs instead.
         final acceptedTimes = <String, DateTime>{};
         for (final r in rows) {
-          if (r.eventType == TimingEventType.tripAccepted && r.tripName != null) {
+          if (r.eventType == TimingEventType.tripAccepted &&
+              r.tripName != null) {
             acceptedTimes[r.tripName!] = DateTime.parse(r.eventTime);
           }
         }
         var restoredTripTime = Duration.zero;
-        for (final r in rows.where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)) {
+        for (final r in rows.where(
+          (r) =>
+              r.eventType == TimingEventType.tripCompleted &&
+              r.tripName != null,
+        )) {
           final start = acceptedTimes[r.tripName!];
           if (start != null) {
             final d = DateTime.parse(r.eventTime).difference(start);
@@ -750,7 +771,11 @@ class AppController extends ChangeNotifier {
       // For trips still in progress (accepted today but NOT yet completed today),
       // also restore _tripAcceptedTimes so the duration is captured when they finish.
       final completedTodayRefs = rows
-          .where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)
+          .where(
+            (r) =>
+                r.eventType == TimingEventType.tripCompleted &&
+                r.tripName != null,
+          )
           .map((r) => r.tripName!)
           .toSet();
       for (final r in rows) {
@@ -847,8 +872,7 @@ class AppController extends ChangeNotifier {
           _wasProfileComplete = false;
           await SecureTokenStorage.deleteAll();
         }
-      } else {
-      }
+      } else {}
     }
 
     if (persistedActiveOrderId != null || persistedActiveOrderIds != null) {
@@ -1881,8 +1905,7 @@ class AppController extends ChangeNotifier {
             },
           )
           .timeout(_networkTimeout);
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   /// Calls Frappe's /api/method/logout so LoginManager.logout_log() writes an
@@ -1899,8 +1922,7 @@ class AppController extends ChangeNotifier {
             },
           )
           .timeout(_networkTimeout);
-    } catch (_) {
-    }
+    } catch (_) {}
   }
 
   Future<void> logout() async {
@@ -3036,8 +3058,7 @@ class AppController extends ChangeNotifier {
       if (resolvedBankName != null) {
         try {
           await _setDriverField('custom_bank_account', resolvedBankName);
-        } catch (_) {
-        }
+        } catch (_) {}
       }
       if (_submittedBankRaw != null) {
         final SharedPreferences submitPrefs =
@@ -3055,6 +3076,7 @@ class AppController extends ChangeNotifier {
   }
 
   // ── Account deletion ────────────────────────────────────────────────────────
+  // ignore_for_file: unused_field, unused_element, unused_local_variable
   //
   // Spec: docs/backend-specs/request_account_deletion.md. The Driver is
   // resolved from the session server-side, so none of these send one — passing
@@ -3069,7 +3091,7 @@ class AppController extends ChangeNotifier {
   /// `reason` / `reason_code` stay reserved on the contract (spec §3.1) but are
   /// not collected yet, so nothing sends them.
   Future<({AccountDeletionStatus? data, String? error})>
-      requestAccountDeletion() async {
+  requestAccountDeletion() async {
     final Map<String, dynamic> body = <String, dynamic>{
       // Server-side proof the destructive-action confirmation was shown. The
       // backend returns 417 without it.
@@ -3092,7 +3114,7 @@ class AppController extends ChangeNotifier {
   /// Current state of the partner's request, or
   /// [AccountDeletionStatus.none] when there isn't one.
   Future<({AccountDeletionStatus? data, String? error})>
-      fetchAccountDeletionStatus() async {
+  fetchAccountDeletionStatus() async {
     return _accountDeletionCall(
       () => authorizedGet(Uri.parse(ApiConstants.accountDeletionStatus)),
     );
@@ -3134,10 +3156,7 @@ class AppController extends ChangeNotifier {
       return (data: null, error: 'Unexpected response from the server');
     } catch (e) {
       debugPrint('[account-deletion] failed: $e');
-      return (
-        data: null,
-        error: e.toString().replaceFirst('Exception: ', ''),
-      );
+      return (data: null, error: e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -3230,7 +3249,9 @@ class AppController extends ChangeNotifier {
       // failed — never revert to Online. Persist it, run the offline
       // side-effects below, and retry the backend write in the background so
       // the server's flag eventually matches.
-      debugPrint('[Availability] Offline sync failed, staying offline: $syncError');
+      debugPrint(
+        '[Availability] Offline sync failed, staying offline: $syncError',
+      );
       _retryOfflineSyncInBackground();
     }
 
@@ -3304,10 +3325,14 @@ class AppController extends ChangeNotifier {
         if (_isOnline) return; // a later toggle to Online supersedes this
         final String? err = await _syncAvailabilityToBackend(false);
         if (err == null) {
-          debugPrint('[Availability] Offline re-sync succeeded (attempt $attempt)');
+          debugPrint(
+            '[Availability] Offline re-sync succeeded (attempt $attempt)',
+          );
           return;
         }
-        debugPrint('[Availability] Offline re-sync failed (attempt $attempt): $err');
+        debugPrint(
+          '[Availability] Offline re-sync failed (attempt $attempt): $err',
+        );
       }
     }());
   }
@@ -3358,8 +3383,7 @@ class AppController extends ChangeNotifier {
       _currentLongitude = position.longitude;
       _liveCoordinates =
           '${position.latitude.toStringAsFixed(5)}, ${position.longitude.toStringAsFixed(5)}';
-    } catch (_) {
-    }
+    } catch (_) {}
 
     notifyListeners();
     return null;
@@ -3512,8 +3536,7 @@ class AppController extends ChangeNotifier {
             targetId,
             frappeStatus,
           );
-        } catch (_) {
-        }
+        } catch (_) {}
       }
 
       if (targetTripId != null) {
@@ -3525,8 +3548,7 @@ class AppController extends ChangeNotifier {
               deliveryId: targetId,
               newStatus: stopStatus,
             );
-          } catch (_) {
-          }
+          } catch (_) {}
         }
       }
 
@@ -3967,8 +3989,7 @@ class AppController extends ChangeNotifier {
         if (_driverName != null && _driverName!.isNotEmpty) {
           await _orderRepository.setDriverOnOrder(orderId, _driverName!);
         }
-      } catch (_) {
-      }
+      } catch (_) {}
 
       _availableOrders.removeWhere((order) => order.orderId == orderId);
       final ExternalDeliveryDetail detail = await _orderRepository.fetchDetail(
@@ -4090,8 +4111,8 @@ class AppController extends ChangeNotifier {
     if (_driverName == null || _driverName!.isEmpty) return;
     try {
       // Fetch all active orders for this driver in one shot.
-      final summaries =
-          await _orderRepository.fetchActiveOrdersForDriverDirect();
+      final summaries = await _orderRepository
+          .fetchActiveOrdersForDriverDirect();
       if (summaries.isEmpty) return;
 
       // Build orderId → tripId map across all active trips (best-effort).
@@ -4113,7 +4134,9 @@ class AppController extends ChangeNotifier {
       // Fetch all order details in parallel.
       final ids = summaries
           .map((s) => s.name.trim())
-          .where((id) => id.isNotEmpty && !_activeOrders.any((o) => o.orderId == id))
+          .where(
+            (id) => id.isNotEmpty && !_activeOrders.any((o) => o.orderId == id),
+          )
           .toList();
 
       final fetchResults = await Future.wait(
@@ -4286,16 +4309,16 @@ class AppController extends ChangeNotifier {
       distanceKm: (detail.distanceKm != null && detail.distanceKm! > 0)
           ? detail.distanceKm!
           : (_currentLatitude != null &&
-                    _currentLongitude != null &&
-                    orderLatitude != null &&
-                    orderLongitude != null)
-              ? _calculateDistance(
-                  _currentLatitude!,
-                  _currentLongitude!,
-                  orderLatitude,
-                  orderLongitude,
-                )
-              : 0,
+                _currentLongitude != null &&
+                orderLatitude != null &&
+                orderLongitude != null)
+          ? _calculateDistance(
+              _currentLatitude!,
+              _currentLongitude!,
+              orderLatitude,
+              orderLongitude,
+            )
+          : 0,
       estimatedEarnings: detail.grandTotal ?? totalAmount,
       assignmentStatus: status == OrderStatus.pending
           ? OrderAssignmentStatus.unassigned
@@ -4515,10 +4538,7 @@ class AppController extends ChangeNotifier {
       await prefs.remove(_prefActiveTripId);
     } else {
       await prefs.setString(_prefActiveOrderIds, jsonEncode(ids));
-      await prefs.setString(
-        _prefActiveTripIdsMap,
-        jsonEncode(_activeTripIds),
-      );
+      await prefs.setString(_prefActiveTripIdsMap, jsonEncode(_activeTripIds));
       // Save full order data so the next launch can show orders instantly
       // from cache while the network refresh runs in the background.
       final List<Map<String, dynamic>> cacheList = _activeOrders
@@ -4575,15 +4595,15 @@ class AppController extends ChangeNotifier {
     final dynamic itemsRaw = json['orderItems'];
     final List<OrderItem> items = itemsRaw is List
         ? itemsRaw
-            .whereType<Map<String, dynamic>>()
-            .map(
-              (i) => OrderItem(
-                name: (i['name'] as String?) ?? '',
-                quantity: (i['quantity'] as int?) ?? 1,
-                price: (i['price'] as num?)?.toDouble() ?? 0,
-              ),
-            )
-            .toList()
+              .whereType<Map<String, dynamic>>()
+              .map(
+                (i) => OrderItem(
+                  name: (i['name'] as String?) ?? '',
+                  quantity: (i['quantity'] as int?) ?? 1,
+                  price: (i['price'] as num?)?.toDouble() ?? 0,
+                ),
+              )
+              .toList()
         : <OrderItem>[];
     return DeliveryOrder(
       orderId: (json['orderId'] as String?) ?? '',
@@ -4903,11 +4923,16 @@ class AppController extends ChangeNotifier {
 
     // Duty hours from login/logout pairs (previous sessions only — current
     // session starts fresh once the driver goes online).
-    final logins = rows.where((r) => r.eventType == TimingEventType.login).toList();
-    final logouts = rows.where((r) => r.eventType == TimingEventType.logout).toList();
+    final logins = rows
+        .where((r) => r.eventType == TimingEventType.login)
+        .toList();
+    final logouts = rows
+        .where((r) => r.eventType == TimingEventType.logout)
+        .toList();
     if (logins.isNotEmpty && logouts.isNotEmpty) {
-      final diff = DateTime.parse(logouts.last.eventTime)
-          .difference(DateTime.parse(logins.first.eventTime));
+      final diff = DateTime.parse(
+        logouts.last.eventTime,
+      ).difference(DateTime.parse(logins.first.eventTime));
       if (!diff.isNegative) _completedDutyToday = diff;
     }
 
@@ -4922,7 +4947,8 @@ class AppController extends ChangeNotifier {
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     final savedDate = prefs.getString(_prefTripTimeSavedDate(partner.trim()));
     if (savedDate == todayStr) {
-      final savedMs = prefs.getInt(_prefTotalTripTimeTodayMs(partner.trim())) ?? 0;
+      final savedMs =
+          prefs.getInt(_prefTotalTripTimeTodayMs(partner.trim())) ?? 0;
       _totalTripTimeToday = Duration(milliseconds: savedMs);
     } else {
       final acceptedTimes = <String, DateTime>{};
@@ -4933,7 +4959,8 @@ class AppController extends ChangeNotifier {
       }
       var total = Duration.zero;
       for (final r in rows.where(
-        (r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null,
+        (r) =>
+            r.eventType == TimingEventType.tripCompleted && r.tripName != null,
       )) {
         final start = acceptedTimes[r.tripName!];
         if (start != null) {
@@ -4946,7 +4973,11 @@ class AppController extends ChangeNotifier {
 
     // Restore start times for any trips still in progress today.
     final completedRefs = rows
-        .where((r) => r.eventType == TimingEventType.tripCompleted && r.tripName != null)
+        .where(
+          (r) =>
+              r.eventType == TimingEventType.tripCompleted &&
+              r.tripName != null,
+        )
         .map((r) => r.tripName!)
         .toSet();
     for (final r in rows) {
@@ -4973,9 +5004,13 @@ class AppController extends ChangeNotifier {
     final driver = _driverName ?? _profile?.mobile ?? '';
     if (driver.isEmpty) return;
     final now = DateTime.now();
-    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final dateStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     _writePref((prefs) async {
-      await prefs.setInt(_prefTotalTripTimeTodayMs(driver), _totalTripTimeToday.inMilliseconds);
+      await prefs.setInt(
+        _prefTotalTripTimeTodayMs(driver),
+        _totalTripTimeToday.inMilliseconds,
+      );
       await prefs.setString(_prefTripTimeSavedDate(driver), dateStr);
       return true;
     });
@@ -5025,9 +5060,8 @@ class AppController extends ChangeNotifier {
   /// business disables the limit, or clamping it down to a lowered cap.
   void _applyDeliveryRadiusPolicy(Map<String, dynamic> driverDoc) {
     final dynamic enabledRaw = driverDoc['custom_delivery_radius_enabled'];
-    _deliveryRadiusFeatureEnabled = enabledRaw == 1 ||
-        enabledRaw == true ||
-        enabledRaw?.toString() == '1';
+    _deliveryRadiusFeatureEnabled =
+        enabledRaw == 1 || enabledRaw == true || enabledRaw?.toString() == '1';
     _businessDefaultRadiusKm = _positiveOrNull(
       driverDoc['custom_default_delivery_radius_km'],
     );
@@ -5795,8 +5829,7 @@ class AppController extends ChangeNotifier {
       );
       await authorizedPutJson(userUri, <String, dynamic>{'user_image': value});
       return null;
-    } catch (_) {
-    }
+    } catch (_) {}
 
     // Approach 2: frappe.client.set_value with JSON body
     try {
@@ -5810,8 +5843,7 @@ class AppController extends ChangeNotifier {
         'value': value,
       });
       return null;
-    } catch (_) {
-    }
+    } catch (_) {}
 
     // Approach 3: frappe.client.set_value with form-encoded body
     // Some Frappe versions require multipart/form-data for whitelisted methods.
@@ -6045,7 +6077,9 @@ class AppController extends ChangeNotifier {
       return _cachedAuthHeaders!;
     }
     final headers = _authorizationHeaders();
-    _cachedAuthHeaders = headers.isNotEmpty ? headers.first : const <String, String>{};
+    _cachedAuthHeaders = headers.isNotEmpty
+        ? headers.first
+        : const <String, String>{};
     _cachedAuthHeadersKey = key;
     return _cachedAuthHeaders!;
   }

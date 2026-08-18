@@ -1,3 +1,4 @@
+// ignore_for_file: unused_field, unused_element
 import 'dart:async';
 import 'dart:convert';
 
@@ -233,7 +234,8 @@ class ExternalDeliveryRepository {
     // indexed column — which the DB can satisfy from the index. The grouped
     // sort (store_name asc) is only needed for the "All Stores" view, where the
     // UI groups rows under per-store headers.
-    final String effectiveOrderBy = orderBy ??
+    final String effectiveOrderBy =
+        orderBy ??
         (storeName != null && storeName.isNotEmpty
             ? 'modified desc'
             : 'store_name asc, modified desc');
@@ -480,8 +482,7 @@ class ExternalDeliveryRepository {
 
     return values.map((row) {
       final m = <String, dynamic>{
-        for (int i = 0; i < keys.length && i < row.length; i++)
-          keys[i]: row[i],
+        for (int i = 0; i < keys.length && i < row.length; i++) keys[i]: row[i],
       };
       return ExternalDeliveryDetail.fromJson(m);
     }).toList();
@@ -575,13 +576,20 @@ class ExternalDeliveryRepository {
     );
 
     const _inactiveStatuses = {
-      'delivered', 'cancelled', 'returned', 'canceled', 'return initiated', 'failed',
+      'delivered',
+      'cancelled',
+      'returned',
+      'canceled',
+      'return initiated',
+      'failed',
     };
 
     // 4. Keep only orders that are still in progress
     return results
         .whereType<ExternalDeliveryDetail>()
-        .where((d) => !_inactiveStatuses.contains(d.status.trim().toLowerCase()))
+        .where(
+          (d) => !_inactiveStatuses.contains(d.status.trim().toLowerCase()),
+        )
         .toList();
   }
 
@@ -785,13 +793,28 @@ class ExternalDeliveryRepository {
       final uri = Uri.parse(ApiConstants.externalDeliveryList).replace(
         queryParameters: {
           'fields': jsonEncode([
-            'name', 'store_name', 'store_url', 'customer_name', 'status',
-            'contact_mobile', 'delivery_address', 'pickup_address',
-            'latitude', 'longitude', 'geolocation', 'payment_mode',
-            'grand_total', 'creation', 'modified', 'proof_photo',
-            'failure_reason_code', 'delivery_notes',
+            'name',
+            'store_name',
+            'store_url',
+            'customer_name',
+            'status',
+            'contact_mobile',
+            'delivery_address',
+            'pickup_address',
+            'latitude',
+            'longitude',
+            'geolocation',
+            'payment_mode',
+            'grand_total',
+            'creation',
+            'modified',
+            'proof_photo',
+            'failure_reason_code',
+            'delivery_notes',
           ]),
-          'filters': jsonEncode([['name', 'in', chunk]]),
+          'filters': jsonEncode([
+            ['name', 'in', chunk],
+          ]),
           'limit_page_length': '${chunk.length}',
         },
       );
@@ -802,7 +825,9 @@ class ExternalDeliveryRepository {
       }
       final data = (jsonDecode(resp.body)['data']) as List;
       all.addAll(
-        data.map((row) => ExternalDeliveryDetail.fromJson(row as Map<String, dynamic>)),
+        data.map(
+          (row) => ExternalDeliveryDetail.fromJson(row as Map<String, dynamic>),
+        ),
       );
     }
     return all;
@@ -833,13 +858,13 @@ class ExternalDeliveryRepository {
     _logApi(
       'fetchDetail_cod_fields',
       'payment_method=${data['payment_method']} '
-      'payment_mode=${data['payment_mode']} '
-      'mode_of_payment=${data['mode_of_payment']} '
-      'cod_amount_to_collect=${data['cod_amount_to_collect']} '
-      'grand_total=${data['grand_total']} '
-      'amount=${data['amount']} '
-      'total=${data['total']} '
-      'total_amount=${data['total_amount']}',
+          'payment_mode=${data['payment_mode']} '
+          'mode_of_payment=${data['mode_of_payment']} '
+          'cod_amount_to_collect=${data['cod_amount_to_collect']} '
+          'grand_total=${data['grand_total']} '
+          'amount=${data['amount']} '
+          'total=${data['total']} '
+          'total_amount=${data['total_amount']}',
     );
     _logApi('fetchDetail_all_keys', data.keys.join(', '));
     if (resolveAddress) {
@@ -986,9 +1011,7 @@ class ExternalDeliveryRepository {
     }
   }
 
-  Future<String> createTripForOrders(
-    List<ExternalDelivery> orders,
-  ) async {
+  Future<String> createTripForOrders(List<ExternalDelivery> orders) async {
     if (orders.isEmpty) {
       throw Exception('No orders provided for trip creation');
     }
@@ -1116,7 +1139,11 @@ class ExternalDeliveryRepository {
   ) async {
     // Terminal stop statuses — anything else means the stop (and trip) is active.
     const terminalStopStatuses = {
-      'delivered', 'failed', 'returned', 'return initiated', 'cancelled',
+      'delivered',
+      'failed',
+      'returned',
+      'return initiated',
+      'cancelled',
     };
 
     final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
@@ -1124,7 +1151,12 @@ class ExternalDeliveryRepository {
         'fields': jsonEncode(['name', 'status']),
         'filters': jsonEncode([
           ['External Delivery Trip', 'driver', '=', driverName],
-          ['External Delivery Trip', 'status', 'not in', ['Completed', 'Cancelled']],
+          [
+            'External Delivery Trip',
+            'status',
+            'not in',
+            ['Completed', 'Cancelled'],
+          ],
         ]),
         'limit_page_length': '5',
         'order_by': 'modified desc',
@@ -1155,11 +1187,13 @@ class ExternalDeliveryRepository {
   /// Returns a map of orderId → tripName for all active trips assigned to
   /// [driverName]. Covers all active trips (not just the first one) so every
   /// in-progress order can be linked to its trip after a logout/login.
-  Future<Map<String, String>> fetchActiveTripOrderMap(
-    String driverName,
-  ) async {
+  Future<Map<String, String>> fetchActiveTripOrderMap(String driverName) async {
     const terminalStopStatuses = {
-      'delivered', 'failed', 'returned', 'return initiated', 'cancelled',
+      'delivered',
+      'failed',
+      'returned',
+      'return initiated',
+      'cancelled',
     };
 
     final tripUri = Uri.parse(ApiConstants.externalDeliveryTripList).replace(
@@ -1167,7 +1201,12 @@ class ExternalDeliveryRepository {
         'fields': jsonEncode(['name', 'status']),
         'filters': jsonEncode([
           ['External Delivery Trip', 'driver', '=', driverName],
-          ['External Delivery Trip', 'status', 'not in', ['Completed', 'Cancelled']],
+          [
+            'External Delivery Trip',
+            'status',
+            'not in',
+            ['Completed', 'Cancelled'],
+          ],
         ]),
         'limit_page_length': '20',
         'order_by': 'modified desc',
@@ -1279,12 +1318,15 @@ class ExternalDeliveryRepository {
   }
 
   Future<ExternalDeliveryTrip> fetchTripDetails(String tripName) async {
-    final uri = Uri.parse(
-      '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.form.load.getdoc',
-    ).replace(queryParameters: {
-      'doctype': 'External Delivery Trip',
-      'name': tripName,
-    });
+    final uri =
+        Uri.parse(
+          '${ApiConstants.erpBaseUrl}/api/method/frappe.desk.form.load.getdoc',
+        ).replace(
+          queryParameters: {
+            'doctype': 'External Delivery Trip',
+            'name': tripName,
+          },
+        );
     _logApi('external_delivery_trip_details request', 'GET $uri');
 
     final resp = await _get(uri, headers: await _authHeaders());
@@ -1485,8 +1527,9 @@ class ExternalDeliveryRepository {
     final trip = await fetchTripDetails(tripId);
     final stop = trip.stops.firstWhere(
       (s) => s.externalDelivery.trim() == deliveryId.trim(),
-      orElse: () =>
-          throw Exception('Stop not found for delivery $deliveryId in trip $tripId'),
+      orElse: () => throw Exception(
+        'Stop not found for delivery $deliveryId in trip $tripId',
+      ),
     );
     await updateTripStopStatus(stop: stop, newStatus: newStatus);
   }
@@ -1630,20 +1673,19 @@ class ExternalDeliveryRepository {
     required String orderName,
     required String attachedField,
   }) async {
-    final uri = Uri.parse(
-      '${ApiConstants.erpBaseUrl}/api/resource/File',
-    ).replace(
-      queryParameters: {
-        'fields': jsonEncode(<String>['file_url']),
-        'filters': jsonEncode([
-          ['File', 'attached_to_doctype', '=', 'External Delivery'],
-          ['File', 'attached_to_name', '=', orderName],
-          ['File', 'attached_to_field', '=', attachedField],
-        ]),
-        'limit_page_length': '1',
-        'order_by': 'creation desc',
-      },
-    );
+    final uri = Uri.parse('${ApiConstants.erpBaseUrl}/api/resource/File')
+        .replace(
+          queryParameters: {
+            'fields': jsonEncode(<String>['file_url']),
+            'filters': jsonEncode([
+              ['File', 'attached_to_doctype', '=', 'External Delivery'],
+              ['File', 'attached_to_name', '=', orderName],
+              ['File', 'attached_to_field', '=', attachedField],
+            ]),
+            'limit_page_length': '1',
+            'order_by': 'creation desc',
+          },
+        );
 
     final resp = await _get(uri, headers: await _authHeaders());
     if (!_okCodes.contains(resp.statusCode)) {
@@ -1706,8 +1748,9 @@ class ExternalDeliveryRepository {
     final trip = await fetchTripDetails(tripId);
     final stop = trip.stops.firstWhere(
       (s) => s.externalDelivery.trim() == deliveryId.trim(),
-      orElse: () =>
-          throw Exception('Stop not found for delivery $deliveryId in trip $tripId'),
+      orElse: () => throw Exception(
+        'Stop not found for delivery $deliveryId in trip $tripId',
+      ),
     );
     return processFailedDeliveryReturn(
       stop: stop,
@@ -2268,7 +2311,8 @@ class ExternalDeliveryRepository {
   /// Returns null if no COD handover exists for this trip.
   Future<CodHandover?> fetchCodHandover(String tripName) async {
     final driver = await _getLoggedInDriver();
-    final codHandoverList = '${ApiConstants.erpBaseUrl}/api/resource/COD%20Handover';
+    final codHandoverList =
+        '${ApiConstants.erpBaseUrl}/api/resource/COD%20Handover';
     final uri = Uri.parse(codHandoverList).replace(
       queryParameters: {
         'fields': jsonEncode([
@@ -2300,10 +2344,9 @@ class ExternalDeliveryRepository {
     required double actualAmount,
     String? notes,
   }) async {
-    final codHandoverList = '${ApiConstants.erpBaseUrl}/api/resource/COD%20Handover';
-    final uri = Uri.parse(
-      '$codHandoverList/${Uri.encodeComponent(name)}',
-    );
+    final codHandoverList =
+        '${ApiConstants.erpBaseUrl}/api/resource/COD%20Handover';
+    final uri = Uri.parse('$codHandoverList/${Uri.encodeComponent(name)}');
     final payload = <String, dynamic>{
       'cod_cash_actual': actualAmount,
       'status': 'Submitted',
@@ -2359,7 +2402,8 @@ class ExternalDeliveryRepository {
     );
     _logApi('fetch_cod_handover_list', 'GET $uri limitStart=$limitStart');
     final resp = await _get(uri, headers: await _authHeaders());
-    if (resp.statusCode == 401) throw Exception('401: Invalid API credentials.');
+    if (resp.statusCode == 401)
+      throw Exception('401: Invalid API credentials.');
     if (resp.statusCode == 403) throw Exception('403: Access denied.');
     if (!_okCodes.contains(resp.statusCode)) {
       throw Exception(_extractErrorMessage(resp));
@@ -2372,9 +2416,7 @@ class ExternalDeliveryRepository {
 
   /// Fetches a single [CodHandover] by document [name] for the detail screen.
   Future<CodHandover> fetchCodHandoverDetail(String name) async {
-    final uri = Uri.parse(
-      '$_codHandoverBase/${Uri.encodeComponent(name)}',
-    );
+    final uri = Uri.parse('$_codHandoverBase/${Uri.encodeComponent(name)}');
     _logApi('fetch_cod_handover_detail', 'GET $uri name=$name');
     final resp = await _get(uri, headers: await _authHeaders());
     if (!_okCodes.contains(resp.statusCode)) {

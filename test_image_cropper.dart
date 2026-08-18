@@ -1,3 +1,4 @@
+// ignore_for_file: unused_local_variable
 import 'package:flutter/material.dart';
 import 'package:image_cropper/image_cropper.dart';
 
@@ -12,9 +13,7 @@ void main() async {
         initAspectRatio: CropAspectRatioPreset.original,
         lockAspectRatio: false,
       ),
-      IOSUiSettings(
-        title: 'Cropper',
-      ),
+      IOSUiSettings(title: 'Cropper'),
     ],
   );
 }
