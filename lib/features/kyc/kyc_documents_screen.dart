@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/constants/api_constants.dart';
@@ -12,7 +13,6 @@ import '../../core/state/providers.dart';
 import '../../core/theme/context_colors.dart';
 import '../../core/utils/validators.dart';
 import '../../core/widgets/app_shell.dart';
-import 'widgets/kyc_form_widgets.dart';
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -123,6 +123,69 @@ class _DocEntry {
       status == _DocStatus.expired || status == _DocStatus.reuploadRequired,
   };
 }
+
+// ─── Design tokens ("Kinetic Trust", scoped to this screen only) ──────────────
+//
+// Severity colors (success/warning/danger) deliberately keep using the shared,
+// dark-mode-aware `context.success/warning/danger` tokens from
+// core/theme/context_colors.dart — only the brand/primary blue, neutral
+// layout, and Inter typography below are new, and they live only in this
+// file so no other screen is affected.
+
+const Color _kDocsPrimaryLight = Color(0xFF003D9B);
+const Color _kDocsPrimaryDark = Color(0xFF9DB8FF);
+
+extension _DocsTheme on BuildContext {
+  Color get docsPrimary => isDark ? _kDocsPrimaryDark : _kDocsPrimaryLight;
+  Color get docsPrimarySoft =>
+      isDark ? const Color(0xFF13294D) : const Color(0xFFE8EEFC);
+}
+
+List<BoxShadow> _docsCardShadow(BuildContext context) => [
+  BoxShadow(
+    color: context.docsPrimary.withValues(alpha: context.isDark ? 0.28 : 0.08),
+    blurRadius: 16,
+    offset: const Offset(0, 4),
+  ),
+];
+
+TextStyle _interHeadline(BuildContext context) => GoogleFonts.inter(
+  fontSize: 20,
+  fontWeight: FontWeight.w600,
+  height: 28 / 20,
+  color: context.textPrimary,
+);
+
+TextStyle _interBodyMd(
+  BuildContext context, {
+  Color? color,
+  FontWeight? weight,
+}) => GoogleFonts.inter(
+  fontSize: 16,
+  fontWeight: weight ?? FontWeight.w400,
+  height: 24 / 16,
+  color: color ?? context.textPrimary,
+);
+
+TextStyle _interLabelMd(BuildContext context, {Color? color}) =>
+    GoogleFonts.inter(
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.14,
+      height: 20 / 14,
+      color: color ?? context.textPrimary,
+    );
+
+TextStyle _interLabelSm(
+  BuildContext context, {
+  Color? color,
+  FontWeight? weight,
+}) => GoogleFonts.inter(
+  fontSize: 12,
+  fontWeight: weight ?? FontWeight.w500,
+  height: 16 / 12,
+  color: color ?? context.textSecondary,
+);
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -267,7 +330,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
         _DocEntry(
           field: 'pan',
           label: 'PAN Card',
-          icon: Icons.account_balance_wallet_outlined,
+          icon: Icons.contact_page_outlined,
           editable: !panUploaded || _editableOverrides.contains('pan'),
           isRequired: false,
           number: _panNoCtrl.text,
@@ -619,17 +682,14 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                KycHeader(
+                _DocsAppHeader(
                   title: reupload ? 'Re-upload License' : 'My Documents',
                   subtitle: reupload
                       ? 'Update your driving license details'
                       : 'Manage your KYC identity documents',
-                  icon: Icons.folder_special_outlined,
                   onBack: () => Navigator.of(context).maybePop(),
                   showBottomBorder: _headerElevated,
-                  trailingNote: reupload
-                      ? null
-                      : const _TrustBadge(),
+                  showBadge: !reupload,
                 ),
                 Expanded(
                   child: Form(
@@ -637,7 +697,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                     autovalidateMode: AutovalidateMode.onUserInteraction,
                     child: ListView(
                       controller: _scrollController,
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 110),
                       children: [
                         if (reupload) ...[
                           const SizedBox(height: 8),
@@ -645,18 +705,14 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
                           const SizedBox(height: 16),
                         ] else ...[
                           const SizedBox(height: 8),
-                          _ProgressSummaryCard(
+                          _ProgressCard(
                             doneCount: uploadedCount,
                             entries: all,
-                          ),
-                          const SizedBox(height: 12),
-                          _StatusFilterToggle(
-                            active: _activeFilter,
-                            entries: all,
-                            onChanged: (f) =>
+                            activeFilter: _activeFilter,
+                            onFilterChanged: (f) =>
                                 setState(() => _activeFilter = f),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 16),
                         ],
                         if (filtered.isEmpty)
                           _EmptyFilterPlaceholder(filter: _activeFilter)
@@ -718,7 +774,7 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
         entry.severity != _Severity.success &&
         !_licenseActivelyInvalid;
 
-    return _DocumentCard(
+    return _DocCard(
       key: ValueKey(entry.field),
       entry: entry,
       authHeaders: _authHeaders,
@@ -810,150 +866,114 @@ class _KycDocumentsScreenState extends ConsumerState<KycDocumentsScreen> {
   }
 }
 
-// ─── Trust badge ──────────────────────────────────────────────────────────────
+// ─── Header ───────────────────────────────────────────────────────────────────
 
-class _TrustBadge extends StatelessWidget {
-  const _TrustBadge();
+class _DocsAppHeader extends StatelessWidget {
+  const _DocsAppHeader({
+    required this.title,
+    required this.subtitle,
+    required this.onBack,
+    required this.showBottomBorder,
+    this.showBadge = false,
+  });
+
+  final String title;
+  final String subtitle;
+  final VoidCallback onBack;
+  final bool showBottomBorder;
+  final bool showBadge;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
       decoration: BoxDecoration(
-        color: context.successContainer,
-        borderRadius: BorderRadius.circular(99),
+        border: Border(
+          bottom: BorderSide(
+            color: showBottomBorder ? context.borderSubtle : Colors.transparent,
+          ),
+        ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(Icons.verified_user_outlined, size: 11, color: context.success),
-          const SizedBox(width: 4),
-          Text(
-            'Secure',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: context.success,
+          _DocsBackButton(onTap: onBack),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title, style: _interHeadline(context)),
+                const SizedBox(height: 2),
+                Text(subtitle, style: _interLabelSm(context)),
+              ],
             ),
           ),
+          if (showBadge) ...[
+            const SizedBox(width: 8),
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: context.successContainer,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.folder_special_rounded,
+                color: context.success,
+                size: 22,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-// ─── Number field ─────────────────────────────────────────────────────────────
-
-class _NumberField extends StatelessWidget {
-  const _NumberField({
-    required this.controller,
-    required this.editable,
-    required this.hint,
-    required this.lockedPlaceholder,
-    this.keyboardType,
-    this.textCapitalization = TextCapitalization.none,
-    this.validator,
-    this.onChanged,
-    this.inputFormatters,
-  });
-
-  final TextEditingController controller;
-  final bool editable;
-  final String hint;
-  final String lockedPlaceholder;
-  final TextInputType? keyboardType;
-  final TextCapitalization textCapitalization;
-  final String? Function(String?)? validator;
-  final VoidCallback? onChanged;
-  final List<TextInputFormatter>? inputFormatters;
+class _DocsBackButton extends StatelessWidget {
+  const _DocsBackButton({required this.onTap});
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      enabled: editable,
-      keyboardType: keyboardType,
-      textCapitalization: textCapitalization,
-      // Suppress validation entirely when locked so stale errors never show
-      validator: editable ? validator : null,
-      autovalidateMode: AutovalidateMode.onUserInteraction,
-      onChanged: (editable && onChanged != null) ? (_) => onChanged!() : null,
-      inputFormatters: inputFormatters,
-      cursorColor: KycColors.accent,
-      style: TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w500,
-        color: context.textPrimary,
+    return Material(
+      color: context.cardColor,
+      shape: CircleBorder(side: BorderSide(color: context.borderSubtle)),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(
+            Icons.arrow_back_rounded,
+            size: 20,
+            color: context.textPrimary,
+          ),
+        ),
       ),
-      decoration: editable
-          ? _activeDecoration(context)
-          : _lockedDecoration(context),
     );
   }
-
-  InputDecoration _activeDecoration(BuildContext context) => InputDecoration(
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        filled: true,
-        fillColor: KycColors.accentSoft(context),
-        hintText: hint,
-        hintStyle: TextStyle(
-          color: context.textTertiary,
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(
-            color: KycColors.accent.withValues(alpha: 0.45),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: kKycAccent, width: 1.5),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.error),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(
-            color: Theme.of(context).colorScheme.error,
-            width: 1.5,
-          ),
-        ),
-        errorStyle: const TextStyle(fontSize: 12, height: 1.3),
-        counterText: '',
-      );
-
-  InputDecoration _lockedDecoration(BuildContext context) => InputDecoration(
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
-        filled: false,
-        hintText: controller.text.trim().isEmpty ? lockedPlaceholder : null,
-        hintStyle: TextStyle(
-          color: context.textTertiary,
-          fontSize: 14,
-          fontWeight: FontWeight.w400,
-        ),
-        border: InputBorder.none,
-        enabledBorder: InputBorder.none,
-        disabledBorder: InputBorder.none,
-        counterText: '',
-      );
 }
 
-// ─── Progress summary card ─────────────────────────────────────────────────────
+// ─── Progress card (progress + legend + filter, merged) ───────────────────────
 
-class _ProgressSummaryCard extends StatelessWidget {
-  const _ProgressSummaryCard({
+class _ProgressCard extends StatelessWidget {
+  const _ProgressCard({
     required this.doneCount,
     required this.entries,
+    required this.activeFilter,
+    required this.onFilterChanged,
   });
 
   final int doneCount;
   final List<_DocEntry> entries;
+  final _DocFilter activeFilter;
+  final ValueChanged<_DocFilter> onFilterChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -968,94 +988,88 @@ class _ProgressSummaryCard extends StatelessWidget {
         .toList();
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: context.cardColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: context.borderSubtle),
+        boxShadow: _docsCardShadow(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
                 child: Text(
                   '$doneCount of $total documents complete',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                    color: context.textPrimary,
-                  ),
+                  style: _interHeadline(context),
                 ),
               ),
-              Text(
-                '$doneCount/$total',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w500,
-                  color: context.textPrimary,
-                ),
-              ),
+              Text('$doneCount/$total', style: _interHeadline(context)),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Row(
             children: entries.map((e) {
               return Expanded(
                 child: Container(
-                  height: 5,
+                  height: 8,
                   margin: const EdgeInsets.symmetric(horizontal: 2),
                   decoration: BoxDecoration(
                     color: e.severity.color(context),
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(99),
                   ),
                 ),
               );
             }).toList(),
           ),
-          if (ordered.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 14,
-              runSpacing: 6,
-              children: ordered.map((sv) {
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: sv.color(context),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      sv.legendLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: context.textSecondary,
-                      ),
-                    ),
-                  ],
-                );
-              }).toList(),
-            ),
-          ],
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (ordered.isNotEmpty)
+                Expanded(
+                  child: Wrap(
+                    spacing: 16,
+                    runSpacing: 6,
+                    children: ordered.map((sv) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: sv.color(context),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(sv.legendLabel, style: _interLabelSm(context)),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+                )
+              else
+                const Spacer(),
+              _FilterMenu(
+                active: activeFilter,
+                entries: entries,
+                onChanged: onFilterChanged,
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-// ─── Status filter toggle ──────────────────────────────────────────────────────
-
-class _StatusFilterToggle extends StatelessWidget {
-  const _StatusFilterToggle({
+class _FilterMenu extends StatelessWidget {
+  const _FilterMenu({
     required this.active,
     required this.entries,
     required this.onChanged,
@@ -1077,65 +1091,47 @@ class _StatusFilterToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerRight,
-      child: PopupMenuButton<_DocFilter>(
-        initialValue: active,
-        onSelected: onChanged,
-        offset: const Offset(0, 32),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        color: context.cardColor,
-        itemBuilder: (context) => _DocFilter.values.map((f) {
-          final count = _count(f);
-          return PopupMenuItem<_DocFilter>(
-            value: f,
-            height: 40,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _label(f),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: f == active ? KycColors.accent : context.textPrimary,
-                  ),
-                ),
-                if (count > 0)
-                  Text(
-                    '$count',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: context.textTertiary,
-                    ),
-                  ),
-              ],
-            ),
-          );
-        }).toList(),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+    return PopupMenuButton<_DocFilter>(
+      initialValue: active,
+      onSelected: onChanged,
+      offset: const Offset(0, 32),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: context.cardColor,
+      itemBuilder: (context) => _DocFilter.values.map((f) {
+        final count = _count(f);
+        return PopupMenuItem<_DocFilter>(
+          value: f,
+          height: 40,
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Show: ${_label(active)}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: KycColors.accent,
+                _label(f),
+                style: _interLabelMd(
+                  context,
+                  color: f == active ? context.docsPrimary : context.textPrimary,
                 ),
               ),
-              const SizedBox(width: 2),
-              const Icon(
-                Icons.keyboard_arrow_down_rounded,
-                size: 16,
-                color: KycColors.accent,
-              ),
+              if (count > 0)
+                Text('$count', style: _interLabelSm(context)),
             ],
           ),
-        ),
+        );
+      }).toList(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Show: ${_label(active)}',
+            style: _interLabelMd(context, color: context.docsPrimary),
+          ),
+          const SizedBox(width: 2),
+          Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 18,
+            color: context.docsPrimary,
+          ),
+        ],
       ),
     );
   }
@@ -1143,8 +1139,8 @@ class _StatusFilterToggle extends StatelessWidget {
 
 // ─── Document card ────────────────────────────────────────────────────────────
 
-class _DocumentCard extends StatelessWidget {
-  const _DocumentCard({
+class _DocCard extends StatelessWidget {
+  const _DocCard({
     super.key,
     required this.entry,
     required this.authHeaders,
@@ -1175,21 +1171,29 @@ class _DocumentCard extends StatelessWidget {
     final hasPicked = entry.pickedPath != null;
     final hasExisting = (fullExistingUrl ?? '').isNotEmpty;
     final hasAnyFile = hasPicked || hasExisting;
+    final accent = severity.color(context);
 
     return Semantics(
       label:
           '${entry.label}, ${entry.isRequired ? 'required' : 'optional'}, ${entry.status.label}',
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: context.cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: severity == _Severity.success
-                ? context.borderSubtle
-                : severity.color(context).withValues(alpha: 0.4),
-            width: severity == _Severity.success ? 1 : 1.5,
+          borderRadius: BorderRadius.circular(16),
+          border: Border(
+            top: BorderSide(color: context.borderSubtle),
+            right: BorderSide(color: context.borderSubtle),
+            bottom: BorderSide(color: context.borderSubtle),
+            left: BorderSide(
+              color: severity == _Severity.success
+                  ? context.borderSubtle
+                  : accent,
+              width: severity == _Severity.success ? 1 : 4,
+            ),
           ),
+          boxShadow: _docsCardShadow(context),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1201,13 +1205,19 @@ class _DocumentCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    width: 36,
-                    height: 36,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
-                      color: severity.bgColor(context),
-                      borderRadius: BorderRadius.circular(10),
+                      color: hasAnyFile
+                          ? context.successContainer
+                          : context.borderSubtle.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(entry.icon, size: 18, color: severity.color(context)),
+                    child: Icon(
+                      entry.icon,
+                      size: 20,
+                      color: hasAnyFile ? context.success : context.textSecondary,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1219,37 +1229,22 @@ class _DocumentCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 entry.label,
-                                style: TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                  color: context.textPrimary,
-                                ),
+                                style: _interLabelMd(context),
                               ),
                             ),
-                            Text(
-                              entry.isRequired ? 'Required' : 'Optional',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: entry.isRequired
-                                    ? KycColors.accent
-                                    : context.textTertiary,
-                              ),
-                            ),
+                            _RequirementPill(isRequired: entry.isRequired),
                           ],
                         ),
-                        const SizedBox(height: 5),
+                        const SizedBox(height: 6),
                         _StatusPill(status: entry.status, severity: severity),
                         if (showLicenseNote) ...[
                           const SizedBox(height: 6),
                           Text(
                             "Doesn't block submission — update it whenever you're ready.",
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                              color: context.textSecondary,
-                              height: 1.35,
-                            ),
+                            style: _interLabelSm(
+                              context,
+                              weight: FontWeight.w400,
+                            ).copyWith(height: 1.35),
                           ),
                         ],
                       ],
@@ -1269,7 +1264,6 @@ class _DocumentCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Thumbnail
                   GestureDetector(
                     onTap: hasPicked
                         ? onViewLocal
@@ -1277,10 +1271,10 @@ class _DocumentCard extends StatelessWidget {
                             ? onView
                             : onUpload,
                     child: ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(12),
                       child: SizedBox(
-                        width: 72,
-                        height: 72,
+                        width: 80,
+                        height: 80,
                         child: _DocThumbnail(
                           pickedPath: entry.pickedPath,
                           serverUrl: fullExistingUrl,
@@ -1291,50 +1285,31 @@ class _DocumentCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  // Fields
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              _numberLabel(entry.field),
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                                color: context.textSecondary,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          _numberLabel(entry.field),
+                          style: _interLabelSm(context),
                         ),
-                        const SizedBox(height: 5),
+                        const SizedBox(height: 4),
                         numberField,
                         if (dateFields != null) ...[
                           const SizedBox(height: 12),
-                          Text(
-                            'Validity',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: context.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
+                          Text('Validity', style: _interLabelSm(context)),
+                          const SizedBox(height: 6),
                           dateFields!,
                         ],
                         if (entry.field == 'pan' && !hasAnyFile) ...[
                           const SizedBox(height: 8),
                           Text(
                             'Add your PAN card to speed up future payouts. Not required to submit.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                              color: context.textTertiary,
-                              height: 1.35,
-                            ),
+                            style: _interLabelSm(
+                              context,
+                              weight: FontWeight.w400,
+                            ).copyWith(height: 1.35),
                           ),
                         ],
                       ],
@@ -1347,58 +1322,26 @@ class _DocumentCard extends StatelessWidget {
             if (hasAnyFile || entry.editable) ...[
               Divider(height: 1, color: context.borderSubtle),
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 child: Row(
                   children: [
                     if (hasAnyFile)
                       Expanded(
-                        child: OutlinedButton.icon(
+                        child: _OutlinedPillButton(
+                          icon: Icons.visibility_outlined,
+                          label: 'View Document',
                           onPressed: hasPicked ? onViewLocal : onView,
-                          icon:
-                              const Icon(Icons.visibility_outlined, size: 15),
-                          label: const Text('View'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: KycColors.accent,
-                            side: BorderSide(
-                              color: KycColors.accent.withValues(alpha: 0.5),
-                            ),
-                            minimumSize: const Size(0, 44),
-                            textStyle: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
                         ),
                       ),
-                    if (hasAnyFile && entry.editable)
-                      const SizedBox(width: 10),
+                    if (hasAnyFile && entry.editable) const SizedBox(width: 10),
                     if (entry.editable)
                       Expanded(
-                        child: ElevatedButton.icon(
+                        child: _FilledPillButton(
+                          icon: hasAnyFile
+                              ? Icons.refresh_rounded
+                              : Icons.upload_rounded,
+                          label: hasAnyFile ? 'Replace Photo' : 'Upload Photo',
                           onPressed: onUpload,
-                          icon: Icon(
-                            hasAnyFile
-                                ? Icons.refresh_rounded
-                                : Icons.upload_rounded,
-                            size: 15,
-                          ),
-                          label: Text(hasAnyFile ? 'Replace' : 'Upload'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: KycColors.accent,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            minimumSize: const Size(0, 44),
-                            textStyle: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
                         ),
                       ),
                   ],
@@ -1419,6 +1362,88 @@ class _DocumentCard extends StatelessWidget {
   };
 }
 
+class _RequirementPill extends StatelessWidget {
+  const _RequirementPill({required this.isRequired});
+  final bool isRequired;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: isRequired
+            ? context.docsPrimarySoft
+            : context.borderSubtle.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        isRequired ? 'Required' : 'Optional',
+        style: _interLabelSm(
+          context,
+          color: isRequired ? context.docsPrimary : context.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+class _OutlinedPillButton extends StatelessWidget {
+  const _OutlinedPillButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: context.docsPrimary,
+        side: BorderSide(color: context.borderStrong.withValues(alpha: 0.4)),
+        minimumSize: const Size(0, 48),
+        textStyle: _interLabelMd(context),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+}
+
+class _FilledPillButton extends StatelessWidget {
+  const _FilledPillButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: context.docsPrimary,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        minimumSize: const Size(0, 48),
+        textStyle: _interLabelMd(context, color: Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+}
+
 class _EditButton extends StatelessWidget {
   const _EditButton({required this.onTap});
   final VoidCallback onTap;
@@ -1430,28 +1455,21 @@ class _EditButton extends StatelessWidget {
       label: 'Edit',
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          constraints: const BoxConstraints(minWidth: 44, minHeight: 32),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 34),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: KycColors.accentSoft(context),
-            borderRadius: BorderRadius.circular(8),
+            color: context.docsPrimarySoft,
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.edit_outlined, size: 13, color: KycColors.accent),
+              Icon(Icons.edit_outlined, size: 14, color: context.docsPrimary),
               const SizedBox(width: 4),
-              Text(
-                'Edit',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: KycColors.accent,
-                ),
-              ),
+              Text('Edit', style: _interLabelMd(context, color: context.docsPrimary)),
             ],
           ),
         ),
@@ -1496,11 +1514,11 @@ class _DocThumbnail extends StatelessWidget {
         loadingBuilder: (_, child, progress) {
           if (progress == null) return child;
           return Container(
-            color: KycColors.accentSoft(context),
-            child: const Center(
+            color: context.docsPrimarySoft,
+            child: Center(
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: kKycAccent,
+                color: context.docsPrimary,
               ),
             ),
           );
@@ -1508,48 +1526,110 @@ class _DocThumbnail extends StatelessWidget {
       );
     }
 
-    // No file — upload placeholder, tinted by this document's severity.
+    // No file — dashed upload placeholder, tinted by this document's severity.
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: severity.bgColor(context),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: severity.color(context).withValues(alpha: 0.4),
+      child: _DashedRoundedBox(
+        color: severity.color(context).withValues(alpha: 0.5),
+        radius: 12,
+        child: Container(
+          decoration: BoxDecoration(
+            color: severity.bgColor(context),
+            borderRadius: BorderRadius.circular(12),
           ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.add_photo_alternate_outlined,
-              color: severity.color(context),
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Add photo',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.add_photo_alternate_outlined,
                 color: severity.color(context),
+                size: 22,
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                'Upload',
+                style: _interLabelSm(
+                  context,
+                  color: severity.color(context),
+                  weight: FontWeight.w600,
+                ).copyWith(fontSize: 10),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _fallback(BuildContext context) => Container(
-    color: KycColors.accentSoft(context),
+    color: context.docsPrimarySoft,
     child: Icon(
       Icons.broken_image_outlined,
       color: context.textTertiary,
       size: 24,
     ),
   );
+}
+
+/// Lightweight dashed-border box (no extra package dependency) used for the
+/// "add a photo" upload placeholder, matching the redesign's dashed upload
+/// zone treatment.
+class _DashedRoundedBox extends StatelessWidget {
+  const _DashedRoundedBox({
+    required this.child,
+    required this.color,
+    required this.radius,
+  });
+
+  final Widget child;
+  final Color color;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _DashedBorderPainter(color: color, radius: radius),
+      child: child,
+    );
+  }
+}
+
+class _DashedBorderPainter extends CustomPainter {
+  _DashedBorderPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  static const double _dashWidth = 4;
+  static const double _dashGap = 3;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rrect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    );
+    final path = Path()..addRRect(rrect);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    for (final metric in path.computeMetrics()) {
+      double distance = 0;
+      while (distance < metric.length) {
+        final next = (distance + _dashWidth).clamp(0, metric.length);
+        canvas.drawPath(
+          metric.extractPath(distance, next.toDouble()),
+          paint,
+        );
+        distance = next + _dashGap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.radius != radius;
 }
 
 // ─── Status pill ──────────────────────────────────────────────────────────────
@@ -1561,29 +1641,109 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: severity.bgColor(context),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(severity.icon, size: 12, color: severity.color(context)),
-          const SizedBox(width: 4),
-          Text(
-            status.label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: severity.color(context),
-            ),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(severity.icon, size: 14, color: severity.color(context)),
+        const SizedBox(width: 4),
+        Text(
+          status.label,
+          style: _interLabelSm(
+            context,
+            color: severity.color(context),
+            weight: FontWeight.w600,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
+}
+
+// ─── Number field ─────────────────────────────────────────────────────────────
+
+class _NumberField extends StatelessWidget {
+  const _NumberField({
+    required this.controller,
+    required this.editable,
+    required this.hint,
+    required this.lockedPlaceholder,
+    this.keyboardType,
+    this.textCapitalization = TextCapitalization.none,
+    this.validator,
+    this.onChanged,
+    this.inputFormatters,
+  });
+
+  final TextEditingController controller;
+  final bool editable;
+  final String hint;
+  final String lockedPlaceholder;
+  final TextInputType? keyboardType;
+  final TextCapitalization textCapitalization;
+  final String? Function(String?)? validator;
+  final VoidCallback? onChanged;
+  final List<TextInputFormatter>? inputFormatters;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      enabled: editable,
+      keyboardType: keyboardType,
+      textCapitalization: textCapitalization,
+      // Suppress validation entirely when locked so stale errors never show
+      validator: editable ? validator : null,
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      onChanged: (editable && onChanged != null) ? (_) => onChanged!() : null,
+      inputFormatters: inputFormatters,
+      cursorColor: context.docsPrimary,
+      style: _interBodyMd(context, weight: FontWeight.w500),
+      decoration: editable
+          ? _activeDecoration(context)
+          : _lockedDecoration(context),
+    );
+  }
+
+  InputDecoration _activeDecoration(BuildContext context) => InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        filled: true,
+        fillColor: context.docsPrimarySoft,
+        hintText: hint,
+        hintStyle: _interBodyMd(context, color: context.textTertiary),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(
+            color: context.docsPrimary.withValues(alpha: 0.35),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: context.docsPrimary, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: context.danger),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: context.danger, width: 2),
+        ),
+        errorStyle: const TextStyle(fontSize: 12, height: 1.3),
+        counterText: '',
+      );
+
+  InputDecoration _lockedDecoration(BuildContext context) => InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
+        filled: false,
+        hintText: controller.text.trim().isEmpty ? lockedPlaceholder : null,
+        hintStyle: _interBodyMd(context, color: context.textTertiary),
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        disabledBorder: InputBorder.none,
+        counterText: '',
+      );
 }
 
 // ─── Validity cell (two-tier: on-time / expiring soon / past due) ─────────────
@@ -1605,10 +1765,9 @@ class _ValidityCell extends StatelessWidget {
   final String Function(DateTime) formatter;
   final bool isExpiry;
 
-  /// New two-tier split for the expiry cell — today's implementation used a
-  /// single warning color for both "already past" and "expiring within 30
-  /// days." This escalates an already-past date to `danger`. The underlying
-  /// 30-day/past-due math is unchanged; only how many colors it maps to.
+  /// Two-tier split for the expiry cell: already-past dates escalate to
+  /// `danger`, dates within 30 days show `warning`. Underlying math unchanged
+  /// from before this redesign — only how many colors it maps to.
   _Severity? get _tier {
     if (!isExpiry || date == null) return null;
     final now = DateTime.now();
@@ -1623,40 +1782,36 @@ class _ValidityCell extends StatelessWidget {
     final tier = _tier;
     final bgColor = tier != null
         ? tier.bgColor(context)
-        : KycColors.accentSoft(context);
+        : context.docsPrimarySoft;
     final iconColor = tier != null ? tier.color(context) : context.textTertiary;
     final textColor = tier != null ? tier.color(context) : context.textPrimary;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           children: [
-            Icon(Icons.calendar_today_outlined, size: 12, color: iconColor),
-            const SizedBox(width: 5),
+            Icon(Icons.calendar_today_outlined, size: 13, color: iconColor),
+            const SizedBox(width: 6),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     label,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                      color: context.textTertiary,
-                    ),
+                    style: _interLabelSm(context).copyWith(fontSize: 10),
                   ),
                   Text(
                     hasDate ? formatter(date!) : 'Select',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: hasDate ? FontWeight.w500 : FontWeight.w400,
+                    style: _interLabelSm(
+                      context,
                       color: hasDate ? textColor : context.textTertiary,
+                      weight: hasDate ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
                 ],
@@ -1679,27 +1834,17 @@ class _UploadSourceSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               'Upload $label',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: context.textPrimary,
-              ),
+              style: _interLabelMd(context).copyWith(fontSize: 16),
             ),
             const SizedBox(height: 4),
-            Text(
-              'JPG or PNG · max 5 MB',
-              style: TextStyle(
-                fontSize: 12,
-                color: context.textTertiary,
-              ),
-            ),
-            const SizedBox(height: 16),
+            Text('JPG or PNG · max 5 MB', style: _interLabelSm(context)),
+            const SizedBox(height: 18),
             Row(
               children: [
                 Expanded(
@@ -1745,35 +1890,22 @@ class _SourceOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(14),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
-          color: KycColors.accentSoft(context),
-          borderRadius: BorderRadius.circular(12),
+          color: context.docsPrimarySoft,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: context.borderSubtle),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: KycColors.accent, size: 28),
+            Icon(icon, color: context.docsPrimary, size: 26),
             const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                fontSize: 14,
-                color: context.textPrimary,
-              ),
-            ),
+            Text(label, style: _interLabelMd(context)),
             const SizedBox(height: 2),
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 11,
-                color: context.textTertiary,
-              ),
-            ),
+            Text(subtitle, style: _interLabelSm(context)),
           ],
         ),
       ),
@@ -1803,13 +1935,13 @@ class _SubmitBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
       decoration: BoxDecoration(
         color: context.cardColor,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: context.isDark ? 0.4 : 0.08),
-            blurRadius: 14,
+            color: Colors.black.withValues(alpha: context.isDark ? 0.4 : 0.06),
+            blurRadius: 16,
             offset: const Offset(0, -3),
           ),
         ],
@@ -1820,22 +1952,18 @@ class _SubmitBar extends StatelessWidget {
           if (busy && uploadingLabel.isNotEmpty) ...[
             Row(
               children: [
-                const SizedBox(
+                SizedBox(
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: KycColors.accent,
+                    color: context.docsPrimary,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   uploadingLabel,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: context.textSecondary,
-                  ),
+                  style: _interLabelSm(context, weight: FontWeight.w600),
                 ),
               ],
             ),
@@ -1844,7 +1972,7 @@ class _SubmitBar extends StatelessWidget {
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 backgroundColor: context.borderSubtle,
-                color: KycColors.accent,
+                color: context.docsPrimary,
                 minHeight: 4,
               ),
             ),
@@ -1852,24 +1980,31 @@ class _SubmitBar extends StatelessWidget {
           ] else if (!busy && !canSubmit && disabledReason != null) ...[
             Row(
               children: [
-                Icon(Icons.error_rounded, size: 15, color: context.danger),
+                Icon(Icons.error_rounded, size: 16, color: context.danger),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     disabledReason!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                    style: _interLabelSm(
+                      context,
                       color: context.danger,
+                      weight: FontWeight.w600,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
+          ] else if (!busy && canSubmit) ...[
+            Text(
+              'Submit your documents for verification',
+              textAlign: TextAlign.center,
+              style: _interLabelSm(context),
+            ),
+            const SizedBox(height: 10),
           ],
           SizedBox(
-            height: 48,
+            height: 56,
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: canSubmit ? onSubmit : null,
@@ -1882,20 +2017,17 @@ class _SubmitBar extends StatelessWidget {
                     ? 'Please wait...'
                     : isReupload
                         ? 'Submit License'
-                        : 'Submit KYC',
+                        : 'Submit Documents',
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: KycColors.accent,
+                backgroundColor: context.docsPrimary,
                 disabledBackgroundColor:
-                    KycColors.accent.withValues(alpha: 0.4),
+                    context.docsPrimary.withValues(alpha: 0.4),
                 foregroundColor: Colors.white,
                 elevation: 0,
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 15,
-                ),
+                textStyle: _interLabelMd(context, color: Colors.white),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                 ),
               ),
             ),
@@ -1931,14 +2063,7 @@ class _EmptyFilterPlaceholder extends StatelessWidget {
             color: context.textTertiary,
           ),
           const SizedBox(height: 12),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: context.textTertiary,
-            ),
-          ),
+          Text(label, style: _interLabelMd(context, color: context.textTertiary)),
         ],
       ),
     );
@@ -1957,10 +2082,10 @@ class _ReuploadWarningBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: context.warningContainer,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: context.warning.withValues(alpha: 0.4)),
       ),
       child: Row(
@@ -1970,12 +2095,8 @@ class _ReuploadWarningBanner extends StatelessWidget {
           Expanded(
             child: Text(
               'Your driving license is missing or expired. Please upload a valid copy to continue.',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w400,
-                color: context.textPrimary,
-                height: 1.4,
-              ),
+              style: _interBodyMd(context, weight: FontWeight.w400)
+                  .copyWith(height: 1.4),
             ),
           ),
         ],
