@@ -66,6 +66,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _app = AppScope.of(context);
+    if (_app.kycApprovalStatus != null &&
+        _app.kycApprovalStatus != VerificationStatus.approved) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil(
+            AppRoutes.kycApprovalStatus,
+            (_) => false,
+          );
+        }
+      });
+      return;
+    }
     if (_app.licenseRequiresReupload && !_licenseDialogShowing) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted &&

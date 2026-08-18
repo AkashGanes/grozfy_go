@@ -171,6 +171,16 @@ class ApiConstants {
       '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.bank.save_bank_account';
 
   // ---------------------------------------------------------------------------
+  // KYC approval endpoints
+  // ---------------------------------------------------------------------------
+
+  // GET, no query params — driver is resolved server-side from the
+  // authenticated session. Returns {message: {status, rejection_reason}}
+  // for the separate "Driver KYC Approval" doctype (not a Driver field).
+  static const String getKycApprovalStatus =
+      '$erpBaseUrl/api/method/grozfy_go.grozfy_go.api.kyc.get_kyc_approval_status';
+
+  // ---------------------------------------------------------------------------
   // Account deletion endpoints
   //
   // Spec: docs/backend-specs/request_account_deletion.md. All three are

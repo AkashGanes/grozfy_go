@@ -26,6 +26,7 @@ import 'features/notifications/ui/screens/notifications_screen.dart';
 import 'features/orders/my_orders_screen.dart';
 import 'features/kyc/bank_setup_screen.dart';
 import 'features/kyc/bank_submitted_details_screen.dart';
+import 'features/kyc/kyc_approval_status_screen.dart';
 import 'features/kyc/kyc_documents_screen.dart';
 import 'features/kyc/vehicle_details_screen.dart';
 import 'features/kyc/vehicle_submitted_details_screen.dart';
@@ -287,6 +288,19 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
                 builder: (_) => const LocationTrackingScreen(),
               );
             case AppRoutes.currentLocation:
+              // Same KYC-approval guard as the `dashboard` case: without
+              // this, a driver whose location was never selected yet (true
+              // for anyone going through this flow for the first time, since
+              // location selection used to only happen via the dashboard
+              // route) reaches this unguarded route directly from splash,
+              // bypassing the dashboard-case guard entirely.
+              if (controller.isLoggedIn &&
+                  controller.kycApprovalStatus != null &&
+                  controller.kycApprovalStatus != VerificationStatus.approved) {
+                return MaterialPageRoute<void>(
+                  builder: (_) => const KycApprovalStatusScreen(),
+                );
+              }
               return MaterialPageRoute<void>(
                 builder: (_) => const CurrentLocationPickerScreen(),
               );
@@ -342,6 +356,13 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
                   builder: (_) => const SplashScreen(),
                 );
               }
+              if (controller.isLoggedIn &&
+                  controller.kycApprovalStatus != null &&
+                  controller.kycApprovalStatus != VerificationStatus.approved) {
+                return MaterialPageRoute<void>(
+                  builder: (_) => const KycApprovalStatusScreen(),
+                );
+              }
               if (controller.isLoggedIn && !controller.hasSelectedLocation) {
                 return MaterialPageRoute<void>(
                   builder: (_) => const CurrentLocationPickerScreen(),
@@ -349,6 +370,10 @@ class _GrozfyGoAppState extends ConsumerState<GrozfyGoApp>
               }
               return MaterialPageRoute<void>(
                 builder: (_) => const DashboardScreen(),
+              );
+            case AppRoutes.kycApprovalStatus:
+              return MaterialPageRoute<void>(
+                builder: (_) => const KycApprovalStatusScreen(),
               );
             case AppRoutes.profile:
               return MaterialPageRoute<void>(

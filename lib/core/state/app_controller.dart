@@ -99,6 +99,7 @@ class AppController extends ChangeNotifier {
   static const String _prefPermNotification = 'perm_notification';
   static const String _prefLicenseRequiresReupload =
       'license_requires_reupload';
+  static const String _prefKycApprovalStatus = 'kyc_approval_status';
   static const String _prefWasProfileComplete = 'was_profile_complete';
   static const String _prefThemeMode = 'theme_mode';
   static const String _prefDeliveryRadiusKm = 'delivery_radius_km';
@@ -176,6 +177,8 @@ class AppController extends ChangeNotifier {
   bool _profileCompleted = false;
   bool _kycCompleted = false;
   bool _licenseRequiresReupload = false;
+  VerificationStatus? _kycApprovalStatus;
+  String? _kycRejectionReason;
   bool _wasProfileComplete = false;
   String? _sessionToken;
   String _tokenType = 'Bearer';
@@ -569,6 +572,8 @@ class AppController extends ChangeNotifier {
 
   bool get isKycComplete => _kycCompleted;
   bool get licenseRequiresReupload => _licenseRequiresReupload;
+  VerificationStatus? get kycApprovalStatus => _kycApprovalStatus;
+  String? get kycRejectionReason => _kycRejectionReason;
 
   bool get canGoOnline =>
       _kycCompleted &&
@@ -692,6 +697,12 @@ class AppController extends ChangeNotifier {
     _rememberMe = prefs.getBool(_prefRememberMe) ?? false;
     _profileCompleted = prefs.getBool(_prefProfileCompleted) ?? false;
     _kycCompleted = prefs.getBool(_prefKycCompleted) ?? false;
+    final String? savedKycApprovalStatus = prefs.getString(
+      _prefKycApprovalStatus,
+    );
+    _kycApprovalStatus = VerificationStatus.values
+        .cast<VerificationStatus?>()
+        .firstWhere((s) => s?.name == savedKycApprovalStatus, orElse: () => null);
     _wasProfileComplete = prefs.getBool(_prefWasProfileComplete) ?? false;
     _existingLicenseNo = _nullIfBlank(prefs.getString(_prefKycLicenseNo));
     _existingAadharNo = _nullIfBlank(prefs.getString(_prefKycAadharNo));
@@ -2065,6 +2076,8 @@ class AppController extends ChangeNotifier {
     _profileDetailsLoading = false;
     _profileCompleted = false;
     _kycCompleted = false;
+    _kycApprovalStatus = null;
+    _kycRejectionReason = null;
     _clearKycIdentity();
     _wasProfileComplete = false;
     _currentLatitude = null;
@@ -2116,6 +2129,7 @@ class AppController extends ChangeNotifier {
       prefs.remove(_prefKycCompleted),
       // KYC identity is per-user PII and pre-fills the KYC form. Left behind,
       // bootstrap() reads it back and shows it to whoever logs in next.
+      prefs.remove(_prefKycApprovalStatus),
       prefs.remove(_prefKycLicenseNo),
       prefs.remove(_prefKycAadharNo),
       prefs.remove(_prefKycPanNo),
@@ -2300,6 +2314,8 @@ class AppController extends ChangeNotifier {
         }
         _kycCompleted = true;
         _licenseRequiresReupload = false;
+        _kycApprovalStatus = VerificationStatus.pending;
+        _kycRejectionReason = null;
         _existingAadharNo = aadharNo;
         _existingAadharUrl = aadharAttachmentUrl.isNotEmpty
             ? aadharAttachmentUrl
@@ -2311,6 +2327,10 @@ class AppController extends ChangeNotifier {
         final SharedPreferences prefs = await SharedPreferences.getInstance();
         await Future.wait(<Future<bool>>[
           prefs.setBool(_prefKycCompleted, true),
+          prefs.setString(
+            _prefKycApprovalStatus,
+            VerificationStatus.pending.name,
+          ),
           if (_existingLicenseNo != null)
             prefs.setString(_prefKycLicenseNo, _existingLicenseNo!),
           if (_existingAadharNo != null)
@@ -2351,6 +2371,43 @@ class AppController extends ChangeNotifier {
 
     _kycStatus[key] = VerificationStatus.pending;
     notifyListeners();
+  }
+
+  /// Refreshes the driver's KYC review status from the separate
+  /// "Driver KYC Approval" doctype. Self-contained try/catch: this is called
+  /// from inside fetchLoggedInEmployeeDriverProfile()'s single outer
+  /// try/catch, and an uncaught exception here would abort the rest of that
+  /// method (online-status sync, vehicle/bank key seeding, image sync).
+  Future<void> _applyKycApprovalStatus() async {
+    if (!_kycCompleted) return;
+    try {
+      final Map<String, dynamic> payload = await _authorizedGet(
+        Uri.parse(ApiConstants.getKycApprovalStatus),
+      );
+      final Map<String, dynamic> data = _extractMethodData(payload);
+      final String raw = (data['status']?.toString() ?? '').trim();
+      final VerificationStatus resolved = switch (raw) {
+        'Pending' => VerificationStatus.pending,
+        'Rejected' => VerificationStatus.rejected,
+        _ => VerificationStatus.approved,
+      };
+      final String? reason = resolved == VerificationStatus.rejected
+          ? _nullIfBlank(data['rejection_reason']?.toString())
+          : null;
+      if (_kycApprovalStatus != resolved || _kycRejectionReason != reason) {
+        _kycApprovalStatus = resolved;
+        _kycRejectionReason = reason;
+        // Awaited (not the usual fire-and-forget _writePref) so the status
+        // is guaranteed persisted before this call returns — a driver
+        // force-closing the app right after seeing a decision must not race
+        // an unflushed write and fall back to a stale cached status.
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_prefKycApprovalStatus, resolved.name);
+        notifyListeners();
+      }
+    } catch (_) {
+      // Network/timeout — keep last known status rather than guessing.
+    }
   }
 
   void _checkLicenseStatus(Map<String, dynamic> driverDoc) {
@@ -5460,6 +5517,7 @@ class AppController extends ChangeNotifier {
       if (driverDoc != null) {
         _applyDeliveryRadiusPolicy(driverDoc);
         _checkLicenseStatus(driverDoc);
+        await _applyKycApprovalStatus();
         _applyRatingFromDriverDoc(driverDoc);
         final dynamic onlineRaw = driverDoc['custom_custom_is_online'];
         if (onlineRaw != null) {
